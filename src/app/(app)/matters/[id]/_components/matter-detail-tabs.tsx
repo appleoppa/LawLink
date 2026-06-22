@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
-import type { ClientType, Prisma } from "@prisma/client";
+import type { ClientType, DocumentCategory, Prisma } from "@prisma/client";
 import {
   Info,
   Plus,
@@ -107,6 +107,24 @@ export type FinancePayload = {
 
 type UserOption = { id: string; name: string; role: string };
 
+/** 案件详情页文档类型（附带 uploader 和 procedure 信息） */
+export type MatterDocument = {
+  id: string;
+  name: string;
+  category: DocumentCategory;
+  procedureId: string | null;
+  mimeType: string | null;
+  size: number | null;
+  path: string;
+  tags: string[];
+  createdAt: Date;
+  sourceParty: string | null;
+  uploadedBy: { id: string; name: string } | null;
+  procedure: { id: string; type: string; customLabel: string | null } | null;
+  folderId: string | null;
+  templateId: string | null;
+};
+
 export type NotePayload = {
   id: string;
   channel: "PHONE" | "WECHAT" | "EMAIL" | "MEETING" | "COURT" | "OTHER";
@@ -142,8 +160,8 @@ export function MatterDetailTabs({
   matter: MatterPayload;
   finance: FinancePayload;
   userOptions: UserOption[];
-  documents: any[];
-  intakeContracts: any[];
+  documents: MatterDocument[];
+  intakeContracts: MatterDocument[];
   folders: FolderPayload[];
   folderDocuments: FolderDocument[];
   templates: TemplateSummary[];
