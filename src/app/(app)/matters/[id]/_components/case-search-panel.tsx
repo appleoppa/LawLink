@@ -21,6 +21,11 @@ import {
   type CaseSearchHit,
   type VectorCaseHit
 } from "@/server/yuandian/cases";
+import { searchRegulationsAction, type RegulationSearchHit } from "@/server/yuandian/regulations";
+import {
+  searchLocalJudgmentsAction,
+  type LocalJudgmentSearchActionResult
+} from "@/server/cncases/search";
 import {
   saveCaseToMatter,
   saveVectorCaseToMatter
@@ -57,7 +62,7 @@ function ajlbFromCategory(cat: MatterCategory): string | undefined {
   }
 }
 
-type SearchMode = "keyword" | "vector";
+type SearchMode = "keyword" | "vector" | "cncases" | "regulation";
 
 export function CaseSearchPanel({ matterId, matterCategory, defaultCauseName }: Props) {
   const [mode, setMode] = useState<SearchMode>("keyword");
@@ -80,6 +85,13 @@ export function CaseSearchPanel({ matterId, matterCategory, defaultCauseName }: 
     items: VectorCaseHit[];
     pointsCharged: number;
   } | null>(null);
+  const [cncasesQuery, setCncasesQuery] = useState("");
+  const [cncasesResult, setCncasesResult] = useState<LocalJudgmentSearchActionResult | null>(null);
+  const [regKeyword, setRegKeyword] = useState("");
+  const [regFgmc, setRegFgmc] = useState("");
+  const [regXljb, setRegXljb] = useState("");
+  const [regSxx, setRegSxx] = useState("现行有效");
+  const [regResult, setRegResult] = useState<{ total: number; items: RegulationSearchHit[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -153,7 +165,38 @@ export function CaseSearchPanel({ matterId, matterCategory, defaultCauseName }: 
           });
           setKeywordResult(r);
           setVectorResult(null);
+          setCncasesResult(null);
+          setRegResult(null);
           if (r.items.length === 0) toast.info("未命中类案");
+        } else if (mode === "cncases") {
+          if (!cncasesQuery.trim()) {
+            setError("请输入裁判文书关键词");
+            return;
+          }
+          const r = await searchLocalJudgmentsAction(cncasesQuery.trim(), { max: topK, matterId });
+          setCncasesResult(r);
+          setKeywordResult(null);
+          setVectorResult(null);
+          setRegResult(null);
+          if (r.items.length === 0) toast.info(r.message ?? "未命中本地裁判文书");
+        } else if (mode === "regulation") {
+          if (!regKeyword.trim() && !regFgmc.trim()) {
+            setError("请输入法规关键词或法规名称");
+            return;
+          }
+          const r = await searchRegulationsAction({
+            keyword: regKeyword.trim() || undefined,
+            fgmc: regFgmc.trim() || undefined,
+            xljb_1: regXljb || undefined,
+            sxx: regSxx || undefined,
+            top_k: topK,
+            matterId
+          });
+          setRegResult(r);
+          setKeywordResult(null);
+          setVectorResult(null);
+          setCncasesResult(null);
+          if (r.items.length === 0) toast.info("未命中法规");
         } else {
           if (!vectorQuery.trim()) {
             setError("语义检索的案情描述不能为空");
@@ -172,6 +215,8 @@ export function CaseSearchPanel({ matterId, matterCategory, defaultCauseName }: 
           });
           setVectorResult(r);
           setKeywordResult(null);
+          setCncasesResult(null);
+          setRegResult(null);
           if (r.items.length === 0) toast.info("未命中类案");
         }
       } catch (err) {
@@ -191,7 +236,7 @@ export function CaseSearchPanel({ matterId, matterCategory, defaultCauseName }: 
             类案检索
           </h3>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
-            元典案例库 · 每次检索扣 10 POINT
+            元典案例库 · 本地裁判文书 · 法条法规
           </p>
         </div>
         <div className="flex rounded-md border border-border bg-card p-0.5">
@@ -219,11 +264,105 @@ export function CaseSearchPanel({ matterId, matterCategory, defaultCauseName }: 
           >
             语义
           </button>
+          <button
+            type="button"
+            onClick={() => setMode("cncases")}
+            className={cn(
+              "rounded px-2.5 py-1 text-[11px]",
+              mode === "cncases"
+                ? "bg-primary/15 text-primary"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            本地文书
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("regulation")}
+            className={cn(
+              "rounded px-2.5 py-1 text-[11px]",
+              mode === "regulation"
+                ? "bg-primary/15 text-primary"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            法条法规
+          </button>
         </div>
       </header>
 
       {/* 检索表单 */}
       <div className="space-y-3 rounded-lg border border-border bg-card p-4">
+        {mode === "cncases" && (
+          <div>
+            <Label className="text-[11px]">裁判文书关键词（本地 8500 万份，移动硬盘一）</Label>
+            <Input
+              value={cncasesQuery}
+              onChange={(e) => setCncasesQuery(e.target.value)}
+              placeholder="如：民间借贷 违约金 二七区人民法院"
+              className="mt-1"
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+            />
+          </div>
+        )}
+        {mode === "regulation" && (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div>
+              <Label className="text-[11px]">法规内容关键词</Label>
+              <Input
+                value={regKeyword}
+                onChange={(e) => setRegKeyword(e.target.value)}
+                placeholder="如：违约金 不得超过 造成损失"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label className="text-[11px]">法规名称（可选）</Label>
+              <Input
+                value={regFgmc}
+                onChange={(e) => setRegFgmc(e.target.value)}
+                placeholder="如：最高人民法院关于审理民间借贷案件适用法律若干问题的规定"
+                className="mt-1"
+              />
+            </div>
+          </div>
+        )}
+        {mode === "regulation" && (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div>
+              <Label className="text-[11px]">效力级别（可选）</Label>
+              <select
+                value={regXljb}
+                onChange={(e) => setRegXljb(e.target.value)}
+                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">全部</option>
+                <option value="宪法">宪法</option>
+                <option value="法律">法律</option>
+                <option value="司法解释">司法解释</option>
+                <option value="行政法规">行政法规</option>
+                <option value="部门规章">部门规章</option>
+                <option value="地方性法规">地方性法规</option>
+                <option value="地方政府规章">地方政府规章</option>
+              </select>
+            </div>
+            <div>
+              <Label className="text-[11px]">时效性（可选）</Label>
+              <select
+                value={regSxx}
+                onChange={(e) => setRegSxx(e.target.value)}
+                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">全部</option>
+                <option value="现行有效">现行有效</option>
+                <option value="失效">失效</option>
+                <option value="已被修改">已被修改</option>
+                <option value="部分失效">部分失效</option>
+                <option value="尚未生效">尚未生效</option>
+              </select>
+            </div>
+          </div>
+        )}
         {mode === "vector" && (
           <div>
             <Label className="text-[11px]">案情描述（自然语言）</Label>
@@ -504,6 +643,81 @@ export function CaseSearchPanel({ matterId, matterCategory, defaultCauseName }: 
                 {c.content && (
                   <p className="mt-2 line-clamp-5 whitespace-pre-line text-[12px] leading-relaxed text-foreground/75">
                     {c.content}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {cncasesResult && (
+        <div className="space-y-2">
+          <p className="text-[11px] text-muted-foreground">
+            本地裁判文书命中{" "}
+            <span className="font-mono text-foreground">{cncasesResult.total}</span> 条，已返回{" "}
+            <span className="font-mono text-foreground">{cncasesResult.items.length}</span> 条
+          </p>
+          {!cncasesResult.available && (
+            <div className="flex items-start gap-2 rounded-md border border-amber-300/40 bg-amber-500/10 p-3 text-[12px] text-amber-700">
+              <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{cncasesResult.message}</span>
+            </div>
+          )}
+          <ul className="space-y-2">
+            {cncasesResult.items.map((c, i) => (
+              <li key={`${c.title}-${i}`} className="rounded-lg border border-border bg-card p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 overflow-hidden">
+                    <div className="text-sm font-medium leading-snug">{c.title}</div>
+                    {c.meta && (
+                      <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">{c.meta}</p>
+                    )}
+                  </div>
+                  <a
+                    href={c.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[11px] text-primary hover:bg-popover"
+                  >
+                    查看
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {regResult && (
+        <div className="space-y-2">
+          <p className="text-[11px] text-muted-foreground">
+            法规命中 <span className="font-mono text-foreground">{regResult.total}</span> 条，已返回{" "}
+            <span className="font-mono text-foreground">{regResult.items.length}</span> 条
+          </p>
+          <ul className="space-y-2">
+            {regResult.items.map((r, i) => (
+              <li key={`${r.fgmc}-${i}`} className="rounded-lg border border-border bg-card p-3">
+                <div className="text-sm font-medium leading-snug">{r.fgmc}</div>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                  {r.xljb_1 && (
+                    <span className="rounded border border-primary/30 bg-primary/5 px-1 py-0.5 text-[10px] text-primary">
+                      {r.xljb_1}
+                    </span>
+                  )}
+                  {r.sxx && (
+                    <span className="rounded border border-border bg-muted/30 px-1 py-0.5 text-[10px]">
+                      {r.sxx}
+                    </span>
+                  )}
+                  {r.fbrq && <span>发布 {r.fbrq}</span>}
+                  {r.ssrq && <span>· 实施 {r.ssrq}</span>}
+                  {r.fbbm && <span>· {r.fbbm}</span>}
+                </div>
+                {r.content && (
+                  <p className="mt-2 line-clamp-4 whitespace-pre-line text-[12px] leading-relaxed text-foreground/75">
+                    {r.content}
                   </p>
                 )}
               </li>

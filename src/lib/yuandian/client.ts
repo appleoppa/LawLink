@@ -257,3 +257,95 @@ export async function searchCasesByVector(
 export function buildVectorCaseDetailUrl(host: string, scid: string): string {
   return buildCaseDetailUrl(host, `/ydzk/caseDetail/case/${scid}`);
 }
+
+// ============================================================
+// v0.46: 法规 / 法条检索（元典 /open/rh_fg_search、/open/rh_ft_search）
+// ============================================================
+
+export type RegulationSearchParams = {
+  keyword?: string;
+  fgmc?: string;
+  xljb_1?: string;
+  sxx?: string;
+  top_k?: number;
+};
+
+export type RegulationHit = {
+  title?: string;
+  url?: string;
+  fgmc?: string;
+  xljb_1?: string;
+  sxx?: string;
+  dy?: string;
+  fbrq?: string;
+  ssrq?: string;
+  fbbm?: string;
+  content?: string;
+};
+
+export type RegulationSearchResult = {
+  total: number;
+  items: RegulationHit[];
+};
+
+/** 法规列表检索：POST /open/rh_fg_search（keyword 可选，也可仅按名称/效力/时效过滤） */
+export async function searchRegulations(
+  params: RegulationSearchParams,
+  resolved?: ResolvedYuandianSettings
+): Promise<RegulationSearchResult> {
+  const s = resolved ?? (await getYuandianSettings());
+  if (!s.configured) throw new YuandianNotConfiguredError();
+
+  const hasAny =
+    !!params.keyword?.trim() || !!params.fgmc?.trim() || !!params.xljb_1 || !!params.sxx;
+  if (!hasAny) throw new Error("至少填写一个检索条件（关键词 / 法规名称 / 效力级别 / 时效性）");
+
+  const body: Record<string, unknown> = {};
+  if (params.keyword?.trim()) {
+    body.keyword = params.keyword.trim();
+    body.search_mode = "AND";
+  }
+  if (params.fgmc?.trim()) body.fgmc = params.fgmc.trim();
+  if (params.xljb_1) body.xljb_1 = params.xljb_1;
+  if (params.sxx) body.sxx = params.sxx;
+  body.top_k = Math.min(Math.max(params.top_k ?? 10, 1), 50);
+
+  const url = `${s.baseUrl.replace(/\/$/, "")}/rh_fg_search`;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30_000);
+  let json: {
+    status?: string;
+    code?: number;
+    message?: string;
+    data?: RegulationHit[] | null;
+  };
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "X-API-Key": s.apiKey,
+        "Content-Type": "application/json; charset=utf-8",
+        Accept: "application/json"
+      },
+      body: JSON.stringify(body),
+      signal: ctrl.signal
+    });
+    if (!res.ok) throw new YuandianApiError(`HTTP ${res.status}`, res.status);
+    json = await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (json.status !== "success") {
+    throw new YuandianApiError(json.message ?? "元典法规检索失败", json.code ?? 500);
+  }
+  // rh_fg_search 返回 data 为数组（{title, url, content, _score, ...}）
+  if (!json.data || !Array.isArray(json.data)) return { total: 0, items: [] };
+  // 与 UI 字段对齐：title → fgmc，url → detailUrl
+  const items = json.data.map((r) => ({
+    ...r,
+    fgmc: r.fgmc ?? r.title,
+    detailUrl: r.url
+  }));
+  return { total: items.length, items };
+}

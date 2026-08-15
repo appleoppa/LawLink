@@ -46,7 +46,12 @@ function decryptKey(cipher: StoredYuandianSettings["apiKeyCipher"]): string {
 
 export async function readStoredYuandianSettings(): Promise<StoredYuandianSettings> {
   const row = await prisma.systemSetting.findUnique({ where: { key: YUANDIAN_SETTINGS_KEY } });
-  const stored = (row?.value as Partial<StoredYuandianSettings> | null) ?? {};
+  // jsonb 列在部分驱动下返回字符串而非对象，兼容两种情况
+  const raw = row?.value;
+  let stored: Partial<StoredYuandianSettings> = {};
+  if (raw) {
+    stored = (typeof raw === "string" ? JSON.parse(raw) : raw) as Partial<StoredYuandianSettings>;
+  }
   return {
     apiKeyCipher: stored.apiKeyCipher ?? null,
     baseUrl: stored.baseUrl || YUANDIAN_DEFAULTS.baseUrl,
