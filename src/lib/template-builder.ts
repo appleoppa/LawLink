@@ -726,6 +726,165 @@ async function buildT10(): Promise<Buffer> {
 }
 
 // ============================================================
+// 模板 11: 强制执行申请书（v44 执行文书）
+// ============================================================
+const T11_VARS = [
+  "client.name",
+  "client.idNumber",
+  "client.address",
+  "client.phone",
+  "opposing.name",
+  "opposing.idNumber",
+  "opposing.address",
+  "execution.basis",
+  "execution.basisNo",
+  "proceeding.caseNo",
+  "proceeding.court",
+  "matter.claimAmount",
+  "lawyer.name",
+  "todayCN"
+];
+
+async function buildT11(): Promise<Buffer> {
+  return pack([
+    title("强制执行申请书"),
+    blank(),
+    body("申请执行人：{{client.name}}"),
+    body("身份信息：{{client.idNumber}}"),
+    body("住所地：{{client.address}}"),
+    body("联系电话：{{client.phone}}"),
+    blank(),
+    body("被执行人：{{opposing.name}}"),
+    body("身份信息：{{opposing.idNumber}}"),
+    body("住所地：{{opposing.address}}"),
+    blank(),
+    body("执行依据：{{execution.basis}}（{{execution.basisNo}}）", { bold: true }),
+    body("执行标的金额：{{matter.claimAmount}}", { bold: true }),
+    blank(),
+    body("请求事项：", { bold: true }),
+    body("1. 请求依法强制执行（{{proceeding.caseNo}}）{{execution.basis}}所确定的义务；", { indent: true }),
+    body("2. 请求查封、冻结、扣押、拍卖、变卖被执行人相应价值财产，以清偿执行标的{{matter.claimAmount}}；", { indent: true }),
+    body("3. 请求被执行人支付迟延履行期间的债务利息；", { indent: true }),
+    body("4. 本案执行费用由被执行人承担。", { indent: true }),
+    blank(),
+    body("事实与理由：", { bold: true }),
+    body("（填写：执行依据生效情况、履行期限届满、被执行人未履行或未完全履行的事实，以及财产线索情况）", { indent: true }),
+    body("________________________________________________________________________", { indent: true }),
+    body("________________________________________________________________________", { indent: true }),
+    blank(),
+    body("综上，依据《中华人民共和国民事诉讼法》及最高人民法院相关司法解释之规定，请求贵院依法立案执行，以维护申请执行人合法权益。", { indent: true }),
+    blank(),
+    body("此致"),
+    body("{{proceeding.court}}", { bold: true }),
+    blank(),
+    blank(),
+    body("申请执行人(签字)：________________"),
+    body("                                                            代理律师：{{lawyer.name}}"),
+    blank(),
+    body("{{todayCN}}", { align: AlignmentType.RIGHT })
+  ]);
+}
+
+// ============================================================
+// 模板 12: 执行异议申请书（v44 执行文书）
+// ============================================================
+const T12_VARS = [
+  "client.name",
+  "client.idNumber",
+  "client.address",
+  "client.phone",
+  "opposing.name",
+  "proceeding.caseNo",
+  "proceeding.court",
+  "execution.basis",
+  "lawyer.name",
+  "todayCN"
+];
+
+async function buildT12(): Promise<Buffer> {
+  return pack([
+    title("执行异议申请书"),
+    blank(),
+    body("异议人：{{client.name}}"),
+    body("身份信息：{{client.idNumber}}"),
+    body("住所地：{{client.address}}"),
+    blank(),
+    body("其他当事人：{{opposing.name}}"),
+    blank(),
+    body("异议事项：", { bold: true }),
+    body("1. 请求依法撤销/变更（{{proceeding.caseNo}}）执行裁定（或执行行为）；", { indent: true }),
+    body("2. ____________________。", { indent: true }),
+    blank(),
+    body("事实与理由：", { bold: true }),
+    body("（填写：异议类型——对执行行为异议或对执行标的异议；具体事实、证据与法律依据）", { indent: true }),
+    body("________________________________________________________________________", { indent: true }),
+    body("________________________________________________________________________", { indent: true }),
+    body("________________________________________________________________________", { indent: true }),
+    blank(),
+    body("依据《中华人民共和国民事诉讼法》及最高人民法院相关司法解释之规定，请求贵院依法审查并支持异议请求。", { indent: true }),
+    blank(),
+    body("此致"),
+    body("{{proceeding.court}}", { bold: true }),
+    blank(),
+    blank(),
+    body("异议人(签字)：________________"),
+    body("                                                            代理律师：{{lawyer.name}}"),
+    blank(),
+    body("{{todayCN}}", { align: AlignmentType.RIGHT })
+  ]);
+}
+
+// ============================================================
+// 模板 13: 追加被执行人申请书（v44 执行文书）
+// ============================================================
+const T13_VARS = [
+  "client.name",
+  "client.idNumber",
+  "opposing.name",
+  "third.name",
+  "third.idNumber",
+  "proceeding.caseNo",
+  "proceeding.court",
+  "execution.basis",
+  "lawyer.name",
+  "todayCN"
+];
+
+async function buildT13(): Promise<Buffer> {
+  return pack([
+    title("追加被执行人申请书"),
+    blank(),
+    body("申请执行人：{{client.name}}"),
+    body("身份信息：{{client.idNumber}}"),
+    blank(),
+    body("被执行人：{{opposing.name}}"),
+    blank(),
+    body("被申请追加人：{{third.name}}"),
+    body("身份信息：{{third.idNumber}}"),
+    blank(),
+    body("请求事项：", { bold: true }),
+    body("请求依法追加{{third.name}}为（{{proceeding.caseNo}}）执行案件的被执行人。", { indent: true }),
+    blank(),
+    body("事实与理由：", { bold: true }),
+    body("（填写：触发追加的法定情形及事实证据，如未履行出资义务、无偿受让、抽逃出资等；必须回现行官方法源核验具体情形与要件）", { indent: true }),
+    body("________________________________________________________________________", { indent: true }),
+    body("________________________________________________________________________", { indent: true }),
+    body("________________________________________________________________________", { indent: true }),
+    blank(),
+    body("依据《中华人民共和国民事诉讼法》及《最高人民法院关于民事执行中变更、追加当事人若干问题的规定》之规定，请求贵院依法裁定追加。", { indent: true }),
+    blank(),
+    body("此致"),
+    body("{{proceeding.court}}", { bold: true }),
+    blank(),
+    blank(),
+    body("申请执行人(签字)：________________"),
+    body("                                                            代理律师：{{lawyer.name}}"),
+    blank(),
+    body("{{todayCN}}", { align: AlignmentType.RIGHT })
+  ]);
+}
+
+// ============================================================
 // 注册表
 // ============================================================
 export const BUILTIN_TEMPLATES: BuiltInTemplate[] = [
@@ -818,5 +977,33 @@ export const BUILTIN_TEMPLATES: BuiltInTemplate[] = [
     applicableCategories: [],
     variables: T10_VARS,
     buildBuffer: buildT10
+  },
+  // ===== v44: 执行案件文书模板（2026-08-14 融合执行律师工作流） =====
+  {
+    key: "execution_application",
+    name: "强制执行申请书",
+    category: "EXECUTION",
+    description: "申请执行人向法院申请强制执行的正式文书。执行依据、金额与被执行人信息需律师核实后填写；法条引用以现行有效版本为准。",
+    applicableCategories: ["CIVIL_COMMERCIAL"],
+    variables: T11_VARS,
+    buildBuffer: buildT11
+  },
+  {
+    key: "execution_objection",
+    name: "执行异议申请书",
+    category: "EXECUTION",
+    description: "对执行行为或执行标的提出异议的申请书。异议类型、理由与依据需律师核实后填写。",
+    applicableCategories: ["CIVIL_COMMERCIAL"],
+    variables: T12_VARS,
+    buildBuffer: buildT12
+  },
+  {
+    key: "execution_add_party",
+    name: "追加被执行人申请书",
+    category: "EXECUTION",
+    description: "申请追加案外主体为被执行人的申请书。仅当存在法定追加情形且事实证据触发时使用；需回现行官方法源核验具体情形。",
+    applicableCategories: ["CIVIL_COMMERCIAL"],
+    variables: T13_VARS,
+    buildBuffer: buildT13
   }
 ];

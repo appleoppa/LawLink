@@ -25,6 +25,7 @@ export type TemplateSummary = {
     | "INTAKE"
     | "RETAINER"
     | "LITIGATION"
+    | "EXECUTION"
     | "HEARING"
     | "WORK_PRODUCT"
     | "ARCHIVE"
@@ -40,6 +41,7 @@ export const TEMPLATE_CATEGORY_CN: Record<TemplateSummary["category"], string> =
   INTAKE: "收案文书",
   RETAINER: "委托文书",
   LITIGATION: "诉讼文书",
+  EXECUTION: "执行文书",
   HEARING: "庭审文书",
   WORK_PRODUCT: "工作成果",
   ARCHIVE: "卷宗文书",

@@ -214,6 +214,7 @@ export async function buildContext(opts: {
       opposing: EMPTY_PARTY,
       third: EMPTY_PARTY,
       proceeding: { type: "", caseNo: "", court: "" },
+      execution: { basis: "", basisNo: "", basisDate: "" },
       plaintiffs: [],
       defendants: [],
       thirds: []
@@ -279,6 +280,12 @@ export async function buildContext(opts: {
       type: firstProc?.type ?? "",
       caseNo: firstProc?.caseNumber ?? "",
       court: firstProc?.handlingAgency ?? ""
+    },
+    // v44: 执行类模板变量（默认空，可由 overrides 填充或人工补充）
+    execution: {
+      basis: "", // 执行依据名称（如：（2025）豫01民终1234号民事判决书）
+      basisNo: "", // 执行依据文号
+      basisDate: "" // 执行依据生效日期
     },
     plaintiffs,
     defendants,

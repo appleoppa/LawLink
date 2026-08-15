@@ -6,6 +6,7 @@ export const templateListFilterSchema = z.object({
       "INTAKE",
       "RETAINER",
       "LITIGATION",
+      "EXECUTION",
       "HEARING",
       "WORK_PRODUCT",
       "ARCHIVE",
