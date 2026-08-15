@@ -2,8 +2,12 @@
 const nextConfig = {
   // dev 与 build 分开输出，避免生产构建覆盖正在运行的开发缓存导致页面不渲染
   distDir: process.env.NEXT_DIST_DIR ?? ".next",
-  // 允许局域网主机名访问 Next dev 资源/HMR；用户实际用 appleoppa-air.local:3100 打开 LawLink。
-  allowedDevOrigins: ["appleoppa-air.local"],
+  // 局域网主机名访问 Next dev 资源/HMR（可选）：逗号分隔，如 "mac.local,192.168.1.5"；不配则仅本机访问。
+  allowedDevOrigins: process.env.ALLOWED_DEV_ORIGINS
+    ? process.env.ALLOWED_DEV_ORIGINS.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [],
   // typedRoutes 等 Stage 2 路由稳定后再开启
   typedRoutes: false,
   // v0.27: @napi-rs/canvas 是原生 .node 二进制，必须交给 Node 运行时 require

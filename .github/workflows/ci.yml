@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-and-build:
+    name: lint / typecheck / test / build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: lawlink
+          POSTGRES_PASSWORD: lawlink
+          POSTGRES_DB: lawlink
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lawlink"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://lawlink:lawlink@localhost:5432/lawlink?schema=public
+      NEXTAUTH_SECRET: ci-only-placeholder-secret-0123456789abcdef
+      STORAGE_ENCRYPTION_KEY: uDUpHCB4N54CYIZ9UNukqi/itELBFMt+KO5ngRxQ13E=
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: Prisma 生成客户端
+        run: npx prisma generate
+
+      - name: 代码规范检查
+        run: npm run lint
+
+      - name: 类型检查
+        run: npm run typecheck
+
+      - name: Prisma schema 校验
+        run: npm run prisma:validate
+
+      - name: 数据库迁移（校验 migration 完整性）
+        run: npx prisma migrate deploy
+
+      - name: 单元测试
+        run: npm run test:run
+
+      - name: 生产构建
+        run: npm run build
