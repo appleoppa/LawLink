@@ -37,10 +37,10 @@ jobs:
       STORAGE_ENCRYPTION_KEY: uDUpHCB4N54CYIZ9UNukqi/itELBFMt+KO5ngRxQ13E=
     steps:
       - name: 拉取代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: 安装 Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm

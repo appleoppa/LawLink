@@ -10,8 +10,7 @@ import {
   TrendingUp,
   Percent,
   Receipt,
-  FileText,
-  ClipboardList
+  FileText
 } from "lucide-react";
 import {
   ResponsiveContainer,
