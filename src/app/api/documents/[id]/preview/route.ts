@@ -43,14 +43,15 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json({ error: "未登录" }, { status: 401 });
   }
 
   const doc = await prisma.document.findFirst({
-    where: { id: params.id, deletedAt: null }
+    where: { id, deletedAt: null }
   });
   if (!doc) return NextResponse.json({ error: "材料不存在" }, { status: 404 });
 

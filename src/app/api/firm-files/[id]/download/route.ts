@@ -11,15 +11,16 @@ export const dynamic = "force-dynamic";
 
 export async function GET(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json({ error: "未登录" }, { status: 401 });
   }
 
   const f = await prisma.firmFile.findUnique({
-    where: { id: params.id, archivedAt: null }
+    where: { id, archivedAt: null }
   });
   if (!f) return NextResponse.json({ error: "资料不存在" }, { status: 404 });
 

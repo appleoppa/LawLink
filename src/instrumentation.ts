@@ -15,6 +15,7 @@ export async function register() {
   if (process.env.DISABLE_CRON === "1") return;
 
   // 仅生产 nodejs 运行时才解析这个模块路径
-  const mod = await import(/* webpackIgnore: true */ "./server/cron/scheduler");
+  // 注：移除 webpackIgnore 让 Next 16 turbopack 正确打包子模块
+  const mod = await import("./server/cron/scheduler");
   (mod as { registerCronJobs: () => void }).registerCronJobs();
 }

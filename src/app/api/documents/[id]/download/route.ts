@@ -10,7 +10,8 @@ import { normalizeUploadedFilename } from "@/lib/filename";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   // ?inline=1 时以 inline 方式返回，浏览器新标签内预览（PDF/图片/文本），否则下载
   const inline = new URL(req.url).searchParams.get("inline") === "1";
   const session = await getServerSession(authOptions);
@@ -19,7 +20,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   }
 
   const doc = await prisma.document.findFirst({
-    where: { id: params.id, deletedAt: null }
+    where: { id, deletedAt: null }
   });
   if (!doc) return NextResponse.json({ error: "材料不存在" }, { status: 404 });
 

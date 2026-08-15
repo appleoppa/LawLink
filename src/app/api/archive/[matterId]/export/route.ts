@@ -11,8 +11,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET(
   _req: Request,
-  { params }: { params: { matterId: string } }
+  { params }: { params: Promise<{ matterId: string }> }
 ) {
+  const { matterId } = await params;
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json({ error: "未登录" }, { status: 401 });
@@ -20,7 +21,7 @@ export async function GET(
 
   // 权限：ADMIN / PRINCIPAL_LAWYER 或案件成员
   const matter = await prisma.matter.findUnique({
-    where: { id: params.matterId },
+    where: { id: matterId },
     select: { id: true, status: true, internalCode: true }
   });
   if (!matter) return NextResponse.json({ error: "案件不存在" }, { status: 404 });
@@ -39,7 +40,7 @@ export async function GET(
 
   let result;
   try {
-    result = await buildArchiveZip(params.matterId);
+    result = await buildArchiveZip(matterId);
   } catch (err) {
     console.error("[archive export] 构建失败：", err);
     return NextResponse.json(
