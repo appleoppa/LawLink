@@ -16,6 +16,13 @@ function getGreeting(hour: number) {
   return "晚上好";
 }
 
+const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"] as const;
+
+/** 确定性中文日期，避免 SSR/客户端 hydration 不匹配（二开） */
+export function formatDashboardDateLabel(date: Date) {
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 星期${WEEKDAY_LABELS[date.getDay()]}`;
+}
+
 const typeMeta = {
   deadline: { icon: AlertTriangle, color: "text-amber-600", label: "期限" },
   hearing: { icon: Calendar, color: "text-primary", label: "开庭" }
@@ -34,12 +41,7 @@ export function DashboardGreeting({
   const router = useRouter();
   const today = new Date();
   const greeting = getGreeting(today.getHours());
-  const dateLabel = today.toLocaleDateString("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    weekday: "short"
-  });
+  const dateLabel = formatDashboardDateLabel(today);
   const focusItem = scheduleItems[0] ?? null;
 
   return (

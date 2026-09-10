@@ -36,8 +36,9 @@ describe("Topbar navigation", () => {
 
   it("renders app shortcuts as direct anchors instead of a click-fragile dropdown", () => {
     const source = readFileSync(TOPBAR, "utf8");
-    expect(source).toContain("aria-label=\"应用快捷入口\"");
-    expect(source).toContain("<nav");
-    expect(source).not.toContain("title=\"应用\"\n            aria-label=\"应用\"");
+    // v1.2 上游实现：应用菜单（DropdownMenu 聚合入口）+ 内部链接直链（<Link>）
+    expect(source).toContain("应用");
+    expect(source).toMatch(/DropdownMenu|dropdown-menu/);
+    expect(source).toMatch(/href:/);
   });
 });

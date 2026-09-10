@@ -15,6 +15,7 @@ vi.mock("./jobs/archive-overdue", () => ({ scanArchiveOverdue: vi.fn() }));
 vi.mock("./jobs/audit-cleanup", () => ({ runAuditCleanup: vi.fn() }));
 vi.mock("./jobs/scan-due-reminders", () => ({ scanDueReminders: vi.fn() }));
 vi.mock("./jobs/scan-seal-backfill-reminders", () => ({ scanSealBackfillReminders: vi.fn() }));
+vi.mock("./jobs/backup-database", () => ({ runDatabaseBackup: vi.fn(), backupCronEnabled: () => true }));
 
 import {
   isWithinStartupRecoveryWindow,
@@ -51,7 +52,7 @@ describe("cron startup recovery", () => {
   it("registers all jobs without unconditional initialization execution", () => {
     registerCronJobs();
 
-    expect(mocks.schedule).toHaveBeenCalledTimes(5);
+    expect(mocks.schedule).toHaveBeenCalledTimes(6);
     for (const call of mocks.schedule.mock.calls as unknown[][]) {
       expect(call[2]).toMatchObject({ timezone: "Asia/Shanghai" });
     }

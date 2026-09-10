@@ -46,6 +46,20 @@ export async function runWeeklyReportPush(
   let succeeded = 0;
   for (const u of recipients) {
     try {
+      // Manual and recovered cron triggers share this marker to avoid duplicate weekly pushes.
+      const existing = await prisma.notification.findFirst({
+        where: {
+          userId: u.id,
+          refType: "WeeklyReport",
+          refId: period.label
+        },
+        select: { id: true }
+      });
+      if (existing) {
+        succeeded++;
+        continue;
+      }
+
       const digest = await getLawyerWeeklyDigest({
         userId: u.id,
         userName: u.name,
