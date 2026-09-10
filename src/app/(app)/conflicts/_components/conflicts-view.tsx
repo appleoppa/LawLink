@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
 import {
   Plus,
   Search,
@@ -35,6 +34,7 @@ import { toast } from "sonner";
 import { runCheckAndSave } from "@/server/conflicts/actions";
 import { cn } from "@/lib/utils";
 import { litigationStandingLabel, matterCategoryLabel, matterStatusLabel } from "@/lib/enums";
+import { matterHref } from "@/lib/matters/route";
 
 type QueryRole = "CLIENT_PARTY" | "OPPOSING_PARTY" | "THIRD_PARTY";
 
@@ -71,10 +71,10 @@ type HitResult = {
 };
 
 const severityStyle: Record<ConflictSeverity, { color: string; bg: string; label: string }> = {
-  BLOCKING: { color: "#F87171", bg: "rgba(248,113,113,0.12)", label: "阻塞" },
-  HIGH: { color: "#FB923C", bg: "rgba(251,146,60,0.12)", label: "高" },
-  MEDIUM: { color: "#FBBF24", bg: "rgba(251,191,36,0.12)", label: "中" },
-  LOW: { color: "#4ADE80", bg: "rgba(74,222,128,0.12)", label: "低" }
+  BLOCKING: { color: "#B91C1C", bg: "#FBE9E9", label: "阻塞" },
+  HIGH: { color: "#B45309", bg: "#FBEDD8", label: "高" },
+  MEDIUM: { color: "#9A6700", bg: "#FBF1DC", label: "中" },
+  LOW: { color: "#15803D", bg: "#E6F2EC", label: "低" }
 };
 
 const queryRoleOptions: { value: QueryRole; label: string }[] = [
@@ -102,6 +102,7 @@ export function ConflictsView() {
   const [queries, setQueries] = useState<QueryRow[]>([emptyQuery()]);
   const [results, setResults] = useState<HitResult[] | null>(null);
   const [hasRun, setHasRun] = useState(false);
+  const resultCounts = summarizeResults(results);
 
   function addQuery() {
     setQueries((q) => [...q, emptyQuery()]);
@@ -139,25 +140,20 @@ export function ConflictsView() {
   }
 
   return (
-    <motion.div
-      initial={false}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="space-y-5"
-    >
-      <header>
-        <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-          <ShieldCheck className="h-5 w-5 text-primary" />
-          利益冲突检索
+    <div className="space-y-4">
+      <header className="ll-hero-surface px-5 py-4">
+        <h1 className="relative z-[1] flex items-center gap-2 text-[20px] font-semibold">
+          <ShieldCheck className="h-5 w-5 text-primary" strokeWidth={1.8} />
+          冲突检索
         </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          快速查 — 比对历史客户与案件，确认是否存在代理冲突
+        <p className="relative z-[1] mt-2 max-w-2xl text-[13px] text-muted-foreground">
+          拟代理的委托方、相对方或第三人，必须先与历史客户和案件主体比对。命中阻塞冲突时，建议停止收案并形成留痕结论。
         </p>
       </header>
 
-      <section className="rounded-xl border border-border bg-card p-5">
+      <section className="ll-surface p-4">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold">检索项</h2>
+          <h2 className="ll-panel-title">检索项</h2>
           <Button variant="outline" size="sm" onClick={addQuery} className="h-7 gap-1">
             <Plus className="h-3.5 w-3.5" />
             添加检索项
@@ -168,7 +164,7 @@ export function ConflictsView() {
           {queries.map((q, idx) => (
             <div
               key={idx}
-              className="grid grid-cols-12 gap-2 rounded-lg border border-border bg-background p-3"
+              className="grid grid-cols-12 gap-2 rounded-lg border border-border bg-muted/55 p-3"
             >
               <div className="col-span-3">
                 <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -178,7 +174,7 @@ export function ConflictsView() {
                   value={q.role}
                   onValueChange={(value) => updateQuery(idx, { role: value as QueryRole })}
                 >
-                  <SelectTrigger className="mt-1 h-9 bg-background">
+                  <SelectTrigger className="mt-1 h-[34px] bg-card">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -198,7 +194,7 @@ export function ConflictsView() {
                   value={q.name}
                   onChange={(e) => updateQuery(idx, { name: e.target.value })}
                   placeholder="如：华东置业集团有限公司"
-                  className="mt-1 h-9 bg-background"
+                  className="mt-1 h-[34px] bg-card"
                 />
               </div>
               <div className="col-span-4">
@@ -209,7 +205,7 @@ export function ConflictsView() {
                   value={q.idNumber}
                   onChange={(e) => updateQuery(idx, { idNumber: e.target.value })}
                   placeholder="与姓名至少填一项"
-                  className="mt-1 h-9 bg-background font-mono"
+                  className="mt-1 h-[34px] bg-card font-mono"
                 />
               </div>
               <div className="col-span-1 flex items-end justify-center">
@@ -233,7 +229,7 @@ export function ConflictsView() {
           <Button
             onClick={handleRun}
             disabled={isPending}
-            className="gap-1.5 "
+            className="gap-1.5"
           >
             {isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -246,18 +242,19 @@ export function ConflictsView() {
       </section>
 
       {hasRun && (
-        <section className="rounded-xl border border-border bg-card p-5">
+        <section className="ll-surface p-4">
           <h2 className="mb-3 text-sm font-semibold">
             检索结果{" "}
             <span className="font-mono text-xs text-muted-foreground tabular">
               ({results?.length ?? 0})
             </span>
           </h2>
+          <ConflictSummaryBar counts={resultCounts} />
 
           {!results || results.length === 0 ? (
-            <div className="rounded-md border border-[#4ADE80]/30 bg-[#4ADE80]/10 p-4 text-sm">
+            <div className="rounded-md border border-[#15803D]/30 bg-[#E6F2EC] p-4 text-sm">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-[#4ADE80]" />
+                <CheckCircle2 className="h-4 w-4 text-[#15803D]" />
                 <span>未命中任何历史客户或案件</span>
               </div>
             </div>
@@ -267,7 +264,7 @@ export function ConflictsView() {
                 const style = severityStyle[h.severity];
                 const targetHref =
                   h.matterInfo?.canViewMatter && h.matterInfo.matterId
-                    ? `/matters/${h.matterInfo.matterId}`
+                    ? matterHref({ id: h.matterInfo.matterId, internalCode: h.matterInfo.internalCode })
                     : h.targetType === "Client"
                       ? `/clients/${h.targetId}`
                       : null;
@@ -320,7 +317,68 @@ export function ConflictsView() {
           )}
         </section>
       )}
-    </motion.div>
+    </div>
+  );
+}
+
+function summarizeResults(results: HitResult[] | null) {
+  const counts: Record<ConflictSeverity, number> = {
+    BLOCKING: 0,
+    HIGH: 0,
+    MEDIUM: 0,
+    LOW: 0
+  };
+  for (const hit of results ?? []) {
+    counts[hit.severity] += 1;
+  }
+  return counts;
+}
+
+function ConflictSummaryBar({ counts }: { counts: Record<ConflictSeverity, number> }) {
+  const hasBlocking = counts.BLOCKING > 0;
+  const total = counts.BLOCKING + counts.HIGH + counts.MEDIUM + counts.LOW;
+
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-3 rounded-md border border-border bg-muted/55 px-3 py-2 text-xs">
+      <span className="font-semibold">风险汇总</span>
+      <RiskCount severity="BLOCKING" label="阻塞" count={counts.BLOCKING} />
+      <RiskCount severity="HIGH" label="高风险" count={counts.HIGH} />
+      <RiskCount severity="MEDIUM" label="中风险" count={counts.MEDIUM} />
+      <RiskCount severity="LOW" label="低风险" count={counts.LOW} />
+      <span className="ml-auto rounded-full border border-border bg-card px-2 py-1 text-[11px] text-muted-foreground">
+        {total === 0
+          ? "未命中历史冲突"
+          : hasBlocking
+            ? "存在阻塞冲突，谨慎收案"
+            : "存在风险命中，需进一步核实"}
+      </span>
+    </div>
+  );
+}
+
+function RiskCount({
+  severity,
+  label,
+  count
+}: {
+  severity: ConflictSeverity;
+  label: string;
+  count: number;
+}) {
+  const style = severityStyle[severity];
+
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span
+        className="h-2 w-2 rounded-full"
+        style={{ backgroundColor: style.color }}
+        aria-hidden="true"
+      />
+      <span className="font-mono tabular" style={{ color: style.color }}>
+        {count}
+      </span>
+      <span className="text-muted-foreground">{label}</span>
+    </span>
   );
 }
 

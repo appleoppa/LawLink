@@ -7,6 +7,7 @@ import {
   clientVisibilityFilter,
   intakeVisibilityFilter
 } from "@/lib/permissions";
+import { matterHref } from "@/lib/matters/route";
 
 export interface SearchResultItem {
   id: string;
@@ -94,7 +95,7 @@ export async function globalSearch(query: string): Promise<GlobalSearchResult> {
       id: m.id,
       title: m.title,
       subtitle: `${m.internalCode} · ${m.status}`,
-      href: `/matters/${m.id}`,
+      href: matterHref(m),
       type: "matter" as const,
     })),
     clients: clients.map((c) => ({
@@ -115,7 +116,7 @@ export async function globalSearch(query: string): Promise<GlobalSearchResult> {
       id: d.id,
       title: d.name,
       subtitle: d.matter?.internalCode ?? "",
-      href: d.matter ? `/matters/${d.matter.id}` : "",
+      href: d.matter ? matterHref(d.matter) : "",
       type: "document" as const,
     })),
   };

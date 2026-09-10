@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
@@ -8,6 +7,7 @@ import { audit } from "@/server/audit";
 import { createNotification } from "@/server/notifications/create";
 import { assertMatterWritable } from "@/lib/archive/guard";
 import { assertCanAssociateMatter } from "@/lib/permissions";
+import { matterHrefById, revalidateMatter } from "@/server/matters/route";
 
 const taskCreateSchema = z.object({
   matterId: z.string().cuid(),
@@ -71,13 +71,13 @@ export async function createTask(input: TaskCreateInput) {
       type: "TASK_ASSIGNED",
       title: "您有新事项",
       content: `事项「${created.title}」已指派给您`,
-      href: `/matters/${data.matterId}`,
+      href: await matterHrefById(data.matterId),
       refType: "Task",
       refId: created.id
     });
   }
 
-  revalidatePath(`/matters/${data.matterId}`);
+  await revalidateMatter(data.matterId);
   return { ok: true, id: created.id };
 }
 
@@ -107,7 +107,7 @@ export async function updateTask(input: TaskUpdateInput) {
     targetId: id
   });
 
-  revalidatePath(`/matters/${matterId}`);
+  await revalidateMatter(matterId);
   return { ok: true };
 }
 
@@ -134,7 +134,7 @@ export async function toggleTaskCompleted(id: string) {
     targetId: id
   });
 
-  revalidatePath(`/matters/${current.matterId}`);
+  await revalidateMatter(current.matterId);
   return { ok: true };
 }
 
@@ -154,6 +154,6 @@ export async function deleteTask(id: string) {
     targetId: id
   });
 
-  revalidatePath(`/matters/${current.matterId}`);
+  await revalidateMatter(current.matterId);
   return { ok: true };
 }

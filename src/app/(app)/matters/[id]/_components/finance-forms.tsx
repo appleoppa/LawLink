@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { Loader2, Plus, Trash2, Paperclip, FileText, Sparkles } from "lucide-react";
@@ -56,9 +56,9 @@ export function AddBillingSheet({
   const [contractFile, setContractFile] = useState<File | null>(null);
   const {
     register,
+    control,
     handleSubmit,
     setValue,
-    watch,
     reset,
     formState: { errors }
   } = useForm<BillingCreateInput>({
@@ -71,6 +71,7 @@ export function AddBillingSheet({
       status: "ACTIVE"
     }
   });
+  const billingStatus = useWatch({ control, name: "status" });
 
   function onSubmit(values: BillingCreateInput) {
     startTransition(async () => {
@@ -134,7 +135,7 @@ export function AddBillingSheet({
                   { value: "ACTIVE", label: "生效中" },
                   { value: "CLOSED", label: "已结清" }
                 ]}
-                value={watch("status")}
+                value={billingStatus}
                 onChange={(v) => setValue("status", v as BillingCreateInput["status"])}
               />
             </Field>
@@ -222,9 +223,10 @@ export function AddFeeEntrySheet({
 
   const {
     register,
+    control,
     handleSubmit,
     setValue,
-    watch,
+    getValues,
     reset,
     formState: { errors }
   } = useForm<FeeEntryCreateInput>({
@@ -242,14 +244,15 @@ export function AddFeeEntrySheet({
     }
   });
 
-  const type = watch("type");
+  const type = useWatch({ control, name: "type" });
+  const billingId = useWatch({ control, name: "billingId" });
 
   function onSubmit(values: FeeEntryCreateInput) {
     startTransition(async () => {
       try {
         await createFeeEntry(values);
         toast.success(
-          values.type === "RECEIVED" ? "实收已录入，分成已自动计算" : "记录已创建"
+          values.type === "RECEIVED" ? "实收已录入" : "记录已创建"
         );
         reset();
         onOpenChange(false);
@@ -301,7 +304,7 @@ export function AddFeeEntrySheet({
             {billings.length > 0 && (
               <Field label="关联合同">
                 <Select
-                  value={watch("billingId") || "none"}
+                  value={billingId || "none"}
                   onValueChange={(v) =>
                     setValue("billingId", v === "none" ? "" : v)
                   }
@@ -344,7 +347,7 @@ export function AddFeeEntrySheet({
                     // 优先用真实发票号（财务已 ISSUED 时回填），否则用占位
                     const invoiceNoValue = req.invoiceNo ?? `req:${req.id.slice(0, 8)}`;
                     setValue("invoiceNo", invoiceNoValue, { shouldDirty: true });
-                    const existing = watch("note") ?? "";
+                    const existing = getValues("note") ?? "";
                     const noteText = req.invoiceNo
                       ? `关联申请发票 #${req.id.slice(0, 8)}${req.title ? "（" + req.title + "）" : ""}`
                       : `关联申请发票（未开具）#${req.id.slice(0, 8)}${req.title ? "（" + req.title + "）" : ""}`;
@@ -409,7 +412,7 @@ export function AddFeeEntrySheet({
             </Button>
             <Button type="submit" disabled={isPending} className="gap-1.5">
               {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-              {type === "RECEIVED" ? "记录实收（自动分成）" : "保存"}
+              {type === "RECEIVED" ? "记录实收" : "保存"}
             </Button>
           </DialogFooter>
         </form>
@@ -492,7 +495,6 @@ export function EditCommissionPlanDialog({
             </p>
           ) : (
             plans.map((p, idx) => {
-              const user = userOptions.find((u) => u.id === p.userId);
               return (
                 <div
                   key={idx}

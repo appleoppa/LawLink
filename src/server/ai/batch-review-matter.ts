@@ -13,7 +13,7 @@ import { requireSession } from "@/lib/auth/session";
 import { assertCanAccessMatter } from "@/lib/permissions";
 import { audit } from "@/server/audit";
 import { reviewDocument } from "./review-document";
-import { revalidatePath } from "next/cache";
+import { revalidateMatter } from "@/server/matters/route";
 
 const MAX_DOCS_PER_BATCH = 5;
 const RECENT_HOURS = 24 * 7;
@@ -129,7 +129,7 @@ export async function batchReviewMatterDocuments(input: {
     }
   });
 
-  revalidatePath(`/matters/${input.matterId}`);
+  await revalidateMatter(input.matterId);
 
   return {
     matterId: input.matterId,

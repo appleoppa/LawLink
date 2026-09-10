@@ -29,7 +29,7 @@ Matter（案件 / 项目）
 
 - **Matter** = 一个法律争议或非诉项目的整体容器。客户、案由、标的、整体状态、合同、财务、分成、沟通记录都挂在这里。
 - **MatterProcedure** = 同一争议下的一个程序，比如"一审"、"二审"、"再审"、"劳动仲裁"、"撤销仲裁"、"执行"。每个程序有自己的案号、法院/仲裁机构、立案日、结案日、结果。**一个 Matter 可以有多个 Procedure 串接**。
-- **MatterStage** = 一个 Procedure 内部的工作阶段（如"证据交换"、"开庭"）。
+- **MatterStage** = 一个 Procedure 内部的工作阶段（如"证据交换"、"开庭"）。v0.48 起带 `status`（ACTIVE/HIDDEN）：有任务/材料的环节移除时置 HIDDEN 保留数据，重新添加同名环节自动恢复；材料通过 `Document.stageId` 外键归属环节（`阶段:xx` 标签仅作展示，环节改名不断链）。
 - **Task / Hearing / Deadline / Document** = 最末端的工作项，挂在 Procedure 或 Matter 上。
 
 **为什么这样分**：律师视角下"青石建设诉华东置业建设工程合同纠纷"是**同一个案件**，无论它经历一审、二审、再审，客户永远是同一个，合同也通常一份贯穿。但每个程序有独立的案号、独立的开庭和期限，必须能分开管理。
@@ -517,6 +517,7 @@ model ProcedureParty {
 | `CIVIL_COMMERCIAL` | FIRST_INSTANCE / SECOND_INSTANCE / RETRIAL_REVIEW / RETRIAL / REMAND_FIRST / REMAND_SECOND / COMMERCIAL_ARBITRATION / LABOR_ARBITRATION / ARBITRATION_SET_ASIDE / ARBITRATION_ENFORCEMENT_REVIEW / ENFORCEMENT / ENFORCEMENT_OBJECTION / PROSECUTORIAL_SUPERVISION / CUSTOM |
 | `CRIMINAL` | INVESTIGATION / PROSECUTION_REVIEW / FIRST_INSTANCE / SECOND_INSTANCE / DEATH_PENALTY_REVIEW / RETRIAL_REVIEW / RETRIAL / CRIMINAL_ENFORCEMENT / COMMUTATION_PAROLE_REVIEW / PROSECUTORIAL_SUPERVISION / CUSTOM |
 | `ADMINISTRATIVE` | ADMIN_RECONSIDERATION / FIRST_INSTANCE / SECOND_INSTANCE / RETRIAL_REVIEW / RETRIAL / ADMIN_NON_LITIGATION_ENFORCEMENT / PROSECUTORIAL_SUPERVISION / CUSTOM |
+| `COMMERCIAL_ARBITRATION` | COMMERCIAL_ARBITRATION / ARBITRATION_SET_ASIDE / ARBITRATION_ENFORCEMENT_REVIEW / ENFORCEMENT / ENFORCEMENT_OBJECTION / CUSTOM |
 | `NON_LITIGATION` / `LEGAL_COUNSEL` / `SPECIAL_PROJECT` | NON_LITIGATION_PHASE / CUSTOM |
 
 **典型程序链示例**：
@@ -524,7 +525,7 @@ model ProcedureParty {
 民商事 — 完整代理：
 - 建工纠纷：`FIRST_INSTANCE → SECOND_INSTANCE → ENFORCEMENT`
 - 劳动争议：`LABOR_ARBITRATION → FIRST_INSTANCE → SECOND_INSTANCE`
-- 商事仲裁：`COMMERCIAL_ARBITRATION → ARBITRATION_SET_ASIDE`（对方申请撤销）
+- 商事仲裁：`COMMERCIAL_ARBITRATION → ENFORCEMENT`（胜裁后申请执行）/ `ARBITRATION_SET_ASIDE`（对方申请撤销）/ `ARBITRATION_ENFORCEMENT_REVIEW`（执行阶段不予执行审查）
 
 刑事 — 完整代理：
 - 普通刑案：`INVESTIGATION → PROSECUTION_REVIEW → FIRST_INSTANCE → SECOND_INSTANCE → CRIMINAL_ENFORCEMENT`
@@ -1042,6 +1043,7 @@ model CauseOfAction {
 
 **UI 选择交互**：
 - 表单上的"案由"字段：默认显示按 `MatterCategory` 过滤的可搜索下拉
+- 选择 `COMMERCIAL_ARBITRATION` 类别，或在 `CIVIL_COMMERCIAL` 下将当前程序选为 `COMMERCIAL_ARBITRATION` 时，案由下拉按现行《仲裁法》(2025 修订，2026-03-01 施行)第三条限制为平等主体之间的合同纠纷和其他财产权益纠纷；婚姻、收养、监护、扶养、继承、劳动争议、行政争议，以及破产等法定专属程序事项不进入商事仲裁案由候选。
 - 用户输入"民间借贷" → 模糊匹配 `name` / `shortName` / `pinyin` / `keywords`
 - 也可以浏览树形结构（在弹层里展开"合同纠纷 → 借款合同纠纷 → 民间借贷纠纷"）
 - 若官方库未收录极少数特殊案件，可启用 `causeFreeText`（系统标黄提醒，不计入统计）
@@ -1145,7 +1147,7 @@ PRD §13.2。律师每天被 12368 / 法院短信轰炸，复制粘贴到 `/inbo
 | `rawText` | 原始短信全文 |
 | `receivedAt` | 收件时间 |
 | `receivedById` | 收件律师 |
-| `parsedJson` | 解析结果 JSON（caseNumbers / court / hearingDate / urls / judge / clerk / phones / appealDeadline / amounts / platforms ...） |
+| `parsedJson` | 解析结果 JSON（caseNumbers / court / hearingDate / urls / judge / clerk / phones / appealDeadline / amounts / platforms / importantItems / credentials / documentLinks / attachmentResults ...） |
 | `smsType` | 9 类（开庭/送达/缴费/调解/执行/立案/判决/提交材料/其他） |
 | `matchedMatterId` / `matchedBy` | 关联 Matter + 匹配方式（AUTO_CASE_NUMBER / MANUAL / UNMATCHED） |
 | `generatedHearingId` / `generatedDeadlineId` | 一键生成的产物追溯 |
@@ -1154,40 +1156,55 @@ PRD §13.2。律师每天被 12368 / 法院短信轰炸，复制粘贴到 `/inbo
 **关键约束**：
 - 解析 100% 本地正则（v0.9.0 不依赖 AI），AI 兜底留 v0.9.1
 - 匹配逻辑：从 `parsedJson.caseNumbers[]` 取每个案号去 `MatterProcedure.caseNumber` 反查
+- 附件提取不新增表：成功下载的送达文书落到既有 `Document`；失败、需登录、需验证码或未关联案件等状态回写 `parsedJson.attachmentResults`
 - `receivedBy` onDelete=Restrict：用户被禁用前需清理短信归属
 
-### 4.20 Preservation / PreservationRenewal（财产保全）⭐ v0.9 新增
+### 4.20 财产保全（v0.44 三层模型：PreservationCase → Target → Property）
 
 PRD §13.3。商事案件几乎每案必涉。漏续保 = 冻结失效 = 执业事故。
 
-| 字段 | 说明 |
-|---|---|
-| `matterId` | **可空**（决策 §13.8.3 — 诉前保全期间 Matter 可能未建立，立案后回填） |
-| `type` | 诉前/诉中/执行 |
-| `propertyType` | 银行存款/房产/车辆/股权/知识产权/其他 |
-| `amount` | 保全金额（Decimal 18,2） |
-| `respondent` | 被保全人 |
-| `guaranteeType` | 保证金/保函/财产担保/无需担保 |
-| `startDate` | 生效日（必填） |
-| `duration` | 保全期限（天）；默认按 propertyType 推荐 |
-| `expiryDate` | 到期日 = startDate + duration，可手动覆盖 |
-| `remindDays` | 提醒阈值默认 [30, 15, 7, 3, 1] |
-| `status` | 生效/已续保/已到期/已解除 |
-| `renewals` | 续保记录（PreservationRenewal） |
+> v0.9 的旧 `Preservation` / `PreservationRenewal` 单表模型已于 **v0.48 移除**
+> （migration `20260704070236_v48_drop_legacy_preservation`，存量数据以 `mig_` 前缀 ID
+> 迁入三层模型）。以下为现行结构：
 
-**保全期限默认值（法律依据写死，民诉法第 244 条）**：
+| 模型 | 承载 | 关键字段 |
+|---|---|---|
+| `PreservationCase` | 一次保全程序 | `matterId`（**可空**，诉前保全立案后回填）、`type`（诉前/诉中/执行）、`court`、`rulingNumber`、`guaranteeType`、`remindDays`（默认 [30,15,7,3,1]）、`ownerId` |
+| `PreservationTarget` | 被保全人 | `caseId`、`name` |
+| `PreservationProperty` | 单项财产 | `targetId`、`propertyType`、`amount`（Decimal 18,2）、`startDate`、`duration`、`expiryDate`、`status`（生效/已续保/已到期/已解除） |
+| `PreservationPropertyRenewal` | 续保记录 | `propertyId`、新旧到期日、`performedById` |
 
-| propertyType | 默认天数 |
-|---|---|
-| BANK_DEPOSIT | 365（1 年） |
-| VEHICLE / OTHER | 730（2 年） |
-| REAL_ESTATE / EQUITY / IP | 1095（3 年） |
+**保全期限默认天数**（BANK_DEPOSIT 365 / VEHICLE·OTHER 730 / REAL_ESTATE·EQUITY·IP 1095）：
+⚠️ 旧文档标注的"民诉法第 244 条"系错误引用（民诉法正文无期限天数规定）；通说出处为
+最高法查扣冻规定（2020 修正），具体条文实施期限引擎（ROADMAP v0.49）时逐条过元典核验。
 
 **关键约束**：
 - `matter` onDelete=SetNull：案件被软删时保全记录保留（用于审计），matterId 置空
 - `owner` onDelete=SetNull：跟进人离职不删保全
-- 续保后 `Preservation.expiryDate` 更新为新到期日，status 变 RENEWED
-- 到期预警通过现有 `Deadline` 派生条目（不重复存提醒逻辑），dashboard 显示
+- 续保后 `PreservationProperty.expiryDate` 更新为新到期日，status 变 RENEWED
+- 到期预警与日程统一读 `PreservationProperty.expiryDate`（PRD §10.2.1）
+
+### 4.21 DeadlineRule（法定期限规则库）⭐ v0.49 新增
+
+PRD §二十。触发事件 → 期限 → 法条依据，AddDeadlineDialog 按规则生成期限草稿。
+
+| 字段 | 说明 |
+|---|---|
+| `code` | 唯一标识（如 `CIVIL_APPEAL_JUDGMENT`），seed upsert 锚点 |
+| `name` / `description` | 规则名与适用说明 |
+| `triggerLabel` | 触发事件文案（如"判决书送达之日"），用于 UI 与 basis 拼接 |
+| `periodValue` + `periodUnit` | 期限数值 + 单位（DAYS/MONTHS/YEARS） |
+| `category` | 复用 `DeadlineCategory` |
+| `legalBasis` / `legalBasisUrl` / `verifiedAt` | 法条依据文本 + 元典链接 + 核验时间（**未核验的规则不允许入 seed**） |
+| `applicableProcedures` | 适用程序类型数组，空 = 全部 |
+| `applicableCategories` | 适用案件类别数组，空 = 全部（区分民商事/行政/劳动仲裁上诉规则） |
+| `remindDays` | 建议提前提醒天数（写入生成的 Deadline.remindDays） |
+| `enabled` / `isBuiltIn` / `sortOrder` | 开关 / 内置标记 / 排序 |
+
+**期间计算**（`src/lib/deadline-rules.ts`，依据民诉法 2023 修正第 85 条）：
+- 按日：开始之日不计入，到期日 = 触发日 + N 日
+- 按月/年：到期月对应日，无对应日取月末
+- 届满日遇法定节假日应顺延——系统不内置节假日表，UI 提示人工核对
 
 ---
 

@@ -54,8 +54,15 @@ export const proceduresByCategory: Record<MatterCategory, ProcedureType[]> = {
     "ENFORCEMENT",
     "CUSTOM"
   ],
-  // 商事仲裁一裁终局：只有商事仲裁一个程序
-  COMMERCIAL_ARBITRATION: ["COMMERCIAL_ARBITRATION"],
+  // 商事仲裁一裁终局，但裁后仍可进入撤裁、不予执行审查、执行等程序
+  COMMERCIAL_ARBITRATION: [
+    "COMMERCIAL_ARBITRATION",
+    "ARBITRATION_SET_ASIDE",
+    "ARBITRATION_ENFORCEMENT_REVIEW",
+    "ENFORCEMENT",
+    "ENFORCEMENT_OBJECTION",
+    "CUSTOM"
+  ],
   NON_LITIGATION: ["NON_LITIGATION_PHASE", "CUSTOM"],
   LEGAL_COUNSEL: ["NON_LITIGATION_PHASE", "CUSTOM"],
   SPECIAL_PROJECT: ["NON_LITIGATION_PHASE", "CUSTOM"]

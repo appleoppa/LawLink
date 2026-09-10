@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 128" role="img" aria-labelledby="title desc">
+  <title id="title">LawLink inverse wordmark</title>
+  <desc id="desc">LawLink horizontal wordmark for dark backgrounds.</desc>
+  <g transform="translate(16 24)">
+    <rect width="80" height="80" rx="18" fill="#0f1b2d"/>
+    <path d="M22.5 22.5H35v35H22.5zM45 22.5h12.5v35H45z" fill="#ffffff"/>
+    <path d="M22.5 55h35v5h-35zM35 37.5h10v5H35z" fill="#00a6a6"/>
+  </g>
+  <text
+    x="122"
+    y="81"
+    fill="#ffffff"
+    font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', Inter, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif"
+    font-size="52"
+    font-weight="760"
+  >LawLink</text>
+</svg>

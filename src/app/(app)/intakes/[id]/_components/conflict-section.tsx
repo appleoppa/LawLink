@@ -28,6 +28,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { runCheckAndSave, setConflictConclusion } from "@/server/conflicts/actions";
 import { litigationStandingLabel, matterCategoryLabel, matterStatusLabel } from "@/lib/enums";
 import { cn } from "@/lib/utils";
+import { matterHref } from "@/lib/matters/route";
 
 type Hit = {
   id: string;
@@ -449,7 +450,7 @@ function HitCard({ hit }: { hit: Hit }) {
       {m ? (
         m.canViewMatter ? (
           <Link
-            href={`/matters/${m.id}`}
+            href={matterHref({ id: m.id, internalCode: m.code })}
             className="group mt-2 block rounded border border-border bg-background p-2.5 hover:border-primary/40"
           >
             {matterContent}

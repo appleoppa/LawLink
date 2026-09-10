@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { requireSession } from "@/lib/auth/session";
 import { PendingArchiveTable } from "./_components/pending-archive-table";
 import { ArchiveTabs } from "./_components/archive-tabs";
+import { matterHref } from "@/lib/matters/route";
 
 const CATEGORY_CN: Record<string, string> = {
   CIVIL_COMMERCIAL: "民商",
@@ -90,7 +91,7 @@ export default async function ArchivePage({
                   </td>
                   <td className="px-3 py-2.5">
                     <Link
-                      href={`/matters/${rec.matter.id}`}
+                      href={matterHref(rec.matter)}
                       className="hover:text-[#5B8DEF] transition-colors line-clamp-1"
                     >
                       <FileText className="h-3 w-3 inline mr-1 text-muted-foreground" />

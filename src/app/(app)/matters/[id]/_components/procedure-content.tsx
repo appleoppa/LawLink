@@ -56,7 +56,7 @@ import {
   addProcedureMemo,
   deleteProcedureMemo
 } from "@/server/procedures/actions";
-import type { DeadlineCategory, DeadlineCreateInput } from "@/server/procedures/schemas";
+import type { DeadlineCreateInput } from "@/server/procedures/schemas";
 import { createExpress, deleteExpress } from "@/server/express/actions";
 import { parseExpressLabel } from "@/server/ai/parse-express";
 import { parseSummons } from "@/server/ai/parse-summons";
@@ -73,7 +73,13 @@ type ProcedureWithChildren = MatterProcedure & {
 type HearingRowItem = Hearing & { procLabel: string };
 type DeadlineRowItem = Deadline & { procLabel: string };
 type MemoRowItem = ProcedureMemo & { procLabel: string };
-type ImportantFilter = "hearing" | "deadline" | "express" | "memo";
+type ImportantCategory = "hearing" | "deadline" | "express" | "memo";
+type ImportantFilter = "all" | ImportantCategory;
+type AllImportantItem =
+  | { id: string; type: "hearing"; sortAt: Date; item: HearingRowItem }
+  | { id: string; type: "deadline"; sortAt: Date; item: DeadlineRowItem }
+  | { id: string; type: "express"; sortAt: Date; item: ExpressItem }
+  | { id: string; type: "memo"; sortAt: Date; item: MemoRowItem };
 
 const procLabelOf = (p: MatterProcedure) =>
   p.customLabel ?? procedureTypeLabel[p.type];
@@ -157,9 +163,9 @@ function ImportantItemsCard({
   canManage: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
-  const [filter, setFilter] = useState<ImportantFilter>("hearing");
+  const [filter, setFilter] = useState<ImportantFilter>("all");
   const [addOpen, setAddOpen] = useState(false);
-  const [addType, setAddType] = useState<ImportantFilter>("hearing");
+  const [addType, setAddType] = useState<ImportantCategory>("hearing");
 
   function handleToggle(id: string) {
     startTransition(async () => {
@@ -218,7 +224,9 @@ function ImportantItemsCard({
   }
 
   const total = hearings.length + deadlines.length + expresses.length + memos.length;
+  const allItems = buildAllImportantItems({ hearings, deadlines, expresses, memos });
   const filters: { value: ImportantFilter; label: string; count: number }[] = [
+    { value: "all", label: "ALL", count: total },
     { value: "hearing", label: "开庭", count: hearings.length },
     { value: "deadline", label: "时限", count: deadlines.length },
     { value: "express", label: "快递", count: expresses.length },
@@ -229,14 +237,14 @@ function ImportantItemsCard({
   const currentLabel = filters.find((f) => f.value === filter)?.label ?? "重要事项";
 
   function openAddDialog() {
-    setAddType(filter);
+    setAddType(filter === "all" ? "hearing" : filter);
     setAddOpen(true);
   }
 
   return (
-    <section className="flex h-full flex-col rounded-lg border border-border bg-card">
-      <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2">
-        <div className="flex items-center gap-3">
+    <section className="flex max-h-[420px] min-h-[180px] flex-col rounded-lg border border-border bg-card">
+      <header className="flex shrink-0 flex-col gap-2 border-b border-border px-3 py-2">
+        <div className="flex items-center justify-between gap-2">
           <span className="flex items-center gap-1.5 text-[13px] font-medium">
             <AlertTriangle className="h-3.5 w-3.5 text-[#FBBF24]" />
             重要事项
@@ -244,40 +252,38 @@ function ImportantItemsCard({
               {total}
             </span>
           </span>
-          {/* 分类按钮组 */}
-          <div className="flex flex-wrap items-center gap-0.5 rounded-md border border-border bg-background p-0.5">
-            {filters.map((f) => (
-              <button
-                key={f.value}
-                type="button"
-                onPointerDown={() => setFilter(f.value)}
-                onClick={() => setFilter(f.value)}
-                className={cn(
-                  "rounded px-2 py-0.5 text-[11px] transition-colors",
-                  filter === f.value
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {f.label}
-                <span className="ml-1 font-mono text-[10px] tabular opacity-75">
-                  {f.count}
-                </span>
-              </button>
-            ))}
-          </div>
+          {canManage && (
+            <Button
+              size="sm"
+              onClick={openAddDialog}
+              className="h-6 gap-0.5 px-2 text-[11px]"
+            >
+              <Plus className="h-2.5 w-2.5" />
+              添加
+            </Button>
+          )}
         </div>
-        {canManage && (
-          <Button
-            size="sm"
-            onPointerDown={openAddDialog}
-            onClick={openAddDialog}
-            className="h-6 gap-0.5 px-2 text-[11px]"
-          >
-            <Plus className="h-2.5 w-2.5" />
-            添加
-          </Button>
-        )}
+        {/* 分类按钮组 */}
+        <div className="flex flex-wrap items-center gap-0.5 rounded-md border border-border bg-background p-0.5">
+          {filters.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              onClick={() => setFilter(f.value)}
+              className={cn(
+                "flex-1 rounded px-1.5 py-0.5 text-[11px] transition-colors",
+                filter === f.value
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {f.label}
+              <span className="ml-1 font-mono text-[10px] tabular opacity-75">
+                {f.count}
+              </span>
+            </button>
+          ))}
+        </div>
       </header>
 
       {currentCount === 0 ? (
@@ -293,6 +299,27 @@ function ImportantItemsCard({
                 h={h}
                 multiProc={multiProc}
                 onDelete={() => handleDeleteHearing(h.id)}
+                canManage={canManage}
+              />
+            ))}
+          {filter === "all" &&
+            allItems.map((entry) => (
+              <AllImportantRow
+                key={`${entry.type}-${entry.id}`}
+                entry={entry}
+                multiProc={multiProc}
+                onToggle={
+                  entry.type === "deadline"
+                    ? () => handleToggle(entry.item.id)
+                    : undefined
+                }
+                onDelete={() => {
+                  if (entry.type === "hearing") handleDeleteHearing(entry.item.id);
+                  if (entry.type === "deadline") handleDeleteDeadline(entry.item.id);
+                  if (entry.type === "express") handleDeleteExpress(entry.item.id);
+                  if (entry.type === "memo") handleDeleteMemo(entry.item.id);
+                }}
+                pending={isPending}
                 canManage={canManage}
               />
             ))}
@@ -343,6 +370,117 @@ function ImportantItemsCard({
         />
       )}
     </section>
+  );
+}
+
+function buildAllImportantItems({
+  hearings,
+  deadlines,
+  expresses,
+  memos
+}: {
+  hearings: HearingRowItem[];
+  deadlines: DeadlineRowItem[];
+  expresses: ExpressItem[];
+  memos: MemoRowItem[];
+}) {
+  const now = Date.now();
+  const items: AllImportantItem[] = [
+    ...deadlines.map((item) => ({
+      id: item.id,
+      type: "deadline" as const,
+      sortAt: item.dueAt,
+      item
+    })),
+    ...hearings.map((item) => ({
+      id: item.id,
+      type: "hearing" as const,
+      sortAt: item.startsAt,
+      item
+    })),
+    ...expresses.map((item) => ({
+      id: item.id,
+      type: "express" as const,
+      sortAt: item.lastUpdateAt ?? item.createdAt,
+      item
+    })),
+    ...memos.map((item) => ({
+      id: item.id,
+      type: "memo" as const,
+      sortAt: item.createdAt,
+      item
+    }))
+  ];
+
+  return items.sort((a, b) => {
+    const aTime = new Date(a.sortAt).getTime();
+    const bTime = new Date(b.sortAt).getTime();
+    const aUpcoming =
+      (a.type === "deadline" && !a.item.completed) ||
+      (a.type === "hearing" && aTime >= now);
+    const bUpcoming =
+      (b.type === "deadline" && !b.item.completed) ||
+      (b.type === "hearing" && bTime >= now);
+
+    if (aUpcoming !== bUpcoming) return aUpcoming ? -1 : 1;
+    if (aUpcoming && bUpcoming) return aTime - bTime;
+    return bTime - aTime;
+  });
+}
+
+function AllImportantRow({
+  entry,
+  multiProc,
+  onToggle,
+  onDelete,
+  pending,
+  canManage
+}: {
+  entry: AllImportantItem;
+  multiProc: boolean;
+  onToggle?: () => void;
+  onDelete: () => void;
+  pending: boolean;
+  canManage: boolean;
+}) {
+  if (entry.type === "hearing") {
+    return (
+      <HearingRow
+        h={entry.item}
+        multiProc={multiProc}
+        onDelete={onDelete}
+        canManage={canManage}
+      />
+    );
+  }
+  if (entry.type === "deadline") {
+    return (
+      <DeadlineRow
+        d={entry.item}
+        multiProc={multiProc}
+        onToggle={onToggle ?? (() => {})}
+        onDelete={onDelete}
+        pending={pending}
+        canManage={canManage}
+      />
+    );
+  }
+  if (entry.type === "express") {
+    return (
+      <ExpressRow
+        item={entry.item}
+        onDelete={onDelete}
+        canManage={canManage}
+      />
+    );
+  }
+  return (
+    <MemoRow
+      memo={entry.item}
+      multiProc={multiProc}
+      onDelete={onDelete}
+      canManage={canManage}
+    />
   );
 }
 
@@ -609,7 +747,7 @@ function MemoRow({
 
 // ============ 统一添加重要事项 ============
 
-const deadlineCategoryLabel: Record<DeadlineCategory, string> = {
+const deadlineCategoryLabel: Record<DeadlineCreateInput["category"], string> = {
   LIMITATION: "诉讼时效",
   EVIDENCE: "举证期限",
   APPEAL: "上诉期",
@@ -621,7 +759,7 @@ const deadlineCategoryLabel: Record<DeadlineCategory, string> = {
   CUSTOM: "其他"
 };
 
-const importantTypeMeta: Record<ImportantFilter, { label: string; icon: React.ElementType }> = {
+const importantTypeMeta: Record<ImportantCategory, { label: string; icon: React.ElementType }> = {
   hearing: { label: "开庭", icon: Gavel },
   deadline: { label: "时限", icon: AlertTriangle },
   express: { label: "快递", icon: Package },
@@ -664,7 +802,7 @@ function ImportantItemDialog({
   open: boolean;
   onOpenChange: (o: boolean) => void;
   matterId: string;
-  defaultType: ImportantFilter;
+  defaultType: ImportantCategory;
   procedures: { id: string; label: string }[];
   defaultProcedureId: string;
   hearingCounts: Record<string, number>;
@@ -677,7 +815,7 @@ function ImportantItemDialog({
   const summonsRef = useRef<HTMLInputElement>(null);
   const expressRef = useRef<HTMLInputElement>(null);
 
-  const [type, setType] = useState<ImportantFilter>(defaultType);
+  const [type, setType] = useState<ImportantCategory>(defaultType);
   const [hearingProcedureId, setHearingProcedureId] = useState(defaultProcedureId);
   const [hearingTitle, setHearingTitle] = useState("");
   const [hearingStartsAt, setHearingStartsAt] = useState(toDateTimeInput());
@@ -818,7 +956,7 @@ function ImportantItemDialog({
         await addHearing({
           procedureId: hearingProcedureId,
           title: hearingTitle.trim(),
-          startsAt: startsAt.toISOString(),
+          startsAt,
           endsAt: undefined,
           room: hearingRoom.trim(),
           address: hearingAddress.trim(),
@@ -954,7 +1092,7 @@ function ImportantItemDialog({
         <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-hidden">
           <div className="border-b border-border px-6 py-3">
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {(Object.keys(importantTypeMeta) as ImportantFilter[]).map((key) => {
+              {(Object.keys(importantTypeMeta) as ImportantCategory[]).map((key) => {
                 const Icon = importantTypeMeta[key].icon;
                 return (
                   <button

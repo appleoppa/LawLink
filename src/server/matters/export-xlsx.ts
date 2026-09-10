@@ -26,7 +26,7 @@ import {
 } from "@/lib/enums";
 
 export type MattersExportTab = "intake" | "active" | "archived" | "revision" | "all";
-type MatterSortBy = "hearing" | "intakeDate" | "claimAmount";
+type MatterSortBy = "hearing" | "intakeDate" | "claimAmount" | "archivedAt";
 type MatterSortDir = "asc" | "desc";
 
 export type MattersExportParams = {
@@ -222,7 +222,10 @@ export function resolveMattersExportParams(searchParams: URLSearchParams): Matte
     : "active";
   const rawSortBy = searchParams.get("sortBy");
   const candidateSortBy =
-    rawSortBy === "hearing" || rawSortBy === "intakeDate" || rawSortBy === "claimAmount"
+    rawSortBy === "hearing" ||
+    rawSortBy === "intakeDate" ||
+    rawSortBy === "claimAmount" ||
+    rawSortBy === "archivedAt"
       ? rawSortBy
       : undefined;
   const sortBy = normalizeSortByForTab(tab, candidateSortBy ?? defaultSortByForTab(tab));
@@ -266,11 +269,19 @@ export async function buildMattersExportWorkbook(
 }
 
 function defaultSortByForTab(tab: MattersExportTab): MatterSortBy {
-  return tab === "active" ? "hearing" : "intakeDate";
+  if (tab === "active") return "hearing";
+  if (tab === "archived") return "archivedAt";
+  return "intakeDate";
 }
 
 function normalizeSortByForTab(tab: MattersExportTab, sortBy: MatterSortBy): MatterSortBy {
   if (sortBy === "hearing" && tab !== "active" && tab !== "all") {
+    return defaultSortByForTab(tab);
+  }
+  if (sortBy === "archivedAt" && tab !== "archived") {
+    return defaultSortByForTab(tab);
+  }
+  if (sortBy === "claimAmount" && tab === "archived") {
     return defaultSortByForTab(tab);
   }
   return sortBy;
@@ -475,6 +486,9 @@ function matterSortValue(row: MatterExportRow, sortBy: MatterSortBy) {
     return row.claimAmount === null || row.claimAmount === undefined
       ? null
       : Number(row.claimAmount);
+  }
+  if (sortBy === "archivedAt") {
+    return row.archivedAt;
   }
   return row.intakeDate;
 }

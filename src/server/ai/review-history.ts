@@ -8,8 +8,7 @@ import { requireSession } from "@/lib/auth/session";
 import { assertCanAccessMatter } from "@/lib/permissions";
 import type {
   ReviewItem,
-  ReviewSeverity,
-  ReviewType
+  ReviewSeverity
 } from "@/lib/ai/review-parser";
 
 export type ReviewHistoryEntry = {

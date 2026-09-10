@@ -7,7 +7,7 @@
  * → 用 searchCauses 反查库内 id（找不到的丢弃）
  * → 返回带库内 cause 对象的候选列表
  */
-import type { MatterCategory } from "@prisma/client";
+import type { MatterCategory, ProcedureType } from "@prisma/client";
 import { aiChat, extractJson, AiNotConfiguredError } from "@/lib/ai/client";
 import { searchCauses, type CauseSearchResult } from "@/server/causes/actions";
 import { requireSession } from "@/lib/auth/session";
@@ -75,11 +75,12 @@ function normalizeConfidence(v: unknown): CauseConfidence {
  */
 async function resolveCauseId(
   category: MatterCategory,
+  procedureType: ProcedureType | null | undefined,
   rawName: string
 ): Promise<CauseSearchResult | null> {
   const name = rawName.trim();
   if (!name) return null;
-  const hits = await searchCauses({ category, query: name, limit: 10 });
+  const hits = await searchCauses({ category, procedureType, query: name, limit: 10 });
   if (hits.length === 0) return null;
   const exact = hits.find((h) => h.name === name && h.level >= 3);
   if (exact) return exact;
@@ -89,6 +90,7 @@ async function resolveCauseId(
 
 export async function recommendCause(input: {
   category: MatterCategory;
+  procedureType?: ProcedureType | null;
   situation: string;
 }): Promise<CauseRecommendation[]> {
   await requireSession();
@@ -127,7 +129,7 @@ export async function recommendCause(input: {
     const name = typeof item.name === "string" ? item.name : "";
     const reason = typeof item.reason === "string" ? item.reason : "";
     const confidence = normalizeConfidence(item.confidence);
-    const cause = await resolveCauseId(input.category, name);
+    const cause = await resolveCauseId(input.category, input.procedureType, name);
     if (!cause) continue;
     if (results.some((r) => r.cause.id === cause.id)) continue;
     results.push({ cause, reason, confidence });

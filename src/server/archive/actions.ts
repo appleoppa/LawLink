@@ -12,6 +12,8 @@ import { assertMatterWritable } from "@/lib/archive/guard";
 import { assertCanLeadMatter } from "@/lib/permissions";
 import { renderArchiveCover, renderArchiveCatalog } from "./render";
 import { archiveSubmitSchema, type ArchiveSubmitInput, CLOSED_REASON_CN } from "./schemas";
+import { matterHref } from "@/lib/matters/route";
+import { revalidateMatter } from "@/server/matters/route";
 
 /**
  * v0.9.4 归档：完整流程
@@ -133,7 +135,7 @@ export async function archiveMatter(input: ArchiveSubmitInput) {
     }
   });
 
-  revalidatePath(`/matters/${matter.id}`);
+  await revalidateMatter(matter.id);
   revalidatePath("/matters");
   revalidatePath("/archive");
   return { ok: true, archiveNo, status: "PENDING_REVIEW" };
@@ -200,7 +202,7 @@ export async function approveArchiveRecord(input: { archiveId: string; note?: st
       priority: "NORMAL",
       title: `归档申请已通过（${record.archiveNo}）`,
       content: `案件 ${matter?.internalCode ?? record.matterId}·${matter?.title ?? ""} 的归档申请已获管理员批准。`,
-      href: `/matters/${record.matterId}`,
+      href: matterHref({ id: record.matterId, internalCode: matter?.internalCode ?? null }),
       refType: "ArchiveRecord",
       refId: record.id
     });
@@ -214,7 +216,7 @@ export async function approveArchiveRecord(input: { archiveId: string; note?: st
     detail: { matterId: record.matterId, archiveNo: record.archiveNo }
   });
 
-  revalidatePath(`/matters/${record.matterId}`);
+  await revalidateMatter(record.matterId);
   revalidatePath("/matters");
   revalidatePath("/archive");
   return { ok: true };
@@ -265,7 +267,7 @@ export async function rejectArchiveRecord(input: { archiveId: string; note: stri
       priority: "HIGH",
       title: `归档申请被驳回（${record.archiveNo}）`,
       content: `案件 ${matter?.internalCode ?? record.matterId}·${matter?.title ?? ""} 的归档申请被驳回。原因：${input.note.trim()}`,
-      href: `/matters/${record.matterId}`,
+      href: matterHref({ id: record.matterId, internalCode: matter?.internalCode ?? null }),
       refType: "ArchiveRecord",
       refId: record.id
     });
@@ -279,7 +281,7 @@ export async function rejectArchiveRecord(input: { archiveId: string; note: stri
     detail: { matterId: record.matterId, archiveNo: record.archiveNo, note: input.note.trim() }
   });
 
-  revalidatePath(`/matters/${record.matterId}`);
+  await revalidateMatter(record.matterId);
   revalidatePath("/archive");
   return { ok: true };
 }

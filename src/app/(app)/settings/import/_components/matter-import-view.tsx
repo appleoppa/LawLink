@@ -190,12 +190,22 @@ export function MatterImportView() {
               <p className="mb-1 text-[12px] text-muted-foreground">成功创建：</p>
               <ul className="space-y-0.5 text-[12px]">
                 {result.succeeded.map((s) => (
-                  <li key={s.rowNo} className="flex items-center gap-2">
-                    <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-600" />
-                    <span className="font-mono text-muted-foreground">第{s.rowNo}行</span>
-                    <span className="font-mono">{s.internalCode}</span>
-                    {s.firmCaseNo && <span className="font-mono text-muted-foreground">{s.firmCaseNo}</span>}
-                    <span className="truncate">{s.title}</span>
+                  <li key={s.rowNo} className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-600" />
+                      <span className="font-mono text-muted-foreground">第{s.rowNo}行</span>
+                      <span className="font-mono">{s.internalCode}</span>
+                      {s.firmCaseNo && <span className="font-mono text-muted-foreground">{s.firmCaseNo}</span>}
+                      <span className="truncate">{s.title}</span>
+                    </div>
+                    {s.causeDowngradeReason && (
+                      <div className="ml-5 flex items-start gap-1.5 text-[11px] text-amber-600">
+                        <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
+                        <span>
+                          案由已降级为自由文本（{s.causeDowngradeReason}），案件已导入，请事后人工核对案由
+                        </span>
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>

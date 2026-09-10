@@ -5,8 +5,7 @@ import { requireSession } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import {
   saveYuandianSettings as saveSettings,
-  readPublicYuandianSettings,
-  YUANDIAN_DEFAULTS
+  readPublicYuandianSettings
 } from "@/lib/yuandian/settings";
 import {
   searchPtalCases,

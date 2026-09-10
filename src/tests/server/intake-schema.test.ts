@@ -71,4 +71,25 @@ describe("intakeCreateSchema", () => {
 
     expect(result.success).toBe(true);
   });
+
+  it("可选金额留空时不因 HTML number 输入产生的 NaN 阻断提交", () => {
+    const result = intakeCreateSchema.safeParse({
+      ...baseLitigationIntake,
+      ourStanding: "PLAINTIFF",
+      claimAmount: Number.NaN,
+      feeAmount: Number.NaN,
+      parties: [
+        {
+          ...baseLitigationIntake.parties[0],
+          standing: "DEFENDANT"
+        }
+      ]
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.claimAmount).toBeUndefined();
+      expect(result.data.feeAmount).toBeUndefined();
+    }
+  });
 });

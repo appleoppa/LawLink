@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -190,8 +190,8 @@ function NoteSheet({
   const [isPending, startTransition] = useTransition();
   const {
     register,
+    control,
     handleSubmit,
-    watch,
     setValue,
     reset,
     formState: { errors }
@@ -206,7 +206,7 @@ function NoteSheet({
     }
   });
 
-  const channel = watch("channel");
+  const channel = useWatch({ control, name: "channel" });
 
   function onSubmit(values: FormValues) {
     startTransition(async () => {
@@ -252,7 +252,7 @@ function NoteSheet({
                           "flex flex-col items-center gap-1 rounded-md border p-2 text-xs transition-colors",
                           channel === c
                             ? "border-primary bg-primary/15 text-primary"
-                            : "border-border bg-background text-muted-foreground hover:border-input"
+                            : "border-border bg-background text-muted-foreground hover:border-input hover:bg-muted hover:text-foreground"
                         )}
                       >
                         <Icon className="h-4 w-4" />

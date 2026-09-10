@@ -2,6 +2,12 @@
  * /inbox 共享类型
  */
 import type { Prisma, SmsType, ProcedureType } from "@prisma/client";
+import type {
+  SmsAttachmentResult,
+  SmsCredential,
+  SmsDocumentLink,
+  SmsImportantItem
+} from "@/lib/sms-parser";
 
 export type SmsRow = Prisma.SmsMessageGetPayload<{
   include: {
@@ -72,6 +78,10 @@ export type ParsedJson = {
   amounts: string[];
   urls: string[];
   platforms: string[];
+  importantItems: SmsImportantItem[];
+  credentials: SmsCredential[];
+  documentLinks: SmsDocumentLink[];
+  attachmentResults: SmsAttachmentResult[];
   summary: string;
   // v0.9.1 AI 增强字段
   aiEnriched?: boolean;

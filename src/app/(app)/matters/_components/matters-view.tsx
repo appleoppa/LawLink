@@ -2,8 +2,19 @@
 
 import { useState, useTransition, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
-import { Plus, Search, X, Clock, CheckCircle2, Archive, AlertCircle, FolderOpen, Download } from "lucide-react";
+import {
+  Plus,
+  Search,
+  X,
+  Clock,
+  CheckCircle2,
+  Archive,
+  AlertCircle,
+  FolderOpen,
+  Download,
+  ChevronLeft,
+  ChevronRight
+} from "lucide-react";
 import type { MatterCategory, ClientType, UserRole } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,13 +35,13 @@ export type ClientOption = { id: string; name: string; type: ClientType };
 export type ColleagueOption = { id: string; name: string; role: UserRole };
 
 type Tab = "intake" | "active" | "archived" | "revision" | "all";
-type SortBy = "hearing" | "intakeDate" | "claimAmount";
+type SortBy = "hearing" | "intakeDate" | "claimAmount" | "archivedAt";
 type SortDir = "asc" | "desc";
 
 type Props = {
   tab: Tab;
-  matterData?: { items: MatterRow[]; total: number };
-  intakeData?: { items: IntakeRow[]; total: number };
+  matterData?: { items: MatterRow[]; total: number; page: number; pageSize: number };
+  intakeData?: { items: IntakeRow[]; total: number; page: number; pageSize: number };
   clientOptions: ClientOption[];
   colleagues: ColleagueOption[];
   initialFilters: {
@@ -75,7 +86,8 @@ const ALL_STATUS_FILTERS: { value: string; label: string }[] = [
 const SORT_OPTIONS: { value: SortBy; label: string }[] = [
   { value: "hearing", label: "按开庭时间" },
   { value: "intakeDate", label: "按收案时间" },
-  { value: "claimAmount", label: "按标的金额" }
+  { value: "claimAmount", label: "按标的金额" },
+  { value: "archivedAt", label: "按归档时间" }
 ];
 
 const SORT_DIR_OPTIONS: { value: SortDir; label: string }[] = [
@@ -84,16 +96,29 @@ const SORT_DIR_OPTIONS: { value: SortDir; label: string }[] = [
 ];
 
 function defaultSortByForTab(tab: Tab): SortBy {
-  return tab === "active" ? "hearing" : "intakeDate";
+  if (tab === "active") return "hearing";
+  if (tab === "archived") return "archivedAt";
+  return "intakeDate";
 }
 
 function sortOptionsForTab(tab: Tab) {
-  if (tab === "active" || tab === "all") return SORT_OPTIONS;
-  return SORT_OPTIONS.filter((option) => option.value !== "hearing");
+  if (tab === "archived") {
+    return SORT_OPTIONS.filter((option) => option.value === "archivedAt" || option.value === "intakeDate");
+  }
+  if (tab === "active" || tab === "all") {
+    return SORT_OPTIONS.filter((option) => option.value !== "archivedAt");
+  }
+  return SORT_OPTIONS.filter((option) => option.value !== "hearing" && option.value !== "archivedAt");
 }
 
 function normalizeSortByForTab(tab: Tab, sortBy: SortBy): SortBy {
   if (sortBy === "hearing" && tab !== "active" && tab !== "all") {
+    return defaultSortByForTab(tab);
+  }
+  if (sortBy === "archivedAt" && tab !== "archived") {
+    return defaultSortByForTab(tab);
+  }
+  if (sortBy === "claimAmount" && tab === "archived") {
     return defaultSortByForTab(tab);
   }
   return sortBy;
@@ -120,6 +145,15 @@ export function MattersView({
   const [sheetOpen, setSheetOpen] = useState(() => Boolean(autoOpenIntake));
   const currentDefaultSortBy = defaultSortByForTab(tab);
   const sortOptions = sortOptionsForTab(tab);
+  const isIntakeStyle = tab === "intake" || tab === "revision";
+  const isAll = tab === "all";
+  const currentList = isIntakeStyle ? intakeData : matterData;
+  const total = currentList?.total ?? 0;
+  const currentPage = currentList?.page ?? 1;
+  const pageSize = currentList?.pageSize ?? 12;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const pageStart = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const pageEnd = Math.min(total, currentPage * pageSize);
 
   useEffect(() => {
     setSearch(initialFilters.search);
@@ -176,6 +210,7 @@ export function MattersView({
       to?: string;
       sortBy?: SortBy;
       sortDir?: SortDir;
+      page?: number;
     }) => {
       const params = new URLSearchParams();
       const t = override.tab ?? tab;
@@ -186,6 +221,7 @@ export function MattersView({
       const to_ = override.to ?? dateTo;
       const sb = normalizeSortByForTab(t, override.sortBy ?? sortBy);
       const sd = override.sortDir ?? sortDir;
+      const p = override.page ?? currentPage;
       const defaultSortBy = defaultSortByForTab(t);
       if (t !== "active") params.set("tab", t);
       if (s) params.set("search", s);
@@ -195,9 +231,10 @@ export function MattersView({
       if (to_) params.set("to", to_);
       if (sb !== defaultSortBy) params.set("sortBy", sb);
       if (sd !== "desc") params.set("sortDir", sd);
+      if (p > 1) params.set("page", String(p));
       return `/matters${params.toString() ? `?${params.toString()}` : ""}`;
     },
-    [tab, search, category, statusFilter, dateFrom, dateTo, sortBy, sortDir]
+    [tab, search, category, statusFilter, dateFrom, dateTo, sortBy, sortDir, currentPage]
   );
 
   const buildExportUrl = useCallback(() => {
@@ -205,6 +242,7 @@ export function MattersView({
     const query = href.includes("?") ? href.slice(href.indexOf("?") + 1) : "";
     const params = new URLSearchParams(query);
     params.set("tab", tab);
+    params.delete("page");
     return `/api/matters/export?${params.toString()}`;
   }, [buildUrl, tab]);
 
@@ -212,11 +250,11 @@ export function MattersView({
     const nextSortBy = defaultSortByForTab(next);
     setSortBy(nextSortBy);
     setSortDir("desc");
-    startTransition(() => router.replace(buildUrl({ tab: next, sortBy: nextSortBy, sortDir: "desc" })));
+    startTransition(() => router.replace(buildUrl({ tab: next, sortBy: nextSortBy, sortDir: "desc", page: 1 })));
   }
 
   function applyFilters() {
-    startTransition(() => router.replace(buildUrl({})));
+    startTransition(() => router.replace(buildUrl({ page: 1 })));
   }
 
   function clearFilters() {
@@ -239,8 +277,6 @@ export function MattersView({
     }
   }
 
-  const isIntakeStyle = tab === "intake" || tab === "revision";
-  const isAll = tab === "all";
   const hasFilters =
     search ||
     category !== "ALL" ||
@@ -249,49 +285,35 @@ export function MattersView({
     dateTo ||
     sortBy !== currentDefaultSortBy ||
     sortDir !== "desc";
-  const total =
-    isIntakeStyle ? (intakeData?.total ?? 0) : (matterData?.total ?? 0);
 
   return (
-    <motion.div
-      initial={false}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
-      className="space-y-4"
-    >
-      {/* editorial header */}
-      <header className="space-y-2">
-        <div className="flex items-end justify-between gap-4">
-          <div className="space-y-1">
-            <h1 className="text-xl font-medium tracking-tight">案件管理</h1>
-            <p className="text-[13px] text-muted-foreground">
+    <div className="space-y-4">
+      <header className="ll-page-head">
+        <div>
+          <h1 className="ll-page-title">案件</h1>
+          <p className="ll-page-sub">
               <span className="text-foreground/80">
                 {TABS.find((t) => t.key === tab)?.label}
               </span>
-              <span className="mx-2 text-muted-subtle">·</span>
+              <span className="mx-2 text-muted-foreground/50">·</span>
               共 <span className="font-mono tabular text-foreground">{total}</span> 件
             </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button asChild variant="outline" className="h-9 gap-1.5 bg-background px-3">
+        </div>
+        <div className="flex items-center gap-2">
+            <Button asChild variant="outline" className="gap-1.5 px-3">
               <a href={buildExportUrl()}>
                 <Download className="h-4 w-4" strokeWidth={2} />
                 导出
               </a>
             </Button>
-            <Button onClick={() => setSheetOpen(true)} className="h-9 gap-1.5 px-4 shadow-sm">
+            <Button onClick={() => setSheetOpen(true)} className="gap-1.5 px-4">
               <Plus className="h-4 w-4" strokeWidth={2} />
               新建收案
             </Button>
-          </div>
         </div>
-        <div className="ll-rule" />
       </header>
 
-      {/* Tab */}
-      <div
-        className="flex items-end gap-1 border-b border-border"
-      >
+      <div className="ll-segmented w-fit max-w-full overflow-x-auto">
         {TABS.map((t) => {
           const Icon = t.icon;
           const active = t.key === tab;
@@ -301,27 +323,19 @@ export function MattersView({
               type="button"
               onClick={() => switchTab(t.key)}
               className={cn(
-                "relative inline-flex items-center gap-1.5 rounded-t-md px-3 pb-2.5 pt-2 text-[13px] transition-colors",
-                active
-                  ? "bg-card text-primary font-medium border border-b-transparent border-border"
-                  : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                "ll-seg shrink-0",
+                active && "ll-seg-active text-primary"
               )}
             >
               <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />
               {t.label}
-              {active && (
-                <span
-                  aria-hidden
-                  className="absolute -bottom-px left-0 right-0 h-[2px] bg-primary"
-                />
-              )}
             </button>
           );
         })}
       </div>
 
       {/* 搜索 */}
-      <div className="rounded-md border border-border bg-card px-3 py-2 shadow-sm">
+      <div className="ll-surface px-3 py-2">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -338,10 +352,10 @@ export function MattersView({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="搜索案件名称 / 客户"
-              className="h-9 rounded-md border-input bg-background pl-9 text-[13px]"
+              className="h-[34px] rounded-md border-input bg-background pl-9 text-[13px] shadow-[var(--shadow-inset-deep)]"
             />
           </div>
-          <Button type="submit" size="sm" variant="outline" className="h-9 gap-1 bg-background px-3">
+          <Button type="submit" size="sm" variant="outline" className="h-[34px] gap-1 px-3">
             <Search className="h-3.5 w-3.5" />
             搜索
           </Button>
@@ -349,14 +363,14 @@ export function MattersView({
       </div>
 
       {/* 筛选 / 排序 */}
-      <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border bg-muted/60 px-2 py-2">
+      <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-muted/70 px-2 py-2">
         <CompactSelect
           label="类型"
           value={category}
           onValueChange={(v) => {
             const next = v as MatterCategory | "ALL";
             setCategory(next);
-            startTransition(() => router.replace(buildUrl({ category: next })));
+            startTransition(() => router.replace(buildUrl({ category: next, page: 1 })));
           }}
           className="w-[8.5rem]"
         >
@@ -373,7 +387,7 @@ export function MattersView({
             value={statusFilter}
             onValueChange={(v) => {
               setStatusFilter(v);
-              startTransition(() => router.replace(buildUrl({ status: v })));
+              startTransition(() => router.replace(buildUrl({ status: v, page: 1 })));
             }}
             className="w-[7.5rem]"
           >
@@ -385,7 +399,7 @@ export function MattersView({
           </CompactSelect>
         )}
 
-        <div className="flex h-8 items-center gap-1 rounded-md border border-border bg-background px-2 shadow-sm">
+        <div className="flex h-8 items-center gap-1 rounded-full border border-input bg-card px-2 shadow-sm">
           <span className="text-[10px] text-muted-foreground">收案</span>
           <Input
             type="date"
@@ -413,7 +427,7 @@ export function MattersView({
           onValueChange={(v) => {
             const next = v as SortBy;
             setSortBy(next);
-            startTransition(() => router.replace(buildUrl({ sortBy: next })));
+            startTransition(() => router.replace(buildUrl({ sortBy: next, page: 1 })));
           }}
           className="w-36"
         >
@@ -429,7 +443,7 @@ export function MattersView({
           onValueChange={(v) => {
             const next = v as SortDir;
             setSortDir(next);
-            startTransition(() => router.replace(buildUrl({ sortDir: next })));
+            startTransition(() => router.replace(buildUrl({ sortDir: next, page: 1 })));
           }}
           className="w-[6.5rem]"
         >
@@ -441,7 +455,7 @@ export function MattersView({
         </CompactSelect>
 
         {hasFilters && (
-          <Button variant="outline" size="sm" onClick={clearFilters} className="h-8 gap-1 bg-background px-2 text-muted-foreground">
+          <Button variant="outline" size="sm" onClick={clearFilters} className="h-8 gap-1 px-2 text-muted-foreground">
             <X className="h-3.5 w-3.5" />
             清除
           </Button>
@@ -454,8 +468,19 @@ export function MattersView({
         <MattersTable
           items={matterData?.items ?? []}
           metaColumn={tab === "archived" ? "firmCaseNo" : "hearing"}
+          showIntakeDateColumn={tab === "all"}
+          showArchiveDateColumn={tab === "archived"}
         />
       )}
+
+      <PaginationBar
+        page={currentPage}
+        totalPages={totalPages}
+        total={total}
+        pageStart={pageStart}
+        pageEnd={pageEnd}
+        buildUrl={(page) => buildUrl({ page })}
+      />
 
       <IntakeSheet
         open={sheetOpen}
@@ -463,7 +488,7 @@ export function MattersView({
         clientOptions={clientOptions}
         colleagues={colleagues}
       />
-    </motion.div>
+    </div>
   );
 }
 
@@ -484,7 +509,7 @@ function CompactSelect({
     <Select value={value} onValueChange={onValueChange}>
       <SelectTrigger
         className={cn(
-          "h-8 gap-1 rounded-md border border-border bg-background px-2 text-[12px] shadow-sm focus:ring-0",
+          "h-8 gap-1 rounded-full border border-input bg-card px-2 text-[12px] shadow-sm focus:ring-0",
           className
         )}
       >
@@ -493,5 +518,66 @@ function CompactSelect({
       </SelectTrigger>
       <SelectContent>{children}</SelectContent>
     </Select>
+  );
+}
+
+function PaginationBar({
+  page,
+  totalPages,
+  total,
+  pageStart,
+  pageEnd,
+  buildUrl
+}: {
+  page: number;
+  totalPages: number;
+  total: number;
+  pageStart: number;
+  pageEnd: number;
+  buildUrl: (page: number) => string;
+}) {
+  if (totalPages <= 1) return null;
+
+  const prevPage = Math.max(1, page - 1);
+  const nextPage = Math.min(totalPages, page + 1);
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-[12px] text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        第 <span className="font-mono text-foreground">{page}</span> /{" "}
+        <span className="font-mono text-foreground">{totalPages}</span> 页
+        <span className="mx-2 text-muted-foreground/50">·</span>
+        本页 <span className="font-mono text-foreground">{pageStart}-{pageEnd}</span> 件，共{" "}
+        <span className="font-mono text-foreground">{total}</span> 件
+      </div>
+      <div className="flex items-center gap-1.5">
+        {page > 1 ? (
+          <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 px-2.5">
+            <a href={buildUrl(prevPage)}>
+              <ChevronLeft className="h-3.5 w-3.5" />
+              上一页
+            </a>
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm" className="h-8 gap-1.5 px-2.5" disabled>
+            <ChevronLeft className="h-3.5 w-3.5" />
+            上一页
+          </Button>
+        )}
+        {page < totalPages ? (
+          <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 px-2.5">
+            <a href={buildUrl(nextPage)}>
+              下一页
+              <ChevronRight className="h-3.5 w-3.5" />
+            </a>
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm" className="h-8 gap-1.5 px-2.5" disabled>
+            下一页
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }

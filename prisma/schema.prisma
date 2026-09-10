@@ -243,6 +243,12 @@ enum ConflictConclusion {
   NEED_INFO
 }
 
+enum DeadlinePeriodUnit {
+  DAYS
+  MONTHS
+  YEARS
+}
+
 enum DeadlineCategory {
   LIMITATION
   EVIDENCE
@@ -339,6 +345,8 @@ model User {
   avatar       String?
   active       Boolean   @default(true)
   lastLoginAt  DateTime?
+  // v0.50: ICS 日历订阅 token（URL 即凭证，可重置）
+  calendarToken String?  @unique
 
   ownedMatters          Matter[]              @relation("MatterOwner")
   memberships           MatterMember[]
@@ -360,11 +368,9 @@ model User {
   sealRequests          SealRequest[]         @relation("SealRequester")
   sealApprovals         SealRequest[]         @relation("SealApprover")
   sealStamps            SealRequest[]         @relation("SealStamper")
-  // v0.9: 短信收件人 / 保全负责人 / 保全续保操作人 / 快递创建人
+  // v0.9: 短信收件人 / 快递创建人
   receivedSmsMessages   SmsMessage[]          @relation("SmsReceiver")
-  ownedPreservations    Preservation[]        @relation("PreservationOwner")
-  preservationRenewals  PreservationRenewal[] @relation("RenewalPerformer")
-  // v0.44: 保全三层重构
+  // v0.44: 保全三层重构（v0.48 移除旧单表模型）
   ownedPreservationCases PreservationCase[]      @relation("PreservationCaseOwner")
   propertyRenewals        PreservationPropertyRenewal[] @relation("PropertyRenewalPerformer")
   createdExpress        ExpressTracking[]     @relation("ExpressCreator")
@@ -599,9 +605,8 @@ model Matter {
   // v0.8: 卷宗 + 用章
   folders          DocumentFolder[]
   sealRequests     SealRequest[]
-  // v0.9: 法院短信 + 财产保全 + 快递追踪
+  // v0.9: 法院短信 + 财产保全 + 快递追踪（保全 v0.48 起仅三层模型）
   smsMessages      SmsMessage[]
-  preservations    Preservation[]
   preservationCases PreservationCase[]
   expressTrackings ExpressTracking[]
   // v0.21: AI 文书审查历史
@@ -731,18 +736,28 @@ model MatterProcedure {
   @@index([status])
 }
 
+// v0.48: 环节状态。有任务/材料/专项记录的环节移除时置 HIDDEN 而非删除，
+// 数据保留可恢复；工作台只展示 ACTIVE。
+enum MatterStageStatus {
+  ACTIVE
+  HIDDEN
+}
+
 model MatterStage {
-  id          String          @id @default(cuid())
+  id          String            @id @default(cuid())
   procedureId String
-  procedure   MatterProcedure @relation(fields: [procedureId], references: [id], onDelete: Cascade)
+  procedure   MatterProcedure   @relation(fields: [procedureId], references: [id], onDelete: Cascade)
   name        String
   description String?
   order       Int
+  status      MatterStageStatus @default(ACTIVE)
   startedAt   DateTime?
   completedAt DateTime?
   tasks       Task[]
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  // v0.48: 阶段材料改外键关联（原字符串标签"阶段:xx"仅作展示，改名不再断链）
+  documents   Document[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
 
   @@index([procedureId, order])
 }
@@ -806,6 +821,36 @@ model Deadline {
 
   @@index([procedureId, dueAt, completed])
   @@index([dueAt, completed])
+}
+
+// v0.49: 法定期限规则库（PRD §二十）。规则须经元典核验后方可入 seed，
+// verifiedAt 为空表示未核验，UI 不展示为"法定依据"。
+model DeadlineRule {
+  id           String             @id @default(cuid())
+  code         String             @unique
+  name         String
+  description  String?
+  triggerLabel String // 触发事件文案，如"判决书送达之日"
+  periodValue  Int
+  periodUnit   DeadlinePeriodUnit @default(DAYS)
+  category     DeadlineCategory   @default(CUSTOM)
+
+  legalBasis    String // 如《中华人民共和国民事诉讼法(2023修正)》第一百七十一条
+  legalBasisUrl String?
+  verifiedAt    DateTime? // 元典核验时间
+
+  applicableProcedures ProcedureType[] // 空 = 全部程序
+  applicableCategories MatterCategory[] // 空 = 全部案件类别
+
+  remindDays Int     @default(7) // 生成 Deadline 时的建议提前提醒天数
+  enabled    Boolean @default(true)
+  isBuiltIn  Boolean @default(true)
+  sortOrder  Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([enabled, sortOrder])
 }
 
 // v0.42: 程序备忘录（与重要时限并排，待办/已办状态）
@@ -976,6 +1021,9 @@ model Document {
   intake      Intake?          @relation(fields: [intakeId], references: [id], onDelete: Cascade)
   procedureId String?
   procedure   MatterProcedure? @relation(fields: [procedureId], references: [id])
+  // v0.48: 归属环节（外键，环节改名/隐藏不断链）；环节删除时置空保留材料
+  stageId     String?
+  stage       MatterStage?     @relation(fields: [stageId], references: [id], onDelete: SetNull)
   name        String
   category    DocumentCategory @default(OTHER)
   // v0.42: 材料来源方（我方/对方/第三人 等，取自本案当事人，可空）
@@ -1039,6 +1087,7 @@ model Document {
   @@index([folderId])
   @@index([templateId])
   @@index([matterId, archiveChecklistItemId])
+  @@index([stageId])
 }
 
 // ============================================================
@@ -1428,11 +1477,15 @@ model SmsMessage {
 
   processed   Boolean   @default(false)
   processedAt DateTime?
+  // v0.48: 电子送达附件需人工处理（需登录/验证码/未关联案件），从
+  // parsedJson.attachmentResults 冗余出来供 SQL 过滤（ROADMAP §四.2）
+  needsManualAction Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([receivedById, processed, receivedAt])
+  @@index([receivedById, needsManualAction])
   @@index([matchedMatterId])
   @@index([smsType, receivedAt])
 }
@@ -1470,64 +1523,10 @@ enum PreservationStatus {
   LIFTED // 已解除
 }
 
-model Preservation {
-  id       String  @id @default(cuid())
-  // 诉前保全可空（决策 §13.8.3）；立案后回填 matterId
-  matterId String?
-  matter   Matter? @relation(fields: [matterId], references: [id], onDelete: SetNull)
-
-  type          PreservationType
-  propertyType  PropertyType
-  amount        Decimal?         @db.Decimal(18, 2)
-  respondent    String // 被保全人
-  guaranteeType GuaranteeType?
-
-  appliedAt  DateTime? // 申请日
-  startDate  DateTime // 生效日（必填）
-  duration   Int // 保全期限（天）；默认按 propertyType 推荐
-  expiryDate DateTime // 到期日 = startDate + duration（可手动覆盖）
-
-  court          String?
-  rulingNumber   String?
-  propertyDetail String?
-  note           String?
-
-  ownerId String?
-  owner   User?   @relation("PreservationOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-
-  // 提醒阈值（天）默认 [30, 15, 7, 3, 1]
-  remindDays Int[]                 @default([30, 15, 7, 3, 1])
-  status     PreservationStatus    @default(ACTIVE)
-  renewals   PreservationRenewal[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([matterId])
-  @@index([status, expiryDate])
-  @@index([ownerId, status])
-}
-
-model PreservationRenewal {
-  id             String       @id @default(cuid())
-  preservationId String
-  preservation   Preservation @relation(fields: [preservationId], references: [id], onDelete: Cascade)
-
-  renewedAt       DateTime
-  oldExpiryDate   DateTime
-  newExpiryDate   DateTime
-  renewalDuration Int // 新增的天数
-  note            String?
-
-  performedById String
-  performedBy   User     @relation("RenewalPerformer", fields: [performedById], references: [id], onDelete: Restrict)
-  createdAt     DateTime @default(now())
-
-  @@index([preservationId])
-}
-
 // ============================================================
 // v0.44: 保全三层重构（案件 → 被保全人 → 财产）
+// v0.48: 移除旧 Preservation / PreservationRenewal 单表模型，
+//        存量数据已在 migration 中迁入三层模型
 // ============================================================
 
 model PreservationCase {

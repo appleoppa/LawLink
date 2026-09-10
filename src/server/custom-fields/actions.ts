@@ -14,6 +14,7 @@ import { requireSession } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import { assertMatterWritable } from "@/lib/archive/guard";
 import { assertCanLeadMatter } from "@/lib/permissions";
+import { revalidateMatter } from "@/server/matters/route";
 
 const entitySchema = z.enum(["MATTER", "CLIENT"]);
 const typeSchema = z.enum(["TEXT", "NUMBER", "DATE", "SELECT"]);
@@ -150,6 +151,6 @@ export async function saveMatterCustomValues(
     targetType: "Matter",
     targetId: matterId
   });
-  revalidatePath(`/matters/${matterId}`);
+  await revalidateMatter(matterId);
   return { ok: true as const };
 }

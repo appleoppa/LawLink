@@ -5,8 +5,7 @@ import { requireSession } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import {
   saveAiSettings as saveSettings,
-  readPublicAiSettings,
-  AI_DEFAULTS
+  readPublicAiSettings
 } from "@/lib/ai/settings";
 import { aiChat, AiNotConfiguredError } from "@/lib/ai/client";
 

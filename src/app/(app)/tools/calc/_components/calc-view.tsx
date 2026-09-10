@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { motion } from "framer-motion";
 import { Calculator, Scale, Coins, CalendarDays } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CourtFeeCalc } from "./court-fee-calc";
@@ -61,17 +60,12 @@ export function CalcView({ hideHeader }: { hideHeader?: boolean } = {}) {
         </div>
       </div>
 
-      <motion.div
-        key={tab}
-        initial={false}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.25 }}
-        className="max-w-3xl"
-      >
+      {/* tab 切换是高频操作，入场动画只会让它显得迟钝，故不加动效 */}
+      <div key={tab} className="max-w-3xl">
         {tab === "courtFee" && <CourtFeeCalc />}
         {tab === "lateInterest" && <LateInterestCalc />}
         {tab === "days" && <DaysCalc />}
-      </motion.div>
+      </div>
     </div>
   );
 }

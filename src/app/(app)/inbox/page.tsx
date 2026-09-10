@@ -8,9 +8,10 @@ export default async function InboxPage() {
   const session = await getSession();
   if (!session?.user) return null;
 
-  const [unprocessed, processed, recentMatters] = await Promise.all([
+  const [unprocessed, processed, needsManual, recentMatters] = await Promise.all([
     listSmsMessages({ scope: "mine", processed: "unprocessed" }),
     listSmsMessages({ scope: "mine", processed: "processed" }),
+    listSmsMessages({ scope: "mine", processed: "all", needsManual: true }),
     prisma.matter.findMany({
       where: {
         deletedAt: null,
@@ -33,6 +34,7 @@ export default async function InboxPage() {
 
   return (
     <InboxView
+      needsManual={needsManual}
       unprocessed={unprocessed}
       processed={processed}
       matters={recentMatters}

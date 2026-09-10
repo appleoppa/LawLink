@@ -9,6 +9,7 @@ import { audit } from "@/server/audit";
 import { seedDefaultFolders } from "@/lib/default-folders";
 import { generateInternalCode, generateFirmCaseNo } from "@/server/matters/code-generator";
 import { generateClientCode } from "@/server/clients/code-generator";
+import { assertCauseAllowedForSelection } from "@/server/causes/validation";
 import {
   IMPORT_COLUMNS,
   validateRow,
@@ -148,6 +149,7 @@ async function createOneMatter(n: NormalizedRow, currentUserId: string) {
   // 案由：精确匹配案由库，否则作为自由文本
   let causeId: string | null = null;
   let causeFreeText: string | null = null;
+  let causeDowngradeReason: string | null = null;
   if (n.causeText) {
     const cause = await prisma.causeOfAction.findFirst({
       where: { name: n.causeText },
@@ -155,6 +157,26 @@ async function createOneMatter(n: NormalizedRow, currentUserId: string) {
     });
     if (cause) causeId = cause.id;
     else causeFreeText = n.causeText;
+  }
+
+  // v1.2：导入曾是唯一绕过案由校验的写入路径，能造出界面创建不出来的组合
+  // （如劳动仲裁案件挂婚姻家庭类案由）。校验基准与创建案件一致：类别 + 首程序类型。
+  //
+  // 不合规时降级为自由文本、不整行失败：导入是历史数据迁移工具，历史案件按当时
+  // 规则立的案由未必符合现行范围，为一个案由把整条案件挡在门外代价过大。
+  // 自由文本字段本就不参与联动校验，信息不丢，降级情况在导入结果里逐行列出。
+  if (causeId) {
+    try {
+      await assertCauseAllowedForSelection({
+        causeId,
+        category: n.category,
+        procedureType: firstProcedureTypeFor(n.category)
+      });
+    } catch (e) {
+      causeDowngradeReason = e instanceof Error ? e.message : "案由与案件类别不匹配";
+      causeFreeText = n.causeText ?? null;
+      causeId = null;
+    }
   }
 
   const internalCode = await generateInternalCode(n.category);
@@ -258,11 +280,18 @@ async function createOneMatter(n: NormalizedRow, currentUserId: string) {
     return matter;
   });
 
-  return result;
+  return { ...result, causeDowngradeReason };
 }
 
 export interface ImportResult {
-  succeeded: { rowNo: number; internalCode: string; firmCaseNo: string | null; title: string }[];
+  succeeded: {
+    rowNo: number;
+    internalCode: string;
+    firmCaseNo: string | null;
+    title: string;
+    /** 案由与案件类别不匹配、已降级为自由文本；需事后人工核对 */
+    causeDowngradeReason?: string;
+  }[];
   failed: { rowNo: number; error: string }[];
 }
 
@@ -283,7 +312,8 @@ export async function commitMatterImportAction(input: {
         rowNo,
         internalCode: m.internalCode,
         firmCaseNo: m.firmCaseNo,
-        title: m.title
+        title: m.title,
+        ...(m.causeDowngradeReason ? { causeDowngradeReason: m.causeDowngradeReason } : {})
       });
     } catch (e) {
       failed.push({ rowNo, error: e instanceof Error ? e.message : "导入失败" });
@@ -294,7 +324,11 @@ export async function commitMatterImportAction(input: {
     userId: session.user.id,
     action: "MATTER_IMPORT",
     targetType: "Matter",
-    detail: { succeeded: succeeded.length, failed: failed.length }
+    detail: {
+      succeeded: succeeded.length,
+      failed: failed.length,
+      causeDowngraded: succeeded.filter((r) => r.causeDowngradeReason).length
+    }
   });
 
   revalidatePath("/matters");

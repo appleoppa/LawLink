@@ -54,18 +54,18 @@ export function IntakesTable({
   }
 
   return (
-    <div className="ll-surface overflow-hidden rounded-lg">
-      <CaseListHeader />
+    <div className="ll-surface overflow-hidden">
+      <CaseListHeader detailColumnLabel="案由" />
       <ul>
         {items.map((it) => {
           const statusLabel =
             kind === "revision" ? "待补正" : intakeStatusLabel[it.status] ?? it.status;
           const dot =
             kind === "revision"
-              ? "#f97316" // orange
+              ? "#B45309" // orange
               : it.status === "PENDING_CONFIRMATION"
-                ? "#f59e0b" // amber
-                : "#10b981"; // emerald
+                ? "#9A6700" // amber
+                : "#1E40AF"; // blue
           return (
             <CaseListCard
               key={it.id}
@@ -75,6 +75,14 @@ export function IntakesTable({
               status={{ label: statusLabel, dot }}
               categoryShort={matterCategoryShort[it.category]}
               intakeDate={it.receivedAt}
+              firmCaseNo={it.matter?.internalCode ?? null}
+              clientName={it.client?.name ?? it.parties[0]?.name ?? null}
+              detailColumnLabel="案由"
+              procedureLabel={it.cause?.name ?? null}
+              procedureFallback="未填写案由"
+              procedureValueClassName="text-[12px] text-muted-foreground"
+              showProcedureDots={false}
+              proceduresCount={it.matter ? 1 : 0}
               claimAmount={it.claimAmount ?? null}
               inTable
             />

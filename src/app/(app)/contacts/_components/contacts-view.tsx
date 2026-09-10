@@ -194,7 +194,7 @@ export function ContactsView({
               "rounded-full border px-3 py-0.5 text-[11px] transition-colors",
               filter === "ALL"
                 ? "border-primary bg-primary/15 text-primary"
-                : "border-border bg-background text-muted-foreground hover:border-input"
+                : "border-border bg-background text-muted-foreground hover:border-input hover:bg-muted hover:text-foreground"
             )}
           >
             全部
@@ -208,7 +208,7 @@ export function ContactsView({
                 "rounded-full border px-3 py-0.5 text-[11px] transition-colors",
                 filter === c
                   ? "border-primary bg-primary/15 text-primary"
-                  : "border-border bg-background text-muted-foreground hover:border-input"
+                  : "border-border bg-background text-muted-foreground hover:border-input hover:bg-muted hover:text-foreground"
               )}
             >
               {EXT_CATEGORY_LABEL[c]}

@@ -44,11 +44,85 @@ export interface ParsedSms {
   amounts: string[];
   urls: string[];
   platforms: string[];
+  importantItems: SmsImportantItem[];
+  credentials: SmsCredential[];
+  documentLinks: SmsDocumentLink[];
+  attachmentResults: SmsAttachmentResult[];
   summary: string;
   // v0.9.1 AI 增强字段（aiEnriched=true 时才填）
   aiEnriched?: boolean;
   action?: string | null;       // 律师应采取的动作
   urgency?: "HIGH" | "MEDIUM" | "LOW" | null;
+}
+
+export type SmsImportantItemKind =
+  | "HEARING"
+  | "EVIDENCE_DEADLINE"
+  | "FEE_DEADLINE"
+  | "MEDIATION"
+  | "SERVICE"
+  | "JUDGMENT"
+  | "APPEAL"
+  | "PERFORMANCE"
+  | "ENFORCEMENT"
+  | "FILING"
+  | "IMPORTANT_DATE";
+
+export interface SmsImportantItem {
+  kind: SmsImportantItemKind;
+  title: string;
+  dateText: string | null;
+  sourceText: string;
+  category:
+    | "HEARING"
+    | "DEADLINE"
+    | "DOCUMENT"
+    | "ACTION"
+    | "INFO";
+}
+
+export type SmsCredentialKind =
+  | "USERNAME"
+  | "PASSWORD"
+  | "VERIFY_CODE"
+  | "EXTRACT_CODE"
+  | "QUERY_CODE"
+  | "OTHER";
+
+export interface SmsCredential {
+  kind: SmsCredentialKind;
+  label: string;
+  valuePreview: string;
+  valueLength: number;
+}
+
+export interface SmsDocumentLink {
+  url: string;
+  platform: string | null;
+  credentials: SmsCredential[];
+  requiresLogin: boolean;
+  extractionCodes: SmsCredential[];
+}
+
+export type SmsAttachmentStatus =
+  | "PENDING"
+  | "DOWNLOADED"
+  | "SKIPPED_NO_MATTER"
+  | "LOGIN_REQUIRED"
+  | "NO_FILE_FOUND"
+  | "UNSUPPORTED_TYPE"
+  | "FAILED"
+  | "ALREADY_DOWNLOADED";
+
+export interface SmsAttachmentResult {
+  url: string;
+  status: SmsAttachmentStatus;
+  message: string;
+  documentId?: string;
+  documentName?: string;
+  mimeType?: string | null;
+  size?: number;
+  checkedAt?: string;
 }
 
 // ━━━ 正则模式（与旧系统 SMS_PATTERNS 对齐）━━━
@@ -145,6 +219,10 @@ function uniq<T>(arr: T[]): T[] {
   return Array.from(new Set(arr));
 }
 
+function cleanUrl(url: string): string {
+  return url.replace(/[，。；、！？!?]+$/g, "").replace(/[),.;]+$/g, "");
+}
+
 function detectPlatform(url: string): string | null {
   const low = url.toLowerCase();
   for (const p of COURT_PLATFORMS) {
@@ -183,6 +261,11 @@ function pickHearingDate(dates: string[]): string | null {
   return withTime ?? null;
 }
 
+function dedupeDates(dates: string[]): string[] {
+  const unique = uniq(dates);
+  return unique.filter((d) => !unique.some((other) => other !== d && other.includes(d)));
+}
+
 function summarize(text: string): string {
   const lines = text
     .split(/[\n。;；]/)
@@ -194,6 +277,128 @@ function summarize(text: string): string {
     /开庭|送达|缴费|调解|执行|立案|判决|举证|裁定/.test(l)
   );
   return (informative ?? lines[0]).slice(0, 80);
+}
+
+function contextAround(text: string, needle: string, radius = 24): string {
+  const idx = text.indexOf(needle);
+  if (idx < 0) return needle;
+  return text
+    .slice(Math.max(0, idx - radius), Math.min(text.length, idx + needle.length + radius))
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function classifyImportantItem(context: string, smsType: SmsType): Omit<SmsImportantItem, "dateText" | "sourceText"> {
+  if (/开庭|庭审|出庭|到庭|法庭/.test(context)) {
+    return { kind: "HEARING", title: "开庭 / 庭审", category: "HEARING" };
+  }
+  if (/举证|证据|补充材料|提交材料|质证/.test(context)) {
+    return { kind: "EVIDENCE_DEADLINE", title: "举证 / 提交材料", category: "DEADLINE" };
+  }
+  if (/缴费|交费|诉讼费|受理费|保全费|公告费/.test(context)) {
+    return { kind: "FEE_DEADLINE", title: "缴费期限", category: "DEADLINE" };
+  }
+  if (/调解|和解|谈话/.test(context)) {
+    return { kind: "MEDIATION", title: "调解 / 谈话", category: "ACTION" };
+  }
+  if (/送达|领取|签收|下载|文书|材料|回证/.test(context)) {
+    return { kind: "SERVICE", title: "文书送达 / 领取", category: "DOCUMENT" };
+  }
+  if (/判决|裁定|宣判|裁判/.test(context) || smsType === "JUDGMENT_NOTICE") {
+    return { kind: "JUDGMENT", title: "裁判文书 / 宣判", category: "DOCUMENT" };
+  }
+  if (/上诉|再审|复议/.test(context)) {
+    return { kind: "APPEAL", title: "上诉 / 救济期限", category: "DEADLINE" };
+  }
+  if (/履行|付款|支付|腾退|交付/.test(context)) {
+    return { kind: "PERFORMANCE", title: "履行期限", category: "DEADLINE" };
+  }
+  if (/执行|查封|冻结|扣划|拍卖/.test(context)) {
+    return { kind: "ENFORCEMENT", title: "执行事项", category: "ACTION" };
+  }
+  if (/立案|受理|案件编号/.test(context) || smsType === "FILING_NOTICE") {
+    return { kind: "FILING", title: "立案 / 受理", category: "INFO" };
+  }
+  return { kind: "IMPORTANT_DATE", title: "重要时间", category: "INFO" };
+}
+
+function extractImportantItems(text: string, dates: string[], smsType: SmsType, appealDeadline: string | null): SmsImportantItem[] {
+  const items: SmsImportantItem[] = [];
+  for (const d of dates) {
+    const idx = text.indexOf(d);
+    const afterDate = idx >= 0 ? text.slice(idx + d.length, idx + d.length + 24) : "";
+    const beforeDate = idx >= 0 ? text.slice(Math.max(0, idx - 18), idx) : "";
+    const sourceText = contextAround(text, d);
+    const immediateMeta = classifyImportantItem(afterDate, "OTHER");
+    const meta = immediateMeta.kind === "IMPORTANT_DATE"
+      ? classifyImportantItem(`${afterDate} ${beforeDate} ${sourceText}`, smsType)
+      : immediateMeta;
+    items.push({ ...meta, dateText: d, sourceText });
+  }
+  if (appealDeadline) {
+    const sourceText = contextAround(text, appealDeadline, 28);
+    items.push({
+      kind: "APPEAL",
+      title: `上诉期限 ${appealDeadline}`,
+      dateText: null,
+      sourceText,
+      category: "DEADLINE"
+    });
+  }
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = `${item.kind}|${item.dateText ?? ""}|${item.sourceText}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+const CREDENTIAL_PATTERNS: Array<{ kind: SmsCredentialKind; label: string; pattern: RegExp }> = [
+  { kind: "USERNAME", label: "账号", pattern: /(?:账号|账户|用户名|登录名)[:：\s]*([A-Za-z0-9_\-@.]{3,40})/g },
+  { kind: "PASSWORD", label: "密码", pattern: /(?:密码|口令|初始密码)[:：\s]*([A-Za-z0-9_\-@#.$%*!?]{3,40})/g },
+  { kind: "VERIFY_CODE", label: "验证码", pattern: /(?:验证码|校验码|短信码)[:：\s]*([A-Za-z0-9]{4,12})/g },
+  { kind: "EXTRACT_CODE", label: "提取码", pattern: /(?:提取码|取件码|访问码)[:：\s]*([A-Za-z0-9]{3,16})/g },
+  { kind: "QUERY_CODE", label: "查询码", pattern: /(?:查询码|案件查询码|阅卷码)[:：\s]*([A-Za-z0-9]{3,20})/g }
+];
+
+function maskCredential(value: string): string {
+  if (value.length <= 2) return "*".repeat(value.length);
+  if (value.length <= 6) return `${value[0]}${"*".repeat(value.length - 1)}`;
+  return `${value.slice(0, 2)}${"*".repeat(Math.max(3, value.length - 4))}${value.slice(-2)}`;
+}
+
+function extractCredentials(text: string): SmsCredential[] {
+  const out: SmsCredential[] = [];
+  for (const { kind, label, pattern } of CREDENTIAL_PATTERNS) {
+    pattern.lastIndex = 0;
+    for (const m of text.matchAll(pattern)) {
+      const value = m[1]?.trim();
+      if (!value) continue;
+      out.push({ kind, label, valuePreview: maskCredential(value), valueLength: value.length });
+    }
+  }
+  const seen = new Set<string>();
+  return out.filter((cred) => {
+    const key = `${cred.kind}|${cred.valuePreview}|${cred.valueLength}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function buildDocumentLinks(text: string, urls: string[], credentials: SmsCredential[]): SmsDocumentLink[] {
+  const requiresLoginByText = /登录|账号|账户|用户名|密码|验证码|提取码|取件码|访问码|查询码/.test(text);
+  const extractionCodes = credentials.filter((c) =>
+    c.kind === "EXTRACT_CODE" || c.kind === "VERIFY_CODE" || c.kind === "QUERY_CODE"
+  );
+  return urls.map((url) => ({
+    url,
+    platform: detectPlatform(url),
+    credentials,
+    requiresLogin: requiresLoginByText || credentials.some((c) => c.kind === "USERNAME" || c.kind === "PASSWORD"),
+    extractionCodes
+  }));
 }
 
 // ━━━ 主入口 ━━━
@@ -214,6 +419,10 @@ export function parseSms(text: string): ParsedSms {
     amounts: [],
     urls: [],
     platforms: [],
+    importantItems: [],
+    credentials: [],
+    documentLinks: [],
+    attachmentResults: [],
     summary: summarize(text)
   };
 
@@ -245,13 +454,13 @@ export function parseSms(text: string): ParsedSms {
     const ms = text.match(pat);
     if (ms) result.dates.push(...ms);
   }
-  result.dates = uniq(result.dates);
+  result.dates = dedupeDates(result.dates);
   result.hearingDate = pickHearingDate(result.dates);
 
   // URL + 平台
   for (const pat of PAT_URLS) {
     const ms = text.match(pat);
-    if (ms) result.urls.push(...ms);
+    if (ms) result.urls.push(...ms.map(cleanUrl).filter(Boolean));
   }
   result.urls = uniq(result.urls);
   const plats = new Set<string>();
@@ -317,6 +526,15 @@ export function parseSms(text: string): ParsedSms {
       break;
     }
   }
+
+  result.importantItems = extractImportantItems(
+    text,
+    result.dates,
+    result.smsType,
+    result.appealDeadline
+  );
+  result.credentials = extractCredentials(text);
+  result.documentLinks = buildDocumentLinks(text, result.urls, result.credentials);
 
   // 金额
   for (const pat of PAT_AMOUNT) {

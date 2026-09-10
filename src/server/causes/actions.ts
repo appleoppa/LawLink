@@ -1,8 +1,9 @@
 "use server";
 
-import type { MatterCategory } from "@prisma/client";
+import type { MatterCategory, Prisma, ProcedureType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
+import { causeScopeForSelection } from "@/lib/cause-scope";
 
 const CAUSE_SELECT = {
   id: true,
@@ -74,23 +75,7 @@ function flatten(c: {
  * - 模糊匹配 name / shortName / keywords / pinyin
  * - 结果带 parent 链，UI 可显示"二级 / 三级"路径
  */
-// v0.34: 仲裁类案件共用民商案由库，但按《仲裁法》第三条限定可仲裁范围
-// 劳动仲裁 → 仅劳动争议(CC-7)；商事仲裁 → 合同+财产权益(CC-3/4/5/6/8/9，排除人格权/婚姻继承/劳动/侵权/非讼/特殊程序)
-function causeScope(category: MatterCategory): {
-  dbCategory: MatterCategory;
-  codePrefixes: string[] | null;
-} {
-  if (category === "LABOR_ARBITRATION")
-    return { dbCategory: "CIVIL_COMMERCIAL", codePrefixes: ["CC-7"] };
-  if (category === "COMMERCIAL_ARBITRATION")
-    return {
-      dbCategory: "CIVIL_COMMERCIAL",
-      codePrefixes: ["CC-3", "CC-4", "CC-5", "CC-6", "CC-8", "CC-9"]
-    };
-  return { dbCategory: category, codePrefixes: null };
-}
-
-function codeFilter(prefixes: string[]) {
+function codeFilter(prefixes: readonly string[]): Prisma.CauseOfActionWhereInput {
   // 一级 code 形如 CC-7，其子级形如 CC-7-...；用前缀区分（CC-1 不会误命中 CC-10）
   return {
     OR: prefixes.flatMap((p) => [
@@ -102,6 +87,7 @@ function codeFilter(prefixes: string[]) {
 
 export async function searchCauses(params: {
   category: MatterCategory;
+  procedureType?: ProcedureType | null;
   query?: string;
   limit?: number;
 }): Promise<CauseSearchResult[]> {
@@ -109,15 +95,19 @@ export async function searchCauses(params: {
   // v0.16: cap 提到 2000 以支持级联 UI 一次性拉全（民事 1055 / 刑事 511）
   const limit = Math.min(params.limit ?? 50, 2000);
   const q = params.query?.trim();
-  const { dbCategory, codePrefixes } = causeScope(params.category);
+  const scope = causeScopeForSelection(params.category, params.procedureType);
+  const scopedWhere: Prisma.CauseOfActionWhereInput = {
+    ...(scope.includeCodePrefixes ? codeFilter(scope.includeCodePrefixes) : {}),
+    ...(scope.excludeCodePrefixes.length > 0 ? { NOT: codeFilter(scope.excludeCodePrefixes) } : {})
+  };
 
   if (!q) {
     // 空查询：返回该 category 下全部 4 级（级联 UI 需要 level=1）
     const list = await prisma.causeOfAction.findMany({
       where: {
-        category: dbCategory,
+        category: scope.dbCategory,
         active: true,
-        ...(codePrefixes ? codeFilter(codePrefixes) : {})
+        ...scopedWhere
       },
       orderBy: [{ level: "asc" }, { code: "asc" }],
       take: limit,
@@ -128,11 +118,11 @@ export async function searchCauses(params: {
 
   const list = await prisma.causeOfAction.findMany({
     where: {
-      category: dbCategory,
+      category: scope.dbCategory,
       active: true,
       level: { gte: 2 }, // 至少二级才可选
       AND: [
-        ...(codePrefixes ? [codeFilter(codePrefixes)] : []),
+        scopedWhere,
         {
           OR: [
             { name: { contains: q, mode: "insensitive" } },

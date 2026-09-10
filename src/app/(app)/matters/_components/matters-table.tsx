@@ -1,16 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import type { Matter, PartyRole, LitigationStanding, Prisma } from "@prisma/client";
+import type { Matter, PartyRole, LitigationStanding } from "@prisma/client";
 import {
-  matterCategoryLabel,
   matterCategoryColor,
   matterCategoryShort,
   matterStatusLabel
 } from "@/lib/enums";
 import { formatCurrency, cn } from "@/lib/utils";
+import { matterHref } from "@/lib/matters/route";
 
-export type MatterRow = Matter & {
+export type MatterRow = Omit<Matter, "claimAmount"> & {
   primaryClient: { id: string; name: string } | null;
   owner: { id: string; name: string } | null;
   cause: { id: string; name: string } | null;
@@ -18,7 +18,7 @@ export type MatterRow = Matter & {
   parties: { id: string; name: string; role: PartyRole; standing: LitigationStanding | null }[];
   archiveRecords?: { id: string }[];
   _count: { procedures: number };
-  claimAmount: Prisma.Decimal | null;
+  claimAmount: number | null;
   firmCaseNo: string | null;
   intakeDate: Date | null;
   latestHearingAt: Date | null;
@@ -27,24 +27,49 @@ export type MatterRow = Matter & {
 type MetaColumn = "hearing" | "firmCaseNo";
 
 const MATTER_ROW_GRID =
-  "grid gap-x-4 gap-y-2 lg:grid-cols-[7.5rem_minmax(25rem,1fr)_9rem_8rem_7rem] lg:items-center";
+  "grid gap-x-3 gap-y-2 lg:grid-cols-[1rem_minmax(16rem,1.1fr)_8.5rem_minmax(9rem,0.8fr)_minmax(13rem,1.2fr)_6.5rem_5.5rem] lg:items-center";
+const MATTER_ROW_GRID_WITH_INTAKE =
+  "grid gap-x-3 gap-y-2 lg:grid-cols-[8.5rem_minmax(16rem,1.1fr)_minmax(9rem,0.8fr)_minmax(13rem,1.2fr)_6.5rem_5.5rem] lg:items-center";
+const MATTER_ROW_GRID_WITH_ARCHIVE =
+  "grid gap-x-3 gap-y-2 lg:grid-cols-[8.5rem_minmax(16rem,1.1fr)_minmax(9rem,0.8fr)_minmax(13rem,1.2fr)_8.5rem_5.5rem] lg:items-center";
 
 export function CaseListHeader({
-  metaColumn = "hearing"
+  metaColumn = "hearing",
+  detailColumnLabel = "案号",
+  showIntakeDateColumn = false,
+  showArchiveDateColumn = false
 }: {
   metaColumn?: MetaColumn;
+  detailColumnLabel?: string;
+  showIntakeDateColumn?: boolean;
+  showArchiveDateColumn?: boolean;
 }) {
+  const metaHeader = <div>{metaColumn === "firmCaseNo" ? "所内案号" : "开庭时间"}</div>;
+
   return (
     <div
       className={cn(
-        MATTER_ROW_GRID,
-        "hidden border-b border-border bg-muted/30 px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground lg:grid"
+        showArchiveDateColumn
+          ? MATTER_ROW_GRID_WITH_ARCHIVE
+          : showIntakeDateColumn
+            ? MATTER_ROW_GRID_WITH_INTAKE
+            : MATTER_ROW_GRID,
+        "hidden border-b border-border bg-muted px-5 py-2 text-[10px] font-semibold uppercase text-muted-foreground lg:grid"
       )}
     >
-      <div>收案时间</div>
-      <div>案件名称</div>
-      <div>标的</div>
-      <div>{metaColumn === "firmCaseNo" ? "所内案号" : "开庭时间"}</div>
+      {showArchiveDateColumn ? (
+        <div>归档时间</div>
+      ) : showIntakeDateColumn ? (
+        <div>收案时间</div>
+      ) : (
+        <div />
+      )}
+      <div>案件</div>
+      {!showIntakeDateColumn && !showArchiveDateColumn ? metaHeader : null}
+      <div>客户</div>
+      <div>{detailColumnLabel}</div>
+      {showArchiveDateColumn ? metaHeader : null}
+      {showArchiveDateColumn ? null : <div>标的</div>}
       <div>状态</div>
     </div>
   );
@@ -52,10 +77,14 @@ export function CaseListHeader({
 
 export function MattersTable({
   items,
-  metaColumn = "hearing"
+  metaColumn = "hearing",
+  showIntakeDateColumn = false,
+  showArchiveDateColumn = false
 }: {
   items: MatterRow[];
   metaColumn?: MetaColumn;
+  showIntakeDateColumn?: boolean;
+  showArchiveDateColumn?: boolean;
 }) {
   if (items.length === 0) {
     return (
@@ -69,13 +98,17 @@ export function MattersTable({
   }
 
   return (
-    <div className="ll-surface overflow-hidden rounded-lg">
-      <CaseListHeader metaColumn={metaColumn} />
+    <div className="ll-surface overflow-hidden">
+      <CaseListHeader
+        metaColumn={metaColumn}
+        showIntakeDateColumn={showIntakeDateColumn}
+        showArchiveDateColumn={showArchiveDateColumn}
+      />
       <ul>
         {items.map((m) => (
           <CaseListCard
             key={m.id}
-            href={`/matters/${m.id}`}
+            href={matterHref(m)}
             title={m.title}
             accent={matterCategoryColor[m.category]}
             status={{
@@ -90,10 +123,19 @@ export function MattersTable({
             }}
             categoryShort={matterCategoryShort[m.category]}
             intakeDate={m.intakeDate}
+            archivedAt={m.archivedAt}
             latestHearingAt={m.latestHearingAt}
             firmCaseNo={m.firmCaseNo}
-            claimAmount={m.claimAmount ? Number(m.claimAmount) : null}
+            showTitleMeta={false}
+            clientName={m.primaryClient?.name ?? null}
+            detailColumnLabel="案号"
+            procedureLabel={m.procedures[0]?.caseNumber ?? null}
+            procedureFallback="暂无案号"
+            proceduresCount={m._count.procedures}
+            claimAmount={m.claimAmount}
             metaColumn={metaColumn}
+            showIntakeDateColumn={showIntakeDateColumn}
+            showArchiveDateColumn={showArchiveDateColumn}
             inTable
           />
         ))}
@@ -103,11 +145,11 @@ export function MattersTable({
 }
 
 const MATTER_STATUS_DOT: Record<MatterRow["status"], string> = {
-  PENDING_ACCEPTANCE: "#f59e0b",
-  IN_PROGRESS: "#10b981",
+  PENDING_ACCEPTANCE: "#9A6700",
+  IN_PROGRESS: "#1E40AF",
   ON_HOLD: "#94a3b8",
-  CLOSED: "#3b82f6",
-  ARCHIVED: "#8b5cf6"
+  CLOSED: "#15803D",
+  ARCHIVED: "#6B21A8"
 };
 
 // 通用卡片：供 MattersTable + IntakesTable 共用
@@ -118,10 +160,22 @@ export function CaseListCard({
   status,
   categoryShort,
   intakeDate,
+  archivedAt = null,
   latestHearingAt = null,
   firmCaseNo = null,
+  showTitleMeta = true,
+  showTitleFirmCaseNo = true,
+  clientName = null,
+  detailColumnLabel = "案号",
+  procedureLabel = null,
+  procedureFallback = "暂无案号",
+  procedureValueClassName,
+  showProcedureDots = true,
+  proceduresCount = 0,
   claimAmount,
   metaColumn = "hearing",
+  showIntakeDateColumn = false,
+  showArchiveDateColumn = false,
   inTable = false
 }: {
   href: string;
@@ -130,30 +184,81 @@ export function CaseListCard({
   status: { label: string; dot: string };
   categoryShort: string;
   intakeDate: Date | null;
+  archivedAt?: Date | null;
   latestHearingAt?: Date | null;
   firmCaseNo?: string | null;
+  showTitleMeta?: boolean;
+  showTitleFirmCaseNo?: boolean;
+  clientName?: string | null;
+  detailColumnLabel?: string;
+  procedureLabel?: string | null;
+  procedureFallback?: string;
+  procedureValueClassName?: string;
+  showProcedureDots?: boolean;
+  proceduresCount?: number;
   claimAmount: number | null;
   metaColumn?: MetaColumn;
+  showIntakeDateColumn?: boolean;
+  showArchiveDateColumn?: boolean;
   inTable?: boolean;
 }) {
+  const hasLeadingDateColumn = showIntakeDateColumn || showArchiveDateColumn;
+  const metaCell = showIntakeDateColumn ? null : (
+    <DataCell label={metaColumn === "firmCaseNo" ? "所内案号" : "开庭时间"}>
+      {metaColumn === "firmCaseNo" ? (
+        <span className="font-mono tabular-nums text-foreground/75">
+          {firmCaseNo || "—"}
+        </span>
+      ) : (
+        <span
+          className={cn(
+            "font-mono tabular-nums",
+            latestHearingAt ? "text-primary" : "text-muted-foreground/55"
+          )}
+        >
+          {formatDateTime(latestHearingAt)}
+        </span>
+      )}
+    </DataCell>
+  );
+
   return (
     <li className={cn(inTable ? "border-t border-border first:border-t-0" : "rounded-lg border border-border bg-card")}>
       <Link
         href={href}
         className={cn(
           "group block transition-colors",
-          inTable ? "px-3 py-2.5 hover:bg-muted/30" : "rounded-lg px-4 py-3 hover:bg-muted/40"
+          inTable ? "px-5 py-3 hover:bg-muted" : "rounded-lg px-4 py-3 hover:bg-muted"
         )}
       >
-        <div className={MATTER_ROW_GRID}>
-          <DataCell label="收案时间">
-            <span className="font-mono tabular-nums text-foreground/70">
-              {formatDate(intakeDate)}
-            </span>
-          </DataCell>
+        <div
+          className={
+            showArchiveDateColumn
+              ? MATTER_ROW_GRID_WITH_ARCHIVE
+              : showIntakeDateColumn
+                ? MATTER_ROW_GRID_WITH_INTAKE
+                : MATTER_ROW_GRID
+          }
+        >
+          {hasLeadingDateColumn ? (
+            <DataCell label={showArchiveDateColumn ? "归档时间" : "收案时间"}>
+              <span className="font-mono tabular-nums text-foreground/75">
+                {formatDate(showArchiveDateColumn ? archivedAt : intakeDate)}
+              </span>
+            </DataCell>
+          ) : (
+            <div className="hidden lg:block">
+              <span
+                className={cn(
+                  "ll-dot",
+                  latestHearingAt ? "bg-[#B91C1C] shadow-[0_0_0_3px_rgba(185,28,28,0.14)]" : "bg-primary"
+                )}
+              />
+            </div>
+          )}
 
           <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 items-center gap-2">
+            <div className="flex min-w-0 items-start gap-2">
               <span
                 aria-hidden
                 className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-sm border px-1 text-[10.5px] font-medium leading-none"
@@ -165,34 +270,56 @@ export function CaseListCard({
               >
                 {categoryShort}
               </span>
-              <span className="min-w-0 truncate text-[12px] font-normal leading-5 text-primary">
-                {title || "（未命名）"}
-              </span>
+              <div className="min-w-0">
+                <span className="block min-w-0 truncate text-[13.5px] font-medium leading-5 text-foreground">
+                  {title || "（未命名）"}
+                </span>
+                {showTitleMeta ? (
+                  <span className="mt-0.5 block font-mono text-[11px] text-muted-foreground tabular">
+                    {showTitleFirmCaseNo && firmCaseNo ? firmCaseNo : formatDate(intakeDate)}
+                  </span>
+                ) : null}
+              </div>
             </div>
           </div>
 
-          <DataCell label="标的">
-            <span className="font-mono tabular-nums text-foreground/75">
-              {claimAmount != null ? formatCurrency(claimAmount) : "—"}
+          {!hasLeadingDateColumn ? metaCell : null}
+
+          <DataCell label="客户">
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-accent text-[10px] font-semibold text-primary">
+                {(clientName ?? "未").charAt(0)}
+              </span>
+              <span className="truncate text-[12.5px] text-muted-foreground">
+                {clientName ?? "未关联客户"}
+              </span>
             </span>
           </DataCell>
 
-          <DataCell label={metaColumn === "firmCaseNo" ? "所内案号" : "开庭时间"}>
-            {metaColumn === "firmCaseNo" ? (
-              <span className="font-mono tabular-nums text-foreground/75">
-                {firmCaseNo || "—"}
-              </span>
-            ) : (
+          <DataCell label={detailColumnLabel}>
+            <span className="flex min-w-0 items-center gap-1.5">
+              {showProcedureDots ? <span className="ll-dot bg-primary" /> : null}
+              {showProcedureDots && proceduresCount > 1 ? <span className="ll-dot bg-primary/40" /> : null}
               <span
                 className={cn(
-                  "font-mono tabular-nums",
-                  latestHearingAt ? "text-primary" : "text-muted-foreground/55"
+                  "truncate text-[12px] text-muted-foreground",
+                  procedureValueClassName ?? "font-mono tabular-nums"
                 )}
               >
-                {formatDateTime(latestHearingAt)}
+                {procedureLabel ?? procedureFallback}
               </span>
-            )}
+            </span>
           </DataCell>
+
+          {hasLeadingDateColumn ? metaCell : null}
+
+          {showArchiveDateColumn ? null : (
+            <DataCell label="标的">
+              <span className="font-mono text-[12px] tabular-nums text-foreground/75">
+                {claimAmount != null ? formatCurrency(claimAmount, { compact: true }) : "—"}
+              </span>
+            </DataCell>
+          )}
 
           <DataCell label="状态">
             <StatusChip label={status.label} dot={status.dot} />

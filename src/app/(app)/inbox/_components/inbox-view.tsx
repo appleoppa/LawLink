@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
 import {
   Inbox,
   Plus,
@@ -17,7 +16,12 @@ import {
   Loader2,
   Sparkles,
   AlertCircle,
-  ArrowRight
+  ArrowRight,
+  CalendarClock,
+  FileCheck2,
+  FileDigit,
+  FileDown,
+  KeyRound
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -35,7 +39,12 @@ import {
   CommandList
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
-import { matchSmsToMatter, markSmsProcessed, deleteSms } from "@/server/sms/actions";
+import {
+  extractSmsAttachments,
+  matchSmsToMatter,
+  markSmsProcessed,
+  deleteSms
+} from "@/server/sms/actions";
 import {
   SMS_TYPE_CN,
   SMS_TYPE_ACCENT,
@@ -44,17 +53,25 @@ import {
   type ParsedJson
 } from "./sms-types";
 import { SmsPasteDialog } from "./sms-paste-dialog";
-import { GenerateHearingDialog, GenerateDeadlineDialog } from "./sms-actions-dialogs";
+import {
+  BackfillCaseNumberDialog,
+  GenerateHearingDialog,
+  GenerateDeadlineDialog
+} from "./sms-actions-dialogs";
+import { matterHref } from "@/lib/matters/route";
 
-type Tab = "unprocessed" | "processed";
+type Tab = "unprocessed" | "needsManual" | "processed";
 
 export function InboxView({
   unprocessed,
   processed,
+  needsManual,
   matters
 }: {
   unprocessed: SmsRow[];
   processed: SmsRow[];
+  /** v0.48: 电子送达待人工处理（需登录/验证码/未关联案件） */
+  needsManual: SmsRow[];
   matters: MatterOption[];
 }) {
   const [tab, setTab] = useState<Tab>(unprocessed.length > 0 ? "unprocessed" : "processed");
@@ -67,8 +84,12 @@ export function InboxView({
     sms: SmsRow;
     matter: NonNullable<SmsRow["matchedMatter"]>;
   } | null>(null);
+  const [backfillTarget, setBackfillTarget] = useState<{
+    sms: SmsRow;
+    matter: NonNullable<SmsRow["matchedMatter"]>;
+  } | null>(null);
 
-  const rows = tab === "unprocessed" ? unprocessed : processed;
+  const rows = tab === "unprocessed" ? unprocessed : tab === "needsManual" ? needsManual : processed;
 
   return (
     <div className="space-y-5">
@@ -92,6 +113,10 @@ export function InboxView({
             待处理
             <Count n={unprocessed.length} hot={unprocessed.length > 0} />
           </TabBtn>
+          <TabBtn active={tab === "needsManual"} onClick={() => setTab("needsManual")}>
+            待人工
+            <Count n={needsManual.length} hot={needsManual.length > 0} />
+          </TabBtn>
           <TabBtn active={tab === "processed"} onClick={() => setTab("processed")}>
             已处理
             <Count n={processed.length} />
@@ -99,16 +124,15 @@ export function InboxView({
         </div>
       </div>
 
-      <motion.div
-        initial={false}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="space-y-2"
-      >
+      <div className="space-y-2">
         {rows.length === 0 ? (
           <div className="ll-surface rounded-lg border border-border p-12 text-center text-sm text-muted-foreground">
             <Inbox className="mx-auto mb-2 h-6 w-6 opacity-40" />
-            {tab === "unprocessed" ? "无待处理短信" : "暂无已处理记录"}
+            {tab === "unprocessed"
+              ? "无待处理短信"
+              : tab === "needsManual"
+                ? "没有需要人工处理的电子送达"
+                : "暂无已处理记录"}
           </div>
         ) : (
           rows.map((sms) => (
@@ -122,10 +146,13 @@ export function InboxView({
               onGenerateDeadline={() => {
                 if (sms.matchedMatter) setDeadlineTarget({ sms, matter: sms.matchedMatter });
               }}
+              onBackfillCaseNumber={() => {
+                if (sms.matchedMatter) setBackfillTarget({ sms, matter: sms.matchedMatter });
+              }}
             />
           ))
         )}
-      </motion.div>
+      </div>
 
       <SmsPasteDialog open={pasteOpen} onOpenChange={setPasteOpen} />
 
@@ -143,6 +170,14 @@ export function InboxView({
           onOpenChange={(o) => !o && setDeadlineTarget(null)}
           sms={deadlineTarget.sms}
           matter={deadlineTarget.matter}
+        />
+      )}
+      {backfillTarget && (
+        <BackfillCaseNumberDialog
+          open
+          onOpenChange={(o) => !o && setBackfillTarget(null)}
+          sms={backfillTarget.sms}
+          matter={backfillTarget.matter}
         />
       )}
     </div>
@@ -193,14 +228,16 @@ function SmsCard({
   sms,
   matters,
   onGenerateHearing,
-  onGenerateDeadline
+  onGenerateDeadline,
+  onBackfillCaseNumber
 }: {
   sms: SmsRow;
   matters: MatterOption[];
   onGenerateHearing: () => void;
   onGenerateDeadline: () => void;
+  onBackfillCaseNumber: () => void;
 }) {
-  const parsed = sms.parsedJson as unknown as ParsedJson;
+  const parsed = normalizeParsedJson(sms);
   const accent = SMS_TYPE_ACCENT[sms.smsType];
   const [pending, startTransition] = useTransition();
   const [showRaw, setShowRaw] = useState(false);
@@ -226,6 +263,34 @@ function SmsCard({
       }
     });
   };
+
+  // v0.51: 解析出新案号 + 案件里有缺案号的程序 → 可回填
+  const usedCaseNumbers = new Set(
+    (sms.matchedMatter?.procedures ?? []).map((p) => p.caseNumber).filter(Boolean) as string[]
+  );
+  const canBackfillCaseNumber = Boolean(
+    sms.matchedMatter &&
+      parsed.caseNumbers.some((n) => !usedCaseNumbers.has(n)) &&
+      sms.matchedMatter.procedures.some((p) => !p.caseNumber)
+  );
+
+  const onExtractAttachments = () =>
+    startTransition(async () => {
+      try {
+        const res = await extractSmsAttachments({ id: sms.id });
+        const downloaded = res.attachmentResults.filter((r) => r.status === "DOWNLOADED").length;
+        const needsManual = res.attachmentResults.filter((r) => r.status === "LOGIN_REQUIRED").length;
+        toast.success(
+          downloaded > 0
+            ? `已提取 ${downloaded} 个附件`
+            : needsManual > 0
+              ? "送达入口需要人工处理"
+              : "附件提取已完成"
+        );
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "提取失败");
+      }
+    });
 
   return (
     <div className="ll-surface rounded-lg border border-border p-4">
@@ -304,11 +369,97 @@ function SmsCard({
           ))}
       </div>
 
+      {parsed.importantItems.length > 0 && (
+        <div className="mt-3 border-t border-border pt-3">
+          <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-foreground/80">
+            <CalendarClock className="h-3.5 w-3.5 text-primary" />
+            重要事项
+          </div>
+          <div className="grid gap-1.5 md:grid-cols-2">
+            {parsed.importantItems.slice(0, 4).map((item, i) => (
+              <div
+                key={`${item.kind}-${item.dateText ?? i}-${i}`}
+                className="rounded-md border border-border/70 bg-muted/20 px-2.5 py-2"
+              >
+                <div className="flex items-center gap-2 text-[11px]">
+                  <span className="font-medium text-foreground/85">{item.title}</span>
+                  {item.dateText && (
+                    <span className="font-mono text-[10px] text-primary">{item.dateText}</span>
+                  )}
+                </div>
+                <p className="mt-0.5 line-clamp-1 text-[10px] text-muted-foreground">
+                  {item.sourceText}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(parsed.documentLinks.length > 0 || parsed.credentials.length > 0 || parsed.attachmentResults.length > 0) && (
+        <div className="mt-3 space-y-2 border-t border-border pt-3">
+          {parsed.documentLinks.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1.5 text-[11px] font-medium text-foreground/80">
+                <FileDown className="h-3.5 w-3.5 text-primary" />
+                电子送达
+              </div>
+              {parsed.documentLinks.map((link, i) => (
+                <div
+                  key={`${link.url}-${i}`}
+                  className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground"
+                >
+                  <a
+                    href={link.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-primary hover:underline"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    {link.platform ?? `送达链接 ${i + 1}`}
+                  </a>
+                  {link.requiresLogin && (
+                    <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700">
+                      需登录/校验
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {parsed.credentials.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
+              <span className="inline-flex items-center gap-1 text-foreground/75">
+                <KeyRound className="h-3 w-3 text-primary" />
+                已识别凭证
+              </span>
+              {parsed.credentials.map((cred, i) => (
+                <span
+                  key={`${cred.kind}-${cred.valuePreview}-${i}`}
+                  className="rounded bg-muted/50 px-1.5 py-0.5 text-[10px]"
+                >
+                  {cred.label}：{cred.valuePreview}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {parsed.attachmentResults.length > 0 && (
+            <div className="space-y-1">
+              {parsed.attachmentResults.map((result, i) => (
+                <AttachmentResultRow key={`${result.url}-${i}`} result={result} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 关联案件 + 操作行 */}
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
         {sms.matchedMatter ? (
           <Link
-            href={`/matters/${sms.matchedMatter.id}`}
+            href={matterHref(sms.matchedMatter)}
             className="group inline-flex items-center gap-1 rounded border border-primary/30 bg-primary/5 px-2 py-1 text-[11px] hover:bg-primary/10"
           >
             <Briefcase className="h-3 w-3 text-primary" />
@@ -357,7 +508,32 @@ function SmsCard({
                 <Clock className="h-3 w-3" />
                 生成期限
               </Button>
+              {canBackfillCaseNumber && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={onBackfillCaseNumber}
+                  className="h-7 gap-1 text-[11px]"
+                  title="把短信解析出的案号回填到缺案号的程序"
+                >
+                  <FileDigit className="h-3 w-3" />
+                  回填案号
+                </Button>
+              )}
             </>
+          )}
+          {parsed.urls.length > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onExtractAttachments}
+              disabled={pending || !sms.matchedMatter}
+              className="h-7 gap-1 text-[11px]"
+              title={sms.matchedMatter ? "提取短信中的送达附件" : "先关联案件后再提取附件"}
+            >
+              {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileDown className="h-3 w-3" />}
+              提取附件
+            </Button>
           )}
           {!sms.processed && (
             <Button
@@ -398,6 +574,69 @@ function Field({ icon, children }: { icon?: React.ReactNode; children: React.Rea
       {icon && <span className="text-muted-foreground/70">{icon}</span>}
       {children}
     </span>
+  );
+}
+
+function normalizeParsedJson(sms: SmsRow): ParsedJson {
+  const raw = (sms.parsedJson ?? {}) as Partial<ParsedJson>;
+  return {
+    smsType: raw.smsType ?? sms.smsType,
+    caseNumbers: Array.isArray(raw.caseNumbers) ? raw.caseNumbers : [],
+    court: raw.court ?? null,
+    dates: Array.isArray(raw.dates) ? raw.dates : [],
+    hearingDate: raw.hearingDate ?? null,
+    filingDate: raw.filingDate ?? null,
+    judgmentDate: raw.judgmentDate ?? null,
+    appealDeadline: raw.appealDeadline ?? null,
+    courtRoom: raw.courtRoom ?? null,
+    judge: raw.judge ?? null,
+    clerk: raw.clerk ?? null,
+    phones: Array.isArray(raw.phones) ? raw.phones : [],
+    amounts: Array.isArray(raw.amounts) ? raw.amounts : [],
+    urls: Array.isArray(raw.urls) ? raw.urls : [],
+    platforms: Array.isArray(raw.platforms) ? raw.platforms : [],
+    importantItems: Array.isArray(raw.importantItems) ? raw.importantItems : [],
+    credentials: Array.isArray(raw.credentials) ? raw.credentials : [],
+    documentLinks: Array.isArray(raw.documentLinks) ? raw.documentLinks : [],
+    attachmentResults: Array.isArray(raw.attachmentResults) ? raw.attachmentResults : [],
+    summary: raw.summary ?? sms.rawText.slice(0, 80),
+    aiEnriched: raw.aiEnriched,
+    action: raw.action ?? null,
+    urgency: raw.urgency ?? null
+  };
+}
+
+function AttachmentResultRow({ result }: { result: ParsedJson["attachmentResults"][number] }) {
+  const meta = {
+    DOWNLOADED: { label: "已保存", color: "text-emerald-700", bg: "bg-emerald-500/10" },
+    ALREADY_DOWNLOADED: { label: "已存在", color: "text-emerald-700", bg: "bg-emerald-500/10" },
+    LOGIN_REQUIRED: { label: "待人工", color: "text-amber-700", bg: "bg-amber-500/10" },
+    SKIPPED_NO_MATTER: { label: "未关联", color: "text-amber-700", bg: "bg-amber-500/10" },
+    NO_FILE_FOUND: { label: "未发现", color: "text-muted-foreground", bg: "bg-muted/50" },
+    UNSUPPORTED_TYPE: { label: "不支持", color: "text-muted-foreground", bg: "bg-muted/50" },
+    FAILED: { label: "失败", color: "text-destructive", bg: "bg-destructive/10" },
+    PENDING: { label: "待提取", color: "text-muted-foreground", bg: "bg-muted/50" }
+    // parsedJson 来自 DB JSON，status 可能是历史版本写入的未知值，需兜底
+  }[result.status] ?? { label: "未知", color: "text-muted-foreground", bg: "bg-muted/50" };
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+      <span className={cn("rounded px-1.5 py-0.5 text-[10px]", meta.bg, meta.color)}>
+        {meta.label}
+      </span>
+      {result.documentId ? (
+        <a
+          href={`/api/documents/${result.documentId}/download`}
+          className="inline-flex items-center gap-1 text-primary hover:underline"
+        >
+          <FileCheck2 className="h-3 w-3" />
+          {result.documentName ?? "已保存附件"}
+        </a>
+      ) : (
+        <span className="line-clamp-1">{result.message}</span>
+      )}
+      {result.documentId && <span className="line-clamp-1">{result.message}</span>}
+    </div>
   );
 }
 

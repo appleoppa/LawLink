@@ -21,6 +21,7 @@ import {
   sealCancelSchema,
   sealListFilterSchema
 } from "./schemas";
+import { revalidateMatter } from "@/server/matters/route";
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
 const FIRM_LEGAL_REP_KEY = "firmLegalRepUserId";
@@ -516,7 +517,7 @@ export async function createSealRequest(formData: FormData) {
   }
 
   revalidatePath("/approvals/seals");
-  if (data.matterId) revalidatePath(`/matters/${data.matterId}`);
+  if (data.matterId) await revalidateMatter(data.matterId);
   return { ok: true, id: created.seal.id, code };
 }
 
@@ -566,7 +567,7 @@ export async function approveSealRequest(input: z.infer<typeof sealApproveSchema
   });
 
   revalidatePath("/approvals/seals");
-  if (seal.matterId) revalidatePath(`/matters/${seal.matterId}`);
+  if (seal.matterId) await revalidateMatter(seal.matterId);
   return { ok: true };
 }
 
@@ -617,7 +618,7 @@ export async function rejectSealRequest(input: z.infer<typeof sealRejectSchema>)
   });
 
   revalidatePath("/approvals/seals");
-  if (seal.matterId) revalidatePath(`/matters/${seal.matterId}`);
+  if (seal.matterId) await revalidateMatter(seal.matterId);
   return { ok: true };
 }
 
@@ -694,7 +695,7 @@ export async function stampSealRequest(formData: FormData) {
   });
 
   revalidatePath("/approvals/seals");
-  if (seal.matterId) revalidatePath(`/matters/${seal.matterId}`);
+  if (seal.matterId) await revalidateMatter(seal.matterId);
   return { ok: true };
 }
 
@@ -730,6 +731,6 @@ export async function cancelSealRequest(input: z.infer<typeof sealCancelSchema>)
   });
 
   revalidatePath("/approvals/seals");
-  if (seal.matterId) revalidatePath(`/matters/${seal.matterId}`);
+  if (seal.matterId) await revalidateMatter(seal.matterId);
   return { ok: true };
 }

@@ -34,11 +34,11 @@ export function RadioChips<T extends string>({
             onClick={() => onChange(item.value)}
             title={item.description}
             className={cn(
-              "inline-flex shrink-0 items-center gap-1.5 rounded-full border transition-all",
+              "inline-flex shrink-0 items-center gap-1.5 rounded-full border transition-[background-color,border-color,color,box-shadow,transform] [transition-duration:var(--motion-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.98] motion-reduce:transform-none",
               size === "sm" ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-[12px]",
               active
                 ? "border-primary bg-primary/12 text-foreground"
-                : "border-border bg-transparent text-muted-foreground hover:border-border hover:text-foreground"
+                : "border-border bg-transparent text-muted-foreground hover:border-input hover:bg-muted hover:text-foreground"
             )}
             style={
               active && accent

@@ -80,6 +80,7 @@ export function SearchDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         placeholder="搜索案件、客户、材料..."
         value={query}
         onValueChange={setQuery}
+        className="ll-command-input"
       />
       <CommandList>
         {query && !loading && !hasResults && (

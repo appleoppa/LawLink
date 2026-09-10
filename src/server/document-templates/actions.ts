@@ -17,6 +17,7 @@ import {
   templateToggleSchema,
   templateRenderSchema
 } from "./schemas";
+import { revalidateMatter } from "@/server/matters/route";
 
 export async function listTemplates(input?: z.input<typeof templateListFilterSchema>) {
   await requireSession();
@@ -192,6 +193,6 @@ export async function renderTemplate(input: z.infer<typeof templateRenderSchema>
     detail: { templateId: tmpl.id, templateName: tmpl.name, matterId: data.matterId }
   });
 
-  revalidatePath(`/matters/${data.matterId}`);
+  await revalidateMatter(data.matterId);
   return { ok: true, documentId: doc.id, fileName, missing };
 }

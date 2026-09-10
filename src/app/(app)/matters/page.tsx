@@ -6,8 +6,10 @@ import { MattersView } from "./_components/matters-view";
 import type { MatterCategory } from "@prisma/client";
 
 export type MattersTab = "intake" | "active" | "archived" | "revision" | "all";
-export type MatterSortBy = "hearing" | "intakeDate" | "claimAmount";
+export type MatterSortBy = "hearing" | "intakeDate" | "claimAmount" | "archivedAt";
 export type MatterSortDir = "asc" | "desc";
+
+const MATTERS_PAGE_SIZE = 12;
 
 function resolveTab(input?: string): MattersTab {
   if (input === "intake" || input === "archived" || input === "revision" || input === "all") return input;
@@ -15,17 +17,21 @@ function resolveTab(input?: string): MattersTab {
 }
 
 function defaultSortByForTab(tab: MattersTab): MatterSortBy {
-  return tab === "active" ? "hearing" : "intakeDate";
+  if (tab === "active") return "hearing";
+  if (tab === "archived") return "archivedAt";
+  return "intakeDate";
 }
 
 function supportsSortBy(tab: MattersTab, sortBy: MatterSortBy) {
   if (sortBy === "hearing") return tab === "active" || tab === "all";
+  if (sortBy === "archivedAt") return tab === "archived";
+  if (sortBy === "claimAmount") return tab !== "archived";
   return true;
 }
 
 function resolveSortBy(input: string | undefined, tab: MattersTab): MatterSortBy {
   const candidate =
-    input === "hearing" || input === "intakeDate" || input === "claimAmount"
+    input === "hearing" || input === "intakeDate" || input === "claimAmount" || input === "archivedAt"
       ? input
       : undefined;
   if (candidate && supportsSortBy(tab, candidate)) return candidate;
@@ -34,6 +40,11 @@ function resolveSortBy(input: string | undefined, tab: MattersTab): MatterSortBy
 
 function resolveSortDir(input?: string): MatterSortDir {
   return input === "asc" ? "asc" : "desc";
+}
+
+function resolvePage(input?: string) {
+  const value = input ? Number(input) : 1;
+  return Number.isInteger(value) && value > 0 ? value : 1;
 }
 
 function resolveDateStart(input?: string) {
@@ -78,7 +89,7 @@ type Props = {
 export default async function MattersPage({ searchParams }: Props) {
   const params = await searchParams;
   const tab = resolveTab(params.tab);
-  const page = params.page ? Number(params.page) : 1;
+  const page = resolvePage(params.page);
   const sortBy = resolveSortBy(params.sortBy, tab);
   const sortDir = resolveSortDir(params.sortDir);
   const dateFrom = resolveDateStart(params.from);
@@ -105,7 +116,7 @@ export default async function MattersPage({ searchParams }: Props) {
       sortBy: intakeSortBy,
       sortDir,
       page,
-      pageSize: 30
+      pageSize: MATTERS_PAGE_SIZE
     });
     return (
       <MattersView
@@ -125,7 +136,9 @@ export default async function MattersPage({ searchParams }: Props) {
             claimAmount: i.claimAmount ? Number(i.claimAmount) : null,
             ownerName: i.ownerUser?.name ?? null
           })),
-          total: intakes.total
+          total: intakes.total,
+          page: intakes.page,
+          pageSize: intakes.pageSize
         }}
         clientOptions={clientsResponse.items.map((c) => ({
           id: c.id,
@@ -170,6 +183,7 @@ export default async function MattersPage({ searchParams }: Props) {
     search: params.search,
     category: params.category,
     page,
+    pageSize: MATTERS_PAGE_SIZE,
     ...statusGroup,
     intakeDateFrom: dateFrom,
     intakeDateTo: dateTo,
@@ -180,7 +194,15 @@ export default async function MattersPage({ searchParams }: Props) {
   return (
     <MattersView
       tab={tab}
-      matterData={matters}
+      matterData={{
+        items: matters.items.map((m) => ({
+          ...m,
+          claimAmount: m.claimAmount ? Number(m.claimAmount) : null
+        })),
+        total: matters.total,
+        page: matters.page,
+        pageSize: matters.pageSize
+      }}
       clientOptions={clientsResponse.items.map((c) => ({
         id: c.id,
         name: c.name,

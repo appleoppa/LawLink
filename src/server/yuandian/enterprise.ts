@@ -15,7 +15,7 @@ import {
   assertCanAccessMatter,
   assertCanModifyMatter
 } from "@/lib/permissions";
-import { revalidatePath } from "next/cache";
+import { revalidateMatter } from "@/server/matters/route";
 
 export type EnterpriseSearchItem = {
   id: string;
@@ -146,7 +146,7 @@ export async function bindPartyToEnterprise(input: {
     }
   });
 
-  revalidatePath(`/matters/${party.matterId}`);
+  await revalidateMatter(party.matterId);
   return { ok: true };
 }
 
@@ -184,7 +184,7 @@ export async function unbindPartyEnterprise(
     detail: { matterId: party.matterId, partyName: party.name }
   });
 
-  revalidatePath(`/matters/${party.matterId}`);
+  await revalidateMatter(party.matterId);
   return { ok: true };
 }
 

@@ -34,6 +34,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
+import { matterHref } from "@/lib/matters/route";
 
 const CATEGORY_CN: Record<string, string> = {
   CIVIL_COMMERCIAL: "民商",
@@ -172,7 +173,7 @@ export function PendingArchiveTable({ records }: { records: PendingRecord[] }) {
                 </td>
                 <td className="px-3 py-2.5">
                   <Link
-                    href={`/matters/${rec.matter.id}`}
+                    href={matterHref(rec.matter)}
                     className="hover:text-[#5B8DEF] transition-colors line-clamp-1"
                   >
                     <FileText className="h-3 w-3 inline mr-1 text-muted-foreground" />
@@ -807,7 +808,7 @@ function DetailDialog({
           )}
           <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
             <Link
-              href={`/matters/${record.matter.id}`}
+              href={matterHref(record.matter)}
               target="_blank"
               className="text-xs text-[#5B8DEF] hover:underline"
             >

@@ -6,21 +6,21 @@ import type { KpiItem } from "@/server/dashboard/actions";
 
 export function KpiCards({ data }: { data: KpiItem[] }) {
   return (
-    <section className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
+    <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {data.map((kpi) => (
         <div
           key={kpi.key}
-          className="group relative overflow-hidden bg-card px-5 py-4 transition-colors hover:bg-muted/40"
+          className="ll-surface group relative overflow-hidden px-4 py-3.5 transition-colors hover:border-input hover:bg-muted/35"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[0.68rem] font-medium uppercase tracking-widest text-muted-foreground">
+            <span className="text-[11.5px] font-medium text-muted-foreground">
               {kpi.label}
             </span>
             <TrendBadge direction={kpi.trend.direction} text={kpi.trend.text} />
           </div>
 
           <div className="mt-3 flex items-baseline gap-1">
-            <span className="ll-stat text-[2rem] leading-none text-foreground">
+            <span className="ll-stat text-[26px] leading-none text-foreground">
               {kpi.valueFormat === "currency"
                 ? formatCurrency(kpi.value, { compact: true })
                 : kpi.value}

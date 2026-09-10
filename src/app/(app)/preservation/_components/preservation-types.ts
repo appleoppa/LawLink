@@ -1,6 +1,6 @@
-import type { Prisma, PreservationType, PropertyType, GuaranteeType, PreservationStatus } from "@prisma/client";
+import type { Prisma, PreservationType, GuaranteeType, PreservationStatus } from "@prisma/client";
 
-export type PreservationCaseRow = Prisma.PreservationCaseGetPayload<{
+type PreservationCaseRaw = Prisma.PreservationCaseGetPayload<{
   include: {
     matter: { select: { id: true; internalCode: true; title: true } };
     owner: { select: { id: true; name: true } };
@@ -16,6 +16,17 @@ export type PreservationCaseRow = Prisma.PreservationCaseGetPayload<{
   };
 }>;
 
+type PreservationTargetRaw = PreservationCaseRaw["targets"][number];
+type PreservationPropertyRaw = PreservationTargetRaw["properties"][number];
+
+export type PreservationCaseRow = Omit<PreservationCaseRaw, "targets"> & {
+  targets: Array<
+    Omit<PreservationTargetRaw, "properties"> & {
+      properties: Array<Omit<PreservationPropertyRaw, "amount"> & { amount: number | null }>;
+    }
+  >;
+};
+
 export type MatterOption = {
   id: string;
   internalCode: string;
@@ -24,29 +35,14 @@ export type MatterOption = {
 
 export type UserOption = { id: string; name: string };
 
-/** @deprecated 旧模型兼容别名 */
-export type PreservationRow = Prisma.PreservationGetPayload<{
-  include: {
-    matter: { select: { id: true; internalCode: true; title: true } };
-    owner: { select: { id: true; name: true } };
-    renewals: true;
-  };
-}>;
-
 export const PRES_TYPE_CN: Record<PreservationType, string> = {
   PRE_LITIGATION: "诉前保全",
   LITIGATION: "诉中保全",
   ENFORCEMENT: "执行保全"
 };
 
-export const PROPERTY_TYPE_CN: Record<PropertyType, string> = {
-  BANK_DEPOSIT: "银行存款",
-  REAL_ESTATE: "房产",
-  VEHICLE: "车辆",
-  EQUITY: "股权",
-  IP: "知识产权",
-  OTHER: "其他财产"
-};
+// v1.2: 定义已挪到 @/lib/preservation-defaults（cron 通知也要用），此处仅转出
+export { PROPERTY_TYPE_CN } from "@/lib/preservation-defaults";
 
 export const GUARANTEE_TYPE_CN: Record<GuaranteeType, string> = {
   CASH_DEPOSIT: "保证金",

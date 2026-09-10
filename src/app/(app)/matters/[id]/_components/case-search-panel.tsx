@@ -414,7 +414,7 @@ export function CaseSearchPanel({ matterId, matterCategory, defaultCauseName }: 
                   "rounded-full border px-2 py-0.5 text-[11px] transition-colors",
                   provinces.includes(p)
                     ? "border-primary bg-primary/15 text-primary"
-                    : "border-border bg-background text-muted-foreground hover:border-input"
+                    : "border-border bg-background text-muted-foreground hover:border-input hover:bg-muted hover:text-foreground"
                 )}
               >
                 {p}
@@ -436,7 +436,7 @@ export function CaseSearchPanel({ matterId, matterCategory, defaultCauseName }: 
                     "rounded-full border px-2 py-0.5 text-[11px]",
                     wszl.includes(w)
                       ? "border-primary bg-primary/15 text-primary"
-                      : "border-border bg-background text-muted-foreground hover:border-input"
+                      : "border-border bg-background text-muted-foreground hover:border-input hover:bg-muted hover:text-foreground"
                   )}
                 >
                   {w}

@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 720" role="img" aria-labelledby="title desc">
+  <title id="title">LawLink brand sheet</title>
+  <desc id="desc">A brand preview sheet for LawLink official mark, wordmark, colors, and usage notes.</desc>
+  <rect width="1100" height="720" fill="#edf0f4"/>
+  <rect x="48" y="44" width="1004" height="632" rx="30" fill="#ffffff" stroke="#d8e1ea"/>
+  <text x="92" y="112" fill="#0f1b2d" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', Inter, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif" font-size="34" font-weight="760">LawLink Brand System</text>
+  <text x="94" y="148" fill="#5f6d7e" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif" font-size="18" font-weight="500">Official mark based on the default LawLink favicon</text>
+
+  <g transform="translate(92 202)">
+    <rect width="164" height="164" rx="34" fill="#0f1b2d"/>
+    <path d="M46.1 46.1h25.6v71.8H46.1zM92.3 46.1h25.6v71.8H92.3z" fill="#ffffff"/>
+    <path d="M46.1 112.8h71.8v10.3H46.1zM71.8 76.9h20.5v10.3H71.8z" fill="#00a6a6"/>
+  </g>
+
+  <g transform="translate(308 229)">
+    <g transform="translate(0 0)">
+      <rect width="96" height="96" rx="21.6" fill="#0f1b2d"/>
+      <path d="M27 27h15v42H27zM54 27h15v42H54z" fill="#ffffff"/>
+      <path d="M27 66h42v6H27zM42 45h12v6H42z" fill="#00a6a6"/>
+    </g>
+    <text x="128" y="63" fill="#0f1b2d" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', Inter, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif" font-size="62" font-weight="760">LawLink</text>
+  </g>
+
+  <g transform="translate(92 430)">
+    <text x="0" y="0" fill="#0f1b2d" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', Inter, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif" font-size="22" font-weight="700">Design meaning</text>
+    <text x="0" y="38" fill="#3d4a5c" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif" font-size="17">Double pillars: abstract LL and legal order</text>
+    <text x="0" y="70" fill="#3d4a5c" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif" font-size="17">Teal connector: linked matters, materials, procedures, deadlines, and finance</text>
+    <text x="0" y="102" fill="#3d4a5c" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif" font-size="17">Navy tile: professional, stable, product-first</text>
+  </g>
+
+  <g transform="translate(708 430)">
+    <text x="0" y="0" fill="#0f1b2d" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', Inter, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif" font-size="22" font-weight="700">Palette</text>
+    <rect x="0" y="26" width="58" height="58" rx="14" fill="#0f1b2d"/>
+    <rect x="76" y="26" width="58" height="58" rx="14" fill="#00a6a6"/>
+    <rect x="152" y="26" width="58" height="58" rx="14" fill="#edf0f4" stroke="#d8e1ea"/>
+    <rect x="228" y="26" width="58" height="58" rx="14" fill="#ffffff" stroke="#d8e1ea"/>
+    <text x="0" y="116" fill="#5f6d7e" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif" font-size="15">#0f1b2d</text>
+    <text x="76" y="116" fill="#5f6d7e" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif" font-size="15">#00a6a6</text>
+    <text x="152" y="116" fill="#5f6d7e" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif" font-size="15">#edf0f4</text>
+    <text x="228" y="116" fill="#5f6d7e" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif" font-size="15">#ffffff</text>
+  </g>
+</svg>

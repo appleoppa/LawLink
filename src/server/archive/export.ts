@@ -58,7 +58,15 @@ export async function buildArchiveZip(matterId: string): Promise<ZipResult> {
       parties: { orderBy: [{ role: "asc" }, { ordinal: "asc" }] },
       procedures: { orderBy: { order: "asc" } },
       timelineEvents: { orderBy: { occurredAt: "asc" } },
-      preservations: { orderBy: { startDate: "asc" } },
+      preservationCases: {
+        orderBy: { createdAt: "asc" },
+        include: {
+          targets: {
+            orderBy: { createdAt: "asc" },
+            include: { properties: { orderBy: { startDate: "asc" } } }
+          }
+        }
+      },
       notes: { where: { deletedAt: null }, orderBy: { occurredAt: "asc" } },
       billings: true,
       feeEntries: { orderBy: { occurredAt: "asc" } },
@@ -162,18 +170,23 @@ export async function buildArchiveZip(matterId: string): Promise<ZipResult> {
       refType: e.refType,
       refId: e.refId
     })),
-    preservations: matter.preservations.map((p) => ({
-      type: p.type,
-      propertyType: p.propertyType,
-      amount: p.amount?.toString() ?? null,
-      respondent: p.respondent,
-      court: p.court,
-      rulingNumber: p.rulingNumber,
-      startDate: p.startDate.toISOString(),
-      expiryDate: p.expiryDate.toISOString(),
-      status: p.status,
-      note: p.note
-    })),
+    // v0.48：保全改读三层模型，manifest 仍按"每项财产一条"扁平输出，字段与旧版兼容
+    preservations: matter.preservationCases.flatMap((c) =>
+      c.targets.flatMap((t) =>
+        t.properties.map((p) => ({
+          type: c.type,
+          propertyType: p.propertyType,
+          amount: p.amount?.toString() ?? null,
+          respondent: t.name,
+          court: c.court,
+          rulingNumber: c.rulingNumber,
+          startDate: p.startDate.toISOString(),
+          expiryDate: p.expiryDate.toISOString(),
+          status: p.status,
+          note: c.note
+        }))
+      )
+    ),
     notes: matter.notes.map((n) => ({
       channel: n.channel,
       withWhom: n.withWhom,

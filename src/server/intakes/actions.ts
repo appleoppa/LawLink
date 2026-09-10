@@ -6,6 +6,8 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import { intakeVisibilityFilter } from "@/lib/permissions";
+import { assertAgencyAllowedForProcedure, normalizeJurisdictionForAgency } from "@/lib/china-regions";
+import { serializeDecimals } from "@/lib/decimal";
 import {
   intakeCreateSchema,
   intakeListQuerySchema,
@@ -16,6 +18,7 @@ import {
 } from "./schemas";
 import { seedDefaultFolders } from "@/lib/default-folders";
 import { notifyRoleApprovers } from "@/server/notifications/approval";
+import { assertCauseAllowedForSelection } from "@/server/causes/validation";
 
 function emptyToNull<T extends Record<string, unknown>>(obj: T): T {
   const out: Record<string, unknown> = {};
@@ -240,7 +243,7 @@ export async function listIntakes(input: Partial<IntakeListQuery> = {}) {
     prisma.intake.count({ where })
   ]);
 
-  return { items, total, page: query.page, pageSize: query.pageSize };
+  return { items: serializeDecimals(items), total, page: query.page, pageSize: query.pageSize };
 }
 
 export async function getIntakeById(id: string) {
@@ -293,6 +296,12 @@ export async function getIntakeById(id: string) {
 export async function createIntake(input: IntakeCreateInput) {
   const session = await requireSession();
   const data = intakeCreateSchema.parse(input);
+  assertAgencyAllowedForProcedure(data.firstAgency, data.firstProcedureType);
+  await assertCauseAllowedForSelection({
+    causeId: data.causeId,
+    category: data.category,
+    procedureType: data.firstProcedureType
+  });
 
   // ----- 解析客户：已选 / 自由输入新建 -----
   let resolvedClientId: string | null = data.clientId || null;
@@ -395,7 +404,7 @@ export async function createIntake(input: IntakeCreateInput) {
 
       firstProcedureType: data.firstProcedureType ?? null,
       firstAgency: data.firstAgency?.trim() || null,
-      jurisdiction: data.jurisdiction?.trim() || null,
+      jurisdiction: normalizeJurisdictionForAgency(data.firstAgency, data.jurisdiction),
       ourStanding: data.ourStanding ?? null,
       claimAmount: data.claimAmount ?? null,
       claimDescription: data.claimDescription?.trim() || null,
@@ -607,6 +616,12 @@ export async function convertIntakeToMatter(intakeId: string) {
     intake.category === "ADMINISTRATIVE"
       ? "FIRST_INSTANCE"
       : "NON_LITIGATION_PHASE");
+  assertAgencyAllowedForProcedure(intake.firstAgency, firstProcedureType);
+  await assertCauseAllowedForSelection({
+    causeId: intake.causeId,
+    category: intake.category,
+    procedureType: firstProcedureType
+  });
 
   const matter = await prisma.$transaction(async (tx) => {
     const ownerId = intake.ownerUserId ?? session.user.id;

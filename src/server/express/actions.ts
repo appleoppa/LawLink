@@ -19,6 +19,7 @@ import {
   expressIdSchema,
   expressSettingsSaveSchema
 } from "./schemas";
+import { revalidateMatter } from "@/server/matters/route";
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 列表 / 查询
@@ -152,7 +153,7 @@ export async function createExpress(input: z.infer<typeof expressCreateSchema>) 
   });
 
   revalidatePath("/express");
-  if (created.matterId) revalidatePath(`/matters/${created.matterId}`);
+  if (created.matterId) await revalidateMatter(created.matterId);
   return { ok: true, id: created.id, firstState: lastState };
 }
 
@@ -194,7 +195,7 @@ export async function refreshExpress(input: z.infer<typeof expressIdSchema>) {
   });
 
   revalidatePath("/express");
-  if (e.matterId) revalidatePath(`/matters/${e.matterId}`);
+  if (e.matterId) await revalidateMatter(e.matterId);
   return { ok: true, state: r.state, provider: r.provider, traces: r.traces };
 }
 
@@ -214,7 +215,7 @@ export async function deleteExpress(input: z.infer<typeof expressIdSchema>) {
   });
 
   revalidatePath("/express");
-  if (e.matterId) revalidatePath(`/matters/${e.matterId}`);
+  if (e.matterId) await revalidateMatter(e.matterId);
   return { ok: true };
 }
 

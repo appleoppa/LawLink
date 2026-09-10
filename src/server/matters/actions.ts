@@ -6,15 +6,22 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import { assertMatterWritable } from "@/lib/archive/guard";
+import { serializeDecimals } from "@/lib/decimal";
 import {
   matterAssociationFilter,
   matterVisibilityFilter,
   assertCanAccessMatter,
   assertCanAssociateMatter,
+  assertCanLeadMatter,
   assertCanOwnMatter
 } from "@/lib/permissions";
 import { generateInternalCode, generateFirmCaseNo } from "./code-generator";
 import { seedDefaultFolders } from "@/lib/default-folders";
+import { assertAgencyAllowedForProcedure, normalizeJurisdictionForAgency } from "@/lib/china-regions";
+import {
+  assertCauseAllowedForMatter,
+  assertCauseAllowedForSelection
+} from "@/server/causes/validation";
 import {
   matterCreateSchema,
   matterListQuerySchema,
@@ -23,6 +30,7 @@ import {
   type MatterListQuery,
   type MatterUpdateBasicInput
 } from "./schemas";
+import { revalidateMatter } from "@/server/matters/route";
 
 function emptyToNull<T extends Record<string, unknown>>(obj: T): T {
   const out: Record<string, unknown> = {};
@@ -133,6 +141,7 @@ export async function listMatters(input: Partial<MatterListQuery> = {}) {
     .sort((a, b) => {
       const sortValue = (matter: typeof a) => {
         if (query.sortBy === "hearing") return matter.latestHearingAt;
+        if (query.sortBy === "archivedAt") return matter.archivedAt;
         if (query.sortBy === "claimAmount") {
           return matter.claimAmount === null || matter.claimAmount === undefined
             ? null
@@ -157,7 +166,7 @@ export async function listMatters(input: Partial<MatterListQuery> = {}) {
     });
 
   const start = (query.page - 1) * query.pageSize;
-  const items = sorted.slice(start, start + query.pageSize);
+  const items = serializeDecimals(sorted.slice(start, start + query.pageSize));
 
   return { items, total, page: query.page, pageSize: query.pageSize };
 }
@@ -176,6 +185,18 @@ export async function updateProcedureInfo(input: {
   acceptedAt?: string | null;
   concludedAt?: string | null;
   procedureParties?: { partyId: string; standing: LitigationStanding }[];
+  updatedParties?: {
+    partyId: string;
+    name: string;
+    role: PartyRole;
+    partyType: PartyType;
+    idNumber?: string;
+    enterpriseSocialCode?: string;
+    legalRep?: string;
+    contactName?: string;
+    phone?: string;
+    address?: string;
+  }[];
   newProcedureParties?: {
     existingPartyId?: string | null;
     name: string;
@@ -189,22 +210,32 @@ export async function updateProcedureInfo(input: {
   const session = await requireSession();
   const proc = await prisma.matterProcedure.findUnique({
     where: { id: input.procedureId },
-    select: { matterId: true }
+    select: { matterId: true, type: true }
   });
   if (!proc) throw new Error("程序不存在");
   await assertCanAccessMatter(session.user.id, session.user.role, proc.matterId);
   await assertMatterWritable(proc.matterId);
+  assertAgencyAllowedForProcedure(input.handlingAgency, proc.type);
 
   const partyRows = input.procedureParties
     ? normalizeProcedureParties(input.procedureParties)
     : null;
+  const updatedPartyRows = normalizeUpdatedParties(input.updatedParties ?? []);
   const newPartyRows = normalizeNewProcedureParties(input.newProcedureParties ?? []);
+  if ((input.updatedParties?.length ?? 0) !== updatedPartyRows.length) {
+    throw new Error("已有当事人信息不完整");
+  }
   if ((input.newProcedureParties?.length ?? 0) !== newPartyRows.length) {
     throw new Error("新增程序当事人信息不完整");
   }
 
-  if (partyRows) {
-    const partyIds = [...new Set(partyRows.map((row) => row.partyId))];
+  if (partyRows || updatedPartyRows.length > 0) {
+    const partyIds = [
+      ...new Set([
+        ...(partyRows?.map((row) => row.partyId) ?? []),
+        ...updatedPartyRows.map((row) => row.partyId)
+      ])
+    ];
     const realPartyIds = partyIds.filter((partyId) => !partyId.startsWith("client:"));
     const clientIds = partyIds
       .filter((partyId) => partyId.startsWith("client:"))
@@ -229,11 +260,11 @@ export async function updateProcedureInfo(input: {
       ...(matterClients?.clientLinks.map((link) => link.clientId) ?? [])
     ]);
     if (
-      partyRows.some(
+      (partyRows?.some(
         (row) =>
           !row.partyId.startsWith("client:") &&
           !validPartyIds.has(row.partyId)
-      ) ||
+      ) ?? false) ||
       clientIds.some((clientId) => !validClientIds.has(clientId))
     ) {
       throw new Error("存在不属于本案的当事人");
@@ -242,6 +273,24 @@ export async function updateProcedureInfo(input: {
 
   await prisma.$transaction(async (tx) => {
     const mergedProcedureParties = [...(partyRows ?? [])];
+    for (const row of updatedPartyRows) {
+      await tx.party.update({
+        where: { id: row.partyId },
+        data: {
+          role: row.role,
+          name: row.name,
+          partyType: row.partyType,
+          idNumber: row.partyType === "NATURAL_PERSON" ? row.idNumber || null : null,
+          enterpriseSocialCode:
+            row.partyType === "NATURAL_PERSON" ? null : row.enterpriseSocialCode || null,
+          enterpriseName: row.partyType === "NATURAL_PERSON" ? null : row.name,
+          legalRep: row.partyType === "NATURAL_PERSON" ? null : row.legalRep || null,
+          contactName: row.contactName || null,
+          phone: row.phone || null,
+          address: row.address || null
+        }
+      });
+    }
     for (const row of mergedProcedureParties) {
       if (row.partyId.startsWith("client:")) {
         row.partyId = await ensureClientParty(tx, proc.matterId, row.partyId.slice("client:".length), row.standing);
@@ -308,7 +357,7 @@ export async function updateProcedureInfo(input: {
     await tx.matterProcedure.update({
       where: { id: input.procedureId },
       data: {
-        jurisdiction: input.jurisdiction?.trim() || null,
+        jurisdiction: normalizeJurisdictionForAgency(input.handlingAgency, input.jurisdiction),
         handlingAgency: input.handlingAgency?.trim() || null,
         caseNumber: input.caseNumber?.trim() || null,
         presidingJudge: input.presidingJudge?.trim() || null,
@@ -343,7 +392,7 @@ export async function updateProcedureInfo(input: {
     targetId: input.procedureId,
     detail: { matterId: proc.matterId }
   });
-  revalidatePath(`/matters/${proc.matterId}`);
+  await revalidateMatter(proc.matterId);
 }
 
 type NewProcedurePartyInput = {
@@ -354,6 +403,19 @@ type NewProcedurePartyInput = {
   idNumber?: string;
   enterpriseSocialCode?: string;
   standings: LitigationStanding[];
+};
+
+type UpdatedPartyInput = {
+  partyId: string;
+  name: string;
+  role: PartyRole;
+  partyType: PartyType;
+  idNumber?: string;
+  enterpriseSocialCode?: string;
+  legalRep?: string;
+  contactName?: string;
+  phone?: string;
+  address?: string;
 };
 
 function clientTypeToPartyType(type: "INDIVIDUAL" | "COMPANY" | "ORGANIZATION"): PartyType {
@@ -429,6 +491,31 @@ function normalizeLitigationStanding(standing: LitigationStanding): LitigationSt
   return standing;
 }
 
+function normalizeUpdatedParties(rows: UpdatedPartyInput[]) {
+  const roleValues = new Set(Object.values(PartyRole));
+  const partyTypeValues = new Set(Object.values(PartyType));
+  return rows
+    .map((row) => ({
+      partyId: row.partyId,
+      name: row.name.trim(),
+      role: row.role,
+      partyType: row.partyType,
+      idNumber: row.idNumber?.trim() ?? "",
+      enterpriseSocialCode: row.enterpriseSocialCode?.trim() ?? "",
+      legalRep: row.legalRep?.trim() ?? "",
+      contactName: row.contactName?.trim() ?? "",
+      phone: row.phone?.trim() ?? "",
+      address: row.address?.trim() ?? ""
+    }))
+    .filter(
+      (row) =>
+        row.partyId &&
+        row.name &&
+        roleValues.has(row.role) &&
+        partyTypeValues.has(row.partyType)
+    );
+}
+
 function normalizeNewProcedureParties(rows: NewProcedurePartyInput[]) {
   const standingValues = new Set(Object.values(LitigationStanding));
   const roleValues = new Set(Object.values(PartyRole));
@@ -485,12 +572,12 @@ export async function searchMattersForLink(matterId: string, q: string) {
         ? {
             OR: [
               { title: { contains: query, mode: "insensitive" } },
-              { internalCode: { contains: query, mode: "insensitive" } }
+              { firmCaseNo: { contains: query, mode: "insensitive" } }
             ]
           }
         : {})
     },
-    select: { id: true, internalCode: true, title: true },
+    select: { id: true, internalCode: true, firmCaseNo: true, title: true },
     orderBy: { createdAt: "desc" },
     take: 8
   });
@@ -514,7 +601,7 @@ export async function addMatterLink(matterId: string, relatedMatterId: string) {
     targetId: matterId,
     detail: { relatedMatterId }
   });
-  revalidatePath(`/matters/${matterId}`);
+  await revalidateMatter(matterId);
 }
 
 export async function removeMatterLink(matterId: string, relatedMatterId: string) {
@@ -537,7 +624,7 @@ export async function removeMatterLink(matterId: string, relatedMatterId: string
     targetId: matterId,
     detail: { relatedMatterId }
   });
-  revalidatePath(`/matters/${matterId}`);
+  await revalidateMatter(matterId);
 }
 
 export async function getMatterById(id: string) {
@@ -557,17 +644,22 @@ export async function getMatterById(id: string) {
       relatedEntities: { orderBy: { createdAt: "asc" } },
       intake: { select: { counterclaim: true, claimDescription: true } },
       linksFrom: {
-        include: { relatedMatter: { select: { id: true, internalCode: true, title: true } } }
+        include: { relatedMatter: { select: { id: true, internalCode: true, firmCaseNo: true, title: true } } }
       },
       linksTo: {
-        include: { matter: { select: { id: true, internalCode: true, title: true } } }
+        include: { matter: { select: { id: true, internalCode: true, firmCaseNo: true, title: true } } }
       },
       procedures: {
         orderBy: { order: "asc" },
         include: {
           deadlines: { orderBy: [{ completed: "asc" }, { dueAt: "asc" }] },
           hearings: { orderBy: { startsAt: "asc" } },
-          stages: { orderBy: { order: "asc" } },
+          stages: {
+            orderBy: { order: "asc" },
+            include: {
+              tasks: { orderBy: [{ completed: "asc" }, { dueAt: "asc" }, { createdAt: "asc" }] }
+            }
+          },
           procedureParties: {
             orderBy: [{ standing: "asc" }, { ordinal: "asc" }],
             include: { party: true }
@@ -594,6 +686,12 @@ export async function getMatterById(id: string) {
 export async function createMatter(input: MatterCreateInput) {
   const session = await requireSession();
   const data = matterCreateSchema.parse(input);
+  assertAgencyAllowedForProcedure(data.firstProcedure.handlingAgency, data.firstProcedure.type);
+  await assertCauseAllowedForSelection({
+    causeId: data.causeId,
+    category: data.category,
+    procedureType: data.firstProcedure.type
+  });
 
   const internalCode = await generateInternalCode(data.category);
   const firmCaseNo = await generateFirmCaseNo(data.category);
@@ -779,22 +877,28 @@ export async function updateMatterTeam(input: {
     }
   });
 
-  revalidatePath(`/matters/${input.matterId}`);
+  await revalidateMatter(input.matterId);
   return { ok: true };
 }
 
-// v0.27: 编辑案件基本信息（系统编号 + 收案日期 readonly，状态走 lifecycle）
+// v0.27: 编辑案件基本信息（收案日期 readonly，状态走 lifecycle）
 export async function updateMatterBasicInfo(input: MatterUpdateBasicInput) {
   const session = await requireSession();
   const data = matterUpdateBasicSchema.parse(input);
 
   const matter = await prisma.matter.findUnique({
     where: { id: data.id, deletedAt: null },
-    select: { id: true, ownerId: true, title: true }
+    select: {
+      id: true,
+      ownerId: true,
+      title: true,
+      category: true
+    }
   });
   if (!matter) throw new Error("案件不存在");
   await assertMatterWritable(data.id);
-  await assertCanOwnMatter(session.user.id, data.id, "只有当前主办律师可以编辑案件基本信息");
+  await assertCanLeadMatter(session.user.id, data.id, "只有案件主办/协办可以编辑案件基本信息");
+  await assertCauseAllowedForMatter(data.id, data.causeId);
 
   await prisma.matter.update({
     where: { id: data.id },
@@ -818,7 +922,7 @@ export async function updateMatterBasicInfo(input: MatterUpdateBasicInput) {
     detail: { titleBefore: matter.title, titleAfter: data.title }
   });
 
-  revalidatePath(`/matters/${data.id}`);
+  await revalidateMatter(data.id);
   return { ok: true };
 }
 

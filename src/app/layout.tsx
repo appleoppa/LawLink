@@ -4,7 +4,11 @@ import { Providers } from "@/components/providers";
 
 export const metadata: Metadata = {
   title: "LawLink — 律师案件管理系统",
-  description: "面向独立律师、小团队和小型律所的开源案件管理系统"
+  description: "面向独立律师、小团队和小型律所的开源案件管理系统",
+  icons: {
+    icon: "/favicon.svg",
+    shortcut: "/favicon.ico"
+  }
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

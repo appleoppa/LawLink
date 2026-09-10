@@ -3,12 +3,14 @@ import { z } from "zod";
 export const smsParseAndSaveSchema = z.object({
   rawText: z.string().min(1, "短信内容必填").max(8000),
   batch: z.boolean().default(false), // 按空行分隔多条
-  useAi: z.boolean().default(false) // v0.9.1：调 AI 抽 summary/action/urgency
+  useAi: z.boolean().default(false), // v0.9.1：调 AI 抽 summary/action/urgency
+  extractAttachments: z.boolean().default(false)
 });
 
 export const smsListFilterSchema = z.object({
   scope: z.enum(["mine", "all"]).default("mine"),
   processed: z.enum(["unprocessed", "processed", "all"]).default("unprocessed"),
+  needsManual: z.boolean().default(false),
   smsType: z
     .enum([
       "HEARING_NOTICE",
@@ -61,3 +63,9 @@ export const smsGenerateDeadlineSchema = z.object({
 });
 
 export const smsIdSchema = z.object({ id: z.string().cuid() });
+
+export const smsBackfillCaseNumberSchema = z.object({
+  smsId: z.string().cuid(),
+  procedureId: z.string().cuid(),
+  caseNumber: z.string().trim().min(5, "案号过短").max(60)
+});

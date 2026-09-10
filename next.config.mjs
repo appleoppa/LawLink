@@ -10,6 +10,7 @@ const nextConfig = {
     : [],
   // typedRoutes 等 Stage 2 路由稳定后再开启
   typedRoutes: false,
+  allowedDevOrigins: ["127.0.0.1"],
   // v0.27: @napi-rs/canvas 是原生 .node 二进制，必须交给 Node 运行时 require
   // 否则构建器会试图 parse 二进制文件，让整个依赖链上的路由 (/matters) 500
   serverExternalPackages: ["@napi-rs/canvas", "unpdf"],

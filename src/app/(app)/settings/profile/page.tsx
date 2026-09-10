@@ -2,6 +2,7 @@ import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
 import { ChangePasswordForm } from "./_components/change-password-form";
 import { AvatarForm } from "./_components/avatar-form";
+import { CalendarSubscription } from "./_components/calendar-subscription";
 import { userRoleLabel } from "@/lib/enums";
 
 export default async function ProfilePage() {
@@ -26,6 +27,8 @@ export default async function ProfilePage() {
           <Item label="角色">{userRoleLabel[user.role as keyof typeof userRoleLabel] ?? user.role}</Item>
         </dl>
       </section>
+
+      <CalendarSubscription />
 
       <section className="rounded-xl border border-border bg-card p-6">
         <h2 className="mb-4 text-base font-semibold">修改密码</h2>

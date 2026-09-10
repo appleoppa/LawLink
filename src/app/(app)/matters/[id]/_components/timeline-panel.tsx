@@ -10,6 +10,8 @@ const iconByType: Record<string, React.ComponentType<React.SVGProps<SVGSVGElemen
   FEE_RECEIVED: Coins,
   // v0.43 项4：补齐案件动态
   DEADLINE_ADDED: CalendarClock,
+  STAGE_ADDED: ListChecks,
+  STAGE_REMOVED: ListChecks,
   TASK_ADDED: ListChecks,
   DOCUMENT_UPLOADED: Upload,
   TEAM_CHANGED: Users
@@ -21,6 +23,8 @@ const colorByType: Record<string, string> = {
   HEARING_SCHEDULED: "#FBBF24",
   FEE_RECEIVED: "#4ADE80",
   DEADLINE_ADDED: "#F59E0B",
+  STAGE_ADDED: "#14B8A6",
+  STAGE_REMOVED: "#94A3B8",
   TASK_ADDED: "#9B7BF7",
   DOCUMENT_UPLOADED: "#5B8DEF",
   TEAM_CHANGED: "#4FD1C5"

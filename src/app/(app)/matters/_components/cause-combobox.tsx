@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useMemo, useTransition } from "react";
+import { useState, useEffect, useMemo, useRef, useTransition } from "react";
 import { ChevronRight, ChevronsUpDown, Loader2, X } from "lucide-react";
-import type { MatterCategory } from "@prisma/client";
+import type { MatterCategory, ProcedureType } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { searchCauses, type CauseSearchResult } from "@/server/causes/actions";
+import { causeScopeForSelection } from "@/lib/cause-scope";
 import { cn } from "@/lib/utils";
 
 type Node = CauseSearchResult;
@@ -19,7 +20,10 @@ type Props = {
   value: string;
   onChange: (id: string, name: string) => void;
   category: MatterCategory;
+  procedureType?: ProcedureType | null;
   disabled?: boolean;
+  placeholder?: string;
+  triggerClassName?: string;
 };
 
 /**
@@ -30,7 +34,15 @@ type Props = {
  * - 列宽收窄，弹层随列数增长，避免一打开就铺满整页
  * - 名称过长截断，hover 显示全名
  */
-export function CauseCombobox({ value, onChange, category, disabled }: Props) {
+export function CauseCombobox({
+  value,
+  onChange,
+  category,
+  procedureType,
+  disabled,
+  placeholder = "点击选择",
+  triggerClassName
+}: Props) {
   const [open, setOpen] = useState(false);
   const [allNodes, setAllNodes] = useState<Node[]>([]);
   const [isPending, startTransition] = useTransition();
@@ -41,12 +53,22 @@ export function CauseCombobox({ value, onChange, category, disabled }: Props) {
 
   const [searchInput, setSearchInput] = useState<string>("");
 
+  const causeScopeKey = useMemo(() => {
+    const scope = causeScopeForSelection(category, procedureType);
+    return [
+      scope.dbCategory,
+      scope.includeCodePrefixes?.join(",") ?? "*",
+      scope.excludeCodePrefixes.join(",")
+    ].join("|");
+  }, [category, procedureType]);
+  const previousCauseScopeKey = useRef(causeScopeKey);
+
   // 打开时拉全量
   function handleOpen(o: boolean) {
     setOpen(o);
     if (o && allNodes.length === 0) {
       startTransition(async () => {
-        const data = await searchCauses({ category, limit: 2000 });
+        const data = await searchCauses({ category, procedureType, limit: 2000 });
         setAllNodes(data);
       });
     }
@@ -58,15 +80,18 @@ export function CauseCombobox({ value, onChange, category, disabled }: Props) {
     }
   }
 
-  // category 变化时重置
+  // 仅在案由可选范围真正变化时重置。
+  // 一审切二审等审级调整共用同一案由范围，不应误清空用户已经选好的案由。
   useEffect(() => {
+    if (previousCauseScopeKey.current === causeScopeKey) return;
+    previousCauseScopeKey.current = causeScopeKey;
     setAllNodes([]);
     if (value) {
       onChange("", "");
       setSelectedName("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category]);
+  }, [causeScopeKey]);
 
   // 同步显示已选名字 / l2 路径
   useEffect(() => {
@@ -135,12 +160,12 @@ export function CauseCombobox({ value, onChange, category, disabled }: Props) {
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="h-10 w-full justify-between rounded-sm font-normal"
+          className={cn("h-10 w-full justify-between rounded-sm font-normal", triggerClassName)}
         >
           {value && selectedName ? (
             <span className="truncate">{selectedName}</span>
           ) : (
-            <span className="text-muted-foreground">点击选择</span>
+            <span className="truncate text-muted-foreground">{placeholder}</span>
           )}
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
@@ -190,7 +215,7 @@ export function CauseCombobox({ value, onChange, category, disabled }: Props) {
                   type="button"
                   onClick={() => pickNode(n)}
                   title={n.name}
-                  className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-[12.5px] hover:bg-muted/60"
+                  className="flex min-h-8 w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-left text-[13px] transition-colors hover:bg-muted hover:text-foreground"
                 >
                   <span className="truncate">{n.name}</span>
                   <span className="shrink-0 text-[10.5px] text-muted-foreground">
@@ -271,8 +296,8 @@ function Column({
                 onClick={() => onPick(n)}
                 title={n.name}
                 className={cn(
-                  "flex w-full items-center justify-between gap-1 rounded px-2 py-1.5 text-left text-[12.5px] transition-colors",
-                  isActive ? "bg-primary/15 text-primary" : "hover:bg-muted/60"
+                  "flex min-h-8 w-full items-center justify-between gap-1 rounded-sm px-2 py-1.5 text-left text-[13px] transition-colors",
+                  isActive ? "bg-accent text-primary" : "hover:bg-muted hover:text-foreground"
                 )}
               >
                 <span className="truncate">{n.name}</span>

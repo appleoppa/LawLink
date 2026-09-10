@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Sparkles, Loader2, X } from "lucide-react";
-import type { MatterCategory } from "@prisma/client";
+import type { MatterCategory, ProcedureType } from "@prisma/client";
 import {
   Dialog,
   DialogContent,
@@ -25,6 +25,7 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   category: MatterCategory;
+  procedureType?: ProcedureType | null;
   /** 用现有字段 tab 的预填内容（父组件按场景拼好） */
   contextHints?: string;
   onSelect: (causeId: string, causeName: string) => void;
@@ -40,6 +41,7 @@ export function CauseAiManualDialog({
   open,
   onOpenChange,
   category,
+  procedureType,
   contextHints,
   onSelect
 }: Props) {
@@ -74,7 +76,7 @@ export function CauseAiManualDialog({
     setError(null);
     setCandidates([]);
     try {
-      const list = await recommendCause({ category, situation });
+      const list = await recommendCause({ category, procedureType, situation });
       setCandidates(list);
     } catch (err) {
       setError(err instanceof Error ? err.message : "AI 推荐失败");
@@ -154,7 +156,7 @@ export function CauseAiManualDialog({
                       onSelect(c.cause.id, c.cause.name);
                       onOpenChange(false);
                     }}
-                    className="flex w-full flex-col items-start gap-1 rounded border border-border bg-background px-3 py-2.5 text-left transition hover:border-foreground/30 hover:bg-muted/30"
+                    className="flex w-full flex-col items-start gap-1 rounded-sm border border-border bg-background px-3 py-2.5 text-left transition-colors hover:border-input hover:bg-muted hover:text-foreground"
                   >
                     <div className="flex w-full items-center justify-between gap-2">
                       <span className="text-sm font-medium">{c.cause.name}</span>

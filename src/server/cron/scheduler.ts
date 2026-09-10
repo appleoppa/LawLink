@@ -26,6 +26,7 @@ import { scanArchiveOverdue } from "./jobs/archive-overdue";
 import { runAuditCleanup } from "./jobs/audit-cleanup";
 import { scanDueReminders } from "./jobs/scan-due-reminders";
 import { scanSealBackfillReminders } from "./jobs/scan-seal-backfill-reminders";
+import { runDatabaseBackup, backupCronEnabled } from "./jobs/backup-database";
 import { audit } from "@/server/audit";
 
 const TIMEZONE = "Asia/Shanghai";
@@ -128,7 +129,21 @@ export function registerCronJobs() {
     { timezone: TIMEZONE }
   );
 
+  // v0.50: 每天 02:30 数据库+文件存储备份（BACKUP_CRON_ENABLED=false 可关）
+  if (backupCronEnabled()) {
+    cron.schedule(
+      "30 2 * * *",
+      () =>
+        runWithFailureAudit(
+          "数据库备份",
+          "DATABASE_BACKUP_FAILED_CRON",
+          () => runDatabaseBackup()
+        ),
+      { timezone: TIMEZONE }
+    );
+  }
+
   console.log(
-    "[cron] 已注册 5 个定时作业（周报推送 / 归档逾期扫描 / AuditLog 清理 / 到期提醒扫描 / 用章回填提醒扫描），时区 Asia/Shanghai"
+    `[cron] 已注册 ${backupCronEnabled() ? 6 : 5} 个定时作业（周报推送 / 归档逾期扫描 / AuditLog 清理 / 到期提醒扫描 / 用章回填提醒扫描${backupCronEnabled() ? " / 数据库备份" : ""}），时区 Asia/Shanghai`
   );
 }

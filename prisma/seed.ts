@@ -193,6 +193,10 @@ async function main() {
   await seedV08SealConfigs(prisma);
   await seedV08Templates(prisma);
 
+  // v0.49: 法定期限规则库（全部经元典核验）
+  const { seedV49DeadlineRules } = await import("./seeds/v49-deadline-rules");
+  await seedV49DeadlineRules(prisma);
+
   console.log("\n✓ Seed 完成");
 }
 

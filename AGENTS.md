@@ -21,7 +21,7 @@
 |---|---|---|
 | 框架 | Next.js 16 App Router + TypeScript | SSR + RSC，单仓单进程 |
 | UI 组件 | **shadcn/ui** + Radix UI | 拷贝式组件，深度可定制 |
-| 样式 | **Tailwind CSS** | 暗色优先 |
+| 样式 | **Tailwind CSS** | 高密度浅色工作台，保留主题扩展能力 |
 | 动效 | **Framer Motion** | 微交互、页面切换 |
 | React | React 19 | Next.js 16 配套 |
 | 图标 | lucide-react | |
@@ -52,7 +52,8 @@ LawLink/
 │   │   ├── (app)/         # 登录后的主应用路由分组
 │   │   └── api/           # API 路由
 │   ├── components/
-│   │   ├── ui/            # shadcn/ui 组件（不直接改，按需重新生成）
+│   │   ├── ui/            # shadcn/Radix 原子组件与全局无障碍、动效适配
+│   │   ├── patterns/      # LawLink 跨页面视觉与交互模式
 │   │   ├── layout/        # AppShell、Sidebar、Topbar
 │   │   ├── matters/       # 案件相关组合组件
 │   │   └── ...
@@ -67,8 +68,9 @@ LawLink/
 ```
 
 **规则**：
-- `src/components/ui/` 只能放 shadcn CLI 生成的原子组件，业务组件放兄弟目录。
-- 跨页面复用的组件提到 `src/components/`，仅单页用的组件就近放在路由目录下 `_components/`。
+- `src/components/ui/` 只放 shadcn/Radix 原子组件。允许在原子层维护全站统一的语义 token、无障碍和基础动效适配，但禁止加入 LawLink 业务结构或领域判断；更新 shadcn 时必须审计并保留这些适配。
+- `src/components/patterns/` 放 `PageHeader`、`ListToolbar`、`FormSection`、全局动效策略等 LawLink 品牌化跨页面模式，不承载 Server Action 或领域状态机。
+- 跨页面复用的业务组件提到对应领域目录，仅单页用的组件就近放在路由目录下 `_components/`。
 - 业务规则（金额计算、状态机、冲突匹配算法）一律沉淀到 `src/lib/` 或 `src/server/`，禁止散落在页面里。
 
 ---
@@ -114,6 +116,7 @@ LawLink/
 
 - **角色**（V1）：`ADMIN` / `PRINCIPAL_LAWYER` / `LAWYER` / `ASSISTANT` / `FINANCE`。
 - **可见性**：`Matter` 默认只对 `owner` + `members` + `ADMIN` 可见；`FINANCE` 可见所有案件的财务字段但不能编辑案件正文。
+- **可见性的唯一例外——冲突检索**：冲突检索结果会跨越案件可见性，向检索人展示命中案件的**系统编号、案件名称、主办律师姓名、当事人角色**，但不给出跳转链接、不返回 `matterId`。理由是不跨案件就无法尽职审查，且检索人需要知道找谁核实。**例外仅限于此**：案件正文、财务、材料一律不得因冲突检索而对非成员开放。
 - **审计日志**（`AuditLog`）必须记录：登录/登出、案件创建/查看/编辑/归档、材料下载、财务变更、冲突检索、权限变更。
 - 第一版**不做字段级权限矩阵**，能用"角色 + 案件成员"覆盖的就不上更复杂的方案。
 

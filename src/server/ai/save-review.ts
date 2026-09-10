@@ -9,12 +9,12 @@ import { assertCanAccessMatter } from "@/lib/permissions";
 import { storage } from "@/lib/storage";
 import { sha256 } from "@/lib/storage/crypto";
 import { audit } from "@/server/audit";
-import { revalidatePath } from "next/cache";
 import type {
   ReviewItem,
   ReviewType,
   ReviewSeverity
 } from "@/lib/ai/review-parser";
+import { revalidateMatter } from "@/server/matters/route";
 
 const TYPE_CN: Record<ReviewType, string> = {
   MISSING: "缺失要素",
@@ -120,6 +120,6 @@ export async function saveReviewToMatter(input: {
     }
   });
 
-  revalidatePath(`/matters/${input.matterId}`);
+  await revalidateMatter(input.matterId);
   return { ok: true, documentId: doc.id, documentName: doc.name };
 }

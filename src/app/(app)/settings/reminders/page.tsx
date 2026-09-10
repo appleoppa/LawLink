@@ -6,7 +6,9 @@
  */
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
+import { getWebhookSettings } from "@/server/settings/webhook";
 import { ReminderScanButton } from "./_components/reminder-scan-button";
+import { WebhookSettingsCard } from "./_components/webhook-settings-card";
 
 export default async function RemindersSettingsPage() {
   const session = await getSession();
@@ -14,6 +16,8 @@ export default async function RemindersSettingsPage() {
   const isManager =
     session.user.role === "ADMIN" || session.user.role === "PRINCIPAL_LAWYER";
   if (!isManager) redirect("/settings/profile");
+
+  const webhook = await getWebhookSettings();
 
   return (
     <div className="space-y-5">
@@ -36,6 +40,8 @@ export default async function RemindersSettingsPage() {
           <ReminderScanButton />
         </div>
       </div>
+
+      <WebhookSettingsCard initialEnabled={webhook.enabled} initialUrl={webhook.url} />
     </div>
   );
 }

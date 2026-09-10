@@ -310,7 +310,7 @@ export function InvoiceCreateDialog({
                           key={m.id}
                           type="button"
                           onClick={() => pickMatter(m)}
-                          className="flex w-full flex-col rounded-sm border border-border bg-background px-2 py-1.5 text-left text-xs hover:border-primary"
+                          className="flex w-full flex-col rounded-sm border border-border bg-background px-2 py-1.5 text-left text-xs transition-colors hover:border-input hover:bg-muted hover:text-foreground"
                         >
                           <span className="font-mono text-[10.5px] text-muted-foreground">{m.internalCode}</span>
                           <span className="truncate">{m.title}</span>

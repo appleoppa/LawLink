@@ -1,22 +1,20 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  quality-and-build:
-    name: lint / typecheck / test / build
+  verify:
+    name: Verify
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
     services:
       postgres:
         image: postgres:16
@@ -27,44 +25,105 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U lawlink"
+          --health-cmd "pg_isready -U lawlink -d lawlink"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+
     env:
       DATABASE_URL: postgresql://lawlink:lawlink@localhost:5432/lawlink?schema=public
-      NEXTAUTH_SECRET: ci-only-placeholder-secret-0123456789abcdef
-      STORAGE_ENCRYPTION_KEY: uDUpHCB4N54CYIZ9UNukqi/itELBFMt+KO5ngRxQ13E=
-    steps:
-      - name: 拉取代码
-        uses: actions/checkout@v5
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: ci-only-nextauth-secret-change-in-deployments
+      # seed 会加密内置模板，必须是 base64 编码的 32 字节；仅供 CI 使用
+      STORAGE_ENCRYPTION_KEY: Y2ktb25seS1rZXktbm90LWZvci1kZXBsb3ltZW50cyE=
+      SEED_ADMIN_EMAIL: admin@lawlink.local
+      SEED_ADMIN_PASSWORD: ChangeMe!2026
 
-      - name: 安装 Node.js
-        uses: actions/setup-node@v5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
 
-      - name: 安装依赖
+      - name: Install dependencies
         run: npm ci
 
-      - name: Prisma 生成客户端
-        run: npx prisma generate
+      - name: Generate Prisma client
+        run: npm run prisma:generate
 
-      - name: 代码规范检查
+      - name: Lint
         run: npm run lint
 
-      - name: 类型检查
+      - name: Typecheck
         run: npm run typecheck
 
-      - name: Prisma schema 校验
+      - name: Validate Prisma schema
         run: npm run prisma:validate
 
-      - name: 数据库迁移（校验 migration 完整性）
+      # schema.prisma 与迁移历史必须一致。历史上两次事故都源于用 db push 改本地库
+      # 却没生成迁移：v0.44 保全三层模型四张表、Hearing 的 address/contact 两列，
+      # 都只存在于 schema 而不在迁移里，导致全新安装装不起来或一进工作台就崩。
+      #
+      # 注意 `prisma migrate status` 抓不到这类问题——它只检查迁移文件是否都执行过，
+      # 不检查执行结果是否等于 schema，所以会报 "up to date"。必须用 migrate diff。
+      #
+      # 本检查由 @liuzl 在 PR #3 中提出并给出具体方案，见该 PR 的 Suggested follow-up。
+      - name: Check for schema drift
+        run: |
+          npx prisma migrate diff \
+            --from-migrations prisma/migrations \
+            --to-schema-datamodel prisma/schema.prisma \
+            --shadow-database-url "$DATABASE_URL" \
+            --exit-code \
+          && echo "无漂移：迁移历史与 schema.prisma 一致" \
+          || (echo "::error::schema.prisma 与迁移历史不一致。请用 prisma migrate dev 生成迁移，不要用 db push 改库。" && exit 1)
+
+      # 以下三步模拟「全新安装」：迁移 → seed → 用 README 所载账号验证可登录。
+      # v0.44 曾因空迁移导致全新安装无法初始化，且两个多月无人发现，
+      # 原因就是没有任何环节会从零装一次。这三步专门守住这条线。
+      - name: Migrate fresh database
         run: npx prisma migrate deploy
 
-      - name: 单元测试
+      - name: Seed fresh database
+        run: npx prisma db seed
+
+      - name: Verify fresh install is usable
+        run: |
+          node -e "
+          const { PrismaClient } = require('@prisma/client');
+          const bcrypt = require('bcryptjs');
+          const prisma = new PrismaClient();
+          (async () => {
+            const email = process.env.SEED_ADMIN_EMAIL;
+            const password = process.env.SEED_ADMIN_PASSWORD;
+            const admin = await prisma.user.findUnique({ where: { email } });
+            if (!admin) throw new Error('seed 未创建管理员账号：' + email);
+            if (!(await bcrypt.compare(password, admin.passwordHash))) {
+              throw new Error('README 所载初始密码无法登录，seed 与文档已不一致');
+            }
+            const causes = await prisma.causeOfAction.count();
+            const templates = await prisma.documentTemplate.count();
+            const rules = await prisma.deadlineRule.count();
+            if (causes === 0) throw new Error('案由库为空');
+            if (templates === 0) throw new Error('内置文书模板为空');
+            if (rules === 0) throw new Error('法定期限规则为空');
+            // 以下查询按 schema 的全部列取数，任何迁移漏建的列都会在此暴露。
+            // 保全四张表（v0.44）与 Hearing.address/contact 都曾因漂移缺失。
+            await prisma.preservationCase.count();
+            await prisma.hearing.findMany({ take: 1 });
+            await prisma.deadline.findMany({ take: 1 });
+            await prisma.matter.findMany({ take: 1 });
+            console.log('全新安装可用：案由 ' + causes + ' / 模板 ' + templates + ' / 期限规则 ' + rules);
+            await prisma.\$disconnect();
+          })().catch((e) => { console.error(e.message); process.exit(1); });
+          "
+
+      - name: Test
         run: npm run test:run
 
-      - name: 生产构建
+      - name: Build
         run: npm run build

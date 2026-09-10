@@ -24,7 +24,7 @@ export default async function DashboardPage() {
     ]);
 
   return (
-    <div className="space-y-5 pb-8">
+    <div className="space-y-4 pb-8">
       {/* v0.47：顶部问候区 + 右侧近期日程 */}
       <DashboardGreeting
         name={session?.user?.name ?? ""}
@@ -35,12 +35,9 @@ export default async function DashboardPage() {
         }}
         scheduleItems={scheduleItems}
       />
-
-      <div className="ll-rule" />
-
       <KpiCards data={kpis} />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">
         <div className="lg:col-span-3">
           <RevenueChart data={revenueTrend} />
         </div>

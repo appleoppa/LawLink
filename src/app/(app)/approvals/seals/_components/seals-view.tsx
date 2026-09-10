@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import { motion } from "framer-motion";
 import { Stamp, Plus, FileText, AlertOctagon, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -17,6 +16,7 @@ import {
   SEAL_STATUS_CN,
   SEAL_STATUS_COLOR
 } from "./seal-types";
+import { matterHref } from "@/lib/matters/route";
 
 type Tab = "allMine" | "pending" | "processed" | "toApprove" | "firm";
 
@@ -148,11 +148,7 @@ export function SealsView({
       </div>
 
       {/* 表格 */}
-      <motion.div
-        initial={false}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-      >
+      <div>
         {rows.length === 0 ? (
           <div className="ll-surface rounded-lg p-12 text-center text-sm text-muted-foreground">
             <FileText className="mx-auto mb-2 h-6 w-6 opacity-40" />
@@ -187,7 +183,7 @@ export function SealsView({
             </table>
           </div>
         )}
-      </motion.div>
+      </div>
 
       <SealRequestSheet
         open={sheetOpen}
@@ -314,7 +310,7 @@ function SealRow({
       <td className="px-3 py-2 text-muted-foreground">
         {row.matter ? (
           <a
-            href={`/matters/${row.matter.id}`}
+            href={matterHref(row.matter)}
             className="inline-block max-w-[180px] truncate text-[11px] hover:text-primary"
             title={row.matter.title}
           >

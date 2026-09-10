@@ -82,8 +82,23 @@ export const hearingCreateSchema = z.object({
   notes: z.string().max(2000).optional().or(z.literal(""))
 });
 
+export const procedureStageCreateSchema = z.object({
+  procedureId: z.string().cuid(),
+  name: z.string().trim().min(1, "环节名称必填").max(40, "环节名称不能超过 40 个字"),
+  description: z.string().max(500, "说明不能超过 500 个字").optional().or(z.literal("")),
+  insertPosition: z.enum(["START", "END", "AFTER"]).default("END"),
+  insertAfterStageId: z.string().cuid().optional().or(z.literal("")),
+  insertAfterStageName: z.string().max(40).optional().or(z.literal(""))
+});
+
+export const procedureStageRemoveSchema = z.object({
+  id: z.string().cuid()
+});
+
 export type ProcedureCreateInput = z.infer<typeof procedureCreateSchema>;
 export type ProcedureUpdateInput = z.infer<typeof procedureUpdateSchema>;
+export type ProcedureStageCreateInput = z.infer<typeof procedureStageCreateSchema>;
+export type ProcedureStageRemoveInput = z.infer<typeof procedureStageRemoveSchema>;
 export type DeadlineCategory = z.infer<typeof deadlineCategorySchema>;
 export type DeadlineCreateInput = Omit<z.infer<typeof deadlineCreateSchema>, "dueAt"> & {
   dueAt: Date | string | number;

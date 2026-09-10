@@ -41,6 +41,7 @@ import {
 import { toast } from "sonner";
 import { runCheckAndSave } from "@/server/conflicts/actions";
 import { litigationStandingLabel, matterCategoryLabel, matterStatusLabel } from "@/lib/enums";
+import { matterHref } from "@/lib/matters/route";
 
 type QueryRole = "CLIENT_PARTY" | "OPPOSING_PARTY" | "THIRD_PARTY";
 type QueryRow = { role: QueryRole; name: string; idNumber: string };
@@ -355,7 +356,7 @@ export function ConflictDialog({
                     const style = severityStyle[h.severity];
                     const targetHref =
                       h.matterInfo?.canViewMatter && h.matterInfo.matterId
-                        ? `/matters/${h.matterInfo.matterId}`
+                        ? matterHref({ id: h.matterInfo.matterId, internalCode: h.matterInfo.internalCode })
                         : h.targetType === "Client"
                           ? `/clients/${h.targetId}`
                           : null;

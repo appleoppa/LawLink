@@ -48,6 +48,13 @@ const litigationIntakeCategories = new Set([
   "ADMINISTRATIVE"
 ]);
 
+// HTML number 输入框留空时，react-hook-form 的 valueAsNumber 会产生 NaN。
+// 可选金额应将其视为“未填写”，否则 resolver 会在用户看不到的字段上阻断提交。
+const optionalNonnegativeNumberSchema = z.preprocess(
+  (value) => (typeof value === "number" && Number.isNaN(value) ? undefined : value),
+  z.coerce.number().nonnegative("金额不能为负数").optional()
+);
+
 const intakeCreateBaseSchema = z.object({
   // 基础
   // 案件名称去除所有空白字符（产品要求，避免列表/详情显示空格）
@@ -66,7 +73,7 @@ const intakeCreateBaseSchema = z.object({
   firstAgency: z.string().max(120).optional().or(z.literal("")),
   jurisdiction: z.string().max(120).optional().or(z.literal("")),
   ourStanding: litigationStandingSchema.optional(),
-  claimAmount: z.coerce.number().nonnegative().optional(),
+  claimAmount: optionalNonnegativeNumberSchema,
   claimDescription: z.string().max(500).optional().or(z.literal("")),
 
   // v0.30: 律协备案 + 是否反诉
@@ -95,7 +102,7 @@ const intakeCreateBaseSchema = z.object({
 
   // 律师费
   feeType: feeTypeSchema.optional(),
-  feeAmount: z.coerce.number().nonnegative().optional(), // FIXED: 总金额；CONTINGENCY: 基础办案费
+  feeAmount: optionalNonnegativeNumberSchema, // FIXED: 总金额；CONTINGENCY: 基础办案费
   contingencyTerms: z.string().max(1000).optional().or(z.literal("")), // CONTINGENCY 收费方式
   feeSchedule: z.string().max(500).optional().or(z.literal("")),
   feeNote: z.string().max(500).optional().or(z.literal("")),

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { motion } from "framer-motion";
 import {
   FolderClosed,
   FolderOpen,
@@ -68,11 +67,7 @@ export function FoldersPanel({
     : loose;
 
   return (
-    <motion.div
-      initial={false}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-    >
+    <div>
       {/* 顶部操作栏 */}
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-lg">卷宗</h3>
@@ -180,7 +175,7 @@ export function FoldersPanel({
         folders={folders}
         templates={templates}
       />
-    </motion.div>
+    </div>
   );
 }
 

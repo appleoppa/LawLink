@@ -410,7 +410,7 @@ function CategoryChip({
         "inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-colors",
         active
           ? "border-primary bg-primary/15 text-primary"
-          : "border-border bg-background text-muted-foreground hover:border-input"
+          : "border-border bg-background text-muted-foreground hover:border-input hover:bg-muted hover:text-foreground"
       )}
     >
       <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />

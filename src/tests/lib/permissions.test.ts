@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isManager, matterVisibilityFilter, intakeVisibilityFilter, clientVisibilityFilter } from "@/lib/permissions";
+import { isManager, matterVisibilityFilter, intakeVisibilityFilter } from "@/lib/permissions";
 
 describe("isManager", () => {
   it("ADMIN 是 manager", () => expect(isManager("ADMIN")).toBe(true));

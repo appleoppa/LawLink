@@ -14,9 +14,15 @@ import {
 } from "@/lib/enums";
 import { ConflictSection } from "./_components/conflict-section";
 import { IntakeActions } from "./_components/intake-actions";
+import { matterHref } from "@/lib/matters/route";
 
-export default async function IntakeDetailPage({ params }: { params: { id: string } }) {
-  const [intake, session] = await Promise.all([getIntakeById(params.id), getSession()]);
+type PageProps = {
+  params: Promise<{ id: string }>;
+};
+
+export default async function IntakeDetailPage({ params }: PageProps) {
+  const { id } = await params;
+  const [intake, session] = await Promise.all([getIntakeById(id), getSession()]);
   if (!intake) notFound();
 
   const opposing = intake.parties.filter((p) => p.role === "OPPOSING_PARTY");
@@ -152,7 +158,7 @@ export default async function IntakeDetailPage({ params }: { params: { id: strin
               </Badge>
               {intake.matter && (
                 <Link
-                  href={`/matters/${intake.matter.id}`}
+                  href={matterHref(intake.matter)}
                   className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs text-primary hover:bg-primary/15"
                 >
                   已转为案件 {intake.matter.internalCode} →

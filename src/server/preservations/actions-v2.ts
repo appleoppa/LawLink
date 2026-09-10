@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import { assertMatterWritable } from "@/lib/archive/guard";
+import { serializeDecimals } from "@/lib/decimal";
 import { assertCanAssociateMatter, matterAssociationFilter } from "@/lib/permissions";
 import {
   caseCreateSchema,
@@ -19,6 +20,7 @@ import {
   propertyRenewSchema,
   deleteSchema,
 } from "./schemas-v2";
+import { revalidateMatter } from "@/server/matters/route";
 
 // ━━━━ Read ━━━━
 
@@ -49,7 +51,7 @@ export async function listPreservationCases(input?: z.input<typeof caseListFilte
     ];
   }
 
-  return prisma.preservationCase.findMany({
+  const rows = await prisma.preservationCase.findMany({
     where,
     orderBy: [{ status: "asc" }, { createdAt: "desc" }],
     include: {
@@ -68,6 +70,7 @@ export async function listPreservationCases(input?: z.input<typeof caseListFilte
       }
     }
   });
+  return serializeDecimals(rows);
 }
 
 type PreservationCaseAccess = {
@@ -152,7 +155,7 @@ export async function createPreservationCase(input: z.infer<typeof caseCreateSch
   });
 
   revalidatePath("/preservation");
-  if (created.matterId) revalidatePath(`/matters/${created.matterId}`);
+  if (created.matterId) await revalidateMatter(created.matterId);
   return { ok: true, id: created.id };
 }
 
@@ -186,7 +189,7 @@ export async function updatePreservationCase(input: z.infer<typeof caseUpdateSch
   });
 
   revalidatePath("/preservation");
-  if (existing.matterId) revalidatePath(`/matters/${existing.matterId}`);
+  if (existing.matterId) await revalidateMatter(existing.matterId);
   return { ok: true };
 }
 
@@ -210,7 +213,7 @@ export async function deletePreservationCase(input: z.infer<typeof deleteSchema>
   });
 
   revalidatePath("/preservation");
-  if (cs.matterId) revalidatePath(`/matters/${cs.matterId}`);
+  if (cs.matterId) await revalidateMatter(cs.matterId);
   return { ok: true };
 }
 
@@ -228,7 +231,7 @@ export async function addTarget(input: z.infer<typeof targetCreateSchema>) {
   });
 
   revalidatePath("/preservation");
-  if (cs.matterId) revalidatePath(`/matters/${cs.matterId}`);
+  if (cs.matterId) await revalidateMatter(cs.matterId);
   return { ok: true, id: created.id };
 }
 
@@ -303,7 +306,7 @@ export async function addProperty(input: z.infer<typeof propertyCreateSchema>) {
   });
 
   revalidatePath("/preservation");
-  if (target.case.matterId) revalidatePath(`/matters/${target.case.matterId}`);
+  if (target.case.matterId) await revalidateMatter(target.case.matterId);
   return { ok: true, id: created.id };
 }
 
@@ -364,11 +367,11 @@ export async function renewProperty(input: z.infer<typeof propertyRenewSchema>) 
   ]);
 
   revalidatePath("/preservation");
-  if (prop.target.case.matterId) revalidatePath(`/matters/${prop.target.case.matterId}`);
+  if (prop.target.case.matterId) await revalidateMatter(prop.target.case.matterId);
   return { ok: true };
 }
 
-export async function liftProperty(propertyId: string, note?: string) {
+export async function liftProperty(propertyId: string) {
   const session = await requireSession();
   const prop = await prisma.preservationProperty.findUnique({
     where: { id: propertyId },
@@ -386,7 +389,7 @@ export async function liftProperty(propertyId: string, note?: string) {
   });
 
   revalidatePath("/preservation");
-  if (prop.target.case.matterId) revalidatePath(`/matters/${prop.target.case.matterId}`);
+  if (prop.target.case.matterId) await revalidateMatter(prop.target.case.matterId);
   return { ok: true };
 }
 
@@ -411,7 +414,7 @@ export async function listExpiringProperties(daysAhead = 60) {
   const end = new Date();
   end.setDate(end.getDate() + daysAhead);
 
-  return prisma.preservationProperty.findMany({
+  const rows = await prisma.preservationProperty.findMany({
     where: {
       status: { in: ["ACTIVE", "RENEWED"] },
       expiryDate: { lte: end },
@@ -435,4 +438,5 @@ export async function listExpiringProperties(daysAhead = 60) {
       }
     }
   });
+  return serializeDecimals(rows);
 }

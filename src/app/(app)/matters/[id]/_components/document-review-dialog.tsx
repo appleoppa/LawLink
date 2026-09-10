@@ -250,7 +250,7 @@ export function DocumentReviewDialog({
                         <button
                           type="button"
                           onClick={() => openHistoryDetail(h)}
-                          className="flex w-full items-center justify-between gap-2 rounded border border-border bg-background px-3 py-2 text-left text-xs transition hover:border-foreground/30 hover:bg-muted/30"
+                          className="flex w-full items-center justify-between gap-2 rounded-sm border border-border bg-background px-3 py-2 text-left text-xs transition-colors hover:border-input hover:bg-muted hover:text-foreground"
                         >
                           <div className="flex flex-col">
                             <span className="font-mono text-foreground">

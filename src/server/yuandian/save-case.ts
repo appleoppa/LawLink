@@ -12,8 +12,8 @@ import { assertCanAccessMatter } from "@/lib/permissions";
 import { storage } from "@/lib/storage";
 import { sha256 } from "@/lib/storage/crypto";
 import { audit } from "@/server/audit";
-import { revalidatePath } from "next/cache";
 import type { CaseSearchHit, VectorCaseHit } from "./cases";
+import { revalidateMatter } from "@/server/matters/route";
 
 export type SaveCaseInput = {
   matterId: string;
@@ -110,7 +110,7 @@ export async function saveCaseToMatter(input: SaveCaseInput): Promise<{
     }
   });
 
-  revalidatePath(`/matters/${input.matterId}`);
+  await revalidateMatter(input.matterId);
 
   return { ok: true, documentId: doc.id, documentName: doc.name };
 }
@@ -225,7 +225,7 @@ export async function saveVectorCaseToMatter(input: SaveVectorCaseInput): Promis
     }
   });
 
-  revalidatePath(`/matters/${input.matterId}`);
+  await revalidateMatter(input.matterId);
 
   return { ok: true, documentId: doc.id, documentName: doc.name };
 }

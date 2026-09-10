@@ -197,7 +197,7 @@ export const matterListQuerySchema = z.object({
   clientId: z.string().cuid().optional(),
   intakeDateFrom: z.coerce.date().optional(),
   intakeDateTo: z.coerce.date().optional(),
-  sortBy: z.enum(["hearing", "intakeDate", "claimAmount"]).default("intakeDate"),
+  sortBy: z.enum(["hearing", "intakeDate", "claimAmount", "archivedAt"]).default("intakeDate"),
   sortDir: z.enum(["asc", "desc"]).default("desc"),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20)

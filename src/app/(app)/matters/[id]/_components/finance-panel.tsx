@@ -16,12 +16,14 @@ import type { FinancePayload, UserOption } from "./matter-detail-tabs";
 export function FinancePanel({
   matterId,
   finance,
-  canRequestInvoice
+  canRequestInvoice,
+  compact = false
 }: {
   matterId: string;
   finance: FinancePayload;
   userOptions: UserOption[];
   canRequestInvoice: boolean;
+  compact?: boolean;
 }) {
   const [invoiceOpen, setInvoiceOpen] = useState(false);
 
@@ -33,16 +35,19 @@ export function FinancePanel({
   const outstanding = Math.max(stats.receivable - stats.received, 0);
 
   const cards: { label: string; value: number; tone: StatTone; className?: string }[] = [
-    { label: "合同额", value: stats.contractAmount, tone: "neutral", className: "col-span-2" },
+    { label: "合同约定律师费", value: stats.contractAmount, tone: "neutral", className: "col-span-3" },
     { label: "已收", value: stats.received, tone: "emerald" },
     { label: "待收", value: outstanding, tone: "amber" },
     { label: "支出", value: stats.cost, tone: "red" },
-    { label: "分成", value: stats.commission, tone: "neutral" }
+    // v1.0: 分成降级——没配分成方案的案件不展示该卡（独立律师无此概念）
+    ...(stats.commission > 0
+      ? [{ label: "分成", value: stats.commission, tone: "neutral" as StatTone }]
+      : [])
   ];
 
   return (
     <section className="rounded-lg border border-border bg-card">
-      <header className="border-b border-border px-4 py-2">
+      <header className={compact ? "border-b border-border px-3 py-2" : "border-b border-border px-4 py-2"}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="flex items-center gap-1.5 text-[13px] font-medium">
             <Wallet className="h-3.5 w-3.5 text-primary" />
@@ -62,7 +67,13 @@ export function FinancePanel({
       </header>
 
       {/* 紧凑指标卡（对照案件云"财务概览"指标看板） */}
-      <div className="grid grid-cols-3 gap-px border-b border-border bg-border sm:grid-cols-6">
+      <div
+        className={
+          compact
+            ? "grid grid-cols-3 gap-px border-b border-border bg-border"
+            : "grid grid-cols-3 gap-px border-b border-border bg-border sm:grid-cols-6"
+        }
+      >
         {cards.map((c) => (
           <StatCard
             key={c.label}
@@ -70,6 +81,7 @@ export function FinancePanel({
             value={c.value}
             tone={c.tone}
             className={c.className}
+            compact={compact}
           />
         ))}
       </div>
@@ -81,8 +93,15 @@ export function FinancePanel({
       ) : (
         <ul className="divide-y divide-border">
           {received.map((e) => (
-            <li key={e.id} className="flex items-center gap-3 px-4 py-2 text-[12.5px]">
-              <span className="font-mono tabular text-emerald-600 text-[14px] font-medium">
+            <li
+              key={e.id}
+              className={
+                compact
+                  ? "flex items-center gap-2 px-3 py-2 text-[12px]"
+                  : "flex items-center gap-3 px-4 py-2 text-[12.5px]"
+              }
+            >
+              <span className="shrink-0 font-mono tabular text-[14px] font-medium text-emerald-600">
                 {formatCurrency(Number(e.amount))}
               </span>
               <span className="min-w-0 flex-1 truncate text-muted-foreground">
@@ -97,7 +116,7 @@ export function FinancePanel({
                 )}
                 {e.note && <span className="ml-2 text-[10.5px]">· {e.note}</span>}
               </span>
-              <span className="font-mono text-[11px] tabular text-muted-foreground">
+              <span className="shrink-0 font-mono text-[11px] tabular text-muted-foreground">
                 {new Date(e.occurredAt).toLocaleDateString("zh-CN")}
               </span>
             </li>
@@ -122,12 +141,14 @@ function StatCard({
   label,
   value,
   tone,
-  className
+  className,
+  compact
 }: {
   label: string;
   value: number;
   tone: StatTone;
   className?: string;
+  compact?: boolean;
 }) {
   const cls =
     tone === "emerald"
@@ -138,11 +159,11 @@ function StatCard({
           ? "text-red-600"
           : "text-foreground";
   return (
-    <div className={`bg-card px-3 py-2.5 text-center ${className ?? ""}`}>
+    <div className={`bg-card px-3 text-center ${compact ? "py-2" : "py-2.5"} ${className ?? ""}`}>
       <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
         {label}
       </div>
-      <div className={`mt-1 font-mono text-[15px] leading-none tabular ${cls}`}>
+      <div className={`mt-1 font-mono leading-none tabular ${compact ? "text-[13px]" : "text-[15px]"} ${cls}`}>
         {formatCurrency(value, { compact: true })}
       </div>
     </div>

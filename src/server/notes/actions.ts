@@ -1,12 +1,12 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import { assertMatterWritable } from "@/lib/archive/guard";
 import { assertCanAccessMatter } from "@/lib/permissions";
+import { revalidateMatter } from "@/server/matters/route";
 
 const noteChannelSchema = z.enum(["PHONE", "WECHAT", "EMAIL", "MEETING", "COURT", "OTHER"]);
 
@@ -52,7 +52,7 @@ export async function createNote(input: NoteCreateInput) {
     detail: { matterId: data.matterId, channel: data.channel }
   });
 
-  revalidatePath(`/matters/${data.matterId}`);
+  await revalidateMatter(data.matterId);
   return { ok: true, id: created.id };
 }
 
@@ -85,7 +85,7 @@ export async function updateNote(input: NoteUpdateInput) {
     targetId: data.id
   });
 
-  revalidatePath(`/matters/${existing.matterId}`);
+  await revalidateMatter(existing.matterId);
   return { ok: true };
 }
 
@@ -110,7 +110,7 @@ export async function deleteNote(id: string) {
     targetId: id
   });
 
-  revalidatePath(`/matters/${existing.matterId}`);
+  await revalidateMatter(existing.matterId);
   return { ok: true };
 }
 

@@ -48,10 +48,10 @@ export interface BuiltInTemplate extends BuiltInTemplateMeta {
 // ============================================================
 // 辅助
 // ============================================================
-const FONT_TITLE = "SimHei";
-const FONT_BODY = "FangSong";
+export const FONT_TITLE = "SimHei";
+export const FONT_BODY = "FangSong";
 
-function title(text: string): Paragraph {
+export function title(text: string): Paragraph {
   return new Paragraph({
     alignment: AlignmentType.CENTER,
     heading: HeadingLevel.HEADING_1,
@@ -62,15 +62,7 @@ function title(text: string): Paragraph {
   });
 }
 
-function subtitle(text: string): Paragraph {
-  return new Paragraph({
-    alignment: AlignmentType.CENTER,
-    spacing: { before: 80, after: 200 },
-    children: [new TextRun({ text, font: FONT_TITLE, size: 28, bold: true })]
-  });
-}
-
-function body(text: string, opts?: { indent?: boolean; align?: (typeof AlignmentType)[keyof typeof AlignmentType]; bold?: boolean }): Paragraph {
+export function body(text: string, opts?: { indent?: boolean; align?: (typeof AlignmentType)[keyof typeof AlignmentType]; bold?: boolean }): Paragraph {
   return new Paragraph({
     alignment: opts?.align ?? AlignmentType.LEFT,
     spacing: { before: 60, after: 60, line: 360 },
@@ -79,7 +71,7 @@ function body(text: string, opts?: { indent?: boolean; align?: (typeof Alignment
   });
 }
 
-function blank(): Paragraph {
+export function blank(): Paragraph {
   return new Paragraph({ children: [new TextRun({ text: "" })], spacing: { before: 60, after: 60 } });
 }
 
@@ -107,7 +99,7 @@ function kvRow(k: string, v: string): TableRow {
   });
 }
 
-function kvTable(rows: [string, string][]): Table {
+export function kvTable(rows: [string, string][]): Table {
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: {
@@ -149,7 +141,7 @@ function sectionDefaults(children: (Paragraph | Table)[]): ISectionOptions {
   };
 }
 
-async function pack(children: (Paragraph | Table)[]): Promise<Buffer> {
+export async function pack(children: (Paragraph | Table)[]): Promise<Buffer> {
   const doc = new Document({
     creator: "LawLink",
     title: "LawLink 模板",

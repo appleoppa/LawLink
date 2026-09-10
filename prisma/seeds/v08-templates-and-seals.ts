@@ -9,6 +9,7 @@
  */
 import type { PrismaClient } from "@prisma/client";
 import { BUILTIN_TEMPLATES } from "../../src/lib/template-builder";
+import { V1_TEMPLATES } from "../../src/lib/template-builder-v1";
 import { writeFile } from "../../src/lib/storage/local";
 import { encryptBuffer, sha256 } from "../../src/lib/storage/crypto";
 
@@ -25,7 +26,8 @@ export async function seedV08Templates(prisma: PrismaClient) {
 
   let created = 0;
   let skipped = 0;
-  for (const tmpl of BUILTIN_TEMPLATES) {
+  // v1.0 P3：首批 10 个 + 第二批 12 个（PRD §11.3 目标 20+）
+  for (const tmpl of [...BUILTIN_TEMPLATES, ...V1_TEMPLATES]) {
     const existing = await prisma.documentTemplate.findFirst({
       where: { name: tmpl.name, isBuiltIn: true },
       select: { id: true }

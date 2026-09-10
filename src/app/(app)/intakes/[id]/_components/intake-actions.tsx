@@ -23,6 +23,7 @@ import {
   markIntakeNeedsRevision,
   resubmitIntake
 } from "@/server/intakes/actions";
+import { matterHref } from "@/lib/matters/route";
 
 export function IntakeActions({
   intakeId,
@@ -90,7 +91,7 @@ export function IntakeActions({
       try {
         const res = await convertIntakeToMatter(intakeId);
         toast.success(`已转化为案件 ${res.internalCode}`);
-        router.push(`/matters/${res.matterId}`);
+        router.push(matterHref({ id: res.matterId, internalCode: res.internalCode }));
       } catch (err) {
         toast.error("转化失败", {
           description: err instanceof Error ? err.message : ""

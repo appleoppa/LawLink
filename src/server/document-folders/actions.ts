@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -15,6 +14,7 @@ import {
   folderReorderSchema,
   moveDocumentToFolderSchema
 } from "./schemas";
+import { revalidateMatter } from "@/server/matters/route";
 
 /** 判断当前用户是否能编辑该案件的卷宗结构（仅本案 LEAD / CO_LEAD） */
 async function requireFolderEditor(matterId: string, session: { user: { id: string; role: string } }) {
@@ -72,7 +72,7 @@ export async function createFolder(input: z.infer<typeof folderCreateSchema>) {
     detail: { matterId: data.matterId, name: data.name }
   });
 
-  revalidatePath(`/matters/${data.matterId}`);
+  await revalidateMatter(data.matterId);
   return { ok: true, id: created.id };
 }
 
@@ -108,7 +108,7 @@ export async function renameFolder(input: z.infer<typeof folderRenameSchema>) {
     detail: { name: data.name }
   });
 
-  revalidatePath(`/matters/${folder.matterId}`);
+  await revalidateMatter(folder.matterId);
   return { ok: true };
 }
 
@@ -142,7 +142,7 @@ export async function deleteFolder(input: z.infer<typeof folderDeleteSchema>) {
     detail: { matterId: folder.matterId, documentsReleased: folder._count.documents }
   });
 
-  revalidatePath(`/matters/${folder.matterId}`);
+  await revalidateMatter(folder.matterId);
   return { ok: true };
 }
 
@@ -161,7 +161,7 @@ export async function reorderFolders(input: z.infer<typeof folderReorderSchema>)
     )
   );
 
-  revalidatePath(`/matters/${data.matterId}`);
+  await revalidateMatter(data.matterId);
   return { ok: true };
 }
 
@@ -201,6 +201,6 @@ export async function moveDocumentToFolder(input: z.infer<typeof moveDocumentToF
     detail: { folderId: data.folderId }
   });
 
-  revalidatePath(`/matters/${doc.matterId}`);
+  await revalidateMatter(doc.matterId);
   return { ok: true };
 }

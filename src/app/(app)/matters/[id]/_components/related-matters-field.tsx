@@ -13,8 +13,9 @@ import {
   addMatterLink,
   removeMatterLink
 } from "@/server/matters/actions";
+import { matterHref } from "@/lib/matters/route";
 
-type MatterRef = { id: string; internalCode: string; title: string };
+type MatterRef = { id: string; internalCode: string | null; firmCaseNo?: string | null; title: string };
 
 export function RelatedMattersField({
   matterId,
@@ -97,7 +98,7 @@ export function RelatedMattersField({
             autoFocus
             value={query}
             onChange={(e) => runSearch(e.target.value)}
-            placeholder="搜索案件名称 / 系统编号"
+            placeholder="搜索案件名称 / 所内案号"
             className="h-8 pl-7 text-xs"
           />
         </div>
@@ -115,11 +116,13 @@ export function RelatedMattersField({
                 type="button"
                 onClick={() => add(m.id)}
                 disabled={pending}
-                className="flex w-full flex-col rounded-sm border border-border bg-background px-2 py-1.5 text-left text-xs hover:border-primary disabled:opacity-50"
+                className="flex w-full flex-col rounded-sm border border-border bg-background px-2 py-1.5 text-left text-xs transition-colors hover:border-input hover:bg-muted hover:text-foreground disabled:opacity-50"
               >
-                <span className="font-mono text-[10.5px] text-muted-foreground">
-                  {m.internalCode}
-                </span>
+                {m.firmCaseNo ? (
+                  <span className="font-mono text-[10.5px] text-muted-foreground">
+                    {m.firmCaseNo}
+                  </span>
+                ) : null}
                 <span className="truncate">{m.title}</span>
               </button>
             ))
@@ -137,13 +140,12 @@ export function RelatedMattersField({
           className="group flex min-w-0 max-w-full items-center gap-1 text-[12px]"
         >
           <Link
-            href={`/matters/${m.id}`}
+            href={matterHref(m)}
             target="_blank"
             rel="noreferrer"
             className="inline-flex min-w-0 items-center gap-1 text-primary hover:underline"
-            title={`${m.internalCode} ${m.title}`}
+            title={m.firmCaseNo ? `${m.firmCaseNo} ${m.title}` : m.title}
           >
-            {/* v0.43 项1：关联案件展示不再显示系统编号，仅标题（编号仍在 hover title） */}
             <span className="max-w-[260px] truncate">{m.title}</span>
           </Link>
           {canManage && (

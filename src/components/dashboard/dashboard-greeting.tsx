@@ -3,10 +3,10 @@
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus, Calendar, AlertTriangle, ArrowRight } from "lucide-react";
-import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { ConflictSearchButton } from "./conflict-search-button";
 import type { ScheduleItem } from "@/server/dashboard/actions";
+import { matterHref } from "@/lib/matters/route";
 
 function getGreeting(hour: number) {
   if (hour < 6) return "夜深了";
@@ -14,12 +14,6 @@ function getGreeting(hour: number) {
   if (hour < 13) return "中午好";
   if (hour < 18) return "下午好";
   return "晚上好";
-}
-
-const WEEKDAY_LABELS = ["日", "一", "二", "三", "四", "五", "六"] as const;
-
-export function formatDashboardDateLabel(date: Date) {
-  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 星期${WEEKDAY_LABELS[date.getDay()]}`;
 }
 
 const typeMeta = {
@@ -40,35 +34,37 @@ export function DashboardGreeting({
   const router = useRouter();
   const today = new Date();
   const greeting = getGreeting(today.getHours());
-  const dateLabel = formatDashboardDateLabel(today);
+  const dateLabel = today.toLocaleDateString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short"
+  });
+  const focusItem = scheduleItems[0] ?? null;
 
   return (
-    <motion.section
-      initial={false}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: [0.2, 0.7, 0.3, 1] }}
-      className="grid grid-cols-1 gap-4 py-3 lg:grid-cols-5"
-    >
-      {/* 左侧：问候 + 统计 + 按钮 */}
-      <div className="flex flex-col gap-4 lg:col-span-3">
-        <span className="text-xs text-muted-foreground">{dateLabel}</span>
-
-        <div>
-          <h1 className="text-[clamp(1.5rem,2.6vw,2.25rem)] font-medium leading-[1.1] tracking-tight">
+    <section className="grid grid-cols-1 gap-3 lg:grid-cols-[1.7fr_1fr]">
+      <div className="ll-hero-surface flex min-h-[150px] flex-col justify-between px-5 py-4">
+        <div className="relative z-[1]">
+          <div className="mb-2 inline-flex items-center gap-2 text-[11.5px] text-muted-foreground">
+            <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-[10.5px] tabular">
+              {dateLabel.replace(/\//g, " / ")}
+            </span>
+          </div>
+          <h1 className="text-[22px] font-semibold leading-tight">
             {greeting}
-            {name && <span className="text-foreground/85">，{name}</span>}
-            <span className="text-muted-foreground/50">。</span>
+            {name && <span className="text-primary">，{name}</span>}
           </h1>
-          <p className="mt-2 max-w-xl text-[0.875rem] leading-relaxed text-muted-foreground">
+          <p className="mt-1.5 max-w-xl text-[13px] leading-relaxed text-muted-foreground">
             今天有 <Num>{summary.todayDeadlineCount}</Num> 件事需处理；本周开庭{" "}
             <Num>{summary.weekHearingCount}</Num> 场；近期期限 <Num>{summary.nearTermCount}</Num> 项。
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="relative z-[1] mt-3 flex flex-wrap items-center gap-2">
           <Button
             onClick={() => router.push("/matters?tab=intake&new=1")}
-            className="h-9 gap-1.5 px-4 shadow-sm"
+            className="gap-1.5 px-4"
           >
             <Plus className="h-4 w-4" strokeWidth={2} />
             新建收案
@@ -77,8 +73,46 @@ export function DashboardGreeting({
         </div>
       </div>
 
-      {/* 右侧：近期日程 */}
-      <div className="ll-surface min-w-0 p-3 lg:col-span-2">
+      <Link
+        href={focusItem?.matterId
+          ? matterHref({ id: focusItem.matterId, internalCode: focusItem.matterCode })
+          : "/schedule"}
+        className="ll-surface group relative flex min-h-[150px] min-w-0 flex-col justify-between overflow-hidden p-4 transition-colors hover:border-input hover:bg-muted/35"
+      >
+        <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-red-500/10 blur-sm" />
+        <div className="relative z-[1]">
+          <div className="flex items-center gap-2 text-[10.5px] font-semibold uppercase text-muted-foreground">
+            <span className="ll-dot bg-[#B91C1C] shadow-[0_0_0_3px_rgba(185,28,28,0.14)]" />
+            今日焦点
+          </div>
+          {focusItem ? (
+            <>
+              <div className="mt-2 flex items-baseline gap-1">
+                <span className="font-mono text-[40px] font-semibold leading-none tabular text-[#B91C1C]">
+                  {Math.max(focusItem.daysUntil, 0)}
+                </span>
+                <span className="text-[12px] text-muted-foreground">天</span>
+              </div>
+              <div className="text-[11.5px] text-muted-foreground">
+                距 {focusItem.title}
+              </div>
+            </>
+          ) : (
+            <div className="mt-8 text-sm text-muted-foreground">暂无近期期限</div>
+          )}
+        </div>
+        <div className="relative z-[1] min-w-0">
+          <div className="truncate text-[13px] font-medium text-foreground">
+            {focusItem?.matter ?? "日程看板"}
+          </div>
+          <div className="mt-1 flex items-center gap-1 text-[10.5px] text-muted-foreground">
+            <span className="font-mono tabular">{focusItem?.date ?? "未来 30 天"}</span>
+            <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
+          </div>
+        </div>
+      </Link>
+
+      <div className="ll-surface min-w-0 p-3 lg:col-span-2 lg:hidden">
         <div className="mb-2 flex items-start justify-between gap-2">
           <div>
             <h3 className="text-[12px] font-medium text-foreground">近期日程</h3>
@@ -104,7 +138,7 @@ export function DashboardGreeting({
           </div>
         )}
       </div>
-    </motion.section>
+    </section>
   );
 }
 
@@ -132,7 +166,7 @@ function ScheduleBriefItem({ item }: { item: ScheduleItem }) {
   return (
     <li>
       {item.matterId ? (
-        <Link href={`/matters/${item.matterId}`} className={className}>
+        <Link href={matterHref({ id: item.matterId, internalCode: item.matterCode })} className={className}>
           {content}
         </Link>
       ) : (

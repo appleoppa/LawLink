@@ -16,6 +16,7 @@ import { audit } from "@/server/audit";
 import { isManager } from "@/lib/permissions";
 import { createNotification } from "@/server/notifications/create";
 import { notifyRoleApprovers } from "@/server/notifications/approval";
+import { getWorkflowToggles } from "@/server/settings/workflow-toggles";
 import type { Prisma } from "@prisma/client";
 
 const categories = [
@@ -116,7 +117,10 @@ async function assertCanModify(id: string, sessionUserId: string, role: string) 
 export async function createExternalContact(input: z.infer<typeof externalContactSchema>) {
   const session = await requireSession();
   const data = externalContactSchema.parse(input);
-  const status = isManager(session.user.role) ? "APPROVED" : "PENDING_REVIEW";
+  // v1.0: 审核流默认关闭（小所信任环境，新增直接通过）；可在设置里打开
+  const { externalContactReview } = await getWorkflowToggles();
+  const status =
+    !externalContactReview || isManager(session.user.role) ? "APPROVED" : "PENDING_REVIEW";
   const created = await prisma.externalContact.create({
     data: {
       name: data.name.trim(),

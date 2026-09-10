@@ -163,7 +163,7 @@ export function AddReminderDialog({
                   className={
                     priority === p.value
                       ? "rounded-md border border-primary bg-primary/15 px-3 py-1 text-xs text-primary"
-                      : "rounded-md border border-border bg-background px-3 py-1 text-xs text-muted-foreground hover:border-input"
+                      : "rounded-md border border-border bg-background px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-input hover:bg-muted hover:text-foreground"
                   }
                 >
                   {p.label}

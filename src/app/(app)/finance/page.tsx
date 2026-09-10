@@ -36,7 +36,10 @@ export default async function FinancePage() {
 
   return (
     <FinanceView
-      entries={entries}
+      entries={entries.map((entry) => ({
+        ...entry,
+        amount: Number(entry.amount)
+      }))}
       monthly={monthly}
       stats={{
         monthlyReceived,

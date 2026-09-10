@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useTransition } from "react";
-import { Inbox, Sparkles, Loader2 } from "lucide-react";
+import { CalendarClock, FileDown, Inbox, KeyRound, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -28,6 +28,7 @@ export function SmsPasteDialog({
   const [text, setText] = useState("");
   const [batch, setBatch] = useState(false);
   const [useAi, setUseAi] = useState(false);
+  const [extractAttachments, setExtractAttachments] = useState(false);
   const [pending, startTransition] = useTransition();
 
   // 实时预览
@@ -45,7 +46,7 @@ export function SmsPasteDialog({
     }
     startTransition(async () => {
       try {
-        const res = await parseAndSaveSms({ rawText: text, batch, useAi });
+        const res = await parseAndSaveSms({ rawText: text, batch, useAi, extractAttachments });
         const aiHint = useAi && res.aiEnrichedCount > 0 ? `，AI 增强 ${res.aiEnrichedCount} 条` : "";
         toast.success(`已解析 ${res.count} 条${aiHint}`);
         setText("");
@@ -60,7 +61,10 @@ export function SmsPasteDialog({
     <Dialog
       open={open}
       onOpenChange={(o) => {
-        if (!o && !pending) setText("");
+        if (!o && !pending) {
+          setText("");
+          setExtractAttachments(false);
+        }
         onOpenChange(o);
       }}
     >
@@ -104,6 +108,16 @@ export function SmsPasteDialog({
                 （需先到 设置 → AI 接入 配置）
               </span>
             </label>
+            <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
+              <Checkbox
+                checked={extractAttachments}
+                onCheckedChange={(v) => setExtractAttachments(v === true)}
+              />
+              <span>
+                尝试提取电子送达附件 <FileDown className="inline h-3 w-3 text-primary" /> ——
+                已匹配案件时保存为案件材料；需登录或验证码的平台会标记待处理
+              </span>
+            </label>
           </div>
 
           {preview.length > 0 && (
@@ -145,6 +159,18 @@ export function SmsPasteDialog({
                         {p.parsed.hearingDate && <span>开庭：{p.parsed.hearingDate}</span>}
                         {p.parsed.courtRoom && <span>{p.parsed.courtRoom}</span>}
                         {p.parsed.judge && <span>法官：{p.parsed.judge}</span>}
+                        {p.parsed.importantItems.length > 0 && (
+                          <span className="inline-flex items-center gap-1">
+                            <CalendarClock className="h-3 w-3" />
+                            {p.parsed.importantItems.length} 个事项
+                          </span>
+                        )}
+                        {p.parsed.credentials.length > 0 && (
+                          <span className="inline-flex items-center gap-1">
+                            <KeyRound className="h-3 w-3" />
+                            {p.parsed.credentials.map((c) => c.label).join("、")}
+                          </span>
+                        )}
                         {p.parsed.urls.length > 0 && (
                           <span>{p.parsed.urls.length} 个链接</span>
                         )}

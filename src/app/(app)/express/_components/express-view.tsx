@@ -2,7 +2,6 @@
 
 import { useState, useMemo, useTransition } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
 import {
   Package,
   Plus,
@@ -34,6 +33,7 @@ import { MatterCombobox } from "@/app/(app)/approvals/seals/_components/matter-c
 import { cn } from "@/lib/utils";
 import { createExpress, refreshExpress, deleteExpress } from "@/server/express/actions";
 import { SUPPORTED_COMPANIES, detectCompany } from "@/lib/express/companies";
+import { matterHref } from "@/lib/matters/route";
 
 type Row = Prisma.ExpressTrackingGetPayload<{
   include: {
@@ -149,11 +149,7 @@ export function ExpressView({
         />
       </div>
 
-      <motion.div
-        initial={false}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-      >
+      <div>
         {filtered.length === 0 ? (
           <div className="ll-surface rounded-lg border border-border p-12 text-center text-sm text-muted-foreground">
             <Package className="mx-auto mb-2 h-6 w-6 opacity-40" />
@@ -168,7 +164,7 @@ export function ExpressView({
             ))}
           </div>
         )}
-      </motion.div>
+      </div>
 
       <NewExpressDialog
         open={newOpen}
@@ -262,7 +258,7 @@ function Card({ e }: { e: Row }) {
         )}
         {e.matter && (
           <Link
-            href={`/matters/${e.matter.id}`}
+            href={matterHref(e.matter)}
             className="inline-flex items-center gap-1 hover:text-primary"
           >
             <Briefcase className="h-3 w-3" />

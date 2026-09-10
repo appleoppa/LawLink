@@ -1,28 +1,35 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { motion } from "framer-motion";
-import type { ClientType, DocumentCategory, Prisma } from "@prisma/client";
+import type { ClientType, Prisma } from "@prisma/client";
 import {
-  CheckCircle2,
-  CircleDashed,
-  Info,
+  CalendarClock,
+  ChevronRight,
+  CircleDollarSign,
+  Clock3,
+  Gavel,
+  Landmark,
   Plus,
   Pencil,
-  ShieldAlert,
+  Users,
   X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { matterStatusLabel, procedureTypeLabel, matterCategoryKind } from "@/lib/enums";
-import { buildPggCaseworkGate, type PggCaseworkGateStatus } from "@/lib/pgg-casework-gate";
-import { cn } from "@/lib/utils";
+import {
+  matterStatusLabel,
+  procedureTypeLabel,
+  matterCategoryKind,
+  matterCategoryLabel
+} from "@/lib/enums";
+import { cn, formatCurrency } from "@/lib/utils";
 import { InfoPanel } from "./info-panel";
 import { FinancePanel } from "./finance-panel";
 import { ProcedureRemindersAndMemos } from "./procedure-content";
-import { ProcedureDocumentsSection } from "./procedure-documents-section";
-import { ProcedureInfoPanel } from "./procedure-info-panel";
+import { ProcedurePartiesCard } from "./procedure-info-panel";
+import { ProcedureWorkflowPanel } from "./procedure-workflow-panel";
+import type { WorkflowPreservationCase } from "./procedure-workflow-panel";
 
 import { ApprovalsPanel } from "./approvals-panel";
 import type { SealContractItem, ExpressItem } from "./info-extras";
@@ -33,10 +40,11 @@ import { CustomFieldsPanel } from "./custom-fields-panel";
 import { LifecycleActions } from "./lifecycle-actions";
 import { ArchiveStatusBanner } from "./archive-status-banner";
 import { ArchiveWizardDialog } from "./archive-wizard";
+import { TeamEditorDialog } from "./team-editor-dialog";
 import type { FolderPayload, FolderDocument, TemplateSummary } from "./folder-types";
-import type { PreservationCaseRow, UserOption as PresUserOption } from "@/app/(app)/preservation/_components/preservation-types";
+import type { UserOption as PresUserOption } from "@/app/(app)/preservation/_components/preservation-types";
 
-type MatterPayload = Prisma.MatterGetPayload<{
+type MatterPayloadBase = Prisma.MatterGetPayload<{
   include: {
     primaryClient: { include: { contacts: { where: { isPrimary: true }; take: 1 } } };
     clientLinks: { include: { client: { select: { id: true; name: true; type: true; idNumber: true } } } };
@@ -47,30 +55,33 @@ type MatterPayload = Prisma.MatterGetPayload<{
     relatedEntities: true;
     intake: { select: { counterclaim: true; claimDescription: true } };
     linksFrom: {
-      include: { relatedMatter: { select: { id: true; internalCode: true; title: true } } };
+      include: { relatedMatter: { select: { id: true; internalCode: true; firmCaseNo: true; title: true } } };
     };
     linksTo: {
-      include: { matter: { select: { id: true; internalCode: true; title: true } } };
+      include: { matter: { select: { id: true; internalCode: true; firmCaseNo: true; title: true } } };
     };
     procedures: {
       include: {
         deadlines: true;
         hearings: true;
-        stages: true;
+        stages: { include: { tasks: true } };
         procedureParties: { include: { party: true } };
         memos: true;
       };
     };
     timelineEvents: true;
-    _count: { select: { tasks: true; notes: true } };
   };
 }>;
+
+type MatterPayload = Omit<MatterPayloadBase, "claimAmount"> & {
+  claimAmount: number | null;
+};
 
 export type FinancePayload = {
   billings: {
     id: string;
     title: string;
-    contractAmount: Prisma.Decimal;
+    contractAmount: number;
     schedule: string | null;
     status: "DRAFT" | "ACTIVE" | "CLOSED";
     signedAt: Date | null;
@@ -79,7 +90,7 @@ export type FinancePayload = {
   entries: {
     id: string;
     type: "RECEIVABLE" | "RECEIVED" | "REFUND" | "COST" | "COMMISSION";
-    amount: Prisma.Decimal;
+    amount: number;
     occurredAt: Date;
     billingId: string | null;
     invoiceNo: string | null;
@@ -94,7 +105,7 @@ export type FinancePayload = {
   plans: {
     id: string;
     userId: string;
-    percent: Prisma.Decimal;
+    percent: number;
     label: string | null;
     active: boolean;
     user: { id: string; name: string; role: string };
@@ -111,24 +122,6 @@ export type FinancePayload = {
 };
 
 type UserOption = { id: string; name: string; role: string };
-
-/** 案件详情页文档类型（附带 uploader 和 procedure 信息） */
-export type MatterDocument = {
-  id: string;
-  name: string;
-  category: DocumentCategory;
-  procedureId: string | null;
-  mimeType: string | null;
-  size: number | null;
-  path: string;
-  tags: string[];
-  createdAt: Date;
-  sourceParty: string | null;
-  uploadedBy: { id: string; name: string } | null;
-  procedure: { id: string; type: string; customLabel: string | null } | null;
-  folderId: string | null;
-  templateId: string | null;
-};
 
 export type NotePayload = {
   id: string;
@@ -147,11 +140,8 @@ export function MatterDetailTabs({
   finance,
   userOptions,
   documents,
-  intakeContracts,
   folders,
-  folderDocuments,
   templates,
-  preservations,
   colleagues,
   currentUserRole,
   canAssociateThisMatter,
@@ -160,17 +150,16 @@ export function MatterDetailTabs({
   sealContracts,
   expresses,
   latestArchive,
-  customFieldDefs
+  customFieldDefs,
+  preservationCases
 }: {
   matter: MatterPayload;
   finance: FinancePayload;
   userOptions: UserOption[];
-  documents: MatterDocument[];
-  intakeContracts: MatterDocument[];
+  documents: any[];
   folders: FolderPayload[];
   folderDocuments: FolderDocument[];
   templates: TemplateSummary[];
-  preservations: PreservationCaseRow[];
   colleagues: PresUserOption[];
   currentUserRole: string | null;
   canAssociateThisMatter: boolean;
@@ -195,10 +184,11 @@ export function MatterDetailTabs({
     options: string[];
     required: boolean;
   }[];
+  preservationCases: WorkflowPreservationCase[];
 }) {
   const [selectedProcId, setSelectedProcId] = useState<string | null>(null);
   const [addProcOpen, setAddProcOpen] = useState(false);
-  const [procEditOpen, setProcEditOpen] = useState(false);
+  const [matterEditorOpen, setMatterEditorOpen] = useState(false);
   const [, startTransition] = useTransition();
   const router = useRouter();
 
@@ -220,9 +210,15 @@ export function MatterDetailTabs({
     .sort((a, b) => a.order - b.order);
 
   // 默认选中第一个在办程序（若有）
-  const currentProcedure = selectedProcId
-    ? engagedProcedures.find((p) => p.id === selectedProcId)
+  const currentProcedure: ProcedureItem | null = selectedProcId
+    ? engagedProcedures.find((p) => p.id === selectedProcId) ?? null
     : engagedProcedures[0] ?? null;
+  const canEditMatterInfo = canLeadThisMatter;
+  const canOpenUnifiedEditor =
+    canEditMatterInfo ||
+    canOwnThisMatter ||
+    Boolean(currentProcedure && canAssociateThisMatter);
+  const causeLabel = matter.cause?.name ?? matter.causeFreeText ?? "未填写案由";
 
   const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
 
@@ -238,7 +234,9 @@ export function MatterDetailTabs({
           size: d.size,
           createdAt: d.createdAt,
           sourceParty: d.sourceParty,
-          path: d.path
+          path: d.path,
+          tags: d.tags ?? [],
+          stageId: d.stageId ?? null
         }))
     : [];
   const procedureParties = buildProcedurePartyOptions(matter);
@@ -246,47 +244,82 @@ export function MatterDetailTabs({
     matter.customValues &&
     typeof matter.customValues === "object" &&
     !Array.isArray(matter.customValues)
-      ? (matter.customValues as Record<string, unknown>)
+      ? (matter.customValues as Record<string, string>)
       : {};
   const hasCustomFields = customFieldDefs.length > 0;
-  const hasPggIntegration = Boolean(customValues.pgg_source_path || customValues.pgg_deep_import);
-  const customStringValues = Object.fromEntries(
-    Object.entries(customValues).map(([key, value]) => [
-      key,
-      typeof value === "string" ? value : value == null ? "" : JSON.stringify(value)
-    ])
-  ) as Record<string, string>;
 
   return (
     <div className="space-y-4">
-      {/* H1 头部 */}
-      <motion.header
-        initial={false}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card px-4 py-2"
-      >
-        <h1 className="min-w-0 flex-1 truncate text-[0.95rem] font-medium leading-tight" title={matter.title}>
-          {matter.title}
-          {matterCategoryKind(matter.category) !== "project" && "案"}
-        </h1>
-        <MatterStatusPill status={matter.status} />
-        {currentUserRole && canLeadThisMatter && (
-          <LifecycleActions
-            matterId={matter.id}
-            status={matter.status}
-            canArchive={canLeadThisMatter}
-          />
-        )}
-      </motion.header>
+      {/* 案件详情是每天要开几十次的页面，页面级入场动画只会让它显得慢，故不加动效 */}
+      <header className="ll-hero-surface px-5 py-4">
+        <div className="relative z-[1] flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="mb-1.5 flex flex-wrap items-center gap-2 font-mono text-[11px] text-muted-foreground">
+              <span>{matterCategoryLabel[matter.category]}</span>
+              {matter.primaryClient?.name ? (
+                <>
+                  <span className="text-muted-foreground/50">·</span>
+                  <span>{matter.primaryClient.name}</span>
+                </>
+              ) : null}
+              {matter.intakeDate ? (
+                <>
+                  <span className="text-muted-foreground/50">·</span>
+                  <span>收案 {formatShortDate(matter.intakeDate)}</span>
+                </>
+              ) : null}
+            </div>
+            <h1 className="truncate text-[20px] font-semibold leading-tight" title={matter.title}>
+              {matter.title}
+              {matterCategoryKind(matter.category) !== "project" && "案"}
+            </h1>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <MatterStatusPill status={matter.status} />
+              <Badge variant="outline" className="h-6 rounded-full bg-card px-2 text-[11px] leading-none">
+                {causeLabel}
+              </Badge>
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+            {canOpenUnifiedEditor && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setMatterEditorOpen(true)}
+                className="gap-1.5"
+              >
+                <Pencil className="h-3.5 w-3.5" strokeWidth={1.8} />
+                编辑信息
+              </Button>
+            )}
+            {currentUserRole && canLeadThisMatter && (
+              <LifecycleActions
+                matterId={matter.id}
+                status={matter.status}
+                canArchive={canLeadThisMatter}
+              />
+            )}
+          </div>
+        </div>
+        <MatterKeypoints
+          matter={matter}
+          finance={finance}
+          procedures={engagedProcedures}
+          currentProcedureId={currentProcedure?.id ?? null}
+        />
+      </header>
+
+      {/* v1.1 UI（方案 B）：吸顶摘要条——标题滚出视野后，案件身份 +
+          下一节点倒计时仍常驻可见 */}
+      <MatterStickyBar
+        title={matter.title}
+        caseNumber={currentProcedure?.caseNumber ?? null}
+        procedures={engagedProcedures}
+      />
 
       {/* 归档状态 banner */}
       {latestArchive && (
-        <motion.div
-          initial={false}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.05 }}
-        >
+        <div>
           <ArchiveStatusBanner
             record={latestArchive}
             onReArchive={
@@ -296,28 +329,73 @@ export function MatterDetailTabs({
                 : undefined
             }
           />
-        </motion.div>
+        </div>
       )}
 
-      {/* 单页竖向布局 */}
-      <motion.div
-        initial={false}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.05 }}
-        className="grid grid-cols-1 gap-4 xl:grid-cols-5"
-      >
-        <div className="h-full xl:col-span-3">
-          <InfoPanel
-            matter={matter}
-            userOptions={userOptions}
-            finance={finance}
-            contracts={intakeContracts.map((d) => ({ id: d.id, name: d.name }))}
-            canEditMatter={canOwnThisMatter}
-            canManageRelatedMatters={canAssociateThisMatter}
+      {/* 主内容 + 右侧动作栏：主区承载办案内容，侧栏承载速览和即时动作 */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="min-w-0 space-y-4">
+          <ProcedureChainBar
+            procedures={engagedProcedures}
+            currentProcedure={currentProcedure}
+            roman={ROMAN}
+            canAdd={canAssociateThisMatter}
+            canDelete={canLeadThisMatter}
+            onSelect={setSelectedProcId}
+            onAdd={() => setAddProcOpen(true)}
+            onDelete={handleDeleteProcedure}
           />
+
+          <ProcedureWorkflowPanel
+            matter={{
+              id: matter.id,
+              internalCode: matter.internalCode,
+              title: matter.title,
+              category: matter.category
+            }}
+            procedure={currentProcedure}
+            documents={procDocs}
+            preservationCases={preservationCases}
+            folders={folders}
+            templates={templates}
+            users={colleagues}
+            canManage={canAssociateThisMatter}
+            matterInfoNode={
+              <InfoPanel
+                matter={matter}
+                currentProcedure={currentProcedure}
+                canEdit={false}
+                canManageRelatedMatters={canAssociateThisMatter}
+                onEdit={() => setMatterEditorOpen(true)}
+              />
+            }
+          />
+
+          {currentProcedure && (
+            <ProcedurePartiesCard
+              procedure={currentProcedure}
+              parties={procedureParties}
+              canEdit={false}
+              onEdit={() => setMatterEditorOpen(true)}
+            />
+          )}
+
+          {hasCustomFields && (
+            <CustomFieldsPanel
+              matterId={matter.id}
+              defs={customFieldDefs}
+              values={customValues}
+              canEdit={canLeadThisMatter}
+            />
+          )}
         </div>
 
-        <div className="h-full xl:col-span-2">
+        <aside className="min-w-0 space-y-4 xl:sticky xl:top-20 xl:self-start">
+          <MatterTeamCard
+            matter={matter}
+            canManage={canOwnThisMatter}
+            onManage={() => setMatterEditorOpen(true)}
+          />
           <ProcedureRemindersAndMemos
             matterId={matter.id}
             procedures={engagedProcedures}
@@ -325,114 +403,6 @@ export function MatterDetailTabs({
             expresses={expresses}
             canManage={canAssociateThisMatter}
           />
-        </div>
-
-        <section className="h-full rounded-lg border border-border bg-card xl:col-span-3">
-          {/* 程序切换标签 */}
-          <header className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2">
-            <span className="text-[13px] font-medium">案件程序</span>
-            {engagedProcedures.length === 0 ? (
-              <span className="text-xs text-muted-foreground">暂无在办程序</span>
-            ) : (
-              engagedProcedures.map((p, idx) => {
-                const isActive = currentProcedure?.id === p.id;
-                return (
-                  <span
-                    key={p.id}
-                    className={cn(
-                      "group/proc inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors",
-                      isActive
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:bg-muted/60"
-                    )}
-                  >
-                    <button
-                      type="button"
-                      onPointerDown={() => setSelectedProcId(p.id)}
-                      onClick={() => setSelectedProcId(p.id)}
-                      className="flex items-center gap-1.5"
-                    >
-                      <span className="font-medium text-primary">{ROMAN[idx] ?? idx + 1}</span>
-                      <span>{p.customLabel ?? procedureTypeLabel[p.type]}</span>
-                      {p.status === "CONCLUDED" && (
-                        <Badge
-                          variant="outline"
-                          className="ml-0.5 border-border bg-muted/30 px-1 text-[9px] font-normal"
-                        >
-                          已结
-                        </Badge>
-                      )}
-                    </button>
-                    {canLeadThisMatter && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const label = p.customLabel ?? procedureTypeLabel[p.type];
-                          if (confirm(`确定删除程序「${label}」？该程序下的所有开庭、期限、备忘和材料记录将被一并删除，此操作不可撤销。`)) {
-                            handleDeleteProcedure(p.id);
-                          }
-                        }}
-                        className="ml-0.5 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover/proc:opacity-100"
-                        title="删除此程序"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    )}
-                  </span>
-                );
-              })
-            )}
-            {canAssociateThisMatter && (
-              <button
-                type="button"
-                onPointerDown={() => setAddProcOpen(true)}
-                onClick={() => setAddProcOpen(true)}
-                className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80"
-              >
-                <Plus className="h-3 w-3" strokeWidth={2} />
-                添加程序
-              </button>
-            )}
-            {currentProcedure && canAssociateThisMatter && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onPointerDown={() => setProcEditOpen(true)}
-                onClick={() => setProcEditOpen(true)}
-                className="ml-auto h-6 gap-1 text-[11px] text-muted-foreground hover:text-primary"
-              >
-                <Pencil className="h-3 w-3" strokeWidth={1.8} />
-                编辑
-              </Button>
-            )}
-          </header>
-
-          {/* 当前程序内容：基本信息 + 案件材料 */}
-          {currentProcedure ? (
-            <div className="space-y-4 p-4">
-              <ProcedureInfoPanel
-                procedure={currentProcedure}
-                parties={procedureParties}
-                requestContent={matter.intake?.claimDescription ?? null}
-                editOpen={procEditOpen}
-                onEditOpenChange={setProcEditOpen}
-              />
-              <ProcedureDocumentsSection
-                matterId={matter.id}
-                procedureId={currentProcedure.id}
-                documents={procDocs}
-                procedureParties={currentProcedure.procedureParties}
-                canManage={canAssociateThisMatter}
-              />
-            </div>
-          ) : (
-            <p className="px-4 py-8 text-center text-xs text-muted-foreground">
-              请先添加程序以管理开庭、期限和案件材料
-            </p>
-          )}
-        </section>
-
-        <div className="flex h-full flex-col gap-4 xl:col-span-2 [&>section]:min-h-0 [&>section]:flex-1">
           <ApprovalsPanel
             matterId={matter.id}
             matterTitle={matter.title}
@@ -444,35 +414,10 @@ export function MatterDetailTabs({
             finance={finance}
             userOptions={userOptions}
             canRequestInvoice={canAssociateThisMatter}
+            compact
           />
-        </div>
-
-        {hasPggIntegration && (
-          <div className="xl:col-span-5">
-            <PggIntegrationPanel
-              values={customValues}
-              documents={documents}
-              procedureCount={matter.procedures.length}
-              partyCount={matter.parties.length + matter.clientLinks.length + (matter.primaryClient ? 1 : 0)}
-              taskCount={matter._count.tasks}
-              noteCount={matter._count.notes}
-              timelineCount={matter.timelineEvents.length}
-            />
-          </div>
-        )}
-
-        {hasCustomFields && (
-          <div className="xl:col-span-3">
-            <CustomFieldsPanel
-              matterId={matter.id}
-              defs={customFieldDefs}
-              values={customStringValues}
-              canEdit={canLeadThisMatter}
-            />
-          </div>
-        )}
-
-      </motion.div>
+        </aside>
+      </div>
 
       {canAssociateThisMatter && (
         <AddProcedureSheet
@@ -483,6 +428,37 @@ export function MatterDetailTabs({
           nextOrder={matter.procedures.length + 1}
           colleagues={colleagues}
           existingTypes={matter.procedures.map(p => p.type)}
+        />
+      )}
+      {canOpenUnifiedEditor && (
+        <TeamEditorDialog
+          open={matterEditorOpen}
+          onOpenChange={setMatterEditorOpen}
+          matterId={matter.id}
+          matterMeta={{
+            intakeDate: matter.intakeDate ?? null,
+            category: matter.category,
+            title: matter.title,
+            causeId: matter.causeId ?? null,
+            causeFreeText: matter.causeFreeText ?? null,
+            claimAmount:
+              matter.claimAmount === null || matter.claimAmount === undefined
+                ? null
+                : Number(matter.claimAmount),
+            ourStanding: matter.ourStanding ?? null
+          }}
+          currentProcedure={currentProcedure}
+          parties={procedureParties}
+          currentOwnerId={matter.ownerId}
+          currentMembers={matter.members.map((m) => ({
+            userId: m.userId,
+            role: m.role,
+            name: m.user.name
+          }))}
+          userOptions={userOptions}
+          canEditMatterInfo={canEditMatterInfo}
+          canManageTeam={canOwnThisMatter}
+          canManageProcedure={Boolean(currentProcedure && canAssociateThisMatter)}
         />
       )}
       {canLeadThisMatter && (
@@ -496,153 +472,555 @@ export function MatterDetailTabs({
   );
 }
 
-function PggIntegrationPanel({
-  values,
-  documents,
-  procedureCount,
-  partyCount,
-  taskCount,
-  noteCount,
-  timelineCount
+type ProcedureItem = MatterPayload["procedures"][number];
+type DeadlineProgressItem = ProcedureItem["deadlines"][number] & {
+  procedureLabel: string;
+};
+
+/**
+ * 删除程序的确认文案。
+ *
+ * 原文案是「该程序下的所有开庭、期限、备忘和材料记录将被一并删除」——两个问题：
+ * 1. 笼统。人对「所有相关记录」会习惯性点确定，对「3 条期限」会停手。
+ * 2. 不准确。材料（Document）的外键是 SetNull，只会丢失程序关联，本身不删。
+ *
+ * 级联硬删的实际范围（schema onDelete: Cascade）：Deadline / Hearing /
+ * MatterStage（含其下 Task 的关联）/ ProcedureMemo。
+ */
+function deleteProcedureWarning(procedure: ProcedureItem, label: string): string {
+  const parts: string[] = [];
+  if (procedure.deadlines.length > 0) parts.push(`${procedure.deadlines.length} 条期限`);
+  if (procedure.hearings.length > 0) parts.push(`${procedure.hearings.length} 场开庭`);
+  if (procedure.stages.length > 0) parts.push(`${procedure.stages.length} 个环节`);
+  if (procedure.memos.length > 0) parts.push(`${procedure.memos.length} 条备忘`);
+
+  if (parts.length === 0) {
+    return `确定删除程序「${label}」？该程序下暂无期限、开庭、环节和备忘记录。`;
+  }
+  return (
+    `确定删除程序「${label}」？\n\n` +
+    `该程序下的 ${parts.join("、")} 将被一并删除，此操作不可撤销。\n` +
+    `（材料不会被删除，仅解除与本程序的关联。）`
+  );
+}
+
+function ProcedureChainBar({
+  procedures,
+  currentProcedure,
+  roman,
+  canAdd,
+  canDelete,
+  onSelect,
+  onAdd,
+  onDelete
 }: {
-  values: Record<string, unknown>;
-  documents: MatterDocument[];
-  procedureCount: number;
-  partyCount: number;
-  taskCount: number;
-  noteCount: number;
-  timelineCount: number;
+  procedures: ProcedureItem[];
+  currentProcedure: ProcedureItem | null;
+  roman: string[];
+  canAdd: boolean;
+  canDelete: boolean;
+  onSelect: (id: string) => void;
+  onAdd: () => void;
+  onDelete: (id: string) => void;
 }) {
-  const sourcePath = typeof values.pgg_source_path === "string" ? values.pgg_source_path : "";
-  const summary = typeof values.pgg_extraction_summary === "string" ? values.pgg_extraction_summary : "";
-  const stageName = typeof values.pgg_stage_name === "string" ? values.pgg_stage_name : "";
-  const amountFragments = typeof values.pgg_amount_fragments === "string" ? values.pgg_amount_fragments : "";
-  const dateFragments = typeof values.pgg_date_fragments === "string" ? values.pgg_date_fragments : "";
-  const deepImport =
-    values.pgg_deep_import && typeof values.pgg_deep_import === "object" && !Array.isArray(values.pgg_deep_import)
-      ? (values.pgg_deep_import as { taskHints?: string[]; factSnippets?: string[]; counts?: Record<string, number> })
-      : null;
-  const pggDocs = documents.filter((doc) => doc.tags?.includes("PGG深度导入") || doc.tags?.includes("PGG历史导入"));
-  const evidenceCount = pggDocs.filter((doc) => doc.category === "EVIDENCE").length;
-  const pleadingCount = pggDocs.filter((doc) => doc.category === "PLEADING" || doc.category === "CONTRACT").length;
-  const receiptCount = pggDocs.filter((doc) => doc.tags?.includes("receipt/审计")).length;
-  const fileHref = sourcePath ? `file://${sourcePath}` : undefined;
-  const gate = buildPggCaseworkGate({
-    values,
-    documents,
-    procedureCount,
-    partyCount,
-    taskCount: Math.max(taskCount, deepImport?.taskHints?.length ?? 0),
-    noteCount,
-    timelineCount
-  });
+  const currentLabel = currentProcedure
+    ? currentProcedure.caseNumber || currentProcedure.customLabel || procedureTypeLabel[currentProcedure.type]
+    : "暂无当前程序";
 
   return (
-    <section className="rounded-lg border border-primary/20 bg-primary/5">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-primary/15 px-4 py-2">
-        <div className="flex items-center gap-2">
-          <Info className="h-3.5 w-3.5 text-primary" />
-          <span className="text-[13px] font-medium">PGG 办案系统嵌入</span>
-          <Badge variant="outline" className="border-primary/25 bg-background/60 text-[10px] text-primary">
-            深度同步
-          </Badge>
-          <Badge variant="outline" className={cn("text-[10px]", gate.deliveryStatus === "trusted_ready" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700" : "border-amber-500/30 bg-amber-500/10 text-amber-700")}>
-            {gate.summary.satisfied}/{gate.summary.total} 六角色
-          </Badge>
+    <section className="ll-surface overflow-hidden">
+      <div className="flex min-h-[46px] flex-wrap items-center gap-1 px-3.5 py-2.5">
+        <span className="mr-1 shrink-0 text-[10.5px] font-semibold uppercase tracking-[0.05em] text-muted-foreground">
+          程序
+        </span>
+        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+          {procedures.length === 0 ? (
+            <span className="text-[11.5px] text-muted-foreground">暂无在办程序</span>
+          ) : (
+            procedures.map((procedure, index) => {
+              const isActive = currentProcedure?.id === procedure.id;
+              const isDone = procedure.status === "CONCLUDED";
+              const label = procedure.customLabel ?? procedureTypeLabel[procedure.type];
+              return (
+                <div key={procedure.id} className="flex shrink-0 items-center gap-1">
+                  {index > 0 && (
+                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/45" strokeWidth={2} />
+                  )}
+                  <span
+                    className={cn(
+                      "group/proc relative inline-flex h-[26px] items-center gap-1 rounded-full border px-2.5 text-[11.5px] font-medium whitespace-nowrap transition-colors",
+                      isActive
+                        ? "border-primary bg-primary text-primary-foreground shadow-[0_2px_8px_rgba(0,123,127,0.18)]"
+                        : isDone
+                          ? "border-transparent bg-muted text-muted-foreground hover:bg-muted/80"
+                          : "border-border bg-card text-muted-foreground hover:border-input hover:bg-muted"
+                    )}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => onSelect(procedure.id)}
+                      className="flex min-w-0 items-center gap-1"
+                    >
+                      <span
+                        className={cn(
+                          "font-mono text-[10px]",
+                          isActive ? "text-primary-foreground/80" : "text-muted-foreground"
+                        )}
+                      >
+                        {roman[index] ?? index + 1}
+                      </span>
+                      <span className="max-w-[144px] truncate">{label}</span>
+                      {isActive && (
+                        <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground/70" aria-hidden="true" />
+                      )}
+                    </button>
+                    {canDelete && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirm(deleteProcedureWarning(procedure, label))) {
+                            onDelete(procedure.id);
+                          }
+                        }}
+                        className={cn(
+                          "pointer-events-none absolute top-1/2 right-1 -translate-y-1/2 rounded p-0.5 opacity-0 transition-opacity group-hover/proc:pointer-events-auto group-hover/proc:opacity-100",
+                          isActive
+                            ? "text-primary-foreground/75 hover:text-primary-foreground"
+                            : "text-muted-foreground hover:text-destructive"
+                        )}
+                        title="删除此程序"
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    )}
+                  </span>
+                </div>
+              );
+            })
+          )}
+          {canAdd && (
+            <button
+              type="button"
+              onClick={onAdd}
+              className="ml-1 inline-flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full border border-dashed border-input text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+              title="添加程序"
+            >
+              <Plus className="h-3 w-3" strokeWidth={1.8} />
+            </button>
+          )}
         </div>
-        {fileHref && (
-          <a
-            href={fileHref}
-            className="rounded-md border border-primary/20 bg-background/70 px-2 py-1 text-[11px] text-primary hover:bg-background"
-            title={sourcePath}
+        <div className="ml-auto flex shrink-0 items-center gap-2 pl-2 text-[11.5px] text-muted-foreground">
+          <span className="hidden sm:inline">当前：</span>
+          <span className="max-w-[260px] truncate font-mono tabular">{currentLabel}</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function nextUncompletedDeadline(procedures: ProcedureItem[]) {
+  const all = procedures
+    .flatMap((procedure) => procedure.deadlines)
+    .filter((deadline) => !deadline.completed)
+    .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime());
+  return all.find((deadline) => daysFromToday(deadline.dueAt) >= 0) ?? all[0] ?? null;
+}
+
+function nextUpcomingHearing(procedures: ProcedureItem[]) {
+  return (
+    procedures
+      .flatMap((procedure) => procedure.hearings)
+      .filter((hearing) => new Date(hearing.startsAt).getTime() >= Date.now() - 2 * 3600_000)
+      .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())[0] ?? null
+  );
+}
+
+function MatterStickyBar({
+  title,
+  caseNumber,
+  procedures
+}: {
+  title: string;
+  caseNumber: string | null;
+  procedures: ProcedureItem[];
+}) {
+  // 标题区自带期限/开庭卡片；摘要条只在标题滚出视野后以 fixed 形式出现，
+  // 页首不占位也不重复（sticky 放在零高容器里不会生效，故用 fixed + 测宽）
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [pinned, setPinned] = useState(false);
+  const [rect, setRect] = useState<{ left: number; width: number } | null>(null);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const measure = () => {
+      const box = el.getBoundingClientRect();
+      setRect({ left: box.left, width: box.width });
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    // topbar 高 48px，滚过标题底部（即本容器位置）后出现
+    const onScroll = () => {
+      setPinned(el.getBoundingClientRect().top < 56);
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, []);
+
+  const deadline = nextUncompletedDeadline(procedures);
+  const hearing = nextUpcomingHearing(procedures);
+  const days = deadline ? daysFromToday(deadline.dueAt) : null;
+  const deadlineTone =
+    days === null ? "" : days < 0 || days <= 7 ? "text-destructive" : days <= 30 ? "text-amber-600" : "text-muted-foreground";
+  const deadlineText =
+    days === null ? "" : days < 0 ? `逾期 ${-days} 天` : days === 0 ? "今天到期" : `剩 ${days} 天`;
+
+  return (
+    <div ref={wrapRef} className="h-0 w-full" aria-hidden={!pinned}>
+      {pinned && rect && (
+        <div className="fixed top-12 z-10" style={{ left: rect.left, width: rect.width }}>
+          <div className="flex items-center gap-2.5 rounded-md border border-border bg-background/90 px-3 py-1.5 shadow-[var(--shadow-low)] backdrop-blur">
+            <span className="min-w-0 truncate text-[12.5px] font-medium" title={title}>
+              {title}
+            </span>
+            {caseNumber && (
+              <span className="hidden shrink-0 font-mono text-[11px] text-muted-foreground tabular md:inline">
+                {caseNumber}
+              </span>
+            )}
+            <span className="ml-auto flex shrink-0 items-center gap-2 text-[11px]">
+              {deadline ? (
+                <span className={cn("inline-flex items-center gap-1", deadlineTone)}>
+                  <Clock3 className="h-3 w-3" />
+                  <span className="max-w-[160px] truncate">{deadline.title}</span>
+                  <span className="font-mono tabular">
+                    {formatMonthDay(deadline.dueAt)} · {deadlineText}
+                  </span>
+                </span>
+              ) : (
+                <span className="hidden text-muted-foreground sm:inline">无未完成期限</span>
+              )}
+              {hearing && (
+                <span className="inline-flex items-center gap-1 text-muted-foreground">
+                  <Gavel className="h-3 w-3" />
+                  <span className="font-mono tabular">
+                    开庭 {formatMonthDay(hearing.startsAt)}{" "}
+                    {new Date(hearing.startsAt).toTimeString().slice(0, 5)}
+                  </span>
+                </span>
+              )}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MatterKeypoints({
+  matter,
+  finance,
+  procedures,
+  currentProcedureId
+}: {
+  matter: MatterPayload;
+  finance: FinancePayload;
+  procedures: ProcedureItem[];
+  currentProcedureId: string | null;
+}) {
+  const allDeadlines = procedures
+    .flatMap((procedure) =>
+      procedure.deadlines.map((deadline) => ({
+        ...deadline,
+        procedureLabel: procedure.customLabel ?? procedureTypeLabel[procedure.type]
+      }))
+    )
+    .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime());
+  const nextDeadline =
+    allDeadlines.find((deadline) => !deadline.completed && daysFromToday(deadline.dueAt) >= 0) ??
+    allDeadlines.find((deadline) => !deadline.completed) ??
+    null;
+  const allHearings = procedures
+    .flatMap((procedure) =>
+      procedure.hearings.map((hearing) => ({
+        ...hearing,
+        procedureLabel: procedure.customLabel ?? procedureTypeLabel[procedure.type]
+      }))
+    )
+    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+  const firstHearing = allHearings[0] ?? null;
+  const acceptedDate =
+    procedures.find((procedure) => procedure.id === currentProcedureId)?.acceptedAt ??
+    procedures.find((procedure) => procedure.acceptedAt)?.acceptedAt ??
+    matter.firstAcceptedAt ??
+    matter.intakeDate ??
+    null;
+  const feeTarget = finance.stats.receivable || finance.stats.contractAmount;
+  const receivedPercent = feeTarget > 0
+    ? Math.min(100, Math.round((finance.stats.received / feeTarget) * 100))
+    : 0;
+
+  return (
+    <div className="relative z-[1] mt-3 grid grid-cols-2 gap-1 rounded-lg bg-muted/70 p-1 lg:grid-cols-4">
+      <ProgressMetricCard
+        icon={<Clock3 className="h-3 w-3" />}
+        label={nextDeadline?.title ?? "最近期限"}
+        value={deadlineValue(nextDeadline)}
+        sub={deadlineSub(nextDeadline)}
+        tone={deadlineTone(nextDeadline)}
+      />
+      <ProgressMetricCard
+        icon={<Landmark className="h-3 w-3" />}
+        label="立案日期"
+        value={acceptedDate ? formatMonthDay(acceptedDate) : "—"}
+        sub={acceptedDate ? String(new Date(acceptedDate).getFullYear()) : "未填写立案日期"}
+      />
+      <ProgressMetricCard
+        icon={<CalendarClock className="h-3 w-3" />}
+        label="首次开庭"
+        value={firstHearing ? formatMonthDay(firstHearing.startsAt) : "—"}
+        sub={firstHearing ? `${formatTime(firstHearing.startsAt)} · ${firstHearing.title}` : "暂无开庭安排"}
+      />
+      <ProgressMetricCard
+        icon={<CircleDollarSign className="h-3 w-3" />}
+        label="实收进度"
+        value={`${receivedPercent}%`}
+        sub={`${formatCurrency(finance.stats.received, { compact: true })} / ${feeTarget ? formatCurrency(feeTarget, { compact: true }) : "未设目标"}`}
+        progress={receivedPercent}
+      />
+    </div>
+  );
+}
+
+type MatterTeamMember = {
+  id: string;
+  name: string;
+  matterRole: "LEAD" | "CO_LEAD" | "ASSISTANT";
+};
+
+function MatterTeamCard({
+  matter,
+  canManage,
+  onManage
+}: {
+  matter: MatterPayload;
+  canManage: boolean;
+  onManage: () => void;
+}) {
+  const roleOrder = { LEAD: 0, CO_LEAD: 1, ASSISTANT: 2 } as const;
+  const members: MatterTeamMember[] = matter.members.map((member) => ({
+    id: member.userId,
+    name: member.user.name,
+    matterRole: member.role
+  }));
+
+  if (matter.owner && !members.some((member) => member.id === matter.ownerId)) {
+    members.unshift({
+      id: matter.owner.id,
+      name: matter.owner.name,
+      matterRole: "LEAD"
+    });
+  }
+
+  const sortedMembers = members.sort((a, b) => roleOrder[a.matterRole] - roleOrder[b.matterRole]);
+
+  return (
+    <section className="rounded-lg border border-border bg-card shadow-[var(--shadow-low)]">
+      <header className="flex items-center justify-between border-b border-border px-3 py-2">
+        <span className="flex items-center gap-1.5 text-[13px] font-medium">
+          <Users className="h-3.5 w-3.5 text-primary" strokeWidth={1.8} />
+          办案团队
+          <span className="ml-1 font-mono text-[11px] text-muted-foreground tabular">
+            {sortedMembers.length}
+          </span>
+        </span>
+        {canManage && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onManage}
+            className="h-6 px-2 text-[11px] text-muted-foreground hover:text-primary"
           >
-            打开本机案卷
-          </a>
+            管理
+          </Button>
         )}
       </header>
-      <div className="grid gap-3 p-4 text-[12px] text-foreground/85 lg:grid-cols-4">
-        <div className="rounded-md border border-border/70 bg-background/60 p-3">
-          <div className="text-muted-foreground">来源案卷</div>
-          <div className="mt-1 break-all font-mono text-[11px] leading-relaxed">{sourcePath || "—"}</div>
-          {stageName && <div className="mt-2 text-muted-foreground">阶段：{stageName}</div>}
-        </div>
-        <div className="rounded-md border border-border/70 bg-background/60 p-3">
-          <div className="text-muted-foreground">同步材料</div>
-          <div className="mt-2 grid grid-cols-3 gap-2 text-center">
-            <div><div className="text-lg font-semibold">{pggDocs.length}</div><div className="text-[10px] text-muted-foreground">全部</div></div>
-            <div><div className="text-lg font-semibold">{evidenceCount}</div><div className="text-[10px] text-muted-foreground">证据</div></div>
-            <div><div className="text-lg font-semibold">{receiptCount}</div><div className="text-[10px] text-muted-foreground">回执</div></div>
-          </div>
-          <div className="mt-2 text-muted-foreground">文书/合同：{pleadingCount} 份</div>
-        </div>
-        <div className="rounded-md border border-border/70 bg-background/60 p-3">
-          <div className="text-muted-foreground">金额 / 日期片段</div>
-          <p className="mt-1 line-clamp-3 leading-relaxed">{amountFragments || "未稳定识别金额"}</p>
-          <p className="mt-2 line-clamp-2 text-muted-foreground">{dateFragments || "未稳定识别日期"}</p>
-        </div>
-        <div className="rounded-md border border-border/70 bg-background/60 p-3">
-          <div className="text-muted-foreground">复核任务</div>
-          <ul className="mt-1 list-disc space-y-1 pl-4 leading-relaxed">
-            {(deepImport?.taskHints ?? []).slice(0, 4).map((task) => <li key={task}>{task}</li>)}
-            {(deepImport?.taskHints?.length ?? 0) === 0 && <li>暂无自动生成任务</li>}
-          </ul>
-        </div>
-      </div>
-      <div className="border-t border-primary/15 px-4 py-3">
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <div className="text-[12px] font-medium text-foreground/80">六角色可信办案门禁</div>
-          <div className="text-[11px] text-muted-foreground">
-            已满足 {gate.summary.satisfied} · 部分 {gate.summary.partial} · 阻断 {gate.summary.blocked}
-          </div>
-        </div>
-        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-          {gate.roles.map((role) => (
-            <div key={role.key} className="rounded-md border border-border/70 bg-background/70 p-3 text-[11px]">
-              <div className="flex items-center gap-2">
-                <CaseworkGateIcon status={role.status} />
-                <span className="font-medium text-foreground/85">{role.label}</span>
-                <span className={cn("ml-auto rounded-full px-1.5 py-0.5 text-[10px]", caseworkStatusClass(role.status))}>
-                  {caseworkStatusLabel(role.status)}
-                </span>
+
+      {sortedMembers.length === 0 ? (
+        <p className="px-3 py-5 text-center text-xs text-muted-foreground">暂无团队成员</p>
+      ) : (
+        <ul className="divide-y divide-border px-3 py-1">
+          {sortedMembers.map((member) => (
+            <li key={`${member.id}-${member.matterRole}`} className="flex items-center gap-2.5 py-2">
+              <span
+                className={cn(
+                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-xs font-semibold",
+                  member.matterRole === "LEAD" && "bg-primary/10 text-primary",
+                  member.matterRole === "CO_LEAD" && "bg-violet-500/10 text-violet-700",
+                  member.matterRole === "ASSISTANT" && "bg-emerald-500/10 text-emerald-700"
+                )}
+              >
+                {member.name.trim().charAt(0) || "—"}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[13px] font-medium">{member.name}</div>
+                <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                  {matterTeamRoleDescription(member.matterRole)}
+                </div>
               </div>
-              <div className="mt-2 space-y-1 text-muted-foreground">
-                {(role.evidence.length ? role.evidence : role.missing).slice(0, 2).map((item) => (
-                  <div key={item} className="line-clamp-1">{item}</div>
-                ))}
-              </div>
-            </div>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "h-5 shrink-0 rounded-full px-1.5 text-[10px] font-normal",
+                  member.matterRole === "LEAD" && "border-primary/25 bg-primary/10 text-primary",
+                  member.matterRole === "CO_LEAD" && "border-violet-500/25 bg-violet-500/10 text-violet-700",
+                  member.matterRole === "ASSISTANT" &&
+                    "border-emerald-500/25 bg-emerald-500/10 text-emerald-700"
+                )}
+              >
+                {matterTeamRoleLabel(member.matterRole)}
+              </Badge>
+            </li>
           ))}
-        </div>
-        <div className={cn("mt-3 rounded-md border px-3 py-2 text-[11px] leading-relaxed", gate.deliveryStatus === "trusted_ready" ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700" : "border-amber-500/20 bg-amber-500/10 text-amber-700")}>
-          {gate.boundary}
-        </div>
-      </div>
-      {summary && (
-        <div className="border-t border-primary/15 px-4 py-3 text-[12px] leading-relaxed text-muted-foreground">
-          <div className="mb-1 font-medium text-foreground/80">同步摘要</div>
-          <pre className="whitespace-pre-wrap font-sans">{summary}</pre>
-        </div>
+        </ul>
       )}
     </section>
   );
 }
 
-function CaseworkGateIcon({ status }: { status: PggCaseworkGateStatus }) {
-  if (status === "satisfied") return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />;
-  if (status === "partial") return <CircleDashed className="h-3.5 w-3.5 text-amber-600" />;
-  return <ShieldAlert className="h-3.5 w-3.5 text-destructive" />;
+function ProgressMetricCard({
+  icon,
+  label,
+  value,
+  sub,
+  tone,
+  progress
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  sub: string;
+  tone?: "warn" | "danger";
+  progress?: number;
+}) {
+  return (
+    <div
+      className={cn(
+        "relative min-w-0 overflow-hidden rounded-md border border-border/70 bg-background/75 px-3 py-2 shadow-[0_1px_0_rgba(15,23,42,0.03)] transition-colors",
+        tone === "warn" &&
+          "border-[#EDD9A6] bg-[#FBF1DC]",
+        tone === "danger" &&
+          "border-red-500/25 bg-red-500/[0.08]"
+      )}
+    >
+      <div className="flex flex-col gap-0.5">
+        <div className="flex min-w-0 items-center gap-1.5 text-[10.5px] font-medium leading-4 text-muted-foreground">
+          <span
+            className={cn(
+              "shrink-0 text-primary",
+              tone === "warn" && "text-amber-700",
+              tone === "danger" && "text-red-700"
+            )}
+          >
+            {icon}
+          </span>
+          <span className="truncate">{label}</span>
+        </div>
+        <div
+          className={cn(
+            "truncate font-mono text-[14px] font-medium leading-5 text-foreground tabular",
+            tone === "warn" && "text-amber-800",
+            tone === "danger" && "text-red-800"
+          )}
+          title={value}
+        >
+          {value}
+        </div>
+        <div className="truncate font-mono text-[10.5px] leading-4 text-muted-foreground" title={sub}>
+          {sub}
+        </div>
+      </div>
+      {typeof progress === "number" ? (
+        <div className="mt-2 h-1 overflow-hidden rounded-full bg-background/70">
+          <div
+            className="h-full rounded-full bg-primary"
+            style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
-function caseworkStatusLabel(status: PggCaseworkGateStatus) {
-  if (status === "satisfied") return "已满足";
-  if (status === "partial") return "部分";
-  return "阻断";
+function matterTeamRoleLabel(role: MatterTeamMember["matterRole"]) {
+  if (role === "LEAD") return "主办";
+  if (role === "CO_LEAD") return "协办";
+  return "助理";
 }
 
-function caseworkStatusClass(status: PggCaseworkGateStatus) {
-  if (status === "satisfied") return "bg-emerald-500/10 text-emerald-700";
-  if (status === "partial") return "bg-amber-500/10 text-amber-700";
-  return "bg-destructive/10 text-destructive";
+function matterTeamRoleDescription(role: MatterTeamMember["matterRole"]) {
+  if (role === "LEAD") return "主办律师";
+  if (role === "CO_LEAD") return "协办律师";
+  return "律师助理";
+}
+
+function deadlineValue(deadline: DeadlineProgressItem | null) {
+  if (!deadline) return "—";
+  const days = daysFromToday(deadline.dueAt);
+  if (days < 0) return `逾期 ${Math.abs(days)} 天`;
+  if (days === 0) return "今天";
+  return `${days} 天`;
+}
+
+function deadlineSub(deadline: DeadlineProgressItem | null) {
+  if (!deadline) return "暂无未完成期限";
+  return formatShortDate(deadline.dueAt);
+}
+
+function deadlineTone(deadline: DeadlineProgressItem | null): "warn" | "danger" | undefined {
+  if (!deadline) return undefined;
+  const days = daysFromToday(deadline.dueAt);
+  if (days < 0) return "danger";
+  if (days <= 3) return "warn";
+  return undefined;
+}
+
+function startOfToday() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
+}
+
+function daysFromToday(date: Date) {
+  const target = new Date(date);
+  target.setHours(0, 0, 0, 0);
+  return Math.ceil((target.getTime() - startOfToday().getTime()) / 86_400_000);
+}
+
+function formatShortDate(date: Date) {
+  const value = new Date(date);
+  return [
+    value.getFullYear(),
+    String(value.getMonth() + 1).padStart(2, "0"),
+    String(value.getDate()).padStart(2, "0")
+  ].join("-");
+}
+
+function formatMonthDay(date: Date) {
+  const value = new Date(date);
+  return `${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
+function formatTime(date: Date) {
+  return new Date(date).toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  });
 }
 
 function MatterStatusPill({ status }: { status: MatterPayload["status"] }) {
@@ -672,7 +1050,7 @@ function MatterStatusPill({ status }: { status: MatterPayload["status"] }) {
   return (
     <span
       className={cn(
-        "inline-flex h-7 shrink-0 items-center rounded-full border px-2.5 text-[12px] font-medium",
+        "inline-flex h-6 shrink-0 items-center rounded-full border px-2 text-[11px] font-medium leading-none",
         m.cls
       )}
     >

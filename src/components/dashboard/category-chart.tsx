@@ -1,6 +1,5 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 
 type CategoryItem = { name: string; value: number; code: string; color: string };
@@ -9,18 +8,13 @@ export function CategoryChart({ data }: { data: CategoryItem[] }) {
   const total = data.reduce((sum, item) => sum + item.value, 0);
 
   return (
-    <motion.section
-      initial={false}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay: 0.5 }}
-      className="ll-surface flex h-full flex-col"
-    >
-      <header className="px-5 pb-3 pt-4">
-        <h2 className="text-lg font-medium tracking-tight">案件类型分布</h2>
+    <section className="ll-surface flex h-full min-h-[280px] flex-col">
+      <header className="ll-panel-head">
+        <h2 className="ll-panel-title">案件类型分布</h2>
       </header>
 
-      <div className="grid flex-1 grid-cols-1 items-center gap-3 border-t border-border p-4 sm:grid-cols-5">
-        <div className="relative h-[180px] sm:col-span-2">
+      <div className="grid flex-1 grid-cols-5 items-center gap-3 p-4">
+        <div className="relative col-span-2 h-[180px]">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
@@ -48,9 +42,9 @@ export function CategoryChart({ data }: { data: CategoryItem[] }) {
           </div>
         </div>
 
-        <ul className="space-y-0 sm:col-span-3">
+        <ul className="col-span-3 space-y-0">
           {data.map((cat) => {
-            const pct = total > 0 ? Math.round((cat.value / total) * 100) : 0;
+            const pct = Math.round((cat.value / total) * 100);
             return (
               <li
                 key={cat.code}
@@ -72,6 +66,6 @@ export function CategoryChart({ data }: { data: CategoryItem[] }) {
           })}
         </ul>
       </div>
-    </motion.section>
+    </section>
   );
 }

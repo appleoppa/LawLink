@@ -1,6 +1,11 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
+  // Emil 规则：触屏设备点击后 hover 态会粘住。开启后 Tailwind 把所有 `hover:`
+  // 变体编译进 @media (hover: hover)，一处配置覆盖全站 hover 样式。
+  future: {
+    hoverOnlyWhenSupported: true
+  },
   content: [
     "./src/app/**/*.{ts,tsx}",
     "./src/components/**/*.{ts,tsx}"

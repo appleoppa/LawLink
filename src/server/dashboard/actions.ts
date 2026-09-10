@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { matterVisibilityFilter, intakeVisibilityFilter } from "@/lib/permissions";
 import { matterCategoryColor, matterCategoryLabel, matterCategoryShort } from "@/lib/enums";
+import { matterHref } from "@/lib/matters/route";
 
 // ============ Types ============
 
@@ -28,6 +29,7 @@ export type ScheduleItem = {
   matter: string;
   clientName: string | null;
   matterId: string | null;
+  matterCode: string | null; // internalCode，详情页路由键
   procedure?: string;
   daysUntil: number; // 距今天数（0=今天）
 };
@@ -277,6 +279,7 @@ export async function getDashboardSchedule(): Promise<ScheduleItem[]> {
         matter: matter.title,
         clientName: clientNameOf(matter),
         matterId: matter.id,
+        matterCode: matter.internalCode,
         procedure: h.procedure.customLabel ?? h.procedure.type,
         daysUntil: daysFrom(d)
       }
@@ -296,6 +299,7 @@ export async function getDashboardSchedule(): Promise<ScheduleItem[]> {
         matter: matter.title,
         clientName: clientNameOf(matter),
         matterId: matter.id,
+        matterCode: matter.internalCode,
         procedure: dl.procedure.customLabel ?? dl.procedure.type,
         daysUntil: daysFrom(d)
       }
@@ -385,7 +389,7 @@ export async function getDashboardHeroData(): Promise<HeroData> {
       matter: matter.title,
       internalCode: matter.internalCode,
       daysLeft,
-      href: `/matters/${matter.id}`
+      href: matterHref(matter)
     };
   }
 

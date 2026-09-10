@@ -7,6 +7,7 @@ import { requireSession } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import { assertMatterWritable } from "@/lib/archive/guard";
 import { assertCanLeadMatter } from "@/lib/permissions";
+import { revalidateMatter } from "@/server/matters/route";
 
 const closeMatterSchema = z.object({
   id: z.string().cuid(),
@@ -58,7 +59,7 @@ export async function closeMatter(input: CloseMatterInput) {
     detail: { summaryLen: data.summary.length }
   });
 
-  revalidatePath(`/matters/${data.id}`);
+  await revalidateMatter(data.id);
   revalidatePath("/matters");
   return { ok: true };
 }
@@ -107,7 +108,7 @@ export async function reopenMatter(id: string) {
     targetId: id
   });
 
-  revalidatePath(`/matters/${id}`);
+  await revalidateMatter(id);
   revalidatePath("/matters");
   return { ok: true };
 }
@@ -145,7 +146,7 @@ export async function holdMatter(input: HoldMatterInput) {
     detail: { reason: data.reason }
   });
 
-  revalidatePath(`/matters/${data.id}`);
+  await revalidateMatter(data.id);
   revalidatePath("/matters");
   return { ok: true };
 }

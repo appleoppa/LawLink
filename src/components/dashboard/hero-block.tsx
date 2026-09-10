@@ -4,7 +4,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowUpRight, Plus, ShieldCheck } from "lucide-react";
-import { motion } from "framer-motion";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { cn, formatDate } from "@/lib/utils";
@@ -28,12 +27,7 @@ export function HeroBlock({ data }: { data: HeroData }) {
   const [conflictOpen, setConflictOpen] = useState(false);
 
   return (
-    <motion.section
-      initial={false}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: [0.2, 0.7, 0.3, 1] }}
-      className="grid grid-cols-1 gap-3 lg:grid-cols-12"
-    >
+    <section className="grid grid-cols-1 gap-3 lg:grid-cols-12">
       {/* Left: greeting + summary */}
       <div className="lg:col-span-8">
         <div className="flex h-full flex-col justify-between gap-4">
@@ -145,7 +139,7 @@ export function HeroBlock({ data }: { data: HeroData }) {
       )}
 
       <ConflictDialog open={conflictOpen} onOpenChange={setConflictOpen} />
-    </motion.section>
+    </section>
   );
 }
 

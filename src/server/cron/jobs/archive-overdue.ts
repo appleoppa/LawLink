@@ -9,6 +9,7 @@
 import { prisma } from "@/lib/prisma";
 import { createNotification } from "@/server/notifications/create";
 import { audit } from "@/server/audit";
+import { matterHref } from "@/lib/matters/route";
 
 const OVERDUE_DAYS = 30;
 const REPEAT_SUPPRESS_DAYS = 30;
@@ -73,7 +74,7 @@ export async function scanArchiveOverdue(): Promise<OverdueScanResult> {
       priority: "HIGH",
       title: `归档逾期：${m.internalCode}·${m.title}`,
       content: `案件已结 ${days} 天但未提交归档，请尽快补全材料后提交归档申请。`,
-      href: `/matters/${m.id}`,
+      href: matterHref(m),
       refType: "ArchiveOverdue",
       refId: m.id
     });

@@ -1,5 +1,5 @@
-"use server";
-
+// 内部 helper：仅供 server action / cron 调用，不做鉴权。
+// 不能标 "use server"，否则任何客户端可直接调用给任意用户伪造通知。
 import { prisma } from "@/lib/prisma";
 import type { NotificationPriority, NotificationType } from "@prisma/client";
 

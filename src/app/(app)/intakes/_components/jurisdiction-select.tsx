@@ -17,6 +17,7 @@ import {
   joinJurisdiction,
   parseJurisdiction
 } from "@/lib/china-regions";
+import { cn } from "@/lib/utils";
 
 /**
  * 管辖地三级级联（省 / 市 / 区县）。value 为「省/市/区县」路径串。
@@ -24,10 +25,12 @@ import {
  */
 export function JurisdictionSelect({
   value,
-  onChange
+  onChange,
+  triggerClassName
 }: {
   value: string;
   onChange: (v: string) => void;
+  triggerClassName?: string;
 }) {
   const { province, city, area } = parseJurisdiction(value);
   const cities = province ? citiesOf(province) : [];
@@ -41,7 +44,7 @@ export function JurisdictionSelect({
         <Button
           type="button"
           variant="outline"
-          className="h-10 w-full justify-between rounded-sm font-normal"
+          className={cn("h-10 w-full justify-between rounded-sm font-normal", triggerClassName)}
         >
           <span className="flex min-w-0 items-center gap-1.5">
             <MapPin className="h-3.5 w-3.5 shrink-0 opacity-50" />

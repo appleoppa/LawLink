@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { Plus, X, Loader2, Trash2, Star, Sparkles, Search } from "lucide-react";
@@ -40,6 +40,7 @@ import {
   type EnterpriseSearchItem
 } from "@/server/yuandian/enterprise";
 import { cn } from "@/lib/utils";
+import { readFormPath } from "@/lib/form-path";
 
 type Props = {
   open: boolean;
@@ -73,7 +74,7 @@ export function ClientSheet({ open, onOpenChange, editingClient }: Props) {
     register,
     control,
     handleSubmit,
-    watch,
+    getValues,
     setValue,
     reset,
     formState: { errors }
@@ -83,8 +84,10 @@ export function ClientSheet({ open, onOpenChange, editingClient }: Props) {
   });
 
   const { fields, append, remove } = useFieldArray({ control, name: "contacts" });
-  const watchedType = watch("type");
-  const watchedTags = watch("tags");
+  const watchedValues = useWatch({ control });
+  const watch = <T = any,>(path: string) => readFormPath<T>(watchedValues, path);
+  const watchedType = watch<ClientCreateInput["type"]>("type");
+  const watchedTags = watch<string[]>("tags");
 
   // 当 editing 切换时重置表单
   useEffect(() => {
@@ -160,7 +163,7 @@ export function ClientSheet({ open, onOpenChange, editingClient }: Props) {
   const [aiFilling, startAiFill] = useTransition();
 
   function handleAILookup() {
-    const name = (watch("name") || "").trim();
+    const name = (getValues("name") || "").trim();
     if (!name) {
       toast.warning("请先填写客户名称再点击 AI 查找");
       return;
@@ -302,7 +305,7 @@ export function ClientSheet({ open, onOpenChange, editingClient }: Props) {
                                 type="button"
                                 onClick={() => handlePickCandidate(c)}
                                 disabled={aiFilling}
-                                className="w-full rounded border border-border bg-background px-2 py-1.5 text-left text-xs hover:border-primary disabled:opacity-50"
+                                className="w-full rounded border border-border bg-background px-2 py-1.5 text-left text-xs transition-colors hover:border-input hover:bg-muted hover:text-foreground disabled:opacity-50"
                               >
                                 <div className="font-medium">{c.name}</div>
                                 <div className="font-mono text-[10px] text-muted-foreground">

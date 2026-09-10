@@ -1,26 +1,57 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { getMatterById } from "@/server/matters/actions";
 import { getMatterFinance } from "@/server/finance/actions";
-import { listPreservationCases } from "@/server/preservations/actions-v2";
 import { listActiveColleagues } from "@/server/users/actions";
 import { getLatestArchiveRecord } from "@/server/archive/actions";
 import { getMatterReviewSummary } from "@/server/ai/matter-review-summary";
 import { getSession } from "@/lib/auth/session";
+import { resolveMatterRoute } from "@/server/matters/route";
+import { matterHref } from "@/lib/matters/route";
 import { prisma } from "@/lib/prisma";
+import { nullableDecimalToNumber, serializeDecimals } from "@/lib/decimal";
 import { MatterDetailTabs } from "./_components/matter-detail-tabs";
 import { ReviewSummaryCard } from "./_components/review-summary-card";
 
-export default async function MatterDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const [matter, session] = await Promise.all([
-    getMatterById(id),
+type PageProps = {
+  params: Promise<{ id: string }>;
+};
+
+export default async function MatterDetailPage({ params }: PageProps) {
+  const { id: param } = await params;
+
+  // 路由键是 internalCode（`LL-2026-CC-0001`），但历史书签、通知与审计日志里
+  // 存的是 cuid 地址，两者都要认；命中 cuid 时在鉴权通过后再跳规范地址。
+  const route = await resolveMatterRoute(param);
+  if (!route) notFound();
+
+  const [matterRaw, session] = await Promise.all([
+    getMatterById(route.id),
     getSession()
   ]);
-  if (!matter) notFound();
+  if (!matterRaw) notFound();
 
-  const [finance, userOptions, documents, intakeContracts, folders, templates, preservations, allColleagues, sealContracts, expresses, latestArchive, customFieldDefs] = await Promise.all([
+  if (param !== route.internalCode) redirect(matterHref(route));
+
+  const matter = {
+    ...matterRaw,
+    claimAmount: nullableDecimalToNumber(matterRaw.claimAmount)
+  };
+
+  const [
+    financeRaw,
+    userOptions,
+    documents,
+    folders,
+    templates,
+    allColleagues,
+    sealContracts,
+    expresses,
+    latestArchive,
+    customFieldDefs,
+    preservationCases
+  ] = await Promise.all([
     getMatterFinance(matter.id),
     prisma.user.findMany({
       where: { active: true },
@@ -35,20 +66,6 @@ export default async function MatterDetailPage({ params }: { params: Promise<{ i
         procedure: { select: { id: true, type: true, customLabel: true } }
       }
     }),
-    // v0.5: 从 Intake 上传过来的合同（同时绑定 intakeId 和 matterId）
-    matter.intakeId
-      ? prisma.document.findMany({
-          where: {
-            intakeId: matter.intakeId,
-            deletedAt: null
-          },
-          orderBy: { createdAt: "desc" },
-          include: {
-            uploadedBy: { select: { id: true, name: true } },
-            procedure: { select: { id: true, type: true, customLabel: true } }
-          }
-        })
-      : Promise.resolve([]),
     // v0.8: 卷宗
     prisma.documentFolder.findMany({
       where: { matterId: matter.id },
@@ -75,8 +92,6 @@ export default async function MatterDetailPage({ params }: { params: Promise<{ i
         isBuiltIn: true
       }
     }),
-    // v0.9.3: 本案保全记录
-    listPreservationCases({ matterId: matter.id, status: "ALL" }),
     listActiveColleagues(),
     // v0.11: 案件下用印申请关联的合同附件（待盖章稿 + 盖章后扫描件）
     prisma.sealRequest.findMany({
@@ -114,8 +129,30 @@ export default async function MatterDetailPage({ params }: { params: Promise<{ i
       where: { entityType: "MATTER", enabled: true },
       orderBy: [{ order: "asc" }, { createdAt: "asc" }],
       select: { id: true, key: true, label: true, fieldType: true, options: true, required: true }
+    }),
+    prisma.preservationCase.findMany({
+      where: { matterId: matter.id },
+      orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+      include: {
+        matter: { select: { id: true, internalCode: true, title: true } },
+        owner: { select: { id: true, name: true } },
+        targets: {
+          orderBy: { createdAt: "asc" },
+          include: {
+            properties: {
+              orderBy: { expiryDate: "asc" },
+              include: {
+                renewals: { orderBy: { renewedAt: "desc" }, take: 3 }
+              }
+            }
+          }
+        }
+      }
     })
   ]);
+
+  // getMatterFinance 已在 action 出口统一序列化 Decimal
+  const finance = financeRaw;
 
   // v0.22: 本案 AI 审查总览（聚合 ReviewRecord）
   const reviewSummary = await getMatterReviewSummary(matter.id);
@@ -144,6 +181,7 @@ export default async function MatterDetailPage({ params }: { params: Promise<{ i
     templateId: d.templateId,
     createdAt: d.createdAt
   }));
+  const preservationCasesForClient = serializeDecimals(preservationCases);
 
   return (
     <div className="space-y-4">
@@ -162,14 +200,12 @@ export default async function MatterDetailPage({ params }: { params: Promise<{ i
         finance={finance}
         userOptions={userOptions}
         documents={documents}
-        intakeContracts={intakeContracts}
         folders={folders}
         folderDocuments={folderDocuments}
         templates={templates.map((t) => ({
           ...t,
           variables: Array.isArray(t.variables) ? (t.variables as string[]) : []
         }))}
-        preservations={preservations}
         colleagues={allColleagues.map((c) => ({ id: c.id, name: c.name }))}
         currentUserRole={session?.user.role ?? null}
         canAssociateThisMatter={canAssociateThisMatter}
@@ -179,6 +215,7 @@ export default async function MatterDetailPage({ params }: { params: Promise<{ i
         expresses={expresses}
         latestArchive={latestArchive}
         customFieldDefs={customFieldDefs}
+        preservationCases={preservationCasesForClient}
       />
     </div>
   );

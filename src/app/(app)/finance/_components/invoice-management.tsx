@@ -39,6 +39,7 @@ import {
 } from "@/server/invoices/actions";
 import { recognizeInvoiceFromImage, type RecognizedInvoice } from "@/server/ai/actions";
 import type { InvoiceRequestRow } from "./finance-view";
+import { matterHref } from "@/lib/matters/route";
 
 const STATUS_TABS: { key: InvoiceRequestStatus | "ALL"; label: string }[] = [
   { key: "PENDING", label: "待处理" },
@@ -139,7 +140,7 @@ export function InvoiceManagementSection({
                     </div>
                     {r.matter ? (
                       <Link
-                        href={`/matters/${r.matter.id}`}
+                        href={matterHref(r.matter)}
                         className="mt-0.5 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary"
                       >
                         <span className="font-mono">{r.matter.internalCode}</span>

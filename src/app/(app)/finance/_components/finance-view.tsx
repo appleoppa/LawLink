@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import {
   Wallet,
@@ -50,7 +49,7 @@ const feeTypeColor: Record<keyof typeof feeTypeLabel, string> = {
 type Entry = {
   id: string;
   type: keyof typeof feeTypeLabel;
-  amount: { toString(): string };
+  amount: number;
   occurredAt: Date;
   payerOrPayee: string | null;
   note: string | null;
@@ -62,6 +61,7 @@ type Entry = {
 import type { InvoiceRequestStatus } from "@prisma/client";
 import { InvoiceManagementSection } from "./invoice-management";
 import { InvoiceCreateDialog } from "./invoice-create-dialog";
+import { matterHref } from "@/lib/matters/route";
 
 export type InvoiceRequestRow = {
   id: string;
@@ -138,34 +138,24 @@ export function FinanceView({
   const filtered = entries.filter((e) => typeFilter === "ALL" || e.type === typeFilter);
 
   return (
-    <motion.div
-      initial={false}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
-      className="space-y-4"
-    >
-      <header className="space-y-2">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-1">
-            <h1 className="text-xl font-medium tracking-tight">财务管理</h1>
-            <p className="text-[13px] text-muted-foreground">
+    <div className="space-y-4">
+      <header className="ll-page-head">
+        <div>
+          <h1 className="ll-page-title">财务</h1>
+          <p className="ll-page-sub">
               可见范围内的收付流水 + 开票申请 ·{" "}
               <Link href="/matters" className="text-primary hover:underline">
                 合同/流水/分成在各案件详情录入
               </Link>
             </p>
-          </div>
+        </div>
           <Button size="sm" className="w-fit gap-1.5" onClick={() => setInvoiceCreateOpen(true)}>
             <Receipt className="h-3.5 w-3.5" />
             申请开票
           </Button>
-        </div>
-        <div className="ll-rule" />
       </header>
 
-      <div
-        className="flex items-end gap-6 border-b"
-      >
+      <div className="ll-segmented w-fit">
         <TabBtn active={tab === "overview"} onClick={() => setTab("overview")}>
           <Wallet className="h-3.5 w-3.5" strokeWidth={1.8} />
           总览
@@ -216,24 +206,29 @@ export function FinanceView({
           icon={<Receipt className="h-3.5 w-3.5" />}
           color="#5B8DEF"
         />
-        <StatCard
-          label="我的本月分成"
-          value={stats.personalMonthly}
-          icon={<Percent className="h-3.5 w-3.5" />}
-          color="#9B7BF7"
-        />
-        <StatCard
-          label="我的本年分成"
-          value={stats.personalYearly}
-          icon={<Percent className="h-3.5 w-3.5" />}
-          color="#9B7BF7"
-        />
+        {/* v1.0: 分成降级——从未产生分成时不展示个人分成卡 */}
+        {(stats.personalMonthly > 0 || stats.personalYearly > 0) && (
+          <>
+            <StatCard
+              label="我的本月分成"
+              value={stats.personalMonthly}
+              icon={<Percent className="h-3.5 w-3.5" />}
+              color="#9B7BF7"
+            />
+            <StatCard
+              label="我的本年分成"
+              value={stats.personalYearly}
+              icon={<Percent className="h-3.5 w-3.5" />}
+              color="#9B7BF7"
+            />
+          </>
+        )}
       </div>
 
       {/* 月度趋势图 */}
-      <section className="rounded-xl border border-border bg-card">
-        <header className="flex items-center justify-between border-b border-border px-5 py-3">
-          <h2 className="text-sm font-semibold">近 6 个月趋势</h2>
+      <section className="ll-surface">
+        <header className="ll-panel-head">
+          <h2 className="ll-panel-title">近 6 个月趋势</h2>
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1.5">
               <span
@@ -309,9 +304,9 @@ export function FinanceView({
       </section>
 
       {/* 流水 */}
-      <section className="rounded-xl border border-border bg-card">
-        <header className="flex items-center justify-between border-b border-border px-5 py-3">
-          <h2 className="flex items-center gap-2 text-sm font-semibold">
+      <section className="ll-surface overflow-hidden">
+        <header className="ll-panel-head">
+          <h2 className="ll-panel-title">
             收付流水{" "}
             <span className="text-muted-foreground">({filtered.length})</span>
           </h2>
@@ -319,7 +314,7 @@ export function FinanceView({
             value={typeFilter}
             onValueChange={(v) => setTypeFilter(v as typeof typeFilter)}
           >
-            <SelectTrigger className="h-8 w-32 bg-background text-xs">
+            <SelectTrigger className="h-8 w-32 rounded-full bg-card text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -335,11 +330,11 @@ export function FinanceView({
         {filtered.length === 0 ? (
           <p className="py-12 text-center text-xs text-muted-foreground">没有匹配的记录</p>
         ) : (
-          <ul className="divide-y divide-border max-h-[640px] overflow-y-auto">
+          <ul className="max-h-[640px] divide-y divide-border overflow-y-auto">
             {filtered.map((e) => {
               const color = feeTypeColor[e.type];
               return (
-                <li key={e.id} className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-popover">
+                <li key={e.id} className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-muted">
                   <span
                     className="inline-flex h-6 min-w-12 items-center justify-center rounded-md border px-2 text-[10px] font-medium"
                     style={{ borderColor: `${color}50`, color }}
@@ -349,7 +344,7 @@ export function FinanceView({
                   <div className="flex-1 overflow-hidden">
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-sm tabular text-foreground">
-                        {formatCurrency(Number(e.amount))}
+                        {formatCurrency(e.amount)}
                       </span>
                       {e.beneficiaryUser && (
                         <Badge variant="secondary" className="text-[10px]">
@@ -358,7 +353,7 @@ export function FinanceView({
                       )}
                     </div>
                     <Link
-                      href={`/matters/${e.matter.id}`}
+                      href={matterHref(e.matter)}
                       className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-primary"
                     >
                       <span className="font-mono">{e.matter.internalCode}</span>
@@ -387,7 +382,7 @@ export function FinanceView({
         onOpenChange={setInvoiceCreateOpen}
         canCreateUnlinkedInvoice={canApproveInvoice}
       />
-    </motion.div>
+    </div>
   );
 }
 
@@ -404,18 +399,9 @@ function TabBtn({
     <button
       type="button"
       onClick={onClick}
-      className={
-        "relative inline-flex items-center gap-1.5 pb-2.5 pt-0.5 text-[13px] transition-colors " +
-        (active ? "text-foreground" : "text-muted-foreground hover:text-foreground")
-      }
+      className={"ll-seg " + (active ? "ll-seg-active text-primary" : "")}
     >
       {children}
-      {active && (
-        <span
-          aria-hidden
-          className="absolute -bottom-px left-0 right-0 h-[2px] bg-primary"
-        />
-      )}
     </button>
   );
 }
@@ -432,12 +418,12 @@ function StatCard({
   color: string;
 }) {
   return (
-    <div className="ll-surface relative overflow-hidden px-5 py-4">
+    <div className="ll-surface relative overflow-hidden px-4 py-3.5">
       <div className="flex items-center gap-1.5">
         <span style={{ color }}>{icon}</span>
-        <span className="text-[0.56rem] text-muted-foreground">{label}</span>
+        <span className="text-[11px] text-muted-foreground">{label}</span>
       </div>
-      <div className="ll-stat mt-3 text-[1.7rem] leading-none text-foreground">
+      <div className="ll-stat mt-3 text-[22px] leading-none text-foreground">
         {formatCurrency(value, { compact: true })}
       </div>
     </div>
