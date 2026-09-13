@@ -3,6 +3,8 @@ import { getSession } from "@/lib/auth/session";
 import { DashboardGreeting } from "@/components/dashboard/dashboard-greeting";
 import { DashboardActionTiles } from "@/components/dashboard/action-tiles";
 import { KpiCards } from "@/components/dashboard/kpi-cards";
+import { ScheduleList } from "@/components/dashboard/schedule-list";
+import { AlertsList } from "@/components/dashboard/alerts-list";
 import { RevenueChart } from "@/components/dashboard/revenue-chart";
 import { CategoryChart } from "@/components/dashboard/category-chart";
 import {
@@ -50,6 +52,12 @@ export default async function DashboardPage() {
         }}
       />
       <KpiCards data={kpis.filter(k => k.key === "received" ? canReadFinance : k.key === "deadline" ? canReadSchedule : canReadMatters)} />
+
+      {/* 墨案 02 效果图 ③：近期日程 + 待我处理 双栏 */}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.45fr_1fr]">
+        {canReadSchedule && <ScheduleList data={scheduleItems} />}
+        <AlertsList />
+      </div>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">
         <div className="lg:col-span-3">

@@ -26,8 +26,9 @@ export type MatterRow = Omit<Matter, "claimAmount"> & {
 
 type MetaColumn = "hearing" | "firmCaseNo";
 
+// 墨案 03 效果图列结构：案件/案由 · 委托方 · 案号 · 程序 · 主办 · 标的 · 开庭时间 · 状态
 const MATTER_ROW_GRID =
-  "grid gap-x-3 gap-y-2 lg:grid-cols-[1rem_minmax(16rem,1.1fr)_8.5rem_minmax(9rem,0.8fr)_minmax(13rem,1.2fr)_6.5rem_5.5rem] lg:items-center";
+  "grid gap-x-3 gap-y-2 lg:grid-cols-[minmax(15rem,1.45fr)_9rem_minmax(9rem,1fr)_6.5rem_6rem_6rem_8rem_5.5rem] lg:items-center";
 const MATTER_ROW_GRID_WITH_INTAKE =
   "grid gap-x-3 gap-y-2 lg:grid-cols-[8.5rem_minmax(16rem,1.1fr)_minmax(9rem,0.8fr)_minmax(13rem,1.2fr)_6.5rem_5.5rem] lg:items-center";
 const MATTER_ROW_GRID_WITH_ARCHIVE =
@@ -35,7 +36,7 @@ const MATTER_ROW_GRID_WITH_ARCHIVE =
 
 export function CaseListHeader({
   metaColumn = "hearing",
-  detailColumnLabel = "案号",
+  detailColumnLabel: _detailColumnLabel = "案号",
   showIntakeDateColumn = false,
   showArchiveDateColumn = false
 }: {
@@ -46,6 +47,7 @@ export function CaseListHeader({
 }) {
   const metaHeader = <div>{metaColumn === "firmCaseNo" ? "所内案号" : "开庭时间"}</div>;
 
+  // 与三种行栅格严格同列：默认 8 列（墨案 03 效果图）；收案/归档视图 6 列
   return (
     <div
       className={cn(
@@ -58,18 +60,32 @@ export function CaseListHeader({
       )}
     >
       {showArchiveDateColumn ? (
-        <div>归档时间</div>
+        <>
+          <div>归档时间</div>
+          <div>案件 / 案由</div>
+          <div>委托方</div>
+          <div>案号</div>
+          {metaHeader}
+        </>
       ) : showIntakeDateColumn ? (
-        <div>收案时间</div>
+        <>
+          <div>收案时间</div>
+          <div>案件 / 案由</div>
+          <div>委托方</div>
+          <div>案由</div>
+          <div>标的</div>
+        </>
       ) : (
-        <div />
+        <>
+          <div>案件 / 案由</div>
+          <div>委托方</div>
+          <div>案号</div>
+          <div>程序</div>
+          <div>主办</div>
+          <div>标的</div>
+          {metaHeader}
+        </>
       )}
-      <div>案件</div>
-      {!showIntakeDateColumn && !showArchiveDateColumn ? metaHeader : null}
-      <div>客户</div>
-      <div>{detailColumnLabel}</div>
-      {showArchiveDateColumn ? metaHeader : null}
-      {showArchiveDateColumn ? null : <div>标的</div>}
       <div>状态</div>
     </div>
   );
@@ -129,6 +145,7 @@ export function MattersTable({
             showTitleMeta={false}
             causeName={m.cause?.name ?? null}
             clientName={m.primaryClient?.name ?? null}
+            ownerName={m.owner?.name ?? null}
             detailColumnLabel="案号"
             procedureLabel={m.procedures[0]?.caseNumber ?? null}
             procedureFallback="暂无案号"
@@ -169,6 +186,7 @@ export function CaseListCard({
   showTitleFirmCaseNo = true,
   causeName = null,
   clientName = null,
+  ownerName = null,
   detailColumnLabel = "案号",
   procedureLabel = null,
   procedureFallback = "暂无案号",
@@ -194,6 +212,7 @@ export function CaseListCard({
   showTitleFirmCaseNo?: boolean;
   causeName?: string | null;
   clientName?: string | null;
+  ownerName?: string | null;
   detailColumnLabel?: string;
   procedureLabel?: string | null;
   procedureFallback?: string;
@@ -257,16 +276,7 @@ export function CaseListCard({
                 {formatDate(showArchiveDateColumn ? archivedAt : intakeDate)}
               </span>
             </DataCell>
-          ) : (
-            <div className="hidden lg:block">
-              <span
-                className={cn(
-                  "ll-dot",
-                  latestHearingAt ? "bg-[#B42318] shadow-[0_0_0_3px_rgba(180,35,24,0.16)]" : "bg-primary"
-                )}
-              />
-            </div>
-          )}
+          ) : null}
 
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-start gap-2">
@@ -299,42 +309,69 @@ export function CaseListCard({
             </div>
           </div>
 
-          {!hasLeadingDateColumn ? metaCell : null}
+          {hasLeadingDateColumn ? (
+            <>
+              <DataCell label="客户">
+                <OwnerCell name={clientName} fallback="未关联客户" />
+              </DataCell>
+              <DataCell label={detailColumnLabel}>
+                <span
+                  className={cn(
+                    "block truncate text-[12px] text-muted-foreground",
+                    procedureValueClassName ?? "font-mono tabular-nums"
+                  )}
+                >
+                  {procedureLabel ?? procedureFallback}
+                </span>
+              </DataCell>
+              {showArchiveDateColumn ? metaCell : null}
+              {showArchiveDateColumn ? null : (
+                <DataCell label="标的">
+                  <span className="font-mono text-[12px] tabular-nums text-foreground/75">
+                    {claimAmount != null ? formatCurrency(claimAmount, { compact: true }) : "—"}
+                  </span>
+                </DataCell>
+              )}
+            </>
+          ) : (
+            <>
+              <DataCell label="委托方">
+                <OwnerCell name={clientName} fallback="未关联客户" />
+              </DataCell>
 
-          <DataCell label="客户">
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-accent text-[10px] font-semibold text-primary">
-                {(clientName ?? "未").charAt(0)}
-              </span>
-              <span className="truncate text-[12.5px] text-muted-foreground">
-                {clientName ?? "未关联客户"}
-              </span>
-            </span>
-          </DataCell>
+              <DataCell label={detailColumnLabel}>
+                <span
+                  className={cn(
+                    "block truncate text-[12px] text-muted-foreground",
+                    procedureValueClassName ?? "font-mono tabular-nums"
+                  )}
+                >
+                  {procedureLabel ?? procedureFallback}
+                </span>
+              </DataCell>
 
-          <DataCell label={detailColumnLabel}>
-            <span className="flex min-w-0 items-center gap-1.5">
-              {showProcedureDots ? <span className="ll-dot bg-primary" /> : null}
-              {showProcedureDots && proceduresCount > 1 ? <span className="ll-dot bg-primary/40" /> : null}
-              <span
-                className={cn(
-                  "truncate text-[12px] text-muted-foreground",
-                  procedureValueClassName ?? "font-mono tabular-nums"
-                )}
-              >
-                {procedureLabel ?? procedureFallback}
-              </span>
-            </span>
-          </DataCell>
+              <DataCell label="程序">
+                <span className="flex min-w-0 items-center gap-1.5">
+                  {showProcedureDots ? <span className="ll-dot bg-primary" /> : null}
+                  {showProcedureDots && proceduresCount > 1 ? <span className="ll-dot bg-primary/40" /> : null}
+                  <span className="truncate text-[12px] text-muted-foreground">
+                    {proceduresCount > 0 ? `${proceduresCount} 个程序` : "—"}
+                  </span>
+                </span>
+              </DataCell>
 
-          {hasLeadingDateColumn ? metaCell : null}
+              <DataCell label="主办">
+                <OwnerCell name={ownerName} fallback="—" plain />
+              </DataCell>
 
-          {showArchiveDateColumn ? null : (
-            <DataCell label="标的">
-              <span className="font-mono text-[12px] tabular-nums text-foreground/75">
-                {claimAmount != null ? formatCurrency(claimAmount, { compact: true }) : "—"}
-              </span>
-            </DataCell>
+              <DataCell label="标的">
+                <span className="block font-mono text-[12px] tabular-nums text-foreground/75">
+                  {claimAmount != null ? formatCurrency(claimAmount, { compact: true }) : "—"}
+                </span>
+              </DataCell>
+
+              {metaCell}
+            </>
           )}
 
           <DataCell label="状态">
@@ -343,6 +380,22 @@ export function CaseListCard({
         </div>
       </Link>
     </li>
+  );
+}
+
+/** 墨案 03 效果图：人名列 = 圆形首字头像 + 姓名（plain 时仅姓名） */
+function OwnerCell({ name, fallback, plain = false }: { name: string | null; fallback: string; plain?: boolean }) {
+  const label = name ?? fallback;
+  if (plain && !name) return <span className="text-[12px] text-muted-foreground/55">{fallback}</span>;
+  return (
+    <span className="flex min-w-0 items-center gap-1.5">
+      {!plain ? (
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent text-[10px] font-semibold text-primary">
+          {label.charAt(0)}
+        </span>
+      ) : null}
+      <span className="truncate text-[12.5px] text-muted-foreground">{label}</span>
+    </span>
   );
 }
 

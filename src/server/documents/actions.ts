@@ -7,6 +7,7 @@ import { selfConfirmEligible } from "@/lib/approvals/self-confirm";
 
 
 import { revalidatePath } from "next/cache";
+import { verifyCheckoutToken } from "@/lib/desktop/checkout-token";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -495,6 +496,8 @@ export async function uploadNewVersion(input: {
   documentId: string;
   file: File;
   category?: string;
+  /** 受控回传（桌面连接器）：取件令牌，校验归属与基线 */
+  checkoutToken?: string;
 }): Promise<{ ok: true; id: string; version: number }> {
   const session = await requireSession("documents.write");
   const prior = await prisma.document.findUnique({ where: { id: input.documentId } });
@@ -504,6 +507,20 @@ export async function uploadNewVersion(input: {
   if (prior.matterId) {
     await assertCanAccessMatter(session.user.id, session.user.role, prior.matterId, session.user.rolePermissions);
     await assertDocumentWritable(prior.matterId, { kind: "modify" });
+  }
+
+  // 受控回传冲突拦截（DESKTOP-CONNECTOR-PLAN §二）：取件后他人已传新版
+  // → 拒绝直传，提示基于新版另存；法律文本不自动合并。
+  let checkout: { jti: string; baselineVersion: number } | null = null;
+  if (input.checkoutToken) {
+    const payload = verifyCheckoutToken(input.checkoutToken);
+    if (!payload) throw new Error("取件令牌无效或已过期，请重新取件");
+    if (payload.docId !== input.documentId) throw new Error("令牌与材料不匹配");
+    if (payload.userId !== session.user.id) throw new Error("令牌不属于当前账号");
+    if (payload.baselineVersion !== prior.version) {
+      throw new Error(`文件已被他人更新为第 ${prior.version} 版（取件基线为第 ${payload.baselineVersion} 版）。请重新取件基于最新版另存副本，勿直接覆盖。`);
+    }
+    checkout = { jti: payload.jti, baselineVersion: payload.baselineVersion };
   }
 
   const raw = Buffer.from(await input.file.arrayBuffer());
@@ -550,7 +567,7 @@ export async function uploadNewVersion(input: {
     action: "DOCUMENT_NEW_VERSION",
     targetType: "Document",
     targetId: created.id,
-    detail: { priorId: prior.id, familyId: prior.familyId ?? prior.id, version: created.version, sha256: hash }
+    detail: { priorId: prior.id, familyId: prior.familyId ?? prior.id, version: created.version, sha256: hash, ...(checkout ? { controlledReturn: true, checkoutJti: checkout.jti, baselineVersion: checkout.baselineVersion } : {}) }
   });
 
   // 新版本同样抽取文本层（沿用上传路径口径）

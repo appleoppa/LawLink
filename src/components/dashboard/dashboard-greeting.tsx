@@ -82,6 +82,11 @@ export function DashboardGreeting({
             新建收案
           </Button>
           <ConflictSearchButton />
+          {/* 墨案 02 效果图：操作区第三入口 */}
+          <Button variant="ghost" onClick={() => router.push("/schedule")} className="gap-1.5">
+            <Calendar className="h-4 w-4" strokeWidth={1.8} />
+            进入日程
+          </Button>
         </div>
       </div>
 

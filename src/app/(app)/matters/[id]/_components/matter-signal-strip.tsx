@@ -1,15 +1,21 @@
 /**
- * 案件信号条（墨案 · MatterWorkspace 母版，批次③）。
- * 风险信号置顶：逾期期限（红·阻断）、待确认期限（琥珀）、近 7 天开庭（蓝）、
- * 待我处理审批（琥珀）。无信号时显示绿色"无风险信号"终态条。
- * 配色纪律：红仅逾期/阻断；绿仅"无风险"终态。
+ * 案件信号条（墨案 · MatterWorkspace 母版，对齐 docs/mockup/v4/04 信号条四卡式）。
+ * 每个信号一张卡：标签 + 大数字（等宽）+ 副文案 + 风险阶梯四级条。
+ * 配色纪律：红仅逾期/阻断（热卡浅红底）；绿仅"无风险"终态。
  */
-import { AlertTriangle, BellRing, CircleCheck, Clock, Gavel } from "lucide-react";
+import { BellRing, Clock, Gavel } from "lucide-react";
 import Link from "next/link";
 
 export interface MatterSignal {
   kind: "overdue" | "pending-confirm" | "hearing-soon" | "approval";
+  /** 卡片标签（如"最近逾期期限"） */
   label: string;
+  /** 大数字（天数/项数等）；缺省时仅显示文字卡 */
+  count?: number;
+  /** 数字单位（天前 / 项 / 次等） */
+  unit?: string;
+  /** 副文案（案件内具体事项） */
+  sub?: string;
   href?: string;
 }
 
@@ -36,41 +42,73 @@ function SignalLadder({ kind }: { kind: MatterSignal["kind"] }) {
   );
 }
 
+const cardStyle: Record<
+  MatterSignal["kind"],
+  { color: string; hot?: boolean; icon: typeof Clock; dotPulse?: boolean }
+> = {
+  overdue: { color: "#B42318", hot: true, icon: Clock, dotPulse: true },
+  "pending-confirm": { color: "#96650B", icon: BellRing, dotPulse: true },
+  "hearing-soon": { color: "#1E56C8", icon: Gavel },
+  approval: { color: "#96650B", icon: Clock }
+};
+
 export function MatterSignalStrip({ signals }: { signals: MatterSignal[] }) {
   if (signals.length === 0) {
     return (
       <div className="flex items-center gap-2 rounded-lg border px-3 py-2 text-[12.5px]"
            style={{ borderColor: "#C4E3CE", background: "#E7F3EA", color: "#1A7F45" }}>
-        <CircleCheck className="h-4 w-4" />
+        <span className="inline-block h-[7px] w-[7px] rounded-full" style={{ background: "#1A7F45" }} />
         无风险信号：本案当前没有逾期期限、待确认期限与临近开庭
       </div>
     );
   }
-  const style: Record<MatterSignal["kind"], { border: string; bg: string; color: string; icon: typeof Clock }> = {
-    overdue: { border: "#F0C6BF", bg: "#FBECE9", color: "#B42318", icon: AlertTriangle },
-    "pending-confirm": { border: "#EBD8AB", bg: "#FAF0DB", color: "#96650B", icon: BellRing },
-    "hearing-soon": { border: "#C3D2F0", bg: "#E9EEFA", color: "#1E56C8", icon: Gavel },
-    approval: { border: "#EBD8AB", bg: "#FAF0DB", color: "#96650B", icon: Clock }
-  };
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {signals.map((s, i) => {
-        const st = style[s.kind];
+        const st = cardStyle[s.kind];
         const Icon = st.icon;
-        const content = (
-          <span
-            className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium"
-            style={{ borderColor: st.border, background: st.bg, color: st.color }}
+        const card = (
+          <div
+            className="ll-surface relative flex min-w-0 flex-col gap-2 overflow-hidden px-4 py-3"
+            style={
+              st.hot
+                ? { borderColor: "#F0C6BF", background: "linear-gradient(180deg, #FFFFFF 55%, #FBECE9 165%)" }
+                : undefined
+            }
           >
-            <Icon className="h-3.5 w-3.5" />
-            {s.label}
-            <SignalLadder kind={s.kind} />
-          </span>
+            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span
+                className={`inline-block h-[7px] w-[7px] shrink-0 rounded-full ${st.dotPulse ? "ll-dot-pulse" : ""}`}
+                style={{ background: st.color, ...(st.dotPulse ? { boxShadow: `0 0 0 3px ${st.color}29` } : {}) }}
+              />
+              <span className="truncate">{s.label}</span>
+              <Icon className="ml-auto h-3.5 w-3.5 shrink-0" style={{ color: st.color }} strokeWidth={1.8} />
+            </div>
+            {typeof s.count === "number" ? (
+              <div className="flex items-baseline gap-1.5">
+                <span
+                  className="font-mono text-[22px] font-semibold leading-none tabular"
+                  style={{ color: st.color, letterSpacing: "-0.02em" }}
+                >
+                  {s.count}
+                </span>
+                {s.unit ? <span className="text-[11px] text-muted-foreground">{s.unit}</span> : null}
+              </div>
+            ) : null}
+            {s.sub ? (
+              <div className="truncate text-[11px] leading-relaxed text-muted-foreground" title={s.sub}>
+                {s.sub}
+              </div>
+            ) : null}
+            <div className="mt-auto">
+              <SignalLadder kind={s.kind} />
+            </div>
+          </div>
         );
         return s.href ? (
-          <Link key={i} href={s.href} className="transition-opacity hover:opacity-80">{content}</Link>
+          <Link key={i} href={s.href} className="transition-opacity hover:opacity-85">{card}</Link>
         ) : (
-          <span key={i}>{content}</span>
+          <div key={i}>{card}</div>
         );
       })}
     </div>

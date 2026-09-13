@@ -28,6 +28,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 import { InfoPanel } from "./info-panel";
 import { FinancePanel } from "./finance-panel";
 import { ProcedureRemindersAndMemos } from "./procedure-content";
+import { ProcedureStageChain } from "./procedure-stage-chain";
 import { ProcedurePartiesCard } from "./procedure-info-panel";
 import { ProcedureWorkflowPanel } from "./procedure-workflow-panel";
 import type { WorkflowPreservationCase } from "./procedure-workflow-panel";
@@ -265,7 +266,16 @@ export function MatterDetailTabs({
       <header className="ll-hero-surface px-5 py-4">
         <div className="relative z-[1] flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
-            <div className="mb-1.5 flex flex-wrap items-center gap-2 font-mono text-[11px] text-muted-foreground">
+            {/* 墨案 04 效果图：宋体案件名置顶，类别·客户·收案 编号行移至标题下 */}
+            <h1
+              className="truncate text-[22px] font-bold leading-snug"
+              style={{ fontFamily: '"Songti SC", "STSong", "Noto Serif SC", serif', letterSpacing: "0.01em" }}
+              title={matter.title}
+            >
+              {matter.title}
+              {matterCategoryKind(matter.category) !== "project" && "案"}
+            </h1>
+            <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[11px] text-muted-foreground">
               <span>{matterCategoryLabel[matter.category]}</span>
               {matter.primaryClient?.name ? (
                 <>
@@ -280,10 +290,6 @@ export function MatterDetailTabs({
                 </>
               ) : null}
             </div>
-            <h1 className="truncate text-[20px] font-semibold leading-tight" title={matter.title}>
-              {matter.title}
-              {matterCategoryKind(matter.category) !== "project" && "案"}
-            </h1>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <MatterStatusPill status={matter.status} />
               {matter.serviceStatus === "SERVICE_COMPLETED" && (
@@ -366,6 +372,9 @@ export function MatterDetailTabs({
             onAdd={() => setAddProcOpen(true)}
             onDelete={handleDeleteProcedure}
           />
+
+          {/* 墨案 04 效果图：当前程序的环节横向节点链（✓/●/! + 日期） */}
+          <ProcedureStageChain procedure={currentProcedure} />
 
           <ProcedureWorkflowPanel
             matter={{

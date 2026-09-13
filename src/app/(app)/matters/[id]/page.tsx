@@ -205,10 +205,24 @@ export default async function MatterDetailPage({ params }: PageProps) {
   const overdue = allDeadlines.filter((d: { completed: boolean; dueAt: Date }) => !d.completed && d.dueAt < now);
   const pendingConfirm = allDeadlines.filter((d: { confirmStatus?: string }) => d.confirmStatus === "PENDING");
   if (overdue.length > 0) {
-    signals.push({ kind: "overdue", label: `${overdue.length} 项期限已逾期（${overdue[0].title}）` });
+    const earliest = [...overdue].sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime())[0];
+    const daysOver = Math.max(1, Math.ceil((now.getTime() - earliest.dueAt.getTime()) / 86_400_000));
+    signals.push({
+      kind: "overdue",
+      label: "最近逾期期限",
+      count: daysOver,
+      unit: "天前",
+      sub: `共 ${overdue.length} 项未完成 · ${earliest.title}`
+    });
   }
   if (pendingConfirm.length > 0) {
-    signals.push({ kind: "pending-confirm", label: `${pendingConfirm.length} 项规则期限待确认` });
+    signals.push({
+      kind: "pending-confirm",
+      label: "规则期限待确认",
+      count: pendingConfirm.length,
+      unit: "项",
+      sub: "确认后不被规则重算覆盖"
+    });
   }
   const hearingsSoon = matter.procedures
     .flatMap((proc: { hearings: { startsAt: Date }[] }) => proc.hearings)
@@ -217,7 +231,15 @@ export default async function MatterDetailPage({ params }: PageProps) {
       return diff >= 0 && diff <= 7;
     });
   if (hearingsSoon.length > 0) {
-    signals.push({ kind: "hearing-soon", label: `近 7 天有 ${hearingsSoon.length} 次开庭` });
+    const next = [...hearingsSoon].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime())[0];
+    const daysTo = Math.max(0, Math.ceil((next.startsAt.getTime() - now.getTime()) / 86_400_000));
+    signals.push({
+      kind: "hearing-soon",
+      label: "下次开庭",
+      count: daysTo,
+      unit: "天后",
+      sub: `近 7 天共 ${hearingsSoon.length} 次`
+    });
   }
 
   return (

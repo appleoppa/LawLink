@@ -7,7 +7,7 @@ const AUTH_TAG_LENGTH = 16;
 
 let cachedKey: Buffer | null = null;
 
-function getKey(): Buffer {
+export function getStorageEncryptionKey(): Buffer {
   if (cachedKey) return cachedKey;
   const raw = process.env.STORAGE_ENCRYPTION_KEY;
   if (!raw) {
@@ -33,7 +33,7 @@ export function encryptBuffer(plain: Buffer): {
   algorithm: string;
 } {
   const iv = randomBytes(IV_LENGTH);
-  const cipher = createCipheriv("aes-256-gcm", getKey(), iv, {
+  const cipher = createCipheriv("aes-256-gcm", getStorageEncryptionKey(), iv, {
     authTagLength: AUTH_TAG_LENGTH
   });
   const ct = Buffer.concat([cipher.update(plain), cipher.final()]);
@@ -51,7 +51,7 @@ export function decryptBuffer(
 ): Buffer {
   const iv = Buffer.from(ivBase64, "base64");
   const authTag = Buffer.from(authTagBase64, "base64");
-  const decipher = createDecipheriv("aes-256-gcm", getKey(), iv, {
+  const decipher = createDecipheriv("aes-256-gcm", getStorageEncryptionKey(), iv, {
     authTagLength: AUTH_TAG_LENGTH
   });
   decipher.setAuthTag(authTag);

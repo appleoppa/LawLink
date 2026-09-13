@@ -4,7 +4,7 @@
  * 配色纪律：红仅风险/阻断；blue 进行中；琥珀临近。
  */
 import Link from "next/link";
-import { CheckCircle2, Gavel, Timer, TriangleAlert } from "lucide-react";
+import { CheckCircle2, Gavel, Timer, TriangleAlert, ChevronRight } from "lucide-react";
 
 export interface DashboardActionTilesData {
   pendingSealCount: number;
@@ -59,7 +59,7 @@ export function DashboardActionTiles({ data }: { data: DashboardActionTilesData 
           <Link
             key={t.label}
             href={t.href}
-            className="flex items-center gap-3 rounded-xl border border-border bg-card p-3.5 transition-shadow hover:shadow-md"
+            className="group/tile flex items-center gap-3 rounded-xl border border-border bg-card p-3.5 transition-shadow hover:shadow-md"
           >
             <span
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
@@ -73,6 +73,7 @@ export function DashboardActionTiles({ data }: { data: DashboardActionTilesData 
               </span>
               <span className="block truncate text-[12px] text-muted-foreground">{t.label}</span>
             </span>
+            <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-muted-foreground/40 transition-transform group-hover/tile:translate-x-0.5" strokeWidth={2} />
           </Link>
         );
       })}

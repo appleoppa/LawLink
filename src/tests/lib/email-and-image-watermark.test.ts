@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { isEmailConfigured, sendReminderEmail } from "@/lib/notifications/email";
 import { watermarkImage } from "@/lib/documents/watermark";
 
@@ -20,7 +20,7 @@ describe("图像水印（sharp）", () => {
     const marked = await watermarkImage({ buf: base, text: "LawLink download by YeSen 2026-09-13" });
     expect(marked).not.toBeNull();
     expect(marked!.length).toBeGreaterThan(base.length);
-    const meta = await sharp(marked).metadata();
+    const meta = await sharp(marked!).metadata();
     expect(meta.format).toBe("png");
     expect(meta.width).toBe(400);
 
