@@ -17,6 +17,8 @@ import { nullableDecimalToNumber, serializeDecimals } from "@/lib/decimal";
 import { MatterDetailTabs } from "./_components/matter-detail-tabs";
 import { MatterSignalStrip, type MatterSignal } from "./_components/matter-signal-strip";
 import { ReviewSummaryCard } from "./_components/review-summary-card";
+import { listEngagementsForMatter } from "@/server/engagements/actions";
+import { listEvidenceItems } from "@/server/evidence/actions";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -162,6 +164,11 @@ export default async function MatterDetailPage({ params }: PageProps) {
 
   // v0.22: 本案 AI 审查总览（聚合 ReviewRecord）
   const reviewSummary = allowed("documents.read") ? await getMatterReviewSummary(matter.id) : null;
+  // v1.x P2: 委托与证据链（详情页区块；read 已在页面入口校验）
+  const [engagements, evidenceItems] = await Promise.all([
+    listEngagementsForMatter(matter.id).catch(() => []),
+    listEvidenceItems(matter.id).catch(() => [])
+  ]);
   const currentMatterMember = session?.user.id
     ? matter.members.find((member) => member.userId === session.user.id)
     : null;
@@ -251,6 +258,8 @@ export default async function MatterDetailPage({ params }: PageProps) {
         latestArchive={latestArchive}
         customFieldDefs={customFieldDefs}
         preservationCases={preservationCasesForClient}
+        engagements={engagements}
+        evidenceItems={evidenceItems}
       />
     </div>
   );

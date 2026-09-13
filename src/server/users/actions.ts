@@ -81,6 +81,8 @@ export async function listUsers() {
       lastLoginAt: true,
       failedLoginAttempts: true,
       lockedUntil: true,
+      totpEnabled: true,
+      totpEnforced: true,
       createdAt: true,
       updatedAt: true,
       approvalMemberships: { where: { active: true, group: { active: true } }, select: { group: { select: { id: true, name: true } } } },

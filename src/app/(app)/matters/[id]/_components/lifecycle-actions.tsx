@@ -11,7 +11,9 @@ import {
   Loader2,
   MoreHorizontal,
   Lock,
-  Download
+  Download,
+  BadgeCheck,
+  RotateCcw
 } from "lucide-react";
 import type { MatterStatus } from "@prisma/client";
 import { Button } from "@/components/ui/button";
@@ -35,28 +37,33 @@ import {
 import {
   closeMatter,
   reopenMatter,
-  holdMatter
+  holdMatter,
+  completeMatterService,
+  activateMatterService
 } from "@/server/matters/lifecycle";
 import { ArchiveWizardDialog } from "./archive-wizard";
 
 export function LifecycleActions({
   matterId,
   status,
+  serviceStatus,
   canArchive
 }: {
   matterId: string;
   status: MatterStatus;
+  serviceStatus?: "SERVICE_ACTIVE" | "SERVICE_COMPLETED" | null;
   canArchive: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [dialog, setDialog] = useState<"close" | "hold" | null>(null);
+  const [dialog, setDialog] = useState<"close" | "hold" | "service" | null>(null);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [text, setText] = useState("");
 
   const isArchived = status === "ARCHIVED";
+  const serviceDone = serviceStatus === "SERVICE_COMPLETED";
 
-  function open(d: "close" | "hold") {
+  function open(d: "close" | "hold" | "service") {
     setText("");
     setDialog(d);
   }
@@ -74,8 +81,24 @@ export function LifecycleActions({
         } else if (dialog === "hold") {
           await holdMatter({ id: matterId, reason: text });
           toast.success("案件已暂停");
+        } else if (dialog === "service") {
+          await completeMatterService({ id: matterId, note: text });
+          toast.success("律师服务已标记完成");
         }
         setDialog(null);
+        router.refresh();
+      } catch (err) {
+        toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
+      }
+    });
+  }
+
+  function handleReopenService() {
+    if (!confirm("将律师服务恢复为「进行中」？程序与归档状态不变。")) return;
+    startTransition(async () => {
+      try {
+        await activateMatterService(matterId);
+        toast.success("服务已恢复进行中");
         router.refresh();
       } catch (err) {
         toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
@@ -143,6 +166,18 @@ export function LifecycleActions({
               结案
             </DropdownMenuItem>
           )}
+          <DropdownMenuSeparator />
+          {serviceDone ? (
+            <DropdownMenuItem onSelect={handleReopenService}>
+              <RotateCcw className="mr-2 h-4 w-4" />
+              恢复服务（服务轴）
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem onSelect={() => open("service")}>
+              <BadgeCheck className="mr-2 h-4 w-4 text-[#8A6B3E]" />
+              完成服务（服务轴）
+            </DropdownMenuItem>
+          )}
           {canArchive && (
             <>
               <DropdownMenuSeparator />
@@ -161,17 +196,21 @@ export function LifecycleActions({
       <Dialog open={dialog !== null} onOpenChange={(o) => !o && setDialog(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{dialog === "close" ? "结案" : "暂停案件"}</DialogTitle>
+            <DialogTitle>
+              {dialog === "close" ? "结案" : dialog === "hold" ? "暂停案件" : "完成律师服务"}
+            </DialogTitle>
             <DialogDescription>
               {dialog === "close" &&
                 "结案后案件状态为'已结案'，仍可编辑。结案小结会进入时间线。"}
               {dialog === "hold" && "暂停后案件不再显示在'办理中'筛选。"}
+              {dialog === "service" &&
+                "服务轴与程序轴分离：标记服务完成不改案件办理状态，也不校验款项结清；可随时恢复。"}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-1.5">
             <Label className="text-xs">
-              {dialog === "close" ? "结案小结" : "暂停原因"}
+              {dialog === "close" ? "结案小结" : dialog === "hold" ? "暂停原因" : "服务完成备注（可选）"}
               {dialog === "close" && <span className="ml-1 text-destructive">*</span>}
             </Label>
             <Textarea
@@ -180,7 +219,9 @@ export function LifecycleActions({
               placeholder={
                 dialog === "close"
                   ? "如：经一审判决支持原告诉请，对方未上诉，判决已生效"
-                  : "如：等待客户补充证据材料"
+                  : dialog === "hold"
+                    ? "如：等待客户补充证据材料"
+                    : "如：全部委托事项已办结，客户确认无需继续跟进"
               }
               rows={5}
             />
@@ -192,7 +233,7 @@ export function LifecycleActions({
             </Button>
             <Button onClick={handleSubmit} disabled={isPending}>
               {isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-              {dialog === "close" ? "确认结案" : "确认暂停"}
+              {dialog === "close" ? "确认结案" : dialog === "hold" ? "确认暂停" : "确认完成服务"}
             </Button>
           </DialogFooter>
         </DialogContent>

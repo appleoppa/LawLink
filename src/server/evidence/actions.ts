@@ -89,6 +89,7 @@ export type EvidenceItemView = {
   sourceDocumentName: string | null;
   sourcePage: number | null;
   createdById: string;
+  createdByName: string | null;
   createdAt: Date;
 };
 
@@ -102,7 +103,8 @@ export async function listEvidenceItems(matterId: string): Promise<EvidenceItemV
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     select: {
       id: true, title: true, content: true, kind: true,
-      sourceDocumentId: true, sourcePage: true, createdById: true, createdAt: true
+      sourceDocumentId: true, sourcePage: true, createdById: true, createdAt: true,
+      createdBy: { select: { name: true } }
     }
   });
 
@@ -114,6 +116,7 @@ export async function listEvidenceItems(matterId: string): Promise<EvidenceItemV
 
   return rows.map(r => ({
     ...r,
-    sourceDocumentName: r.sourceDocumentId ? nameById.get(r.sourceDocumentId) ?? null : null
+    sourceDocumentName: r.sourceDocumentId ? nameById.get(r.sourceDocumentId) ?? null : null,
+    createdByName: r.createdBy?.name ?? null
   }));
 }

@@ -39,6 +39,8 @@ import { deleteProcedure } from "@/server/procedures/actions";
 import { useRouter } from "next/navigation";
 import { CustomFieldsPanel } from "./custom-fields-panel";
 import { LifecycleActions } from "./lifecycle-actions";
+import { EngagementPanel, type EngagementRow } from "./engagement-panel";
+import { EvidencePanel, type EvidenceItemRow } from "./evidence-panel";
 import { ArchiveStatusBanner } from "./archive-status-banner";
 import { ArchiveWizardDialog } from "./archive-wizard";
 import { TeamEditorDialog } from "./team-editor-dialog";
@@ -154,7 +156,9 @@ export function MatterDetailTabs({
   expresses,
   latestArchive,
   customFieldDefs,
-  preservationCases
+  preservationCases,
+  engagements,
+  evidenceItems
 }: {
   matter: MatterPayload;
   finance: FinancePayload;
@@ -189,6 +193,8 @@ export function MatterDetailTabs({
     required: boolean;
   }[];
   preservationCases: WorkflowPreservationCase[];
+  engagements: EngagementRow[];
+  evidenceItems: EvidenceItemRow[];
 }) {
   const allowed = (key: import("@/lib/roles/catalog").PermissionKey) => hasCustomPermission({ role: currentUserRole ?? "", rolePermissions }, key);
   const [selectedProcId, setSelectedProcId] = useState<string | null>(null);
@@ -280,6 +286,15 @@ export function MatterDetailTabs({
             </h1>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <MatterStatusPill status={matter.status} />
+              {matter.serviceStatus === "SERVICE_COMPLETED" && (
+                <Badge
+                  variant="outline"
+                  className="h-6 rounded-full border-[#8A6B3E]/30 bg-[#8A6B3E]/8 px-2 text-[11px] leading-none text-[#8A6B3E]"
+                  title="服务轴与程序轴分离：服务已完成，不影响案件办理状态"
+                >
+                  服务已完成
+                </Badge>
+              )}
               <Badge variant="outline" className="h-6 rounded-full bg-card px-2 text-[11px] leading-none">
                 {causeLabel}
               </Badge>
@@ -301,6 +316,7 @@ export function MatterDetailTabs({
               <LifecycleActions
                 matterId={matter.id}
                 status={matter.status}
+                serviceStatus={matter.serviceStatus}
                 canArchive={canLeadThisMatter}
               />
             )}
@@ -385,12 +401,30 @@ export function MatterDetailTabs({
             />
           )}
 
+          {allowed("matters.read") && (
+            <EvidencePanel
+              matterId={matter.id}
+              items={evidenceItems}
+              documents={documents.map((d: { id: string; name: string }) => ({ id: d.id, name: d.name }))}
+              canManage={canAssociateThisMatter}
+            />
+          )}
+
           {hasCustomFields && (
             <CustomFieldsPanel
               matterId={matter.id}
               defs={customFieldDefs}
               values={customValues}
               canEdit={canLeadThisMatter}
+            />
+          )}
+
+          {allowed("matters.read") && (
+            <EngagementPanel
+              matterId={matter.id}
+              client={matter.primaryClient ? { id: matter.primaryClient.id, name: matter.primaryClient.name } : null}
+              engagements={engagements}
+              canManage={canAssociateThisMatter}
             />
           )}
         </div>

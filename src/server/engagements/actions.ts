@@ -155,3 +155,16 @@ export async function listEngagementsForMatter(matterId: string) {
   });
   return rows;
 }
+
+/**
+ * 客户名下未终止的委托（案件详情「关联已有委托」选择用）。
+ * 只回 id/title/startedAt——挂链校验仍在 linkEngagementMatter 服务端执行。
+ */
+export async function listActiveEngagementsForClient(clientId: string) {
+  await requireSession("matters.read");
+  return prisma.engagement.findMany({
+    where: { clientId, endedAt: null },
+    orderBy: { startedAt: "desc" as const },
+    select: { id: true, title: true, startedAt: true }
+  });
+}

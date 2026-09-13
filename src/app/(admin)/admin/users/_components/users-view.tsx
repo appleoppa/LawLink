@@ -14,6 +14,7 @@ import {
   LockOpen,
   ShieldCheck,
   ShieldOff,
+  Smartphone,
   Users as UsersIcon
 } from "lucide-react";
 import type { SystemRole, UserRole } from "@prisma/client";
@@ -50,7 +51,8 @@ import {
   updateUserSystemRole,
   setUserActive,
   unlockUserLogin,
-  resetUserPassword
+  resetUserPassword,
+  forceEnforceTotp
 } from "@/server/users/actions";
 import { ProfileBasicsForm } from "@/components/users/profile-basics-form";
 import { IdentityForm } from "@/components/users/identity-form";
@@ -85,6 +87,8 @@ type UserRow = {
   lastLoginAt: Date | null;
   lockedUntil?: Date | null;
   failedLoginAttempts?: number;
+  totpEnabled?: boolean;
+  totpEnforced?: boolean;
   createdAt: Date;
   updatedAt: Date;
   approvalMemberships: { group: { id: string; name: string } }[];
@@ -133,6 +137,7 @@ export function UsersView({
               <th className="px-5 py-3 font-medium">案件</th>
               <th className="px-5 py-3 font-medium">最近登录</th>
               <th className="px-5 py-3 font-medium">状态</th>
+              <th className="px-5 py-3 font-medium">登录安全</th>
               <th className="px-5 py-3 font-medium">操作</th>
             </tr>
           </thead>
@@ -243,6 +248,29 @@ function UserRow({
     });
   }
 
+  // v1.x P1 收尾 c: 管理员强制账号开启双步验证（TOTP）
+  function handleToggleTotpEnforce() {
+    const next = !user.totpEnforced;
+    if (isSelf && next && !user.totpEnabled) {
+      toast.warning("你自己尚未绑定动态码：强制后将无法登录，请先在「个人设置 → 登录安全」完成绑定");
+      return;
+    }
+    const warning = next
+      ? user.totpEnabled
+        ? `要求 ${user.name} 登录时使用双步验证？该账号已绑定动态码，每次登录都须验证。`
+        : `要求 ${user.name} 开启双步验证？该账号尚未绑定动态码，完成绑定前将无法登录（需线下协助绑定）。`
+      : `解除 ${user.name} 的双步验证强制要求？已绑定的动态码不受影响。`;
+    if (!confirm(warning)) return;
+    startTransition(async () => {
+      try {
+        const res = await forceEnforceTotp({ id: user.id, enabled: next });
+        toast.success(res.enforced ? "已要求开启双步验证" : "已解除强制要求");
+      } catch (err) {
+        toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
+      }
+    });
+  }
+
   return (
     <tr className={user.active ? "" : "opacity-60"}>
       <td className="px-5 py-3">
@@ -300,6 +328,22 @@ function UserRow({
         </Badge>
       </td>
       <td className="px-5 py-3">
+        <div className="flex flex-col items-start gap-1">
+          <Badge
+            variant={user.totpEnabled ? "secondary" : "outline"}
+            className={`text-[10px] ${user.totpEnabled ? "text-[#1A7F45]" : "text-muted-foreground"}`}
+          >
+            <Smartphone className="mr-1 h-3 w-3" />
+            {user.totpEnabled ? "双步已绑定" : "双步未开启"}
+          </Badge>
+          {user.totpEnforced && (
+            <span className="rounded-full border border-[#96650B]/35 bg-[#96650B]/10 px-1.5 py-px text-[10px] text-[#7A5209]">
+              已强制要求
+            </span>
+          )}
+        </div>
+      </td>
+      <td className="px-5 py-3">
         <div className="flex gap-1">
           <Button variant="ghost" size="sm" onClick={onEdit}>资料</Button>
           <Button
@@ -311,6 +355,16 @@ function UserRow({
           >
             <KeyRound className="h-3.5 w-3.5" />
             改密码
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleToggleTotpEnforce}
+            disabled={isPending}
+            className="h-7 gap-1 text-xs"
+          >
+            <Smartphone className="h-3.5 w-3.5" />
+            {user.totpEnforced ? "解除强制" : "强制双步"}
           </Button>
           {!isSelf && (
             <>

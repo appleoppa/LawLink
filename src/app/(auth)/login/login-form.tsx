@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
+import { checkLoginTotpEnforcement } from "@/server/auth/totp-actions";
 
 const schema = z.object({
   email: z.string().email("请填写有效邮箱"),
@@ -48,6 +49,17 @@ export function LoginForm() {
       router.replace(callbackUrl);
       router.refresh();
     } else {
+      // 凭据被拒时区分策略性拦截：被管理员要求开启双步验证但尚未绑定的账号
+      // 在完成绑定前无法登录（authorize 恒拒）。仅在已失败后查询，避免账号探测。
+      try {
+        const enforced = await checkLoginTotpEnforcement(values.email);
+        if (enforced) {
+          setAuthError("该账号已被管理员要求开启双步验证，且尚未完成绑定，暂无法登录。请联系管理员协助完成绑定。");
+          return;
+        }
+      } catch {
+        // 预检不可用时不影响通用错误提示
+      }
       setAuthError("邮箱或密码错误");
     }
   }
