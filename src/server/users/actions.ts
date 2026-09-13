@@ -134,9 +134,10 @@ export async function createUser(formData: FormData) {
     identityDocumentName: formData.get("identityDocumentName"),
     identityDocumentNumber: formData.get("identityDocumentNumber")
   });
+  // 2026-09-13 制度决策：账号开通与证件照片采集解耦——照片可选，
+  // 开通后可经「资料 → 身份证件」补充；号码与类型仍必填（身份标识）。
   const files = [formData.get("identityImagePrimary"), formData.get("identityImageSecondary")]
     .filter((file): file is File => file instanceof File && file.size > 0);
-  if (!files.length) throw new Error("请上传证件照片");
   if (files.length > 2) throw new Error("最多上传两张证件照片");
 
   const existing = await prisma.user.findUnique({ where: { email: data.email }, select: { id: true } });
@@ -164,13 +165,17 @@ export async function createUser(formData: FormData) {
         identityDocumentNumber: data.identityDocumentNumber,
         active: true
       }, select: { id: true } });
-      const identityFiles = await storeIdentityDocumentFiles({
-        userId: user.id,
-        uploadedById: session.user.id,
-        documentType: data.identityDocumentType,
-        files
-      });
-      await db.userIdentityDocument.createMany({ data: identityFiles });
+      const identityFiles = files.length
+        ? await storeIdentityDocumentFiles({
+            userId: user.id,
+            uploadedById: session.user.id,
+            documentType: data.identityDocumentType,
+            files
+          })
+        : [];
+      if (identityFiles.length) {
+        await db.userIdentityDocument.createMany({ data: identityFiles });
+      }
       await approvalAudit(db, session.user.id, "USER_CREATE", user.id, {
         role: data.role,
         roleDefinitionId: data.roleDefinitionId ?? null,

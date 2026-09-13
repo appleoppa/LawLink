@@ -108,9 +108,12 @@ export function IdentityDocumentFields({
       </Field>
     </div>
     <div className="grid gap-4 sm:grid-cols-2">
-      <IdentityFileField label={primaryLabel} required file={value.primaryFile} disabled={disabled} error={errors?.primaryFile} onChange={file => setFile("primaryFile", file)} />
+      <IdentityFileField label={`${primaryLabel}（选填）`} file={value.primaryFile} disabled={disabled} error={errors?.primaryFile} onChange={file => setFile("primaryFile", file)} />
       <IdentityFileField label={secondaryLabel} file={value.secondaryFile} disabled={disabled} onChange={file => setFile("secondaryFile", file)} />
     </div>
+    <p className="-mt-1 text-xs text-muted-foreground">
+      照片可稍后在「资料 → 身份证件」补充上传；涉及身份核验时请在核验前完成采集。
+    </p>
     <div className="flex flex-wrap items-center gap-3">
       <Button type="button" variant="outline" size="sm" disabled={disabled || recognizing || !value.primaryFile} onClick={recognize} className="gap-1.5">
         {recognizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanLine className="h-4 w-4" />}

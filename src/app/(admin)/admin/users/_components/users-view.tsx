@@ -447,9 +447,8 @@ function CreateUserSheet({
         if (issue.path[0] === "identityDocumentType") nextErrors.documentType = issue.message;
       }
     }
-    if (!identity.primaryFile) nextErrors.primaryFile = "请上传主要证件照片";
     setIdentityErrors(nextErrors);
-    if (!parsedIdentity.success || !identity.primaryFile) return;
+    if (!parsedIdentity.success) return;
     startTransition(async () => {
       try {
         const roleAssignment = assignment(values.role);
@@ -463,7 +462,7 @@ function CreateUserSheet({
         formData.set("identityDocumentType", parsedIdentity.data.identityDocumentType);
         formData.set("identityDocumentName", parsedIdentity.data.identityDocumentName ?? "");
         formData.set("identityDocumentNumber", parsedIdentity.data.identityDocumentNumber);
-        formData.set("identityImagePrimary", identity.primaryFile!);
+        if (identity.primaryFile) formData.set("identityImagePrimary", identity.primaryFile);
         if (identity.secondaryFile) formData.set("identityImageSecondary", identity.secondaryFile);
         await createUser(formData);
         toast.success("用户已创建");
@@ -483,7 +482,7 @@ function CreateUserSheet({
         <SheetHeader className="border-b border-border bg-background px-6 py-4">
           <SheetTitle>新增用户</SheetTitle>
           <SheetDescription className="text-xs">
-            登记基本资料和身份证件；初始密码可让用户登录后自行修改
+            登记基本资料和身份证件（类型与号码必填，照片可选、可稍后在「资料 → 身份证件」补充）；初始密码可让用户登录后自行修改
           </SheetDescription>
         </SheetHeader>
 

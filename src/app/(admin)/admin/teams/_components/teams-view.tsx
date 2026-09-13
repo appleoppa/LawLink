@@ -55,6 +55,17 @@ function TeamEditor({ team, users, onClose }: { team: Team | null; users: User[]
         await saveTeam({ id: team?.id, expectedUpdatedAt: team?.updatedAt, name, leaderId, active,
           members: Object.entries(selected).map(([userId, canViewAllMatters]) => ({ userId, canViewAllMatters })) });
         toast.success(team ? "团队设置已更新" : "团队已创建");
+        // 撤权复核提示（2026-09-13 制度决策）：移出成员/更换负责人/停用团队时提示复核，不阻塞保存
+        if (team) {
+          const removed = team.members.filter(m => !(m.userId in selected) || (m.userId === team.leaderId && m.userId !== leaderId));
+          const deactivated = team.active && !active;
+          const leaderChanged = team.leaderId !== leaderId;
+          if (deactivated || leaderChanged || removed.length > 0) {
+            toast.info("团队访问已即时调整", {
+              description: "该成员经团队汇总可见的历史案件访问即时停止；如有仍需其访问的受限案件，请另行复核授权。"
+            });
+          }
+        }
         router.refresh();
         onClose();
       } catch (err) { setError(err instanceof Error ? err.message : "保存失败，请稍后重试"); }
@@ -75,7 +86,7 @@ function TeamEditor({ team, users, onClose }: { team: Team | null; users: User[]
             </div>)}{candidates.length === 0 && <p className="p-4 text-sm text-muted-foreground">没有匹配的人员</p>}</div>
           </section>
           <label className="flex items-center gap-2 text-sm"><Checkbox checked={active} onCheckedChange={(checked) => setActive(checked === true)} />启用团队</label>
-          <p className="text-xs leading-relaxed text-muted-foreground">移出成员或停用团队后，团队查看范围立即调整；已有个人经办权限保留。</p>
+          <p className="text-xs leading-relaxed text-muted-foreground">移出成员或停用团队后，团队查看范围立即调整，个人已有经办权限保留；保存后如涉及成员移出、负责人更换或停用，将提示复核受限案件访问。</p>
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         </fieldset>
         <SheetFooter className="border-t pt-4"><Button type="button" variant="outline" disabled={pending} onClick={onClose}>取消</Button><Button type="submit" disabled={pending || !name.trim() || !leaderId}>{pending ? "正在保存…" : "保存团队"}</Button></SheetFooter>
