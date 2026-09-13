@@ -154,3 +154,98 @@ export async function holdMatter(input: HoldMatterInput) {
   revalidatePath("/matters");
   return { ok: true };
 }
+
+/* ---------- v1.x P2 状态轴分离（报告 §6.4 最小版） ---------- */
+
+const completeServiceSchema = z.object({
+  id: z.string().cuid(),
+  note: z.string().max(500).optional().or(z.literal(""))
+});
+export type CompleteMatterServiceInput = z.input<typeof completeServiceSchema>;
+
+/**
+ * 服务完成（服务轴）。与程序轴（status：办理中/已结案/已归档）分离——
+ * 样例 6：一审程序结束不等于律师服务完成；服务完成是主办显式动作，
+ * 不自动联动 status，也不校验款项（核销体系独立表达）。
+ * UI 入口待 A 线（案件详情操作区）。
+ */
+export async function completeMatterService(input: CompleteMatterServiceInput) {
+  const session = await requireSession("matters.write");
+  const data = completeServiceSchema.parse(input);
+
+  const matter = await prisma.matter.findUnique({ where: { id: data.id }, select: { serviceStatus: true } });
+  if (!matter) throw new Error("案件不存在");
+  await assertMatterWritable(data.id);
+  await assertCanLeadMatter(session.user.id, data.id, "仅案件主办/协办可以完成服务");
+  if (matter.serviceStatus === "SERVICE_COMPLETED") throw new Error("服务已完成，请勿重复操作");
+
+  await prisma.$transaction(async (tx) => {
+    await checkRoleMutation(tx, session.user, "matters.write");
+    await tx.matter.update({
+      where: { id: data.id },
+      data: { serviceStatus: "SERVICE_COMPLETED" }
+    });
+    await tx.timelineEvent.create({
+      data: {
+        matterId: data.id,
+        eventType: "MATTER_SERVICE_COMPLETED",
+        title: "律师服务已完成",
+        content: data.note || undefined,
+        occurredAt: new Date()
+      }
+    });
+  });
+
+  await audit({
+    userId: session.user.id,
+    action: "MATTER_SERVICE_COMPLETE",
+    targetType: "Matter",
+    targetId: data.id,
+    detail: { noteLen: data.note?.length ?? 0 }
+  });
+
+  await revalidateMatter(data.id);
+  revalidatePath("/matters");
+  return { ok: true };
+}
+
+/**
+ * 撤销服务完成（回 SERVICE_ACTIVE）。仅从服务完成态回退；
+ * 程序轴状态不变。已归档案件不可回退（assertMatterWritable 拦截）。
+ */
+export async function activateMatterService(id: string) {
+  const session = await requireSession("matters.write");
+
+  const matter = await prisma.matter.findUnique({ where: { id }, select: { serviceStatus: true } });
+  if (!matter) throw new Error("案件不存在");
+  await assertMatterWritable(id);
+  await assertCanLeadMatter(session.user.id, id, "仅案件主办/协办可以恢复服务");
+  if (matter.serviceStatus === "SERVICE_ACTIVE") throw new Error("服务尚在进行中");
+
+  await prisma.$transaction(async (tx) => {
+    await checkRoleMutation(tx, session.user, "matters.write");
+    await tx.matter.update({
+      where: { id },
+      data: { serviceStatus: "SERVICE_ACTIVE" }
+    });
+    await tx.timelineEvent.create({
+      data: {
+        matterId: id,
+        eventType: "MATTER_SERVICE_ACTIVATED",
+        title: "服务已恢复进行中",
+        occurredAt: new Date()
+      }
+    });
+  });
+
+  await audit({
+    userId: session.user.id,
+    action: "MATTER_SERVICE_ACTIVATE",
+    targetType: "Matter",
+    targetId: id
+  });
+
+  await revalidateMatter(id);
+  revalidatePath("/matters");
+  return { ok: true };
+}

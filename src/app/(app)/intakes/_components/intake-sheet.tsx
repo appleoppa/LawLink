@@ -96,6 +96,7 @@ import { CauseAiManualDialog } from "@/app/(app)/matters/_components/cause-ai-ma
 import type { ClientOption } from "@/app/(app)/matters/_components/matters-view";
 import { readFormPath } from "@/lib/form-path";
 import { ClientCombobox } from "./client-combobox";
+import { checkClientDuplicate } from "@/server/clients/dedup";
 import { CauseRecommendationDialog } from "./cause-recommendation-dialog";
 import { JurisdictionSelect } from "./jurisdiction-select";
 
@@ -218,6 +219,10 @@ export function IntakeSheet({
   const { data: session } = useSession();
   const [isPending, startTransition] = useTransition();
   const [contracts, setContracts] = useState<File[]>([]);
+  // 墨案批次②：收案建档查重横幅（P0-1 界面闭环）——新建客户时按名称+证件号
+  // 防抖查重；证件精确命中=琥珀横幅+可一键"关联已有档案"；同名=弱提示。
+  const [dupDismissed, setDupDismissed] = useState(false);
+  const [dupResult, setDupResult] = useState<Awaited<ReturnType<typeof checkClientDuplicate>> | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const pleadingRef = useRef<HTMLInputElement>(null);
   const [ocrPending, setOcrPending] = useState(false);
@@ -256,6 +261,35 @@ export function IntakeSheet({
   const category = watch<MatterCategory>("category") ?? "CIVIL_COMMERCIAL";
   const firstProcedureType = watch<ProcedureType | undefined>("firstProcedureType");
   const clientId = watch("clientId") ?? "";
+  const party0Name = watch("parties.0.name") ?? "";
+  const party0IdNumber =
+    watch("parties.0.partyType") === "ORGANIZATION"
+      ? (watch("parties.0.enterpriseSocialCode") ?? "")
+      : (watch("parties.0.idNumber") ?? "");
+  useEffect(() => {
+    if (clientId || dupDismissed) {
+      setDupResult(null);
+      return;
+    }
+    const name = party0Name.trim();
+    const idNumber = party0IdNumber.trim();
+    if (!name && !idNumber) {
+      setDupResult(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      const idType = watch("parties.0.partyType") === "ORGANIZATION" ? "USCC" : "ID_CARD";
+      checkClientDuplicate({
+        idType: idNumber ? idType : null,
+        idNumber: idNumber || null,
+        name: name || undefined
+      })
+        .then(setDupResult)
+        .catch(() => setDupResult(null));
+    }, 500);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId, party0Name, party0IdNumber, dupDismissed]);
   const feeType = watch("feeType");
   const ownerUserId = watch("ownerUserId");
   const coUserIds = watch<string[]>("coUserIds") ?? [];
@@ -954,6 +988,55 @@ export function IntakeSheet({
         >
           <div className="flex-1 overflow-y-auto bg-[#e6ebf2] px-4 py-4">
             <div className="mx-auto max-w-[888px] space-y-3.5 [&_button[role=combobox]]:h-[34px] [&_button[role=combobox]]:min-h-0 [&_button[role=combobox]]:rounded-sm [&_button[role=combobox]]:border-[#c6d0dd] [&_button[role=combobox]]:bg-white [&_button[role=combobox]]:text-[12.5px] [&_button[role=combobox]]:shadow-[var(--shadow-inset-deep)] [&_input]:h-[34px] [&_input]:min-h-0 [&_input]:rounded-sm [&_input]:border-[#c6d0dd] [&_input]:bg-white [&_input]:text-[12.5px] [&_textarea]:rounded-sm [&_textarea]:border-[#c6d0dd] [&_textarea]:bg-white [&_textarea]:text-[12.5px]">
+            {dupResult && (dupResult.idNumberDuplicate || dupResult.nameDuplicates.length > 0) && (
+              <div
+                className="flex items-start gap-2 rounded-md border px-3 py-2.5"
+                style={{ borderColor: "#EBD8AB", background: "#FAF0DB" }}
+              >
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" style={{ color: "#96650B" }} />
+                <div className="min-w-0 flex-1">
+                  {dupResult.idNumberDuplicate ? (
+                    <>
+                      <p className="text-[12.5px] font-medium" style={{ color: "#96650B" }}>
+                        疑似同一主体：该证件号已登记于「{dupResult.idNumberDuplicate.name}」
+                        {dupResult.idNumberDuplicate.deletedAt ? "（停用档案）" : ""}
+                      </p>
+                      <p className="mt-0.5 text-[11.5px] leading-4" style={{ color: "#68747F" }}>
+                        身份持续唯一：请关联既有档案；若为重复建档，请到客户档案中合并处理。
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-[12.5px] font-medium" style={{ color: "#96650B" }}>
+                      已有同名客户：{dupResult.nameDuplicates.map(d => d.name).join("、")}
+                    </p>
+                  )}
+                  <div className="mt-1.5 flex gap-2">
+                    {dupResult.idNumberDuplicate && !dupResult.idNumberDuplicate.deletedAt && (
+                      <button
+                        type="button"
+                        className="rounded-sm border px-2 py-1 text-[11.5px] font-medium"
+                        style={{ borderColor: "#007B7F", color: "#007B7F", background: "#E4F1F0" }}
+                        onClick={() => {
+                          const d = dupResult.idNumberDuplicate!;
+                          setValue("clientId", d.id, { shouldDirty: true });
+                          setValue("parties.0.name", d.name, { shouldDirty: true, shouldValidate: true });
+                        }}
+                      >
+                        关联已有档案
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="rounded-sm border px-2 py-1 text-[11.5px]"
+                      style={{ borderColor: "#DDE3E0", color: "#68747F", background: "#fff" }}
+                      onClick={() => setDupDismissed(true)}
+                    >
+                      忽略本次
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             {Object.keys(errors).length > 0 && (
               <div
                 role="alert"

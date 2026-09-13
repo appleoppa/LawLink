@@ -5,7 +5,9 @@ import type {
   ClientType,
   ClientCooperationStatus,
   ClientGender,
+  EvidenceKind,
   MatterCategory,
+  MatterServiceStatus,
   MatterStatus,
   IntakeStatus,
   UserRole,
@@ -178,6 +180,21 @@ export const matterStatusLabel: Record<MatterStatus, string> = {
   ON_HOLD: "暂停",
   CLOSED: "已结案",
   ARCHIVED: "已归档"
+};
+
+// v1.x P2 材料出处链：证据条目性质
+export const evidenceKindLabel: Record<EvidenceKind, string> = {
+  FACT: "客观事实",
+  CLAIM: "当事人主张",
+  ANALYSIS: "经办分析",
+  ISSUE: "争议焦点",
+  TODO_VERIFY: "待核实"
+};
+
+// v1.x P2 状态轴分离（报告 §6.4）：服务轴与程序轴（Matter.status）分开
+export const matterServiceStatusLabel: Record<MatterServiceStatus, string> = {
+  SERVICE_ACTIVE: "服务进行中",
+  SERVICE_COMPLETED: "服务已完成"
 };
 
 export const intakeStatusLabel: Record<IntakeStatus, string> = {

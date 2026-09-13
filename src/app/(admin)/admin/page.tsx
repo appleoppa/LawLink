@@ -61,6 +61,10 @@ export default async function AdminHomePage() {
   const session = await getSession();
   if (!session?.user) redirect("/login");
   const systemAdmin = isSystemAdmin(session.user);
+  const { TextBackfillCard } = await import("./_components/text-backfill-card");
+  const { ClientIdCryptoCard } = await import("./_components/client-id-crypto-card");
+  const { getClientIdCryptoStats } = await import("@/server/clients/backfill-crypto");
+  const { getTextLayerStats } = await import("@/server/documents/admin-text-backfill");
 
   if (!systemAdmin) {
     return (
@@ -108,6 +112,9 @@ export default async function AdminHomePage() {
           </section>
         ))}
       </div>
+
+      <TextBackfillCard initialStats={await getTextLayerStats()} />
+      <ClientIdCryptoCard initialStats={await getClientIdCryptoStats()} />
     </div>
   );
 }

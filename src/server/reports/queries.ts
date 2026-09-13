@@ -106,12 +106,19 @@ export type ClientReceivable = {
   balance: number;
 };
 
+export type ClientSourceBreakdown = {
+  source: string;
+  count: number;
+  intakeCount: number; // 该来源客户名下案件数（含关联）
+};
+
 export type ReportData = {
   period: ReportPeriod;
   kpis: ReportKpis;
   byCategory: CategoryBreakdown[];
   byLawyer: LawyerOutput[];
   byClientReceivable: ClientReceivable[];
+  byClientSource: ClientSourceBreakdown[];
 };
 
 export async function getReportData(period: ReportPeriod, access: ReportAccess = { matters: {}, finance: {} }): Promise<ReportData> {
@@ -251,11 +258,34 @@ export async function getReportData(period: ReportPeriod, access: ReportAccess =
     (a, b) => b.balance - a.balance
   );
 
+  // v1.x P0-1 第三步：客户来源渠道分布（存量口径）
+  const clientSourceRaw = await prisma.client.groupBy({
+    by: ["source"],
+    where: { deletedAt: null },
+    _count: { _all: true }
+  });
+  const clientMatterRaw = await prisma.matterClient.groupBy({ by: ["clientId"], _count: { _all: true } });
+  const matterCountByClient = new Map(clientMatterRaw.map(r => [r.clientId, r._count._all]));
+  const allClients = await prisma.client.findMany({ where: { deletedAt: null }, select: { id: true, source: true } });
+  const intakeBySource = new Map<string, number>();
+  for (const c of allClients) {
+    const key = c.source?.trim() || "未记录";
+    intakeBySource.set(key, (intakeBySource.get(key) ?? 0) + (matterCountByClient.get(c.id) ?? 0));
+  }
+  const byClientSource: ClientSourceBreakdown[] = clientSourceRaw
+    .map(r => ({
+      source: r.source?.trim() || "未记录",
+      count: r._count._all,
+      intakeCount: intakeBySource.get(r.source?.trim() || "未记录") ?? 0
+    }))
+    .sort((a, b) => b.count - a.count);
+
   return {
     period,
     kpis: { newIntake, inProgress, closed, archived, archiveRate },
     byCategory,
     byLawyer,
-    byClientReceivable
+    byClientReceivable,
+    byClientSource
   };
 }

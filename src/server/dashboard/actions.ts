@@ -39,6 +39,8 @@ export type HeroData = {
   todayDeadlineCount: number;
   weekHearingCount: number;
   nearTermCount: number;
+  overdueDeadlineCount: number;
+  pendingSealCount: number;
   focus: {
     title: string;
     matter: string;
@@ -331,7 +333,7 @@ export async function getDashboardHeroData(): Promise<HeroData> {
   const weekEnd = new Date(todayStart.getTime() + 7 * 24 * 60 * 60 * 1000);
   const in7d = new Date(todayStart.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-  const [todayDeadlines, weekHearings, nearTermDeadlines, urgentDeadline] = await Promise.all([
+  const [todayDeadlines, weekHearings, nearTermDeadlines, urgentDeadline, overdueDeadlines, pendingSeals] = await Promise.all([
     // Today's deadlines
     prisma.deadline.count({
       where: {
@@ -382,7 +384,20 @@ export async function getDashboardHeroData(): Promise<HeroData> {
           }
         }
       }
-    })
+    }),
+    // v1.x 批次④：逾期未完成期限（行动入口）
+    prisma.deadline.count({
+      where: {
+        dueAt: { lt: now },
+        completed: false,
+        procedure: {
+          engagement: "ENGAGED",
+          matter: { deletedAt: null, ...visFilter }
+        }
+      }
+    }),
+    // 待审批用章申请（行动入口的近似待处理口径，与「待我处理」列表一致）
+    prisma.sealRequest.count({ where: { status: "PENDING" } })
   ]);
 
   let focus: HeroData["focus"] = null;
@@ -403,6 +418,8 @@ export async function getDashboardHeroData(): Promise<HeroData> {
     todayDeadlineCount: todayDeadlines,
     weekHearingCount: weekHearings,
     nearTermCount: nearTermDeadlines,
+    overdueDeadlineCount: overdueDeadlines,
+    pendingSealCount: pendingSeals,
     focus
   };
 }

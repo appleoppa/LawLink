@@ -51,11 +51,14 @@ export function WebhookSettingsCard({
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
-      <div className="flex items-center gap-2">
-        <Webhook className="h-4 w-4 text-primary" strokeWidth={1.8} />
-        <div className="text-sm font-medium">群机器人推送（企业微信 / 钉钉）</div>
-      </div>
+    <section className="ll-surface">
+      <header className="ll-panel-head">
+        <h3 className="ll-panel-title">
+          <Webhook className="h-4 w-4 text-primary" strokeWidth={1.8} />
+          群机器人推送（企业微信 / 钉钉）
+        </h3>
+      </header>
+      <div className="px-4 pb-4">
       <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
         每日到期扫描发现新提醒时，向群机器人推送一条汇总（只含事项标题与案件编号，不含当事人详情）。
         在企业微信 / 钉钉群里添加「自定义机器人」，把 Webhook 地址粘贴到下方；
@@ -94,5 +97,6 @@ export function WebhookSettingsCard({
         </div>
       </div>
     </div>
+    </section>
   );
 }

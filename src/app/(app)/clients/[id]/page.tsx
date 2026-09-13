@@ -16,6 +16,9 @@ import {
   MapPin
 } from "lucide-react";
 import { getClientById, getClientFinanceSummary } from "@/server/clients/actions";
+import { isManager } from "@/lib/permissions";
+import { maskIdNumber } from "@/lib/clients/id-number-crypto";
+import { ClientMergeCard } from "./_components/client-merge-card";
 import { Badge } from "@/components/ui/badge";
 import {
   clientTypeLabel,
@@ -36,11 +39,12 @@ const billingStatusLabel: Record<string, string> = {
 const yuan = (n: number) => `¥${n.toLocaleString()}`;
 const dash = <span className="text-muted-foreground/50">—</span>;
 
-const COOP_TONE: Record<string, string> = {
-  POTENTIAL: "bg-amber-100 text-amber-800",
-  NEGOTIATING: "bg-sky-100 text-sky-800",
-  SIGNED: "bg-emerald-100 text-emerald-800",
-  TERMINATED: "bg-muted text-muted-foreground"
+/** 墨案徽章（moan.css）：合作状态 → 语义色，与客户列表保持一致 */
+const COOP_BADGE: Record<string, string> = {
+  POTENTIAL: "b-slate",
+  NEGOTIATING: "b-amber",
+  SIGNED: "b-teal",
+  TERMINATED: "b-bronze"
 };
 
 const ACTIVE_MATTER_STATUSES = new Set(["PENDING_ACCEPTANCE", "IN_PROGRESS", "ON_HOLD"]);
@@ -107,11 +111,9 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
                   {clientTypeLabel[client.type]}
                 </Badge>
                 <span
-                  className={cn(
-                    "rounded-full px-2.5 py-1 text-[11px] font-medium",
-                    COOP_TONE[client.cooperationStatus] ?? "bg-muted text-muted-foreground"
-                  )}
+                  className={`badge ${COOP_BADGE[client.cooperationStatus] ?? "b-white"}`}
                 >
+                  <span className="bdot" aria-hidden />
                   {cooperationStatusLabel[client.cooperationStatus]}
                 </span>
                 {client.tags.slice(0, 3).map((tag) => (
@@ -140,6 +142,10 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
           <HeroStat label="待收" value={canReadFinance ? yuan(finance.pending) : "未授权"} icon={<Wallet className="h-3.5 w-3.5" />} tone="warn" />
         </div>
       </section>
+
+      {(isManager(session.user.role) || (session.user.role === "CUSTOM" && hasCustomPermission(session.user, "clients.write"))) && (
+        <ClientMergeCard keepId={client.id} keepName={client.name} />
+      )}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-4">
@@ -236,7 +242,7 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
               {isIndividual ? (
                 <>
                   <L>身份证号</L>
-                  <V mono title={client.idNumber ?? undefined}>{client.idNumber || dash}</V>
+                  <V mono title={'证件号（已加密存储，展示打码）'}>{maskIdNumber(client.idNumber) || dash}</V>
                   <L>性别</L>
                   <V>{client.gender ? genderLabel[client.gender] : dash}</V>
                   <L>所属行业</L>
@@ -247,7 +253,7 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
               ) : (
                 <>
                   <L>信用代码</L>
-                  <V mono title={client.idNumber ?? undefined}>{client.idNumber || dash}</V>
+                  <V mono title={'信用代码（已加密存储，展示打码）'}>{maskIdNumber(client.idNumber) || dash}</V>
                   <L>法定代表人</L>
                   <V title={client.legalRep ?? undefined}>{client.legalRep || dash}</V>
                   <L>所属行业</L>
@@ -410,18 +416,18 @@ function HeroStat({
   return (
     <div
       className={cn(
-        "rounded-md border bg-card/80 px-3 py-2.5 shadow-[var(--shadow-inset)]",
+        "rounded-xl border bg-card/80 px-3.5 py-2.5 shadow-[var(--shadow-inset)]",
         accent && "border-primary/30 bg-primary/[0.04]",
-        tone === "warn" && "border-amber-500/25 bg-amber-500/[0.05]"
+        tone === "warn" && "border-[var(--amber-line)] bg-[var(--amber-bg)]"
       )}
     >
       <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-        <span className={cn(accent && "text-primary", tone === "warn" && "text-amber-600")}>
+        <span className={cn(accent && "text-primary", tone === "warn" && "text-[var(--amber)]")}>
           {icon}
         </span>
         {label}
       </div>
-      <div className="ll-stat mt-2 text-[20px] leading-none text-foreground">{value}</div>
+      <div className="ll-stat mt-1.5 text-[19px] font-semibold leading-none text-foreground">{value}</div>
     </div>
   );
 }
@@ -441,8 +447,8 @@ function SummaryField({
       <span
         className={cn(
           "min-w-0 truncate text-right font-mono text-foreground",
-          accent === "green" && "text-emerald-700",
-          accent === "warn" && "text-amber-700"
+          accent === "green" && "text-[var(--green)]",
+          accent === "warn" && "text-[var(--amber)]"
         )}
       >
         {value}

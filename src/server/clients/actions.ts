@@ -2,13 +2,15 @@
 import { roleMutation, checkRoleMutation } from "@/lib/roles/service";
 
 import { revalidatePath } from "next/cache";
-import { Prisma } from "@prisma/client";
+import { Prisma, type ClientIdType } from "@prisma/client";
 import { scopeFor, type RoleUser } from "@/lib/roles/catalog";
 import { matterFinanceVisibilityFilter } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import { clientVisibilityFilter, intakeVisibilityFilter, isManager, matterReadVisibilityFilter } from "@/lib/permissions";
+import { normalizeIdNumber, duplicateWhereInput } from "@/lib/clients/identity";
+import { sealIdNumber, blindIdNumber } from "@/lib/clients/id-number-crypto";
 import { generateClientCode } from "./code-generator";
 import {
   clientCreateSchema,
@@ -43,7 +45,8 @@ export async function listClients(input: Partial<ClientListQuery> = {}) {
       ? {
           OR: [
             { name: { contains: query.search, mode: "insensitive" } },
-            { idNumber: { contains: query.search } },
+            // P1 §三：证件号模糊检索退役，改盲索引等值（输入按完整号码理解）
+            { idNumberBlind: blindIdNumber(normalizeIdNumber(query.search) ?? "") },
             { phone: { contains: query.search } },
             { email: { contains: query.search, mode: "insensitive" } }
           ]
@@ -179,13 +182,29 @@ export async function createClient(input: ClientCreateInput) {
   const session = await requireSession("clients.write");
   const data = clientCreateSchema.parse(input);
 
+  // v1.x P0-1: 证件规范化 + 建档查重（身份持续唯一：含软删档案）
+  const idNumber = normalizeIdNumber(data.idNumber);
+  const idType = (data.idType || null) as ClientIdType | null;
+  if (idNumber && idType) {
+    const dup = await prisma.client.findFirst({
+      where: duplicateWhereInput({ idType, idNumber }),
+      select: { id: true, name: true, deletedAt: true }
+    });
+    if (dup) {
+      throw new Error(
+        dup.deletedAt
+          ? `该证件号码已登记于停用客户「${dup.name}」，请恢复或合并后使用`
+          : `该证件号码已登记于客户「${dup.name}」，请直接选用该客户`
+      );
+    }
+  }
+
   const internalCode = await generateClientCode();
   const created = await roleMutation(session.user, "clients.write", async roleDb => roleDb.client.create({
     data: {
       ...emptyToNull({
         name: data.name,
         type: data.type,
-        idNumber: data.idNumber,
         address: data.address,
         phone: data.phone,
         email: data.email,
@@ -194,6 +213,8 @@ export async function createClient(input: ClientCreateInput) {
         industry: data.industry,
         ethnicity: data.ethnicity
       }),
+      idType,
+      ...(idNumber && idType ? sealIdNumber(idNumber) : {}),
       internalCode,
       cooperationStatus: data.cooperationStatus,
       gender: data.gender || null,
@@ -232,8 +253,21 @@ export async function updateClient(input: ClientUpdateInput) {
     throw new Error("仅管理员或主办律师可编辑客户信息");
   }
   const data = clientUpdateSchema.parse(input);
-  const { id, contacts, gender, ...rest } = data;
+  const { id, contacts, gender, idType, idNumber, ...rest } = data;
   await assertCustomClientWrite(session.user, id);
+
+  // v1.x P0-1: 编辑同样查重（排除自身）+ 规范化
+  const normalizedIdNumber = normalizeIdNumber(idNumber);
+  const nextIdType = (idType || null) as ClientIdType | null;
+  if (normalizedIdNumber && nextIdType) {
+    const dup = await prisma.client.findFirst({
+      where: duplicateWhereInput({ idType: nextIdType, idNumber: normalizedIdNumber, excludeId: id }),
+      select: { id: true, name: true, deletedAt: true }
+    });
+    if (dup) {
+      throw new Error(`该证件号码已登记于${dup.deletedAt ? "停用" : ""}客户「${dup.name}」，请通过恢复或合并处理`);
+    }
+  }
 
   // 简单策略：删除所有联系人 + 重新创建。后续可优化为 diff
   await prisma.$transaction(async db => {
@@ -243,6 +277,8 @@ export async function updateClient(input: ClientUpdateInput) {
       where: { id },
       data: {
         ...emptyToNull(rest),
+        idType: nextIdType,
+        ...(normalizedIdNumber && nextIdType ? sealIdNumber(normalizedIdNumber) : { idNumber: null, idNumberBlind: null }),
         gender: gender || null,
         tags: data.tags,
         contacts: {

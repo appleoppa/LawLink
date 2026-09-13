@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>LawLink · 客户详情</title>
+<link rel="stylesheet" href="design-system.css" />
+<style>
+  .merge-banner {
+    display: flex; gap: 13px; padding: 14px 18px; border-radius: var(--r-lg); margin-bottom: 14px;
+    background: linear-gradient(180deg, #FFFDF6, var(--amber-bg)); border: 1px solid var(--amber-line);
+    align-items: center; box-shadow: var(--sh-card);
+  }
+  .merge-banner .ic-wrap { width: 34px; height: 34px; border-radius: 9px; background: #fff; border: 1px solid var(--amber-line); color: var(--amber); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .merge-banner .ic-wrap svg { width: 17px; height: 17px; }
+  .merge-t { font-size: 13px; font-weight: 650; color: #7A5205; }
+  .merge-d { font-size: 12px; color: #8A6420; margin-top: 2px; line-height: 1.6; }
+  .merge-d .mono { font-weight: 600; }
+
+  .client-hero { padding: 20px 22px 18px; margin-bottom: 14px; }
+  .ch-top { display: flex; gap: 16px; align-items: flex-start; }
+  .ch-logo {
+    width: 52px; height: 52px; border-radius: 13px; background: linear-gradient(150deg, #16324F, var(--navy) 60%, #0C1927);
+    color: #fff; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; flex-shrink: 0;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08), var(--sh-card);
+  }
+  .ch-name { font-size: 20px; font-weight: 700; letter-spacing: -0.015em; }
+  .ch-badges { display: flex; gap: 6px; margin-top: 7px; align-items: center; flex-wrap: wrap; }
+  .ch-meta { display: flex; gap: 22px; margin-top: 13px; padding-top: 13px; border-top: 1px solid var(--bd-hair); flex-wrap: wrap; }
+  .ch-meta .m { display: flex; align-items: baseline; gap: 7px; font-size: 12px; }
+  .ch-meta .m .k { color: var(--t-muted); }
+  .ch-meta .m .v { font-weight: 600; }
+  .ch-meta .m .v.mono { font-family: var(--font-mono); font-weight: 500; }
+  .ch-stats { margin-left: auto; display: flex; gap: 0; flex-shrink: 0; }
+  .ch-stat { padding: 2px 22px; border-left: 1px solid var(--bd-hair); text-align: right; }
+  .ch-stat:first-child { border-left: none; }
+  .ch-stat .n { font-family: var(--font-mono); font-size: 19px; font-weight: 650; letter-spacing: -0.02em; }
+  .ch-stat .l { font-size: 11px; color: var(--t-muted); margin-top: 3px; }
+
+  .mrow { display: flex; align-items: center; gap: 12px; padding: 11px 16px; border-bottom: 1px solid var(--bd-hair); position: relative; cursor: pointer; }
+  .mrow:last-child { border-bottom: none; }
+  .mrow:hover { background: var(--bg-hover); }
+  .mrow::before { content: ""; position: absolute; left: 0; top: 9px; bottom: 9px; width: 3px; border-radius: 0 2px 2px 0; }
+  .mr-name { font-size: 12.75px; font-weight: 600; }
+  .mr-meta { font-size: 11px; color: var(--t-muted); margin-top: 2px; }
+  .mr-money { margin-left: auto; font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; flex-shrink: 0; }
+
+  .contact { display: flex; gap: 11px; padding: 12px 16px; border-bottom: 1px solid var(--bd-hair); align-items: center; }
+  .contact:last-child { border-bottom: none; }
+  .ct-name { font-size: 12.75px; font-weight: 600; }
+  .ct-meta { font-size: 11px; color: var(--t-muted); margin-top: 2px; font-family: var(--font-mono); }
+  .src-bars { padding: 12px 16px 14px; }
+  .src-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .src-bar:last-child { margin-bottom: 0; }
+  .src-bar .n { font-size: 12px; color: var(--t-secondary); width: 70px; flex-shrink: 0; }
+  .src-bar .track { flex: 1; height: 12px; border-radius: 4px; background: var(--bg-sunken); overflow: hidden; }
+  .src-bar .fill { height: 100%; border-radius: 4px; }
+  .src-bar .v { font-family: var(--font-mono); font-size: 11px; color: var(--t-muted); width: 40px; text-align: right; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3" y="2.6" width="2.7" height="10.8" rx="1.1" fill="#fff"/><rect x="8.4" y="2.6" width="2.7" height="10.8" rx="1.1" fill="#fff"/><rect x="3" y="6.8" width="8.1" height="2.4" rx="1.1" fill="#00A6A6"/></svg></div>
+      <div><div class="brand-name">立正律师事务所</div><div class="brand-sub">LawLink v4 效果图</div></div>
+    </div>
+    <nav class="nav">
+      <div class="nav-section-label">工作区</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12l9-9 9 9M5 10v10h14V10"/></svg>工作台</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>案件<span class="count">42</span></div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>收案<span class="count">5</span></div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>审批<span class="count alert">5</span></div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>冲突检索</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg>日程</div>
+      <div class="nav-section-label">业务</div>
+      <div class="nav-item active"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-6 7-6s7 2.5 7 6"/><circle cx="17" cy="9" r="2.5"/></svg>客户<span class="count">37</span></div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg>财务</div>
+      <div class="nav-section-label">知识</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/></svg>归档</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6" rx="0.5"/><rect x="12" y="7" width="3" height="10" rx="0.5"/><rect x="17" y="13" width="3" height="4" rx="0.5"/></svg>报表</div>
+    </nav>
+    <div class="nav-bottom">
+      <div class="user-card">
+        <div class="avatar av-teal">叶</div>
+        <div class="user-meta"><div class="user-name">叶森</div><div class="user-role">主任律师 · 超级管理员</div></div>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--t-faint)"><path d="M8 9l4-4 4 4M8 15l4 4 4-4"/></svg>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="searchbox">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        搜索案件、客户、材料正文…<span class="kbd">⌘K</span>
+      </div>
+      <div style="flex:1"></div>
+      <button class="btn btn-secondary btn-sm btn-icon" title="通知"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></button>
+      <button class="btn btn-primary btn-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>新建收案</button>
+      <div style="width:1px;height:22px;background:var(--bd-hair);margin:0 4px"></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:3px 10px 3px 4px;height:34px;border-radius:var(--r-full);border:1px solid var(--bd-hair);background:var(--bg-card);cursor:pointer">
+        <div class="avatar av-teal" style="width:26px;height:26px">叶</div><span style="font-size:12.5px;font-weight:550">叶森</span>
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--t-muted)"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- 合并向导入口（P0：合并客户操作流） -->
+      <div class="merge-banner">
+        <div class="ic-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/><path d="M9 12h6M12 9l3 3-3 3"/></svg>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div class="merge-t">发现疑似同一主体的客户档案</div>
+          <div class="merge-d">「上海青石建设有限公司」与「上海青石建设集团有限公司」统一社会信用代码一致（<span class="mono">91310115MA1K4X8P2Q</span>）。本所采用身份持续唯一策略：合并只调整当前关联，<b>不改写历史身份快照</b>，保留原记录映射与合并依据；原档案转为已合并状态。</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-shrink:0">
+          <button class="btn btn-ghost btn-sm">忽略本次</button>
+          <button class="btn btn-primary btn-sm">查看合并建议</button>
+        </div>
+      </div>
+
+      <!-- 客户 Hero -->
+      <div class="card client-hero">
+        <div class="ch-top">
+          <div class="ch-logo">青</div>
+          <div style="min-width:0">
+            <div class="ch-name">上海青石建设有限公司</div>
+            <div class="ch-badges">
+              <span class="badge b-white">机构客户</span>
+              <span class="src-chip party">来源：老客户转介</span>
+              <span class="badge b-blue"><span class="bdot"></span>在办 2 件</span>
+            </div>
+            <div class="ch-meta">
+              <div class="m"><span class="k">统一社会信用代码</span><span class="v mono">9131****P2Q</span><span class="t-xs" style="color:var(--teal-deep);cursor:pointer">明文</span></div>
+              <div class="m"><span class="k">法定代表人</span><span class="v">王建国</span></div>
+              <div class="m"><span class="k">建档</span><span class="v mono">2023-05-11</span></div>
+              <div class="m"><span class="k">注册地</span><span class="v">上海市长宁区</span></div>
+            </div>
+          </div>
+          <div class="ch-stats">
+            <div class="ch-stat"><div class="n">6</div><div class="l">累计案件</div></div>
+            <div class="ch-stat"><div class="n" style="color:var(--teal-deep)">2</div><div class="l">办理中</div></div>
+            <div class="ch-stat"><div class="n">¥1.02M</div><div class="l">累计创收</div></div>
+            <div class="ch-stat"><div class="n" style="color:var(--amber)">¥540K</div><div class="l">到账待确认</div></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:16px">
+          <button class="btn btn-primary btn-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width:14px;height:14px"><path d="M12 5v14M5 12h14"/></svg>为此客户新建收案</button>
+          <button class="btn btn-secondary btn-sm">编辑资料</button>
+          <button class="btn btn-secondary btn-sm">冲突检索</button>
+          <div style="flex:1"></div>
+          <span class="t-xs t-faint" style="align-self:center">资料修改与审计同事务留痕</span>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 296px;gap:14px;align-items:start">
+
+        <!-- 左列 -->
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div class="card" style="overflow:hidden">
+            <div class="panel-head">
+              <div class="panel-title">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                关联案件 <span class="badge b-white" style="margin-left:2px">6</span>
+              </div>
+              <a class="t-sm t-mute" style="cursor:pointer">按客户筛选案件列表 →</a>
+            </div>
+            <div class="mrow" style="border-left:none">
+              <span style="position:absolute;left:0;top:9px;bottom:9px;width:3px;border-radius:0 2px 2px 0;background:var(--blue)"></span>
+              <div style="flex:1;min-width:0"><div class="mr-name">青石建设诉华东置业建设工程合同纠纷</div><div class="mr-meta">一审 · 举证质证 · 主办 叶森 · LL-2026-诉-0015</div></div>
+              <span class="badge b-blue"><span class="bdot"></span>进行中</span>
+              <span class="mr-money">¥1.80M</span>
+            </div>
+            <div class="mrow">
+              <span style="position:absolute;left:0;top:9px;bottom:9px;width:3px;border-radius:0 2px 2px 0;background:var(--blue)"></span>
+              <div style="flex:1;min-width:0"><div class="mr-name">青石置业二期工程结算专项</div><div class="mr-meta">非诉专项 · 出具意见 · 主办 叶森 · LL-2026-N-0021</div></div>
+              <span class="badge b-blue"><span class="bdot"></span>进行中</span>
+              <span class="mr-money">¥260K</span>
+            </div>
+            <div class="mrow">
+              <span style="position:absolute;left:0;top:9px;bottom:9px;width:3px;border-radius:0 2px 2px 0;background:var(--green)"></span>
+              <div style="flex:1;min-width:0"><div class="mr-name">M-2024-041 建设工程价款优先受偿权纠纷</div><div class="mr-meta">一审（2024）· 主办 叶森 · 已归档</div></div>
+              <span class="badge b-green"><span class="bdot"></span>已结案</span>
+              <span class="mr-money">¥960K</span>
+            </div>
+            <div class="mrow">
+              <span style="position:absolute;left:0;top:9px;bottom:9px;width:3px;border-radius:0 2px 2px 0;background:var(--green)"></span>
+              <div style="flex:1;min-width:0"><div class="mr-name">青石建设劳动用工合规审查</div><div class="mr-meta">非诉专项（2023）· 主办 沈青 · 已归档</div></div>
+              <span class="badge b-green"><span class="bdot"></span>已结案</span>
+              <span class="mr-money">¥80K</span>
+            </div>
+            <div class="panel-foot" style="display:flex;justify-content:space-between;align-items:center">
+              <span class="t-xs t-mute">还有 2 件已归档案件 · 归档案件正文按归档权限访问</span>
+              <a class="t-sm" style="color:var(--teal-deep);font-weight:550;cursor:pointer">查看全部 →</a>
+            </div>
+          </div>
+
+          <div class="card" style="overflow:hidden">
+            <div class="panel-head">
+              <div class="panel-title">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                联系人 <span class="badge b-white" style="margin-left:2px">2</span>
+              </div>
+              <button class="btn btn-ghost btn-sm"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>添加联系人</button>
+            </div>
+            <div class="contact">
+              <div class="avatar av-teal">王</div>
+              <div style="flex:1"><div class="ct-name">王建国 <span class="badge b-teal" style="font-size:10px">主要联系人</span></div><div class="ct-meta">138****6690 · wangjg@qingshi.cn · 工程部经理</div></div>
+              <span class="t-xs t-faint">号码默认打码 · 按需查看</span>
+            </div>
+            <div class="contact">
+              <div class="avatar av-slate">刘</div>
+              <div style="flex:1"><div class="ct-name">刘晓芸 <span class="badge b-white" style="font-size:10px">财务对接</span></div><div class="ct-meta">137****2318 · liuxy@qingshi.cn · 财务主管</div></div>
+              <span class="t-xs t-faint">号码默认打码 · 按需查看</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右栏 -->
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div class="card">
+            <div class="panel-head"><div class="panel-title" style="font-size:13px"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg>财务往来</div><span class="t-xs t-mute">累计</span></div>
+            <div class="panel-body" style="padding-top:10px">
+              <div style="display:flex;justify-content:space-between;padding:4px 0"><span class="t-sm t-mute">累计创收</span><span class="num-md">¥1,024,000</span></div>
+              <div style="display:flex;justify-content:space-between;padding:4px 0"><span class="t-sm t-mute">已开票</span><span class="num-md">¥860,000</span></div>
+              <div style="display:flex;justify-content:space-between;padding:4px 0"><span class="t-sm t-mute">到账待确认</span><span class="num-md" style="color:var(--amber)">¥540,000</span></div>
+              <div class="progress" style="margin-top:10px"><div class="progress-fill" style="width:47%"></div></div>
+              <div style="display:flex;justify-content:space-between;margin-top:6px"><span class="t-xs t-mute">已确认回款（待确认到账另计）</span><span class="num-sm t-mute">¥484,000 · 47%</span></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="panel-head"><div class="panel-title" style="font-size:13px"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg>来源渠道</div><span class="t-xs t-mute">6 个案件</span></div>
+            <div class="src-bars">
+              <div class="src-bar"><span class="n">老客户转介</span><div class="track"><div class="fill" style="width:50%;background:var(--teal)"></div></div><span class="v">3</span></div>
+              <div class="src-bar"><span class="n">市场合作</span><div class="track"><div class="fill" style="width:33%;background:#33989B"></div></div><span class="v">2</span></div>
+              <div class="src-bar"><span class="n">自然来访</span><div class="track"><div class="fill" style="width:17%;background:#A8CFCF"></div></div><span class="v">1</span></div>
+            </div>
+            <div class="panel-foot"><span class="t-xs t-mute">渠道随案件收案登记留痕，进入所级来源分布报表</span></div>
+          </div>
+
+          <div class="card">
+            <div class="panel-head"><div class="panel-title" style="font-size:13px">最近动态</div></div>
+            <div class="panel-body" style="padding-top:12px">
+              <div class="timeline">
+                <div class="tl-item done">
+                  <div style="font-size:12.5px;font-weight:550">第三期律师费到账登记 · 待确认 ¥540,000</div>
+                  <div class="t-xs t-mute" style="margin-top:2px">06-12 · 周敏登记</div>
+                </div>
+                <div class="tl-item done">
+                  <div style="font-size:12.5px;font-weight:550">新建收案 I-2026-021 提交审批</div>
+                  <div class="t-xs t-mute" style="margin-top:2px">06-12 · 沈青</div>
+                </div>
+                <div class="tl-item current">
+                  <div style="font-size:12.5px;font-weight:550">发现疑似重复档案，建议合并</div>
+                  <div class="t-xs t-mute" style="margin-top:2px">06-13 · 系统查重</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+</div>
+</body>
+</html>

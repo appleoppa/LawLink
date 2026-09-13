@@ -596,22 +596,28 @@ export async function searchMattersForLink(matterId: string, q: string) {
   return items;
 }
 
-export async function addMatterLink(matterId: string, relatedMatterId: string) {
+export async function addMatterLink(
+  matterId: string,
+  relatedMatterId: string,
+  relation?: "RELATED_CASE" | "REMAND" | "DERIVED_ENFORCEMENT" | "RELATED_CONTRACT" | "REFERENCE_ONLY"
+) {
   const session = await requireSession("matters.write");
   await assertCanAssociateMatter(session.user.id, matterId);
   await assertCanAssociateMatter(session.user.id, relatedMatterId);
   if (matterId === relatedMatterId) throw new Error("不能关联到自身");
+  // v1.x P1-7: 关联关系类型（缺省兼容旧行为=一般关联）+ 建链人
+  const nextRelation = relation ?? "RELATED_CASE";
   await roleMutation(session.user, "matters.write", async roleDb => roleDb.matterLink.upsert({
     where: { matterId_relatedMatterId: { matterId, relatedMatterId } },
-    create: { matterId, relatedMatterId },
-    update: {}
+    create: { matterId, relatedMatterId, relation: nextRelation, notedById: session.user.id },
+    update: { relation: nextRelation, notedById: session.user.id }
   }));
   await audit({
     userId: session.user.id,
     action: "MATTER_LINK_ADD",
     targetType: "Matter",
     targetId: matterId,
-    detail: { relatedMatterId }
+    detail: { relatedMatterId, relation: nextRelation }
   });
   await revalidateMatter(matterId);
 }
@@ -921,7 +927,8 @@ export async function updateMatterBasicInfo(input: MatterUpdateBasicInput) {
       id: true,
       ownerId: true,
       title: true,
-      category: true
+      category: true,
+      teamAccessRestricted: true
     }
   });
   if (!matter) throw new Error("案件不存在");
@@ -939,7 +946,10 @@ export async function updateMatterBasicInfo(input: MatterUpdateBasicInput) {
         data.claimAmount === null || data.claimAmount === undefined
           ? null
           : new Prisma.Decimal(data.claimAmount),
-      ourStanding: data.ourStanding ?? null
+      ourStanding: data.ourStanding ?? null,
+      ...(data.teamAccessRestricted !== undefined
+        ? { teamAccessRestricted: data.teamAccessRestricted }
+        : {})
     }
   }));
 
@@ -948,7 +958,14 @@ export async function updateMatterBasicInfo(input: MatterUpdateBasicInput) {
     action: "MATTER_BASIC_UPDATE",
     targetType: "Matter",
     targetId: data.id,
-    detail: { titleBefore: matter.title, titleAfter: data.title }
+    detail: {
+      titleBefore: matter.title,
+      titleAfter: data.title,
+      ...(data.teamAccessRestricted !== undefined &&
+      data.teamAccessRestricted !== matter.teamAccessRestricted
+        ? { teamAccessRestricted: data.teamAccessRestricted }
+        : {})
+    }
   });
 
   await revalidateMatter(data.id);

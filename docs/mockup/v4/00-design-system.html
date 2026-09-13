@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>LawLink v4 · 设计系统「墨案」</title>
+<link rel="stylesheet" href="design-system.css" />
+<style>
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 48px 32px 80px; }
+  .mst-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 28px; }
+  .mst-badge {
+    display: inline-flex; align-items: center; gap: 7px; padding: 4px 12px; border-radius: var(--r-full);
+    background: var(--bg-inverse); color: #fff; font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+  }
+  .mst-badge .bdot { width: 6px; height: 6px; border-radius: 50%; background: #00A6A6; }
+  .mst-title { font-size: 34px; font-weight: 750; letter-spacing: -0.025em; margin: 14px 0 8px; }
+  .mst-title em { font-style: normal; font-family: var(--font-serif); color: var(--teal-deep); }
+  .mst-lead { color: var(--t-secondary); font-size: 14px; max-width: 640px; line-height: 1.7; }
+  .sec { margin-top: 44px; }
+  .sec-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; }
+  .sec-no { font-family: var(--font-mono); font-size: 11px; color: var(--teal); font-weight: 600; }
+  .sec-title { font-size: 17px; font-weight: 650; letter-spacing: -0.015em; }
+  .sec-note { font-size: 12px; color: var(--t-muted); }
+
+  /* 原则 */
+  .principles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .principle { padding: 16px; }
+  .principle .p-no { font-family: var(--font-mono); font-size: 10.5px; color: var(--teal); margin-bottom: 8px; }
+  .principle .p-name { font-size: 13.5px; font-weight: 650; margin-bottom: 5px; }
+  .principle p { font-size: 12px; color: var(--t-muted); margin: 0; line-height: 1.6; }
+
+  /* 色板 */
+  .palette { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+  .swatch { border-radius: var(--r-lg); overflow: hidden; border: 1px solid var(--bd-hair); background: var(--bg-card); }
+  .swatch .chip { height: 64px; }
+  .swatch .meta { padding: 10px 12px; }
+  .swatch .meta .n { font-size: 12px; font-weight: 600; }
+  .swatch .meta .v { font-family: var(--font-mono); font-size: 10.5px; color: var(--t-muted); margin-top: 2px; }
+  .swatch .meta .use { font-size: 10.5px; color: var(--t-faint); margin-top: 3px; }
+
+  /* 字体 */
+  .type-card { display: grid; grid-template-columns: 200px 1fr; gap: 20px; padding: 18px 20px; align-items: baseline; }
+  .type-card + .type-card { border-top: 1px solid var(--bd-hair); }
+  .type-spec { font-family: var(--font-mono); font-size: 10.5px; color: var(--t-muted); line-height: 1.8; }
+  .type-spec b { color: var(--t-primary); font-weight: 600; display: block; font-family: var(--font-sans); font-size: 12.5px; }
+
+  /* 母版示意 */
+  .motifs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .motif { padding: 18px 20px; }
+  .motif-name { font-size: 13px; font-weight: 650; margin-bottom: 3px; }
+  .motif-desc { font-size: 11.5px; color: var(--t-muted); margin-bottom: 14px; }
+  .demo-spine { display: flex; flex-direction: column; gap: 6px; }
+  .demo-spine-row { position: relative; background: var(--bg-card); border: 1px solid var(--bd-hair); border-radius: 8px; padding: 9px 12px 9px 16px; display: flex; align-items: center; gap: 10px; font-size: 12.5px; }
+  .demo-spine-row::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 0 2px 2px 0; }
+
+  /* 组件 */
+  .comp-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .comp { padding: 18px 20px; }
+  .comp-label { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; color: var(--t-faint); text-transform: uppercase; margin-bottom: 12px; }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .row:last-child { margin-bottom: 0; }
+
+  /* 索引 */
+  .index-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .ix-card { padding: 0; overflow: hidden; text-decoration: none; color: inherit; display: block; transition: box-shadow .15s, transform .15s; }
+  .ix-card:hover { box-shadow: var(--sh-hover); transform: translateY(-1px); }
+  .ix-thumb { height: 108px; position: relative; overflow: hidden; border-bottom: 1px solid var(--bd-hair); }
+  .ix-thumb .bar { position: absolute; inset: 14px 14px auto; border-radius: 6px; background: #fff; border: 1px solid var(--bd-hair); box-shadow: var(--sh-card); height: 80px; padding: 8px; }
+  .ix-thumb .bar .l { height: 5px; border-radius: 3px; background: var(--bg-sunken); margin-bottom: 5px; }
+  .ix-thumb .bar .l.acc { background: var(--teal-soft); }
+  .ix-thumb .bar .l.w60 { width: 60%; } .ix-thumb .bar .l.w80 { width: 80%; } .ix-thumb .bar .l.w40 { width: 40%; }
+  .ix-body { padding: 13px 16px; }
+  .ix-no { font-family: var(--font-mono); font-size: 10px; color: var(--teal); }
+  .ix-name { font-size: 13.5px; font-weight: 650; margin: 3px 0 3px; }
+  .ix-desc { font-size: 11.5px; color: var(--t-muted); line-height: 1.55; }
+  .ix-tag { margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- 头部 -->
+  <div class="mst-head">
+    <div>
+      <span class="mst-badge"><span class="bdot"></span>LAWLINK DESIGN SYSTEM · V4</span>
+      <h1 class="mst-title">设计语言 <em>「墨案」</em></h1>
+      <p class="mst-lead">
+        把案件当作案卷来呈现：墨色承载专业与判断，Teal 承载连接与交互，Bronze 承载归档与金线时刻。
+        高密度但不拥挤——每一层信息都有明确的视觉权重，风险永远比装饰先被看见。
+      </p>
+    </div>
+    <div class="brand-mark" style="width:56px;height:56px;border-radius:14px">
+      <svg width="28" height="28" viewBox="0 0 16 16" fill="none"><rect x="3" y="2.6" width="2.7" height="10.8" rx="1.1" fill="#fff"/><rect x="8.4" y="2.6" width="2.7" height="10.8" rx="1.1" fill="#fff"/><rect x="3" y="6.8" width="8.1" height="2.4" rx="1.1" fill="#00A6A6"/></svg>
+    </div>
+  </div>
+
+  <!-- 四原则 -->
+  <div class="principles">
+    <div class="card principle">
+      <div class="p-no">01</div>
+      <div class="p-name">任务优先</div>
+      <p>首屏先回答"现在要处理什么"。行动入口大于统计数字，统计大于装饰。</p>
+    </div>
+    <div class="card principle">
+      <div class="p-no">02</div>
+      <div class="p-name">一屏一事</div>
+      <p>页面级只保留一个主操作；弹层审阅宽幅呈现，表单保持防误操作密度。</p>
+    </div>
+    <div class="card principle">
+      <div class="p-no">03</div>
+      <div class="p-name">风险即层级</div>
+      <p>红只留给阻断，琥珀留给临期，绿只表达完成。颜色有法律后果。</p>
+    </div>
+    <div class="card principle">
+      <div class="p-no">04</div>
+      <div class="p-name">来源可溯</div>
+      <p>材料区分当事人提供 / 调取 / 送达 / AI 识别；事务记录与人工判断分开陈列。</p>
+    </div>
+  </div>
+
+  <!-- 色板 -->
+  <div class="sec">
+    <div class="sec-head">
+      <span class="sec-no">01</span><span class="sec-title">色彩</span>
+      <span class="sec-note">画布与表面 · 墨色文本 · 品牌三色 · 语义状态</span>
+    </div>
+    <div class="palette">
+      <div class="swatch"><div class="chip" style="background:#F2F4F3;border-bottom:1px solid var(--bd-hair)"></div><div class="meta"><div class="n">画布 · 宣纸灰</div><div class="v">#F2F4F3</div><div class="use">应用底色</div></div></div>
+      <div class="swatch"><div class="chip" style="background:#FFFFFF;border-bottom:1px solid var(--bd-hair)"></div><div class="meta"><div class="n">表面 · 白</div><div class="v">#FFFFFF</div><div class="use">卡片 / 面板</div></div></div>
+      <div class="swatch"><div class="chip" style="background:#E9EDEB"></div><div class="meta"><div class="n">凹陷 · 浅井</div><div class="v">#E9EDEB</div><div class="use">输入 / 分段底</div></div></div>
+      <div class="swatch"><div class="chip" style="background:#0C1927"></div><div class="meta"><div class="n" style="color:#fff">墨 · Ink</div><div class="v" style="color:#8FA0B0">#0C1927</div><div class="use" style="color:#71828F">主文本 / 深色面板</div></div></div>
+      <div class="swatch"><div class="chip" style="background:#10233A"></div><div class="meta"><div class="n" style="color:#fff">案卷蓝 · Navy</div><div class="v" style="color:#8FA0B0">#10233A</div><div class="use" style="color:#71828F">品牌 / 确认按钮</div></div></div>
+      <div class="swatch"><div class="chip" style="background:#007B7F"></div><div class="meta"><div class="n" style="color:#fff">连接 · Teal</div><div class="v" style="color:#9CCBCB">#007B7F</div><div class="use" style="color:#71828F">品牌 / 交互主色</div></div></div>
+    </div>
+    <div class="palette" style="margin-top:12px;grid-template-columns:repeat(6,1fr)">
+      <div class="swatch"><div class="chip" style="background:#8A6B3E"></div><div class="meta"><div class="n" style="color:#fff">金线 · Bronze</div><div class="v" style="color:#D9C9A8">#8A6B3E</div><div class="use" style="color:#B8A98C">归档 / 金线时刻</div></div></div>
+      <div class="swatch"><div class="chip" style="background:#1E56C8"></div><div class="meta"><div class="n" style="color:#fff">进行中 · Blue</div><div class="v" style="color:#B5C8EE">#1E56C8</div><div class="use" style="color:#8DA3D6">程序进行中</div></div></div>
+      <div class="swatch"><div class="chip" style="background:#1A7F45"></div><div class="meta"><div class="n" style="color:#fff">完成 · Green</div><div class="v" style="color:#A9D6B9">#1A7F45</div><div class="use" style="color:#7FA98D">仅终态使用</div></div></div>
+      <div class="swatch"><div class="chip" style="background:#96650B"></div><div class="meta"><div class="n" style="color:#fff">临期 · Amber</div><div class="v" style="color:#DCC491">#96650B</div><div class="use" style="color:#B99F6E">临近 / 待办</div></div></div>
+      <div class="swatch"><div class="chip" style="background:#B42318"></div><div class="meta"><div class="n" style="color:#fff">阻断 · Red</div><div class="v" style="color:#E4B1AA">#B42318</div><div class="use" style="color:#C7928B">仅风险 / 阻断</div></div></div>
+      <div class="swatch"><div class="chip" style="background:#6C3FC5"></div><div class="meta"><div class="n" style="color:#fff">AI · Violet</div><div class="v" style="color:#C7B2EA">#6C3FC5</div><div class="use" style="color:#9C87C4">仅 AI 能力</div></div></div>
+    </div>
+  </div>
+
+  <!-- 字体 -->
+  <div class="sec">
+    <div class="sec-head">
+      <span class="sec-no">02</span><span class="sec-title">字体</span>
+      <span class="sec-note">系统黑体为骨架 · 宋体只给案件与文书 · 等宽只给数字与编号</span>
+    </div>
+    <div class="card">
+      <div class="type-card">
+        <div>
+          <div style="font-size:30px;font-weight:750;letter-spacing:-0.025em">下午好，叶森</div>
+        </div>
+        <div class="type-spec"><b>Display / 30 · 750</b>-0.025em · 问候、页面主标题</div>
+      </div>
+      <div class="type-card">
+        <div>
+          <div class="serif-display" style="font-size:24px">青石建设诉华东置业建设工程合同纠纷</div>
+        </div>
+        <div class="type-spec"><b>Serif Display / 24 · 700</b>宋体 · 案件名称、文书正文、品牌时刻</div>
+      </div>
+      <div class="type-card">
+        <div>
+          <div class="h2">争议焦点与举证思路</div>
+          <div class="t-sm t-mute" style="margin-top:3px">区块标题与正文保持 13.5px 基线，辅助信息 12px，脚注 11px。</div>
+        </div>
+        <div class="type-spec"><b>H2 15 · Body 13.5 · Small 12 · Micro 11</b>高密度不等于小字，身份与金额不用 10px 以下</div>
+      </div>
+      <div class="type-card">
+        <div>
+          <span class="num-xl">¥1,800,000</span>
+          <span class="mono t-mute" style="margin-left:14px;font-size:13px">LL-2026-诉-0015</span>
+          <span class="mono" style="margin-left:14px;font-size:13px;color:var(--red)">(2026)沪0105民初4421号</span>
+        </div>
+        <div class="type-spec"><b>Tabular Mono</b>金额、案号、倒计时一律等宽对齐，杜绝跳动</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 四个签名母版 -->
+  <div class="sec">
+    <div class="sec-head">
+      <span class="sec-no">03</span><span class="sec-title">签名母版</span>
+      <span class="sec-note">贯穿全站的四个视觉机制，让"案件感"长在界面上</span>
+    </div>
+    <div class="motifs">
+      <div class="card motif">
+        <div class="motif-name">案卷脊 Spine</div>
+        <div class="motif-desc">列表即档案架：每件案件一条状态脊线，扫一眼就能分拣。</div>
+        <div class="demo-spine">
+          <div class="demo-spine-row" style="border-left:none"><span style="position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 2px 2px 0;background:var(--blue)"></span>青石建设诉华东置业建设工程合同纠纷<span class="badge b-blue" style="margin-left:auto">进行中</span></div>
+          <div class="demo-spine-row"><span style="position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 2px 2px 0;background:var(--amber)"></span>明远科技股权转让纠纷<span class="badge b-amber" style="margin-left:auto">临期 5 天</span></div>
+          <div class="demo-spine-row"><span style="position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 2px 2px 0;background:var(--red)"></span>华辰贸易买卖合同纠纷<span class="badge b-red" style="margin-left:auto">逾期 1 天</span></div>
+        </div>
+      </div>
+      <div class="card motif">
+        <div class="motif-name">程序链 Chain</div>
+        <div class="motif-desc">程序环节横向推进：已完成墨绿、当前呼吸墨点、风险琥珀、阻断红。</div>
+        <div class="chain" style="margin-top:6px">
+          <div class="chain-node done"><div class="chain-dot">✓</div><div class="chain-label">委托受理</div><div class="chain-date">03-11</div></div>
+          <div class="chain-line done"></div>
+          <div class="chain-node done"><div class="chain-dot">✓</div><div class="chain-label">立案</div><div class="chain-date">03-25</div></div>
+          <div class="chain-line done"></div>
+          <div class="chain-node current"><div class="chain-dot">●</div><div class="chain-label">举证质证</div><div class="chain-date">06-17</div></div>
+          <div class="chain-line"></div>
+          <div class="chain-node"><div class="chain-dot">4</div><div class="chain-label">开庭</div><div class="chain-date">06-19</div></div>
+          <div class="chain-line"></div>
+          <div class="chain-node"><div class="chain-dot">5</div><div class="chain-label">判决归档</div><div class="chain-date">—</div></div>
+        </div>
+      </div>
+      <div class="card motif">
+        <div class="motif-name">风险阶梯 Ladder</div>
+        <div class="motif-desc">期限紧迫度四级阶梯：正常、关注、临期、逾期——红永远只属于最后一格。</div>
+        <div style="display:flex;gap:26px;align-items:flex-end">
+          <div style="text-align:center"><div class="ladder l-blue"><i class="on"></i><i></i><i></i><i></i></div><div class="t-xs t-mute" style="margin-top:7px">正常 30 天</div></div>
+          <div style="text-align:center"><div class="ladder l-blue"><i class="on"></i><i class="on"></i><i></i><i></i></div><div class="t-xs t-mute" style="margin-top:7px">关注 14 天</div></div>
+          <div style="text-align:center"><div class="ladder l-amber"><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div><div class="t-xs t-mute" style="margin-top:7px">临期 3 天</div></div>
+          <div style="text-align:center"><div class="ladder l-red"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div><div class="t-xs" style="margin-top:7px;color:var(--red)">逾期 1 天</div></div>
+        </div>
+      </div>
+      <div class="card motif">
+        <div class="motif-name">审阅印 Seal</div>
+        <div class="motif-desc">审批终局用圆印意象收口：微微倾斜、双环细线，克制而不做成贴纸。</div>
+        <div style="display:flex;gap:28px;align-items:center;padding:4px 0">
+          <div class="seal teal"><span class="seal-star">★</span><span>审 毕</span></div>
+          <div class="seal"><span class="seal-star">★</span><span>已 用 印</span></div>
+          <div style="flex:1">
+            <div class="field" style="padding:6px 0"><span class="field-label" style="width:64px">审 毕</span><span class="field-value t-sm">收案审批通过，转入正式案件</span></div>
+            <div class="field" style="padding:6px 0"><span class="field-label" style="width:64px">已用印</span><span class="field-value t-sm">委托代理合同 · 合同专用章</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 组件 -->
+  <div class="sec">
+    <div class="sec-head">
+      <span class="sec-no">04</span><span class="sec-title">组件</span>
+      <span class="sec-note">按钮 · 徽章 · 分段 · 输入 · 材料行</span>
+    </div>
+    <div class="comp-grid">
+      <div class="card comp">
+        <div class="comp-label">按钮</div>
+        <div class="row"><button class="btn btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>新建收案</button><button class="btn btn-secondary">导出报表</button></div>
+        <div class="row"><button class="btn btn-approve">通过并提交用章</button><button class="btn btn-danger">驳回申请</button></div>
+        <div class="row"><button class="btn btn-ghost btn-sm">查看全部</button><button class="btn btn-secondary btn-sm">列设置</button><button class="btn btn-primary btn-sm">主按钮 · 小</button></div>
+      </div>
+      <div class="card comp">
+        <div class="comp-label">徽章</div>
+        <div class="row"><span class="badge b-blue"><span class="bdot"></span>进行中</span><span class="badge b-green"><span class="bdot"></span>已结案</span><span class="badge b-amber"><span class="bdot"></span>临期</span></div>
+        <div class="row"><span class="badge b-red"><span class="bdot"></span>阻塞</span><span class="badge b-teal">待审批</span><span class="badge b-violet"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 5.8H20l-4.9 3.6 1.9 5.8-5-3.6-5 3.6 1.9-5.8L4 8.8h6.1z"/></svg>AI 识别</span></div>
+        <div class="row"><span class="badge b-bronze">已归档</span><span class="badge b-white">民商事</span><span class="badge b-outline-red">冲突 BLOCKING</span></div>
+      </div>
+      <div class="card comp">
+        <div class="comp-label">分段与输入</div>
+        <div class="row" style="margin-bottom:12px"><div class="segmented"><button class="seg active">月历</button><button class="seg">列表</button><button class="seg">周</button></div></div>
+        <div class="row" style="margin-bottom:10px"><div class="input"><span class="ph">搜索案由、当事人…</span></div></div>
+        <div class="row"><div class="input" style="box-shadow:0 0 0 3px rgba(0,123,127,0.12);border-color:var(--teal)"><span>青石建设</span></div></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <div class="panel-head"><div class="panel-title"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg>阶段材料 · 材料行与来源标签</div><span class="t-xs t-mute">来源可溯是 v4 的底线</span></div>
+      <div class="doc-row">
+        <div class="doc-ic"><svg class="ic-14" viewBox="0 0 24 24" fill="none" stroke="#B42318" stroke-width="1.8"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg></div>
+        <div style="flex:1;min-width:0"><div class="doc-name">建设工程施工合同（盖章版）.pdf</div><div class="doc-meta">2.4 MB · 上传于 03-12</div></div>
+        <span class="src-chip party"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="9" cy="8" r="3.4"/><path d="M2.5 20c0-3.4 2.9-5.6 6.5-5.6s6.5 2.2 6.5 5.6"/></svg>当事人提供</span>
+        <span class="src-chip court">法院送达</span>
+        <button class="btn btn-ghost btn-sm">预览</button><button class="btn btn-ghost btn-sm">下载</button>
+      </div>
+      <div class="doc-row">
+        <div class="doc-ic"><svg class="ic-14" viewBox="0 0 24 24" fill="none" stroke="#6C3FC5" stroke-width="1.8"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg></div>
+        <div style="flex:1;min-width:0"><div class="doc-name">进场设备清单（扫描件）.pdf</div><div class="doc-meta">OCR 已识别 · 12 页 · 上传于 04-02</div></div>
+        <span class="src-chip ai"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 3l1.9 5.8H20l-4.9 3.6 1.9 5.8-5-3.6-5 3.6 1.9-5.8L4 8.8h6.1z"/></svg>AI 识别</span>
+        <span class="src-chip self">自行调取</span>
+        <button class="btn btn-ghost btn-sm">预览</button><button class="btn btn-ghost btn-sm">下载</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 效果图索引 -->
+  <div class="sec">
+    <div class="sec-head">
+      <span class="sec-no">05</span><span class="sec-title">整套效果图索引</span>
+      <span class="sec-note">12 张核心页面 · HTML 可交互预览，双击或从浏览器打开</span>
+    </div>
+    <div class="index-grid">
+      <a class="card ix-card" href="01-login.html"><div class="ix-thumb" style="background:linear-gradient(150deg,#10233A,#0C1927)"><div class="bar" style="background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.12)"><div class="l acc" style="background:rgba(0,166,166,0.5);width:40%"></div><div class="l" style="background:rgba(255,255,255,0.14);width:80%"></div><div class="l" style="background:rgba(255,255,255,0.14);width:80%"></div><div class="l" style="background:rgba(0,166,166,0.6);width:40%"></div></div></div><div class="ix-body"><div class="ix-no">01</div><div class="ix-name">登录</div><div class="ix-desc">品牌时刻：墨案蓝 + 宋体主张，登录保护提示</div></div></a>
+      <a class="card ix-card" href="02-dashboard.html"><div class="ix-thumb" style="background:var(--bg-canvas)"><div class="bar"><div class="l acc w60"></div><div class="l w80"></div><div class="l w40"></div></div></div><div class="ix-body"><div class="ix-no">02</div><div class="ix-name">工作台</div><div class="ix-desc">今日行动与风险 → 短周期事项 → 经营概览 → 趋势分布</div></div></a>
+      <a class="card ix-card" href="03-matters-list.html"><div class="ix-thumb" style="background:var(--bg-canvas)"><div class="bar" style="padding-top:12px"><div class="l acc w40"></div><div style="display:flex;flex-direction:column;gap:6px;margin-top:8px"><div style="height:10px;border-radius:4px;background:var(--bg-card);border:1px solid var(--bd-hair);border-left:3px solid var(--blue)"></div><div style="height:10px;border-radius:4px;background:var(--bg-card);border:1px solid var(--bd-hair);border-left:3px solid var(--amber)"></div><div style="height:10px;border-radius:4px;background:var(--bg-card);border:1px solid var(--bd-hair);border-left:3px solid var(--red)"></div></div></div></div><div class="ix-body"><div class="ix-no">03</div><div class="ix-name">案件列表</div><div class="ix-desc">档案架式高密度列表，案卷脊 + 风险阶梯</div></div></a>
+      <a class="card ix-card" href="04-matter-detail.html"><div class="ix-thumb" style="background:var(--bg-canvas)"><div class="bar"><div class="l acc w80"></div><div style="display:flex;gap:5px;margin-top:8px"><div style="width:26%;height:52px;border-radius:5px;background:var(--bg-sunken)"></div><div style="flex:1;height:52px;border-radius:5px;background:var(--bg-card);border:1px solid var(--bd-hair)"></div><div style="width:22%;height:52px;border-radius:5px;background:var(--bg-sunken)"></div></div></div></div><div class="ix-body"><div class="ix-no">04</div><div class="ix-name">案件工作台</div><div class="ix-desc">程序链 + 环节导航 + 材料/成果，事务记录与人工判断分离</div></div></a>
+      <a class="card ix-card" href="05-intake-wizard.html"><div class="ix-thumb" style="background:var(--bg-canvas)"><div style="position:absolute;inset:0;background:rgba(12,25,39,0.35)"></div><div class="bar" style="left:auto;right:14px;width:56%"><div class="l acc w60"></div><div class="l w80"></div><div class="l w80"></div><div class="l w40"></div></div></div><div class="ix-body"><div class="ix-no">05</div><div class="ix-name">收案登记</div><div class="ix-desc">TransactionForm 抽屉，客户查重与冲突预检前置</div></div></a>
+      <a class="card ix-card" href="06-conflict-check.html"><div class="ix-thumb" style="background:var(--bg-canvas)"><div class="bar"><div style="display:flex;gap:6px;margin-top:2px"><div style="flex:1;height:14px;border-radius:4px;background:var(--red-bg)"></div><div style="flex:1;height:14px;border-radius:4px;background:var(--amber-bg)"></div><div style="flex:1;height:14px;border-radius:4px;background:var(--green-bg)"></div></div><div class="l w80" style="margin-top:9px"></div><div class="l w60"></div></div></div><div class="ix-body"><div class="ix-no">06</div><div class="ix-name">冲突检索</div><div class="ix-desc">红线业务：身份自动携带、命中分级、人工结论留痕</div></div></a>
+      <a class="card ix-card" href="07-approvals.html"><div class="ix-thumb" style="background:var(--bg-canvas)"><div style="position:absolute;inset:0;background:rgba(12,25,39,0.35)"></div><div class="bar" style="left:50%;transform:translateX(-50%);width:76%;display:flex;gap:6px"><div style="flex:1"></div><div style="width:30%;border-radius:5px;background:var(--teal-soft)"></div></div></div><div class="ix-body"><div class="ix-no">07</div><div class="ix-name">审批工作台</div><div class="ix-desc">宽幅审阅窗口 + 右侧固定审批区，用章事项前置提示</div></div></a>
+      <a class="card ix-card" href="08-finance.html"><div class="ix-thumb" style="background:var(--bg-canvas)"><div class="bar"><div class="l acc w40"></div><svg viewBox="0 0 120 36" style="margin-top:6px;width:100%"><polyline points="0,28 20,22 40,26 60,14 80,18 100,8 120,12" fill="none" stroke="#007B7F" stroke-width="2"/></svg></div></div><div class="ix-body"><div class="ix-no">08</div><div class="ix-name">财务</div><div class="ix-desc">流水、开票与回款，金额一律等宽对齐</div></div></a>
+      <a class="card ix-card" href="09-schedule.html"><div class="ix-thumb" style="background:var(--bg-canvas)"><div class="bar" style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px"><div style="height:12px;border-radius:3px;background:var(--bg-sunken)"></div><div style="height:12px;border-radius:3px;background:var(--blue-bg)"></div><div style="height:12px;border-radius:3px;background:var(--bg-sunken)"></div><div style="height:12px;border-radius:3px;background:var(--red-bg)"></div><div style="height:12px;border-radius:3px;background:var(--bg-sunken)"></div><div style="height:12px;border-radius:3px;background:var(--teal-soft)"></div><div style="height:12px;border-radius:3px;background:var(--bg-sunken)"></div><div style="grid-column:1/8;height:20px;border-radius:4px;background:var(--bg-card);border:1px solid var(--bd-hair)"></div></div></div><div class="ix-body"><div class="ix-no">09</div><div class="ix-name">日程</div><div class="ix-desc">月历 + 阶梯预警侧栏，订阅日历入口固定右上</div></div></a>
+      <a class="card ix-card" href="10-clients.html"><div class="ix-thumb" style="background:var(--bg-canvas)"><div class="bar"><div style="height:14px;border-radius:4px;background:var(--amber-bg);border:1px solid var(--amber-line)"></div><div class="l w80" style="margin-top:8px"></div><div class="l w60"></div></div></div><div class="ix-body"><div class="ix-no">10</div><div class="ix-name">客户</div><div class="ix-desc">疑似重复提示与合并向导入口，来源渠道留痕</div></div></a>
+      <a class="card ix-card" href="11-global-search.html"><div class="ix-thumb" style="background:var(--bg-canvas)"><div style="position:absolute;inset:0;background:rgba(12,25,39,0.4)"></div><div class="bar" style="left:50%;transform:translateX(-50%);width:64%;top:26px"><div class="l acc w60"></div><div class="l w80"></div><div class="l w40"></div></div></div><div class="ix-body"><div class="ix-no">11</div><div class="ix-name">全局搜索</div><div class="ix-desc">标题 + 全文（含 OCR）检索，命中页码与来源可见</div></div></a>
+      <a class="card ix-card" href="12-admin-deadline-rules.html"><div class="ix-thumb" style="background:var(--bg-canvas)"><div style="position:absolute;top:0;left:0;right:0;height:12px;background:var(--navy)"></div><div class="bar" style="top:24px"><div class="l w40"></div><div class="l w80"></div><div class="l w80"></div><div class="l w60"></div></div></div><div class="ix-body"><div class="ix-no">12</div><div class="ix-name">管理后台 · 期限规则库</div><div class="ix-desc">起算事件 + 顺延 + 阶梯预警的规则化配置</div></div></a>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

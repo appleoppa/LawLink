@@ -182,7 +182,9 @@ export const matterUpdateBasicSchema = z.object({
   causeId: z.string().cuid().optional().or(z.literal("")),
   causeFreeText: z.string().max(200).optional().or(z.literal("")),
   claimAmount: z.coerce.number().nonnegative().optional().nullable(),
-  ourStanding: litigationStandingSchema.optional().nullable()
+  ourStanding: litigationStandingSchema.optional().nullable(),
+  // v1.x 制度决策 4.1: 受限事项——不进入团队汇总视图（限制优先于团队授权）
+  teamAccessRestricted: z.boolean().optional()
 });
 
 export type MatterUpdateBasicInput = z.infer<typeof matterUpdateBasicSchema>;

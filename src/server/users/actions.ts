@@ -79,6 +79,10 @@ export async function listUsers() {
       phone: true,
       active: true,
       lastLoginAt: true,
+      failedLoginAttempts: true,
+      lockedUntil: true,
+      totpEnabled: true,
+      totpEnforced: true,
       createdAt: true,
       updatedAt: true,
       approvalMemberships: { where: { active: true, group: { active: true } }, select: { group: { select: { id: true, name: true } } } },
@@ -130,9 +134,10 @@ export async function createUser(formData: FormData) {
     identityDocumentName: formData.get("identityDocumentName"),
     identityDocumentNumber: formData.get("identityDocumentNumber")
   });
+  // 2026-09-13 制度决策：账号开通与证件照片采集解耦——照片可选，
+  // 开通后可经「资料 → 身份证件」补充；号码与类型仍必填（身份标识）。
   const files = [formData.get("identityImagePrimary"), formData.get("identityImageSecondary")]
     .filter((file): file is File => file instanceof File && file.size > 0);
-  if (!files.length) throw new Error("请上传证件照片");
   if (files.length > 2) throw new Error("最多上传两张证件照片");
 
   const existing = await prisma.user.findUnique({ where: { email: data.email }, select: { id: true } });
@@ -160,13 +165,17 @@ export async function createUser(formData: FormData) {
         identityDocumentNumber: data.identityDocumentNumber,
         active: true
       }, select: { id: true } });
-      const identityFiles = await storeIdentityDocumentFiles({
-        userId: user.id,
-        uploadedById: session.user.id,
-        documentType: data.identityDocumentType,
-        files
-      });
-      await db.userIdentityDocument.createMany({ data: identityFiles });
+      const identityFiles = files.length
+        ? await storeIdentityDocumentFiles({
+            userId: user.id,
+            uploadedById: session.user.id,
+            documentType: data.identityDocumentType,
+            files
+          })
+        : [];
+      if (identityFiles.length) {
+        await db.userIdentityDocument.createMany({ data: identityFiles });
+      }
       await approvalAudit(db, session.user.id, "USER_CREATE", user.id, {
         role: data.role,
         roleDefinitionId: data.roleDefinitionId ?? null,
@@ -260,6 +269,26 @@ export async function setUserActive(input: { id: string; active: boolean }) {
   revalidatePath("/admin/users");
   return { ok: true, active: data.active };
 }
+/** v1.x P0-3: 管理员解除登录锁定（清零失败计数，写审计） */
+export async function unlockUserLogin(input: { id: string }) {
+  const session = await requireAdmin();
+  const { id } = z.object({ id: z.string().cuid() }).parse(input);
+
+  await approvalTransaction(async db => {
+    const user = await db.user.findUnique({ where: { id }, select: { lockedUntil: true, failedLoginAttempts: true } });
+    if (!user) throw new Error("账号不存在");
+    if (!user.lockedUntil) throw new Error("该账号未处于锁定状态");
+    await db.user.update({
+      where: { id },
+      data: { failedLoginAttempts: 0, lockedUntil: null }
+    });
+    await approvalAudit(db, session.user.id, "USER_LOGIN_UNLOCK", id);
+  });
+
+  revalidatePath("/admin/users");
+  return { ok: true };
+}
+
 export async function updateUserProfile(input: z.infer<typeof adminProfileSchema>) {
   const session = await requireAdmin();
   const parsed = adminProfileSchema.safeParse(input);
@@ -338,4 +367,45 @@ export async function saveMyAvatar(input: { avatar: string | null }) {
 
   revalidatePath("/", "layout");
   return { ok: true };
+}
+
+/**
+ * v1.x P1 收尾 c: 管理端强制开启双步验证（仅 SUPER_ADMIN）。
+ *
+ * enforced 且用户尚未绑定（totpEnabled=false）时登录 authorize 直接拒绝并审计
+ * （LOGIN_TOTP_ENFORCED_REJECT，提示文案由登录页 A 线经 checkLoginTotpEnforcement
+ * 展示"请先绑定双步验证"）；已绑定者行为不变。enforced 用户不可自行关闭双步验证。
+ * enabled 可传 false 撤销强制（误设置解锁用），默认 true。
+ * UI 入口（用户管理页操作项）待 A 线接入。
+ */
+const totpEnforceSchema = z.object({
+  id: z.string().cuid(),
+  enabled: z.boolean().default(true)
+});
+export type TotpEnforceInput = z.input<typeof totpEnforceSchema>;
+
+export async function forceEnforceTotp(input: TotpEnforceInput) {
+  const session = await requireAdmin();
+  const data = totpEnforceSchema.parse(input);
+
+  await approvalTransaction(async db => {
+    await assertCurrentAdmin(db, session.user.id);
+    const current = await db.user.findUnique({
+      where: { id: data.id },
+      select: { active: true, totpEnforced: true, totpEnabled: true }
+    });
+    if (!current) throw new Error("账号不存在");
+    if (current.totpEnforced === data.enabled) return; // 幂等：状态未变不重复审计
+    await db.user.update({
+      where: { id: data.id },
+      data: { totpEnforced: data.enabled }
+    });
+    await approvalAudit(db, session.user.id, "USER_TOTP_ENFORCE", data.id, {
+      enforced: data.enabled,
+      alreadyBound: current.totpEnabled
+    });
+  });
+
+  revalidatePath("/admin/users");
+  return { ok: true, enforced: data.enabled };
 }

@@ -1,3 +1,4 @@
+@import "./moan.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -5,7 +6,7 @@
 @layer base {
   :root {
     /* v3.3: 冷调灰白底 + 原有 teal 主色 + 高密度业务界面 */
-    --background: 214 24% 94%;         /* #EDF0F4 */
+    --background: 160 6% 95%;          /* #F2F4F3 墨案画布 */
     --foreground: 216 50% 12%;         /* #0F1B2D */
 
     --card: 0 0% 100%;                 /* #ffffff 卡片仍纯白 */
@@ -397,9 +398,11 @@
   }
 
   .ll-page-title {
-    font-size: 20px;
-    font-weight: 600;
-    line-height: 1.2;
+    /* 墨案 03 效果图 ph-title：22px / 700 / 负字距 */
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
   }
 
   .ll-page-sub {
@@ -440,9 +443,9 @@
   }
 
   .ll-seg-active {
-    background: hsl(var(--card));
-    color: hsl(var(--foreground));
-    box-shadow: 0 1px 2px rgba(15,23,42,0.08), 0 0 0 1px hsl(var(--border));
+    background: #E4F1F0; /* 墨案 teal-soft */
+    color: #005054;      /* 墨案 teal-deep */
+    box-shadow: inset 0 0 0 1px #B7D8D6;
   }
 
   .ll-dot {
@@ -535,3 +538,55 @@
     text-decoration: none !important;
   }
 }
+
+/* ============================================================
+ * v4「墨案」签名组件（docs/mockup/v4，实施基准见 P1 方案第七节）
+ * 配色纪律：teal 仅品牌/主操作；blue 进行中；green 完成终态；
+ * red 仅风险/阻断；bronze 仅归档/结案。
+ * ============================================================ */
+/* 案卷脊：列表行左侧状态色竖条（列表即档案架）。挂在 li/td 首格内——
+   表格场景禁止用 tr::before（Chrome 匿名单元格错位，见 03 页修复记录）。 */
+.ll-spine-row { position: relative; }
+.ll-spine-row::before {
+  content: ""; position: absolute; left: 0; top: 10px; bottom: 10px;
+  width: 3px; border-radius: 0 2px 2px 0;
+  background: var(--ll-spine, #CFD7D3);
+}
+/* 程序链：五段进度轨道（done=teal 实心 / cur=teal 半透明 / risk=amber / 未来=浅灰） */
+.ll-stage-track { display: flex; gap: 2.5px; }
+.ll-stage-track i { width: 16px; height: 3.5px; border-radius: 2px; background: #DDE3E0; }
+.ll-stage-track i.done { background: #007B7F; }
+.ll-stage-track i.cur  { background: #007B7F; opacity: 0.45; }
+.ll-stage-track i.risk { background: #96650B; }
+/* 期限倒计时 chip：红=逾期/阻断，amber=临近，muted=普通 */
+.ll-dl-chip {
+  font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums;
+  font-size: 11px; font-weight: 600; padding: 2px 8px;
+  border-radius: 9800px; white-space: nowrap;
+}
+.ll-dl-red   { color: #B42318; background: #FBECE9; }
+.ll-dl-amber { color: #96650B; background: #FAF0DB; }
+.ll-dl-muted { color: #68747F; background: #E9EDEB; }
+
+
+/* ============================================================
+ * 墨案全局排版基线（docs/mockup/v4）：13.5px 高密度、负字距、
+ * 数字等宽特性——整站观感的底层变化（外壳已由侧栏/顶栏承载）。
+ * ============================================================ */
+body {
+  font-size: 13.5px;
+  letter-spacing: -0.004em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* 页题规格（03 效果图 ph-title）：主列表页标题统一 22px/700/负字距 */
+.ph-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+.ph-sub { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+.ph-sub b { font-weight: 600; }

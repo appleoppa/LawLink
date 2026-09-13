@@ -1,7 +1,7 @@
 import { Metadata } from "next";
 import { Suspense } from "react";
 import { LoginForm } from "./login-form";
-import { Scale, ShieldCheck, Sparkles, Loader2 } from "lucide-react";
+import { BookOpen, ShieldCheck, Sparkles, Loader2 } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "登录 — LawLink"
@@ -11,42 +11,57 @@ export default function LoginPage() {
   return (
     <div className="grid w-full max-w-5xl grid-cols-1 gap-0 lg:grid-cols-2">
       {/* 左侧：品牌区 */}
-      <div className="hidden flex-col justify-between rounded-l-lg border border-r-0 border-border bg-muted/30 p-10 lg:flex">
+      {/* 墨案批次⑥（01 效果图）：左品牌面板 navy 渐变 + teal 辐射光晕；宋体仅用于品牌主张 */}
+      <div
+        className="relative hidden flex-col justify-between overflow-hidden rounded-l-lg border border-r-0 border-border p-10 lg:flex"
+        style={{ background: "linear-gradient(160deg, #142C48 0%, #0C1927 100%)" }}
+      >
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(420px 300px at 78% 18%, rgba(0,166,166,0.28) 0%, rgba(0,166,166,0) 62%)"
+          }}
+        />
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <Scale className="h-4 w-4" strokeWidth={1.8} />
-          </div>
+          {/* 墨案品牌时刻：正式标志（双立柱 + teal 连接件，见 docs/BRAND.md） */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/lawlink-mark.svg" alt="LawLink" className="h-9 w-9 rounded-[10px]" />
           <div>
-            <div className="text-lg font-semibold tracking-tight">LawLink</div>
-            <div className="mt-0.5 text-[11px] text-muted-foreground">律师工作台</div>
+            <div className="text-lg font-semibold tracking-tight text-white">LawLink</div>
+            <div className="mt-0.5 text-[11px] text-white/55">律师工作台</div>
           </div>
         </div>
 
         <div className="space-y-8">
           <div className="space-y-4">
-            <div className="text-xs text-primary">{new Date().getFullYear()}</div>
-            <h2 className="text-2xl font-semibold leading-snug tracking-tight">
+            <div className="text-xs text-[#7FD1CF]">{new Date().getFullYear()}</div>
+            <h2
+              className="text-2xl font-semibold leading-snug tracking-tight text-white"
+              style={{ fontFamily: '"Songti SC", "STSong", "Noto Serif SC", serif' }}
+            >
               把精力放在案件本身，
               <br />
               而不是表格里。
             </h2>
-            <div className="h-[2px] w-8 bg-primary rounded-full" />
+            <div className="h-[2px] w-8 rounded-full bg-[#00A6A6]" />
           </div>
 
-          <ul className="space-y-3.5 text-sm text-muted-foreground">
+          <ul className="space-y-3.5 text-sm text-white/60">
             <Feature icon={<ShieldCheck className="h-3.5 w-3.5" />}>
               数据自托管，附件可选加密，不依赖第三方托管服务
             </Feature>
             <Feature icon={<Sparkles className="h-3.5 w-3.5" />}>
               覆盖收案、冲突检索、多程序串接、财务分成、归档全流程
             </Feature>
-            <Feature icon={<Scale className="h-3.5 w-3.5" />}>
+            <Feature icon={<BookOpen className="h-3.5 w-3.5" />}>
               规范案由库（民商事 / 刑事 / 行政）从源头消除字符串歧义
             </Feature>
           </ul>
         </div>
 
-        <div className="text-[11px] text-muted-foreground/70">
+        <div className="text-[11px] text-white/60/70">
           MIT 协议 · 自主部署
         </div>
       </div>

@@ -70,11 +70,12 @@ type HitResult = {
   } | null;
 };
 
+// 墨案语义色（moan.css token 值；borderColor 需拼 alpha，故用 hex 字面值）
 const severityStyle: Record<ConflictSeverity, { color: string; bg: string; label: string }> = {
-  BLOCKING: { color: "#B91C1C", bg: "#FBE9E9", label: "阻塞" },
+  BLOCKING: { color: "#B42318", bg: "#FBECE9", label: "阻塞" },
   HIGH: { color: "#B45309", bg: "#FBEDD8", label: "高" },
-  MEDIUM: { color: "#9A6700", bg: "#FBF1DC", label: "中" },
-  LOW: { color: "#15803D", bg: "#E6F2EC", label: "低" }
+  MEDIUM: { color: "#96650B", bg: "#FAF0DB", label: "中" },
+  LOW: { color: "#1A7F45", bg: "#E7F3EA", label: "低" }
 };
 
 const queryRoleOptions: { value: QueryRole; label: string }[] = [
@@ -252,9 +253,9 @@ export function ConflictsView() {
           <ConflictSummaryBar counts={resultCounts} />
 
           {!results || results.length === 0 ? (
-            <div className="rounded-md border border-[#15803D]/30 bg-[#E6F2EC] p-4 text-sm">
+            <div className="rounded-md border border-[#1A7F45]/30 bg-[#E7F3EA] p-4 text-sm">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-[#15803D]" />
+                <CheckCircle2 className="h-4 w-4 text-[#1A7F45]" />
                 <span>未命中任何历史客户或案件</span>
               </div>
             </div>

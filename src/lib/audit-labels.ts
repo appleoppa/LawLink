@@ -9,7 +9,8 @@ const targetLabels: Record<string, string> = {
   MatterProcedure: "案件程序", MatterStage: "案件阶段", Note: "跟进记录", Party: "当事人",
   PreservationCase: "保全案件", PreservationProperty: "保全财产", Report: "报告", SealRequest: "用章申请",
   SmsMessage: "法院短信", StageTemplate: "阶段模板", SystemSetting: "系统设置", Task: "事项",
-  Team: "律师团队", User: "用户", BuiltinRole: "内置角色", RoleDefinition: "自定义角色"
+  Team: "律师团队", User: "用户", BuiltinRole: "内置角色", RoleDefinition: "自定义角色",
+  Engagement: "委托", EvidenceItem: "证据项"
 };
 const words: Record<string, string> = {
   BUILTIN: "内置", ROLE: "角色", PRESENTATION: "显示资料", DEFINITION: "定义",
@@ -39,7 +40,9 @@ const words: Record<string, string> = {
   STATUS: "状态", SUBMIT: "提交", SUMMARY: "摘要", TASK: "事项", TEAM: "团队", TEMPLATE: "模板",
   TOGGLE: "启停", TOGGLES: "开关", TOKEN: "订阅凭证", UNBIND: "解除关联", UPDATE: "更新",
   UPLOAD: "上传", USER: "用户", VALUES: "内容", VECTOR: "语义索引", VIEW: "查看", WEBHOOK: "群机器人",
-  WEEKLY: "周报", WORKFLOW: "工作流", YUANDIAN: "元典", ADD: "添加", CLEANUP: "历史清理"
+  WEEKLY: "周报", WORKFLOW: "工作流", YUANDIAN: "元典", ADD: "添加", CLEANUP: "历史清理",
+  ENGAGEMENT: "委托", EVIDENCE: "证据", TERMINATE: "终止", ACTIVATE: "启用", SERVICE: "服务",
+  ENFORCE: "强制", SKIP: "跳过", ESCALATION: "升级"
 };
 export function auditActionLabel(code: string): string {
   const parts = code.split("_");

@@ -15,7 +15,10 @@ import { matterHref } from "@/lib/matters/route";
 import { prisma } from "@/lib/prisma";
 import { nullableDecimalToNumber, serializeDecimals } from "@/lib/decimal";
 import { MatterDetailTabs } from "./_components/matter-detail-tabs";
+import { MatterSignalStrip, type MatterSignal } from "./_components/matter-signal-strip";
 import { ReviewSummaryCard } from "./_components/review-summary-card";
+import { listEngagementsForMatter } from "@/server/engagements/actions";
+import { listEvidenceItems } from "@/server/evidence/actions";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -161,6 +164,11 @@ export default async function MatterDetailPage({ params }: PageProps) {
 
   // v0.22: 本案 AI 审查总览（聚合 ReviewRecord）
   const reviewSummary = allowed("documents.read") ? await getMatterReviewSummary(matter.id) : null;
+  // v1.x P2: 委托与证据链（详情页区块；read 已在页面入口校验）
+  const [engagements, evidenceItems] = await Promise.all([
+    listEngagementsForMatter(matter.id).catch(() => []),
+    listEvidenceItems(matter.id).catch(() => [])
+  ]);
   const currentMatterMember = session?.user.id
     ? matter.members.find((member) => member.userId === session.user.id)
     : null;
@@ -188,8 +196,33 @@ export default async function MatterDetailPage({ params }: PageProps) {
   }));
   const preservationCasesForClient = serializeDecimals(preservationCases);
 
+  // 墨案批次③：风险信号条（逾期/待确认期限、近 7 天开庭）
+  const now = new Date();
+  const signals: MatterSignal[] = [];
+  const allDeadlines = matter.procedures.flatMap((proc: { deadlines: { dueAt: Date; completed: boolean; confirmStatus?: string; title: string }[]; id: string }) =>
+    proc.deadlines.map((d) => ({ ...d, procedureId: proc.id }))
+  );
+  const overdue = allDeadlines.filter((d: { completed: boolean; dueAt: Date }) => !d.completed && d.dueAt < now);
+  const pendingConfirm = allDeadlines.filter((d: { confirmStatus?: string }) => d.confirmStatus === "PENDING");
+  if (overdue.length > 0) {
+    signals.push({ kind: "overdue", label: `${overdue.length} 项期限已逾期（${overdue[0].title}）` });
+  }
+  if (pendingConfirm.length > 0) {
+    signals.push({ kind: "pending-confirm", label: `${pendingConfirm.length} 项规则期限待确认` });
+  }
+  const hearingsSoon = matter.procedures
+    .flatMap((proc: { hearings: { startsAt: Date }[] }) => proc.hearings)
+    .filter((h: { startsAt: Date }) => {
+      const diff = (h.startsAt.getTime() - now.getTime()) / 86_400_000;
+      return diff >= 0 && diff <= 7;
+    });
+  if (hearingsSoon.length > 0) {
+    signals.push({ kind: "hearing-soon", label: `近 7 天有 ${hearingsSoon.length} 次开庭` });
+  }
+
   return (
     <div className="space-y-4">
+      <MatterSignalStrip signals={signals} />
       <Link
         href="/matters"
         className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
@@ -225,6 +258,8 @@ export default async function MatterDetailPage({ params }: PageProps) {
         latestArchive={latestArchive}
         customFieldDefs={customFieldDefs}
         preservationCases={preservationCasesForClient}
+        engagements={engagements}
+        evidenceItems={evidenceItems}
       />
     </div>
   );

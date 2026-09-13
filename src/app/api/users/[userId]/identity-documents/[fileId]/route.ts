@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth/options";
 import { prisma } from "@/lib/prisma";
 import { storage } from "@/lib/storage";
 import { decryptBuffer } from "@/lib/storage/crypto";
-import { audit } from "@/server/audit";
+import { auditStrict } from "@/server/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,7 +24,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ use
   try {
     const ciphertext = await storage.readFile(file.path);
     const image = decryptBuffer(ciphertext, file.iv, file.authTag);
-    await audit({
+    // P0-7：证件明文查看属关键动作，审计失败即失败——不得出现
+    // "照片已返回但无审计记录"的不可核验状态（严格版审计抛错）。
+    await auditStrict({
       userId: session.user.id,
       action: "USER_IDENTITY_PHOTO_VIEW",
       targetType: "UserIdentityDocument",

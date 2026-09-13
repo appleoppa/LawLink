@@ -75,11 +75,12 @@ type HitResult = {
 type SameNameClient = { clientId: string; name: string };
 type IdMatchedClient = { clientId: string; name: string; idNumber: string };
 
+// 墨案语义色（moan.css token 值；borderColor 需拼 alpha，故用 hex 字面值），与冲突检索页一致
 const severityStyle: Record<ConflictSeverity, { color: string; bg: string; label: string }> = {
-  BLOCKING: { color: "#F87171", bg: "rgba(248,113,113,0.12)", label: "阻塞" },
-  HIGH: { color: "#FB923C", bg: "rgba(251,146,60,0.12)", label: "高" },
-  MEDIUM: { color: "#FBBF24", bg: "rgba(251,191,36,0.12)", label: "中" },
-  LOW: { color: "#4ADE80", bg: "rgba(74,222,128,0.12)", label: "低" }
+  BLOCKING: { color: "#B42318", bg: "#FBECE9", label: "阻塞" },
+  HIGH: { color: "#B45309", bg: "#FBEDD8", label: "高" },
+  MEDIUM: { color: "#96650B", bg: "#FAF0DB", label: "中" },
+  LOW: { color: "#1A7F45", bg: "#E7F3EA", label: "低" }
 };
 
 const queryRoleOptions: { value: QueryRole; label: string }[] = [

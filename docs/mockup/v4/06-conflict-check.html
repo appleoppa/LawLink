@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>LawLink · 冲突检索</title>
+<link rel="stylesheet" href="design-system.css" />
+<style>
+  .page-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 16px; }
+  .ph-title { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 4px; }
+  .ph-sub { font-size: 12.5px; color: var(--t-muted); max-width: 640px; line-height: 1.6; }
+
+  .subject { display: flex; gap: 13px; padding: 14px 16px; align-items: flex-start; }
+  .subject + .subject { border-top: 1px solid var(--bd-hair); }
+  .sub-logo {
+    width: 38px; height: 38px; border-radius: 9px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 14px;
+  }
+  .sub-name { font-size: 14px; font-weight: 650; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .sub-fields { display: flex; flex-direction: column; gap: 4px; margin-top: 7px; }
+  .sub-field { display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
+  .sub-field .k { color: var(--t-muted); width: 110px; flex-shrink: 0; }
+  .sub-field .v { font-family: var(--font-mono); color: var(--t-primary); }
+  .sub-field .v.mask { background: var(--bg-sunken); border-radius: 4px; padding: 0 6px; }
+  .id-chip {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; padding: 2px 8px; border-radius: var(--r-full);
+    background: var(--teal-soft); color: var(--teal-deep); font-weight: 550;
+  }
+
+  .run-bar { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+  .run-note { font-size: 11.5px; color: var(--t-muted); display: flex; align-items: center; gap: 6px; }
+
+  .risk-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
+  .risk-cell { padding: 13px 16px; display: flex; align-items: center; gap: 12px; }
+  .risk-cell .rn { font-family: var(--font-mono); font-size: 22px; font-weight: 650; line-height: 1; }
+  .risk-cell .rl { font-size: 11.5px; color: var(--t-muted); margin-top: 3px; }
+  .risk-ic { width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .risk-ic svg { width: 16px; height: 16px; }
+
+  .hit-card { margin-bottom: 12px; overflow: hidden; }
+  .hit-card.blocking { border-color: var(--red-line); }
+  .hit-card.medium { border-color: var(--amber-line); }
+  .hit-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; }
+  .hit-title { font-size: 13.5px; font-weight: 650; }
+  .hit-meta { font-size: 11.5px; color: var(--t-muted); margin-top: 2px; display: flex; align-items: center; gap: 6px; }
+  .hit-match { padding: 10px 16px; background: #FBFDFC; border-top: 1px solid var(--bd-hair); border-bottom: 1px solid var(--bd-hair); display: flex; gap: 8px; align-items: flex-start; }
+  .hit-match .m-label { font-size: 11px; font-weight: 650; color: var(--t-muted); width: 70px; flex-shrink: 0; padding-top: 1px; }
+  .hit-match .m-body { font-size: 12.5px; color: var(--t-primary); line-height: 1.65; }
+  .hit-match .m-body b { font-weight: 650; }
+  .hit-foot { display: flex; align-items: center; gap: 8px; padding: 11px 16px; }
+  .hit-foot .hint { font-size: 11px; color: var(--t-faint); display: flex; align-items: center; gap: 5px; margin-left: auto; }
+
+  .nomatch-row { display: flex; align-items: center; gap: 11px; padding: 10px 16px; border-bottom: 1px solid var(--bd-hair); }
+  .nomatch-row:last-child { border-bottom: none; }
+  .disclaimer { display: flex; gap: 9px; padding: 11px 16px; background: var(--bg-sunken); font-size: 11.5px; color: var(--t-muted); line-height: 1.6; border-top: 1px solid var(--bd-hair); }
+
+  .concl-opt { display: flex; gap: 10px; padding: 11px 14px; border: 1px solid var(--bd-subtle); border-radius: 10px; cursor: pointer; align-items: flex-start; margin-bottom: 8px; }
+  .concl-opt .radio { width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid var(--bd-strong); flex-shrink: 0; margin-top: 1px; }
+  .concl-opt.sel { border-color: var(--teal); background: var(--teal-soft); }
+  .concl-opt.sel .radio { border-color: var(--teal); border-width: 4.5px; }
+  .concl-opt .t { font-size: 12.75px; font-weight: 600; }
+  .concl-opt .d { font-size: 11.5px; color: var(--t-muted); margin-top: 2px; }
+
+  .side-note { display: flex; gap: 9px; padding: 13px 15px; font-size: 11.5px; color: var(--t-muted); line-height: 1.7; background: var(--bg-sunken); border-radius: var(--r-lg); }
+  .side-note svg { width: 15px; height: 15px; flex-shrink: 0; margin-top: 1px; color: var(--t-muted); }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3" y="2.6" width="2.7" height="10.8" rx="1.1" fill="#fff"/><rect x="8.4" y="2.6" width="2.7" height="10.8" rx="1.1" fill="#fff"/><rect x="3" y="6.8" width="8.1" height="2.4" rx="1.1" fill="#00A6A6"/></svg></div>
+      <div><div class="brand-name">立正律师事务所</div><div class="brand-sub">LawLink v4 效果图</div></div>
+    </div>
+    <nav class="nav">
+      <div class="nav-section-label">工作区</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12l9-9 9 9M5 10v10h14V10"/></svg>工作台</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>案件<span class="count">42</span></div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>收案<span class="count">5</span></div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>审批<span class="count alert">5</span></div>
+      <div class="nav-item active"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>冲突检索</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg>日程</div>
+      <div class="nav-section-label">业务</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-6 7-6s7 2.5 7 6"/><circle cx="17" cy="9" r="2.5"/></svg>客户<span class="count">37</span></div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg>财务</div>
+      <div class="nav-section-label">知识</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/></svg>归档</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6" rx="0.5"/><rect x="12" y="7" width="3" height="10" rx="0.5"/><rect x="17" y="13" width="3" height="4" rx="0.5"/></svg>报表</div>
+    </nav>
+    <div class="nav-bottom">
+      <div class="user-card">
+        <div class="avatar av-teal">叶</div>
+        <div class="user-meta"><div class="user-name">叶森</div><div class="user-role">主任律师 · 超级管理员</div></div>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--t-faint)"><path d="M8 9l4-4 4 4M8 15l4 4 4-4"/></svg>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="searchbox">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        搜索案件、客户、材料正文…<span class="kbd">⌘K</span>
+      </div>
+      <div style="flex:1"></div>
+      <button class="btn btn-secondary btn-sm btn-icon" title="通知"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></button>
+      <button class="btn btn-primary btn-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>新建收案</button>
+      <div style="width:1px;height:22px;background:var(--bd-hair);margin:0 4px"></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:3px 10px 3px 4px;height:34px;border-radius:var(--r-full);border:1px solid var(--bd-hair);background:var(--bg-card);cursor:pointer">
+        <div class="avatar av-teal" style="width:26px;height:26px">叶</div><span style="font-size:12.5px;font-weight:550">叶森</span>
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--t-muted)"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <div class="page-head">
+        <div>
+          <h1 class="ph-title">利益冲突检索</h1>
+          <p class="ph-sub">检索结果将跨越案件可见性展示最小信息（系统编号、名称、主办、角色）。<b>红色阻塞未得出人工结论前，对应收案不能提交审批。</b></p>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary btn-sm">检索记录</button>
+          <button class="btn btn-primary btn-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>新建检索</button>
+        </div>
+      </div>
+
+      <!-- 检索主体 -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="panel-head">
+          <div class="panel-title">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M2.5 12h19M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18"/></svg>
+            检索主体 <span class="badge b-white" style="margin-left:2px">4</span>
+          </div>
+          <span class="id-chip"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>自动携带自收案 I-2026-021 · 06-12 14:35</span>
+        </div>
+
+        <div class="subject">
+          <div class="sub-logo" style="background:var(--navy)">青</div>
+          <div style="flex:1;min-width:0">
+            <div class="sub-name">上海青石建设有限公司 <span class="badge b-teal">委托方</span><span class="id-chip">收案自动带入</span></div>
+            <div class="sub-fields">
+              <div class="sub-field"><span class="k">统一社会信用代码</span><span class="v mask">91310115MA1K4X8P2Q</span><span class="t-xs" style="color:var(--teal-deep);cursor:pointer">明文</span></div>
+              <div class="sub-field"><span class="k">法定代表人</span><span class="v">王建国</span><span class="v mask" style="font-size:11px">3301**********1234</span><span class="t-xs t-faint">证件号码默认打码</span></div>
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-sm">编辑身份</button>
+        </div>
+
+        <div class="subject">
+          <div class="sub-logo" style="background:var(--slate)">华</div>
+          <div style="flex:1;min-width:0">
+            <div class="sub-name">华东置业集团有限公司 <span class="badge b-slate">诉讼对方</span><span class="id-chip">收案自动带入</span></div>
+            <div class="sub-fields">
+              <div class="sub-field"><span class="k">统一社会信用代码</span><span class="v">91310000MA1FL888XN</span></div>
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-sm">编辑身份</button>
+        </div>
+
+        <div class="subject">
+          <div class="sub-logo" style="background:#33989B">王</div>
+          <div style="flex:1;min-width:0">
+            <div class="sub-name">王建国 <span class="badge b-slate">关联自然人</span></div>
+            <div class="sub-fields">
+              <div class="sub-field"><span class="k">证件号码</span><span class="v mask">330106********0217</span></div>
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-sm">编辑身份</button>
+        </div>
+
+        <div class="subject" style="border-top:1px dashed var(--bd-subtle)">
+          <button class="btn btn-ghost btn-sm" style="border:1px dashed var(--bd-default);width:100%;justify-content:center;height:38px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>添加检索主体（自然人 / 机构）
+          </button>
+        </div>
+
+        <div class="run-bar" style="padding:0 16px 16px">
+          <button class="btn btn-primary"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>重新检索全部主体</button>
+          <span class="run-note"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M12 11v5"/></svg>匹配范围：全部历史案件当事人 · 客户档案 · 收案线索</span>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 300px;gap:16px;align-items:start">
+
+        <!-- 结果列 -->
+        <div>
+          <div class="risk-strip">
+            <div class="card risk-cell" style="border-color:var(--red-line)">
+              <div class="risk-ic" style="background:var(--red-bg);color:var(--red)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.7 3h16.96a2 2 0 0 0 1.71-3L13.29 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg></div>
+              <div><div class="rn" style="color:var(--red)">1</div><div class="rl">阻塞 BLOCKING</div></div>
+            </div>
+            <div class="card risk-cell">
+              <div class="risk-ic" style="background:var(--amber-bg);color:var(--amber)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M12 11v5"/></svg></div>
+              <div><div class="rn" style="color:var(--amber)">1</div><div class="rl">需人工判断</div></div>
+            </div>
+            <div class="card risk-cell">
+              <div class="risk-ic" style="background:var(--slate-bg);color:var(--slate)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg></div>
+              <div><div class="rn" style="color:var(--slate)">2</div><div class="rl">未命中</div></div>
+            </div>
+            <div class="card risk-cell">
+              <div class="risk-ic" style="background:var(--teal-soft);color:var(--teal-deep)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+              <div><div class="rn">4</div><div class="rl">已出结论</div></div>
+            </div>
+          </div>
+
+          <!-- BLOCKING -->
+          <div class="card hit-card blocking">
+            <div class="hit-head">
+              <span class="badge b-red"><span class="bdot"></span>阻塞 BLOCKING</span>
+              <div>
+                <div class="hit-title">M-2024-041 · 建设工程价款优先受偿权纠纷</div>
+                <div class="hit-meta">历史案件 · 主办 叶森 · 结案 2024-11-30 · 委托方：上海青石建设（被告方）</div>
+              </div>
+            </div>
+            <div class="hit-match">
+              <span class="m-label">命中依据</span>
+              <span class="m-body">委托主体 <b>上海青石建设有限公司</b> 在该案中为<b>对方当事人</b>（被告），与本收案的委托主体名称及统一社会信用代码<b>完全一致</b>。</span>
+            </div>
+            <div class="hit-foot">
+              <button class="btn btn-secondary btn-sm">标记为同一主体</button>
+              <button class="btn btn-secondary btn-sm">标记为不同主体</button>
+              <button class="btn btn-ghost btn-sm">需要更多信息</button>
+              <span class="hint"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8h.01M12 11v5"/><circle cx="12" cy="12" r="9"/></svg>冲突检索不开放案件正文，请联系主办核实</span>
+            </div>
+          </div>
+
+          <!-- MEDIUM -->
+          <div class="card hit-card medium">
+            <div class="hit-head">
+              <span class="badge b-amber"><span class="bdot"></span>需人工判断</span>
+              <div>
+                <div class="hit-title">M-2023-112 · 股东损害公司债权人利益责任纠纷</div>
+                <div class="hit-meta">历史案件 · 主办 沈青 · 结案 2023-08-15</div>
+              </div>
+            </div>
+            <div class="hit-match">
+              <span class="m-label">命中依据</span>
+              <span class="m-body">该案当事人法定代表人姓名 <b>王建国</b> 与检索主体一致，但证件号码不一致，无法确认是否同一自然人。</span>
+            </div>
+            <div class="hit-foot">
+              <button class="btn btn-secondary btn-sm">补充证件后重新比对</button>
+              <button class="btn btn-ghost btn-sm">标记为不同主体</button>
+            </div>
+          </div>
+
+          <!-- 未命中 -->
+          <div class="card">
+            <div class="panel-head"><div class="panel-title" style="font-size:13px">未命中主体 <span class="t-xs t-mute" style="font-weight:500">2</span></div></div>
+            <div class="nomatch-row">
+              <span class="dot dot-slate"></span>
+              <div style="flex:1"><div style="font-size:12.5px;font-weight:600">华东置业集团有限公司（对方当事人）</div><div class="t-xs t-mute" style="margin-top:1px">全部历史案件及客户档案未命中</div></div>
+              <span class="badge b-white">未命中</span>
+            </div>
+            <div class="nomatch-row">
+              <span class="dot dot-slate"></span>
+              <div style="flex:1"><div style="font-size:12.5px;font-weight:600">长城商业银行上海分行（第三人）</div><div class="t-xs t-mute" style="margin-top:1px">全部历史案件及客户档案未命中</div></div>
+              <span class="badge b-white">未命中</span>
+            </div>
+            <div class="disclaimer">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M12 11v5"/></svg>
+              <span>未命中仅表示系统检索范围内无匹配记录，<b>不构成人工确认无冲突</b>。最终结论以人工判断为准，并随审计留痕。</span>
+            </div>
+          </div>
+
+          <!-- 人工结论 -->
+          <div class="card" style="margin-top:12px">
+            <div class="panel-head">
+              <div class="panel-title">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                检索结论 <span class="t-xs t-mute" style="font-weight:500;margin-left:4px">提交后与审计同事务留痕</span>
+              </div>
+              <span class="badge b-amber">待结论 · 收案 I-2026-021 暂停送审</span>
+            </div>
+            <div class="panel-body">
+              <div class="concl-opt sel">
+                <span class="radio"></span>
+                <div><div class="t">存在利益冲突，不承办</div><div class="d">收案将终止，检索记录与结论归档留存</div></div>
+              </div>
+              <div class="concl-opt">
+                <span class="radio"></span>
+                <div><div class="t">不存在利益冲突，可以承办</div><div class="d">需逐项说明对命中记录的判断理由</div></div>
+              </div>
+              <div class="concl-opt" style="margin-bottom:12px">
+                <span class="radio"></span>
+                <div><div class="t">需补充资料后再判断</div><div class="d">列明缺项，由收案发起人补充后重新检索</div></div>
+              </div>
+              <div class="finput" style="height:auto;padding:11px 13px;align-items:flex-start;margin-bottom:14px">
+                <span style="font-size:12.5px;color:var(--t-secondary);line-height:1.7">判断说明：M-2024-041 为本所 2024 年代理青石建设的对方主体案件，与本收案委托主体直接冲突，拟<b style="color:var(--red)">不承办</b>，已与客户沟通终止委托……</span>
+              </div>
+              <div style="display:flex;justify-content:flex-end;gap:8px">
+                <button class="btn btn-secondary btn-sm">保存草稿</button>
+                <button class="btn btn-primary btn-sm">提交检索结论</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 侧栏 -->
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div class="card">
+            <div class="panel-head"><div class="panel-title" style="font-size:13px">本次检索</div><span class="badge b-teal" style="font-size:10px">06-13 10:02</span></div>
+            <div class="panel-body" style="padding-top:10px">
+              <div class="timeline">
+                <div class="tl-item done">
+                  <div style="font-size:12.5px;font-weight:600">主体身份核对完成</div>
+                  <div class="t-xs t-mute" style="margin-top:2px">4 个主体 · 证件号码均已登记</div>
+                </div>
+                <div class="tl-item done">
+                  <div style="font-size:12.5px;font-weight:600">系统检索完成</div>
+                  <div class="t-xs t-mute" style="margin-top:2px">命中 4 项 · 耗时 1.2s</div>
+                </div>
+                <div class="tl-item current">
+                  <div style="font-size:12.5px;font-weight:600">等待人工结论</div>
+                  <div class="t-xs t-mute" style="margin-top:2px">检索人 叶森</div>
+                </div>
+                <div class="tl-item">
+                  <div style="font-size:12.5px;font-weight:600;color:var(--t-faint)">结论提交 · 送审</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="panel-head"><div class="panel-title" style="font-size:13px">既往检索记录</div></div>
+            <div class="panel-body" style="padding-top:8px">
+              <div style="display:flex;gap:9px;padding:7px 0;border-bottom:1px solid var(--bd-hair)">
+                <span class="dot dot-red" style="margin-top:5px"></span>
+                <div><div style="font-size:12px;font-weight:550">06-12 14:35 · 收案 I-2026-021</div><div class="t-xs t-mute">叶森 · 命中 4 · 未出结论</div></div>
+              </div>
+              <div style="display:flex;gap:9px;padding:7px 0;border-bottom:1px solid var(--bd-hair)">
+                <span class="dot dot-green" style="margin-top:5px"></span>
+                <div><div style="font-size:12px;font-weight:550">05-30 11:20 · 收案 I-2026-018</div><div class="t-xs t-mute">沈青 · 未命中 · 可承办</div></div>
+              </div>
+              <div style="display:flex;gap:9px;padding:7px 0">
+                <span class="dot dot-amber" style="margin-top:5px"></span>
+                <div><div style="font-size:12px;font-weight:550">05-26 16:44 · 收案 I-2026-016</div><div class="t-xs t-mute">周岚 · 命中 1 · 需补充</div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="side-note">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 4v5c0 4.4-3 8-7 9-4-1-7-4.6-7-9V7z"/></svg>
+            <span>检索最小披露：<b>编号、名称、主办律师、当事人角色</b>。案件正文与材料不因冲突检索开放。每次检索与结论均写入审计日志。</span>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+</div>
+</body>
+</html>

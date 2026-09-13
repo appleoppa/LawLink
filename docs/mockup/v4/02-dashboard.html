@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>LawLink · 工作台</title>
+<link rel="stylesheet" href="design-system.css" />
+<style>
+  /* Hero */
+  .hero { display: grid; grid-template-columns: 1.7fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .hero-greet {
+    position: relative; overflow: hidden;
+    background: linear-gradient(135deg, #FFFFFF 0%, #F4F8F7 78%, #EBF2F1 100%);
+    border: 1px solid var(--bd-hair); border-radius: var(--r-lg);
+    padding: 22px 24px 20px; box-shadow: var(--sh-card), var(--sh-inset);
+  }
+  .hero-greet::after {
+    content: ""; position: absolute; top: -80px; right: -60px; width: 260px; height: 260px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(0,123,127,0.10), transparent 65%); pointer-events: none;
+  }
+  .greet-date { display: inline-flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--t-muted); margin-bottom: 10px; }
+  .greet-date .pill-date { font-family: var(--font-mono); font-size: 10.5px; padding: 2px 8px; background: var(--bg-sunken); border-radius: var(--r-full); }
+  .greet-title { font-size: 26px; font-weight: 750; letter-spacing: -0.025em; line-height: 1.2; margin: 0 0 7px; }
+  .greet-title .name { color: var(--teal-deep); }
+  .greet-sub { color: var(--t-secondary); font-size: 13px; margin: 0 0 16px; max-width: 480px; }
+  .greet-sub b { font-family: var(--font-mono); font-weight: 600; color: var(--teal-deep); }
+  .greet-sub b.warn { color: var(--red); }
+  .greet-actions { display: flex; gap: 8px; position: relative; z-index: 1; }
+
+  .hero-focus {
+    position: relative; overflow: hidden; background: var(--bg-card);
+    border: 1px solid var(--bd-hair); border-radius: var(--r-lg); padding: 18px 20px;
+    box-shadow: var(--sh-card), var(--sh-inset); display: flex; flex-direction: column;
+  }
+  .hero-focus::after {
+    content: ""; position: absolute; top: -40px; right: -40px; width: 150px; height: 150px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(180,35,24,0.07), transparent 70%); pointer-events: none;
+  }
+  .focus-label { display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 650; letter-spacing: 0.07em; color: var(--t-muted); }
+  .focus-countdown { display: flex; align-items: baseline; gap: 6px; margin: 10px 0 10px; }
+  .focus-days { font-family: var(--font-mono); font-size: 44px; font-weight: 650; letter-spacing: -0.035em; line-height: 1; color: var(--red); }
+  .focus-unit { font-size: 12px; color: var(--t-muted); }
+  .focus-tag { font-size: 12px; color: var(--t-secondary); margin-bottom: 3px; }
+  .focus-matter { font-family: var(--font-serif); font-size: 14.5px; font-weight: 700; color: var(--t-primary); }
+  .focus-code { font-family: var(--font-mono); font-size: 10.5px; color: var(--t-muted); margin-top: 4px; }
+  .focus-link { margin-top: auto; padding-top: 12px; font-size: 12px; font-weight: 550; color: var(--teal-deep); cursor: pointer; }
+
+  /* 今日行动 */
+  .action-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
+  .action-tile { display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer; }
+  .action-tile:hover { box-shadow: var(--sh-hover); }
+  .action-ic { width: 34px; height: 34px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .action-ic svg { width: 17px; height: 17px; }
+  .ai-red    { background: var(--red-bg);    color: var(--red); }
+  .ai-amber  { background: var(--amber-bg);  color: var(--amber); }
+  .ai-blue   { background: var(--blue-bg);   color: var(--blue); }
+  .ai-bronze { background: var(--bronze-bg); color: var(--bronze); }
+  .action-num { font-family: var(--font-mono); font-size: 20px; font-weight: 650; letter-spacing: -0.02em; line-height: 1; }
+  .action-label { font-size: 11.5px; color: var(--t-muted); margin-top: 3px; }
+  .action-arrow { margin-left: auto; color: var(--t-faint); }
+
+  /* 双栏 */
+  .main-grid { display: grid; grid-template-columns: 1.45fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .sched-day-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px 7px; }
+  .sched-day { font-size: 12.5px; font-weight: 650; }
+  .sched-week { font-size: 11px; color: var(--t-muted); }
+  .sched-rule { flex: 1; height: 1px; background: var(--bd-hair); }
+  .sched-item { display: flex; align-items: center; gap: 10px; padding: 7.5px 16px; cursor: pointer; transition: background .12s; }
+  .sched-item:hover { background: var(--bg-hover); }
+  .sched-time { font-family: var(--font-mono); font-size: 11px; color: var(--t-muted); width: 38px; flex-shrink: 0; }
+  .sched-ic { width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .sched-ic svg { width: 12px; height: 12px; }
+  .sched-title { font-size: 12.75px; font-weight: 550; }
+  .sched-meta { font-size: 11px; color: var(--t-muted); margin-top: 1px; }
+  .cd { font-size: 10.5px; font-weight: 600; padding: 1px 7px; border-radius: var(--r-full); font-variant-numeric: tabular-nums; flex-shrink: 0; margin-left: auto; }
+  .cd-urgent { color: var(--red); background: var(--red-bg); }
+  .cd-soon   { color: var(--amber); background: var(--amber-bg); }
+  .cd-normal { color: var(--t-muted); background: var(--bg-sunken); }
+
+  .todo-item { display: flex; gap: 11px; padding: 10px 16px; border-bottom: 1px solid var(--bd-hair); cursor: pointer; transition: background .12s; }
+  .todo-item:last-child { border-bottom: none; }
+  .todo-item:hover { background: var(--bg-hover); }
+  .todo-title { font-size: 12.75px; font-weight: 550; }
+  .todo-meta { font-size: 11px; color: var(--t-muted); margin-top: 2px; display: flex; gap: 6px; align-items: center; }
+  .todo-meta .code { font-family: var(--font-mono); }
+  .todo-sep { width: 3px; height: 3px; border-radius: 50%; background: var(--t-faint); }
+  .todo-type { margin-left: auto; flex-shrink: 0; }
+
+  /* 图表 */
+  .chart-grid { display: grid; grid-template-columns: 1.55fr 1fr; gap: 14px; }
+  .mini-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 11px; }
+  .mini-bar:last-child { margin-bottom: 0; }
+  .mini-bar .name { font-size: 12px; color: var(--t-secondary); width: 76px; flex-shrink: 0; }
+  .mini-bar .track { flex: 1; height: 14px; border-radius: 4px; background: var(--bg-sunken); overflow: hidden; }
+  .mini-bar .fill { height: 100%; border-radius: 4px; }
+  .mini-bar .val { font-family: var(--font-mono); font-size: 11.5px; color: var(--t-muted); width: 66px; text-align: right; flex-shrink: 0; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3" y="2.6" width="2.7" height="10.8" rx="1.1" fill="#fff"/><rect x="8.4" y="2.6" width="2.7" height="10.8" rx="1.1" fill="#fff"/><rect x="3" y="6.8" width="8.1" height="2.4" rx="1.1" fill="#00A6A6"/></svg></div>
+      <div><div class="brand-name">立正律师事务所</div><div class="brand-sub">LawLink v4 效果图</div></div>
+    </div>
+    <nav class="nav">
+      <div class="nav-section-label">工作区</div>
+      <div class="nav-item active">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12l9-9 9 9M5 10v10h14V10"/></svg>工作台
+      </div>
+      <div class="nav-item">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>案件<span class="count">42</span>
+      </div>
+      <div class="nav-item">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>收案<span class="count">5</span>
+      </div>
+      <div class="nav-item">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>审批<span class="count alert">5</span>
+      </div>
+      <div class="nav-item">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>冲突检索
+      </div>
+      <div class="nav-item">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg>日程
+      </div>
+      <div class="nav-section-label">业务</div>
+      <div class="nav-item">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-6 7-6s7 2.5 7 6"/><circle cx="17" cy="9" r="2.5"/></svg>客户<span class="count">37</span>
+      </div>
+      <div class="nav-item">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg>财务
+      </div>
+      <div class="nav-section-label">知识</div>
+      <div class="nav-item">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/></svg>归档
+      </div>
+      <div class="nav-item">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6" rx="0.5"/><rect x="12" y="7" width="3" height="10" rx="0.5"/><rect x="17" y="13" width="3" height="4" rx="0.5"/></svg>报表
+      </div>
+    </nav>
+    <div class="nav-bottom">
+      <div class="user-card">
+        <div class="avatar av-teal">叶</div>
+        <div class="user-meta"><div class="user-name">叶森</div><div class="user-role">主任律师 · 超级管理员</div></div>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--t-faint)"><path d="M8 9l4-4 4 4M8 15l4 4 4-4"/></svg>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="searchbox">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        搜索案件、客户、材料正文…
+        <span class="kbd">⌘K</span>
+      </div>
+      <div style="flex:1"></div>
+      <button class="btn btn-secondary btn-sm btn-icon" title="通知">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+      </button>
+      <button class="btn btn-primary btn-sm">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>新建收案
+      </button>
+      <div style="width:1px;height:22px;background:var(--bd-hair);margin:0 4px"></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:3px 10px 3px 4px;height:34px;border-radius:var(--r-full);border:1px solid var(--bd-hair);background:var(--bg-card);cursor:pointer">
+        <div class="avatar av-teal" style="width:26px;height:26px">叶</div>
+        <span style="font-size:12.5px;font-weight:550">叶森</span>
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--t-muted)"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- ① 今日行动与风险 -->
+      <section class="hero">
+        <div class="hero-greet">
+          <div class="greet-date"><span class="pill-date">2026 / 06 / 14 · 周日</span><span>农历四月廿九</span></div>
+          <h1 class="greet-title">下午好<span class="name">，叶森</span></h1>
+          <p class="greet-sub">
+            今天有 <b>3</b> 件事需要处理；本周开庭 <b>2</b> 场，<b class="warn">1 项期限已逾期</b>，待你审批的申请有 <b style="white-space:nowrap">5 件</b>。
+          </p>
+          <div class="greet-actions">
+            <button class="btn btn-primary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>新建收案
+            </button>
+            <button class="btn btn-secondary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>发起冲突检索
+            </button>
+            <button class="btn btn-ghost">进入日程</button>
+          </div>
+        </div>
+
+        <div class="hero-focus">
+          <div class="focus-label"><span class="dot dot-red dot-pulse-red"></span>今日焦点 · 全案最近期限</div>
+          <div class="focus-countdown"><span class="focus-days">3</span><span class="focus-unit">天</span></div>
+          <div class="focus-tag">距 <b style="color:var(--t-primary)">举证截止</b> · 6月17日 14:00</div>
+          <div class="focus-matter">青石建设诉华东置业建设工程合同纠纷</div>
+          <div class="focus-code">LL-2026-诉-0015 · 一审 · 上海长宁法院</div>
+          <div class="focus-link">前往案件 →</div>
+        </div>
+      </section>
+
+      <!-- ② 行动入口 -->
+      <div class="action-grid">
+        <div class="card card-hover action-tile">
+          <div class="action-ic ai-red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+          <div><div class="action-num" style="color:var(--red)">5</div><div class="action-label">待我审批 · 1 件临近超时</div></div>
+          <svg class="action-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+        </div>
+        <div class="card card-hover action-tile">
+          <div class="action-ic ai-amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.7 3h16.96a2 2 0 0 0 1.71-3L13.29 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg></div>
+          <div><div class="action-num" style="color:var(--amber)">4</div><div class="action-label">7 日内到期期限</div></div>
+          <svg class="action-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+        </div>
+        <div class="card card-hover action-tile">
+          <div class="action-ic ai-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18M3 7l9-4 9 4M5 7v10M19 7v10M3 21h18"/></svg></div>
+          <div><div class="action-num" style="color:var(--blue)">2</div><div class="action-label">本周开庭 · 周四起</div></div>
+          <svg class="action-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+        </div>
+        <div class="card card-hover action-tile">
+          <div class="action-ic ai-bronze"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6" rx="0.5"/><rect x="12" y="7" width="3" height="10" rx="0.5"/><rect x="17" y="13" width="3" height="4" rx="0.5"/></svg></div>
+          <div><div class="action-num" style="color:var(--bronze)">¥96K</div><div class="action-label">逾期未回款 · 1 家客户</div></div>
+          <svg class="action-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+        </div>
+      </div>
+
+      <!-- ③ 短周期事项 -->
+      <div class="main-grid">
+        <div class="card">
+          <div class="panel-head">
+            <div class="panel-title">
+              <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg>
+              近期日程与期限
+            </div>
+            <a class="t-sm t-mute" style="cursor:pointer">完整日历 →</a>
+          </div>
+          <div style="padding-bottom:12px">
+            <div class="sched-day-head"><span class="sched-day">6月 15</span><span class="sched-week">周一</span><span class="sched-rule"></span></div>
+            <div class="sched-item">
+              <span class="sched-time">09:30</span>
+              <div class="sched-ic" style="background:var(--red-bg);color:var(--red)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.7 3h16.96a2 2 0 0 0 1.71-3L13.29 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg></div>
+              <div><div class="sched-title">庭前会议 · 交换证据目录</div><div class="sched-meta">青石建设诉华东置业 · 一审 · 第 5 会议室</div></div>
+              <span class="cd cd-urgent">明天</span>
+            </div>
+            <div class="sched-day-head"><span class="sched-day">6月 17</span><span class="sched-week">周三</span><span class="sched-rule"></span></div>
+            <div class="sched-item">
+              <span class="sched-time">14:00</span>
+              <div class="sched-ic" style="background:var(--red-bg);color:var(--red)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></div>
+              <div><div class="sched-title">举证截止（法定）</div><div class="sched-meta">青石建设诉华东置业 · 已申请延期一次，不可再延</div></div>
+              <span class="cd cd-urgent">3 天</span>
+            </div>
+            <div class="sched-day-head"><span class="sched-day">6月 19</span><span class="sched-week">周五</span><span class="sched-rule"></span></div>
+            <div class="sched-item">
+              <span class="sched-time">09:30</span>
+              <div class="sched-ic" style="background:var(--blue-bg);color:var(--blue)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 7l9-4 9 4M5 7v10M19 7v10M3 21h18"/></svg></div>
+              <div><div class="sched-title">开庭 · 第一次庭审</div><div class="sched-meta">林某劳动争议 · 长宁法院第 3 法庭</div></div>
+              <span class="cd cd-soon">5 天</span>
+            </div>
+            <div class="sched-item">
+              <span class="sched-time">18:00</span>
+              <div class="sched-ic" style="background:var(--amber-bg);color:var(--amber)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></div>
+              <div><div class="sched-title">归档材料补交截止（所内）</div><div class="sched-meta">林某劳动争议 · 缺 2 项必交材料</div></div>
+              <span class="cd cd-soon">5 天</span>
+            </div>
+            <div class="sched-day-head"><span class="sched-day">6月 21</span><span class="sched-week">周日</span><span class="sched-rule"></span></div>
+            <div class="sched-item">
+              <span class="sched-time">23:59</span>
+              <div class="sched-ic" style="background:var(--amber-bg);color:var(--amber)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></div>
+              <div><div class="sched-title">上诉期限（法定）</div><div class="sched-meta">明远科技股权转让纠纷 · 规则：判决送达之日起 15 日</div></div>
+              <span class="cd cd-soon">7 天</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="panel-head">
+            <div class="panel-title">
+              <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+              待我处理
+            </div>
+            <div class="segmented" style="padding:2px">
+              <button class="seg active" style="padding:4px 11px;font-size:11.5px">审批 <span class="count">5</span></button>
+              <button class="seg" style="padding:4px 11px;font-size:11.5px">任务 <span class="count">9</span></button>
+            </div>
+          </div>
+          <div class="todo-item">
+            <div style="padding-top:4px"><span class="dot dot-red dot-pulse-red"></span></div>
+            <div style="flex:1;min-width:0">
+              <div class="todo-title">收案审批 · 冲突命中 BLOCKING 待结论</div>
+              <div class="todo-meta"><span class="code">I-2026-021</span><span class="todo-sep"></span><span>申请人 沈青</span><span class="todo-sep"></span><span>已等待 2 天</span></div>
+            </div>
+            <span class="badge b-amber todo-type">收案</span>
+          </div>
+          <div class="todo-item">
+            <div style="padding-top:4px"><span class="dot dot-amber dot-pulse-amber"></span></div>
+            <div style="flex:1;min-width:0">
+              <div class="todo-title">用章申请 · 委托代理合同（合同专用章）</div>
+              <div class="todo-meta"><span class="code">S-2026-044</span><span class="todo-sep"></span><span>申请人 陈曦</span><span class="todo-sep"></span><span>需核对法定代表人</span></div>
+            </div>
+            <span class="badge b-amber todo-type">用章</span>
+          </div>
+          <div class="todo-item">
+            <div style="padding-top:4px"><span class="dot dot-blue"></span></div>
+            <div style="flex:1;min-width:0">
+              <div class="todo-title">开票申请 · ¥86,000 · 明远科技</div>
+              <div class="todo-meta"><span class="code">INV-2026-008</span><span class="todo-sep"></span><span>申请人 周敏</span></div>
+            </div>
+            <span class="badge b-teal todo-type">开票</span>
+          </div>
+          <div class="todo-item">
+            <div style="padding-top:4px"><span class="dot dot-slate"></span></div>
+            <div style="flex:1;min-width:0">
+              <div class="todo-title">归档审批 · 林某劳动争议（缺项说明已附）</div>
+              <div class="todo-meta"><span class="code">AR-2026-017</span><span class="todo-sep"></span><span>申请人 沈青</span></div>
+            </div>
+            <span class="badge b-slate todo-type">归档</span>
+          </div>
+          <div class="panel-foot" style="display:flex;justify-content:space-between;align-items:center">
+            <span class="t-xs t-mute">还有 1 件审批 · 9 项任务</span>
+            <a class="t-sm" style="color:var(--teal-deep);font-weight:550;cursor:pointer">进入审批工作台 →</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- ④ 趋势和分布 -->
+      <div class="chart-grid">
+        <div class="card">
+          <div class="panel-head">
+            <div class="panel-title">
+              <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>
+              近 6 个月实收与应收
+            </div>
+            <div style="display:flex;gap:14px">
+              <span class="t-xs t-mute" style="display:flex;align-items:center;gap:5px"><span class="legend-line" style="background:var(--teal)"></span>实收</span>
+              <span class="t-xs t-mute" style="display:flex;align-items:center;gap:5px"><span class="legend-line" style="background:var(--t-faint);opacity:.7"></span>应收</span>
+            </div>
+          </div>
+          <div style="padding:14px 16px 16px;height:196px">
+            <svg viewBox="0 0 620 210" preserveAspectRatio="none" style="width:100%;height:100%">
+              <defs>
+                <linearGradient id="fill-teal" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stop-color="#007B7F" stop-opacity="0.16"/>
+                  <stop offset="100%" stop-color="#007B7F" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <g stroke="#E8ECEA" stroke-dasharray="3 4">
+                <line x1="0" y1="30" x2="620" y2="30"/><line x1="0" y1="85" x2="620" y2="85"/><line x1="0" y1="140" x2="620" y2="140"/>
+              </g>
+              <polyline points="40,128 156,108 272,132 388,86 504,102 600,54" fill="none" stroke="#A8B2B8" stroke-width="1.4" stroke-dasharray="4 4"/>
+              <polygon points="40,128 156,108 272,132 388,86 504,102 600,54 600,182 40,182" fill="url(#fill-teal)"/>
+              <polyline points="40,128 156,108 272,132 388,86 504,102 600,54" fill="none" stroke="#007B7F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="600" cy="54" r="4" fill="#007B7F"/><circle cx="600" cy="54" r="9" fill="#007B7F" opacity="0.16"/>
+              <g fill="#98A3AD" font-family="SF Mono, monospace" font-size="10.5">
+                <text x="30" y="202">1月</text><text x="146" y="202">2月</text><text x="262" y="202">3月</text>
+                <text x="378" y="202">4月</text><text x="494" y="202">5月</text><text x="586" y="202">6月</text>
+              </g>
+            </svg>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div class="card">
+            <div class="panel-head">
+              <div class="panel-title" style="font-size:13px">案件类型分布</div>
+              <span class="t-xs t-mute">在办 42 件</span>
+            </div>
+            <div style="padding:12px 16px 14px;display:flex;align-items:center;gap:18px">
+              <svg width="92" height="92" viewBox="0 0 120 120" style="flex-shrink:0">
+                <circle cx="60" cy="60" r="44" fill="none" stroke="#E9EDEB" stroke-width="13"/>
+                <circle cx="60" cy="60" r="44" fill="none" stroke="#007B7F" stroke-width="13" stroke-dasharray="116 276" transform="rotate(-90 60 60)"/>
+                <circle cx="60" cy="60" r="44" fill="none" stroke="#1E56C8" stroke-width="13" stroke-dasharray="77 276" stroke-dashoffset="-116" transform="rotate(-90 60 60)"/>
+                <circle cx="60" cy="60" r="44" fill="none" stroke="#8A6B3E" stroke-width="13" stroke-dasharray="55 276" stroke-dashoffset="-193" transform="rotate(-90 60 60)"/>
+                <circle cx="60" cy="60" r="44" fill="none" stroke="#96650B" stroke-width="13" stroke-dasharray="28 276" stroke-dashoffset="-248" transform="rotate(-90 60 60)"/>
+                <text x="60" y="58" text-anchor="middle" font-family="SF Mono" font-size="21" font-weight="600" fill="#0C1927">42</text>
+                <text x="60" y="73" text-anchor="middle" font-size="9" fill="#68747F">在办</text>
+              </svg>
+              <div style="flex:1;display:flex;flex-direction:column;gap:7px">
+                <div style="display:flex;align-items:center;gap:8px"><span class="dot dot-teal"></span><span class="t-sm" style="flex:1">诉讼</span><span class="num-sm t-mute">18 · 42%</span></div>
+                <div style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:var(--blue)"></span><span class="t-sm" style="flex:1">非诉专项</span><span class="num-sm t-mute">12 · 28%</span></div>
+                <div style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:var(--bronze)"></span><span class="t-sm" style="flex:1">常年顾问</span><span class="num-sm t-mute">8 · 20%</span></div>
+                <div style="display:flex;align-items:center;gap:8px"><span class="dot" style="background:var(--amber)"></span><span class="t-sm" style="flex:1">其他</span><span class="num-sm t-mute">4 · 10%</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="flex:1">
+            <div class="panel-head">
+              <div class="panel-title" style="font-size:13px">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-6 7-6s7 2.5 7 6"/><circle cx="17" cy="9" r="2.5"/></svg>
+                客户来源渠道分布
+              </div>
+              <span class="t-xs t-mute">近 12 个月 · 新收 26</span>
+            </div>
+            <div style="padding:13px 16px 15px">
+              <div class="mini-bar"><span class="name">老客户转介</span><div class="track"><div class="fill" style="width:46%;background:var(--teal)"></div></div><span class="val">12 · 46%</span></div>
+              <div class="mini-bar"><span class="name">同行推荐</span><div class="track"><div class="fill" style="width:27%;background:#33989B"></div></div><span class="val">7 · 27%</span></div>
+              <div class="mini-bar"><span class="name">市场合作</span><div class="track"><div class="fill" style="width:15%;background:#6FB3B5"></div></div><span class="val">4 · 15%</span></div>
+              <div class="mini-bar"><span class="name">自然来访</span><div class="track"><div class="fill" style="width:12%;background:#A8CFCF"></div></div><span class="val">3 · 12%</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</body>
+</html>

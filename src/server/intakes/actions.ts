@@ -1,6 +1,8 @@
 "use server";
 import { hasCustomPermission, scopeFor } from "@/lib/roles/catalog";
 import { clientVisibilityFilter } from "@/lib/permissions";
+import { normalizeIdNumber, duplicateWhereInput, suggestIdType } from "@/lib/clients/identity";
+import { sealIdNumber, decryptIdNumber } from "@/lib/clients/id-number-crypto";
 import { roleMutation } from "@/lib/roles/service";
 
 import { assertAssignableColleagues } from "@/lib/teams/validate-colleagues";
@@ -299,11 +301,29 @@ export async function createIntake(input: IntakeCreateInput) {
 
   if (!resolvedClientId && data.clientName && data.clientName.trim()) {
     const name = data.clientName.trim();
+    // v1.x P0-1: 收案自动建档走统一查重——证件命中（含软删）时拒绝并提示，
+    // 避免收案入口绕过客户主数据唯一性。
+    const normalizedIdNumber = normalizeIdNumber(data.clientIdNumber);
+    const intakeIdType = suggestIdType(data.clientType ?? "INDIVIDUAL");
+    if (normalizedIdNumber && intakeIdType) {
+      const dup = await prisma.client.findFirst({
+        where: duplicateWhereInput({ idType: intakeIdType, idNumber: normalizedIdNumber }),
+        select: { id: true, name: true, deletedAt: true }
+      });
+      if (dup) {
+        throw new Error(
+          dup.deletedAt
+            ? `客户证件号已登记于停用客户「${dup.name}」，请先恢复该客户或在客户档案中合并`
+            : `客户证件号已登记于「${dup.name}」，请在客户栏选择该客户而非重新输入`
+        );
+      }
+    }
     const newClient = await roleMutation(session.user, "intakes.create", async roleDb => roleDb.client.create({
       data: {
         name,
         type: data.clientType ?? "INDIVIDUAL",
-        idNumber: data.clientIdNumber || null,
+        idType: normalizedIdNumber ? (intakeIdType ?? undefined) : undefined,
+        ...(normalizedIdNumber ? sealIdNumber(normalizedIdNumber) : {}),
         address: data.clientAddress || null,
         legalRep: data.clientLegalRep || null,
         phone: data.contactPhone || null,
@@ -682,12 +702,12 @@ export async function convertIntakeToMatter(intakeId: string, note?: string) {
           ordinal: 1,
           name: intake.client.name,
           partyType: clientTypeToPartyType(intake.client.type),
-          idNumber: intake.client.type === "INDIVIDUAL" ? intake.client.idNumber : null,
+          idNumber: intake.client.type === "INDIVIDUAL" ? (decryptIdNumber(intake.client.idNumber) || null) : null,
           phone: intake.client.phone,
           address: intake.client.address,
           legalRep: intake.client.legalRep,
           contactName: intake.contactName,
-          enterpriseSocialCode: intake.client.type === "INDIVIDUAL" ? null : intake.client.idNumber,
+          enterpriseSocialCode: intake.client.type === "INDIVIDUAL" ? null : (decryptIdNumber(intake.client.idNumber) || null),
           enterpriseName: intake.client.type === "INDIVIDUAL" ? null : intake.client.name,
           notes: "由收案委托方自动带入首程序"
         },

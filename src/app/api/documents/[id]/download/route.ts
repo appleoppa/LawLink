@@ -7,6 +7,7 @@ import { audit } from "@/server/audit";
 import { storage } from "@/lib/storage";
 import { decryptBuffer } from "@/lib/storage/crypto";
 import { normalizeUploadedFilename } from "@/lib/filename";
+import { watermarkPdf, watermarkLine } from "@/lib/documents/watermark";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,23 +45,50 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     return NextResponse.json({ error: "读取失败" }, { status: 500 });
   }
 
+  // v1.x P1 §四：PDF 下载/预览加水印衍生副本（原件与校验值不动）。
+  // 已签章文件不加改（不破坏签章完整性）；非 PDF 暂不加水印（审计已含下载人）。
+  let outBuf = buf;
+  let watermarked = false;
+  if ((doc.mimeType ?? "").toLowerCase().includes("pdf")) {
+    const sealed = await prisma.sealRequest.findFirst({
+      where: { OR: [{ draftDocId: doc.id }, { stampedDocId: doc.id }] },
+      select: { id: true }
+    });
+    if (!sealed) {
+      const { getFirmProfile } = await import("@/server/settings/firm-profile");
+      let firmName: string | null = null;
+      try {
+        firmName = (await getFirmProfile()).firmName ?? null;
+      } catch {
+        firmName = null;
+      }
+      const line = watermarkLine({ firm: firmName, userName: session.user.name, at: new Date() });
+      const marked = await watermarkPdf({ buf, text: line });
+      if (marked) {
+        outBuf = marked;
+        watermarked = true;
+      }
+    }
+  }
+
   await audit({
     userId: session.user.id,
     action: "DOCUMENT_DOWNLOAD",
     targetType: "Document",
     targetId: doc.id,
-    detail: { matterId: doc.matterId, intakeId: doc.intakeId, name: doc.name }
+    detail: { matterId: doc.matterId, intakeId: doc.intakeId, name: doc.name, watermarked }
   });
 
-  const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+  const arrayBuffer = outBuf.buffer.slice(outBuf.byteOffset, outBuf.byteOffset + outBuf.byteLength) as ArrayBuffer;
   const filename = normalizeUploadedFilename(doc.name);
 
   return new NextResponse(arrayBuffer, {
     status: 200,
     headers: {
       "Content-Type": doc.mimeType ?? "application/octet-stream",
-      "Content-Length": String(buf.byteLength),
-      "Content-Disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(filename)}`
+      "Content-Length": String(outBuf.byteLength),
+      "Content-Disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      ...(watermarked ? { "X-Watermarked": "1" } : {})
     }
   });
 }

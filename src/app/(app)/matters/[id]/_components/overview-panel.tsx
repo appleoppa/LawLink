@@ -55,17 +55,17 @@ export function OverviewPanel({ matter }: { matter: MatterPayload }) {
                   </div>
                   <div className="text-right">
                     <div
-                      className={`font-mono text-sm tabular ${
+                      className={`num-lg ${
                         isOverdue
-                          ? "text-destructive"
+                          ? "text-[var(--red)]"
                           : isWarn
-                            ? "text-[#FBBF24]"
+                            ? "text-[var(--amber)]"
                             : "text-foreground"
                       }`}
                     >
                       {isOverdue ? `逾期 ${-days} 天` : days === 0 ? "今天" : `${days} 天`}
                     </div>
-                    <div className="font-mono text-[10px] text-muted-foreground tabular">
+                    <div className="num-sm mt-0.5 text-muted-foreground">
                       {new Date(d.dueAt).toLocaleDateString("zh-CN")}
                     </div>
                   </div>

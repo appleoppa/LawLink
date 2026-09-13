@@ -2,10 +2,36 @@
 
 import Link from "next/link";
 import { Building2, User, Briefcase, Pencil, Phone, Mail } from "lucide-react";
-import type { Client, ClientType, Contact } from "@prisma/client";
+import type { Client, ClientCooperationStatus, ClientType, Contact } from "@prisma/client";
+
+/** P1 §三：证件号展示打码（client 端纯字符串处理；密文形态直接遮蔽） */
+function maskClientRef(v: string | null | undefined): string {
+  if (!v) return "";
+  if (v.includes(".")) return "••••（已加密，详见档案）";
+  if (v.length >= 8) return `${v.slice(0, 3)}${"•".repeat(Math.max(4, v.length - 5))}${v.slice(-2)}`;
+  return v;
+}
+
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { clientTypeLabel } from "@/lib/enums";
+import { clientTypeLabel, cooperationStatusLabel } from "@/lib/enums";
+
+/** 墨案徽章（moan.css）：合作状态 → 语义色（teal=签约 / slate=潜在 / amber=洽谈 / bronze=终止） */
+const COOP_BADGE: Record<ClientCooperationStatus, string> = {
+  POTENTIAL: "b-slate",
+  NEGOTIATING: "b-amber",
+  SIGNED: "b-teal",
+  TERMINATED: "b-bronze"
+};
+
+function CoopBadge({ status }: { status: ClientCooperationStatus }) {
+  return (
+    <span className={`badge ${COOP_BADGE[status]}`}>
+      <span className="bdot" aria-hidden />
+      {cooperationStatusLabel[status]}
+    </span>
+  );
+}
 
 type ClientRow = Client & {
   contacts: Contact[];
@@ -46,6 +72,7 @@ export function ClientsTable({
             <tr className="border-b border-border bg-muted text-left text-[10px] font-semibold uppercase text-muted-foreground">
               <th className="px-5 py-2.5">客户</th>
               <th className="px-4 py-2.5">类型</th>
+              <th className="px-4 py-2.5">合作状态</th>
               <th className="px-4 py-2.5">联系方式</th>
               <th className="px-4 py-2.5">主要联系人</th>
               <th className="px-4 py-2.5">案件</th>
@@ -63,12 +90,17 @@ export function ClientsTable({
                 >
                   <td className="px-5 py-2.5">
                     <Link href={`/clients/${c.id}`} className="block">
-                      <div className="text-[13.5px] font-medium leading-snug text-foreground transition-colors group-hover:text-primary">
+                      <div className="text-[13px] font-semibold leading-snug text-foreground transition-colors group-hover:text-primary">
                         {c.name}
                       </div>
                       {c.idNumber && (
                         <div className="mt-1 font-mono text-[10.5px] text-muted-foreground tabular">
-                          {c.idNumber}
+                          {maskClientRef(c.idNumber)}
+                        </div>
+                      )}
+                      {c.source && (
+                        <div className="mt-0.5 truncate text-[10.5px] text-muted-foreground/80">
+                          来源：{c.source}
                         </div>
                       )}
                     </Link>
@@ -78,6 +110,9 @@ export function ClientsTable({
                       <TypeIcon type={c.type} />
                       {clientTypeLabel[c.type]}
                     </span>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <CoopBadge status={c.cooperationStatus} />
                   </td>
                   <td className="px-4 py-2.5 text-muted-foreground">
                     <div className="flex flex-col gap-0.5">
@@ -157,7 +192,7 @@ export function ClientsTable({
               <div className="flex items-start justify-between gap-2">
                 <Link href={`/clients/${c.id}`} className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-foreground">{c.name}</span>
+                    <span className="text-[13px] font-semibold text-foreground">{c.name}</span>
                     <span className="inline-flex items-center gap-1 rounded-sm border border-border px-1.5 py-0.5 text-[10px]">
                       <TypeIcon type={c.type} />
                       {clientTypeLabel[c.type]}
@@ -165,7 +200,12 @@ export function ClientsTable({
                   </div>
                   {c.idNumber && (
                     <div className="mt-0.5 truncate font-mono text-[10.5px] text-muted-foreground">
-                      {c.idNumber}
+                      {maskClientRef(c.idNumber)}
+                    </div>
+                  )}
+                  {c.source && (
+                    <div className="mt-0.5 truncate text-[10.5px] text-muted-foreground/80">
+                      来源：{c.source}
                     </div>
                   )}
                 </Link>
@@ -180,6 +220,7 @@ export function ClientsTable({
                 </Button>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                <CoopBadge status={c.cooperationStatus} />
                 {primary && <span>{primary.name}</span>}
                 {c.phone && (
                   <span className="flex items-center gap-1 font-mono">

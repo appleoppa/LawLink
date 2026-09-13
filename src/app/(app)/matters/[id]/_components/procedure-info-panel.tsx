@@ -360,12 +360,12 @@ function standingTone(standing: LitigationStanding | null) {
       "ADMIN_DEFENDANT"
     ].includes(standing)
   ) {
-    return "border-[#F0CFC0] bg-[#FBEDD8] text-[#B45309]";
+    return "border-[var(--amber-line)] bg-[var(--amber-bg)] text-[var(--amber)]";
   }
   if (standing === "THIRD_PARTY") {
     return "border-[#D9C5F2] bg-[#F1E8F8] text-[#6B21A8]";
   }
-  return "border-[#C8EAD2] bg-[#E6F2EC] text-[#15803D]";
+  return "border-[var(--green-line)] bg-[var(--green-bg)] text-[var(--green)]";
 }
 
 function StandingName({

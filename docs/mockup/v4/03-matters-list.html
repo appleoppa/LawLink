@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>LawLink · 案件</title>
+<link rel="stylesheet" href="design-system.css" />
+<style>
+  .page-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 16px; }
+  .ph-title { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 4px; }
+  .ph-sub { font-size: 12.5px; color: var(--t-muted); }
+  .ph-sub b { font-family: var(--font-mono); font-weight: 600; color: var(--t-secondary); }
+  .ph-actions { display: flex; gap: 8px; }
+
+  .seg-nav { margin-bottom: 12px; }
+  .toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .toolbar .input { width: 260px; height: 32px; font-size: 12.5px; }
+  .filter-btn {
+    display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 11px;
+    background: var(--bg-card); border: 1px solid var(--bd-subtle); border-radius: 8px;
+    font-size: 12.5px; color: var(--t-secondary); cursor: pointer; font-family: inherit;
+    box-shadow: var(--sh-card); transition: border-color .15s, background .15s;
+  }
+  .filter-btn:hover { border-color: var(--bd-strong); background: var(--bg-hover); }
+  .filter-btn svg { width: 12px; height: 12px; color: var(--t-faint); }
+  .filter-btn.on { border-color: var(--teal-line); background: var(--teal-soft); color: var(--teal-deep); }
+  .filter-btn .fv { color: var(--t-primary); font-weight: 550; }
+  .filter-btn .x { color: var(--teal-deep); }
+
+  .chips { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .mtable th { background: #FAFBFA; }
+  /* 案卷脊：必须挂在 td 首格上；tr 上的伪元素会被浏览器包进匿名单元格，凭空多出一列导致表头错位 */
+  .mtable tbody tr.spine-row { position: static; }
+  .mtable tbody tr.spine-row::before { content: none; }
+  .mtable tbody tr.spine-row > td:first-child { position: relative; }
+  .mtable tbody tr.spine-row > td:first-child::before {
+    content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px;
+    border-radius: 0 2px 2px 0; background: var(--bd-default);
+  }
+  .mtable tbody tr.sp-green > td:first-child::before { background: var(--green); }
+  .mtable tbody tr.sp-blue  > td:first-child::before { background: var(--blue); }
+  .mtable tbody tr.sp-amber > td:first-child::before { background: var(--amber); }
+  .mtable tbody tr.sp-red   > td:first-child::before { background: var(--red); }
+  .mtable tbody tr.sp-teal  > td:first-child::before { background: var(--teal); }
+  .mtable tbody tr.sp-slate > td:first-child::before { background: var(--t-faint); }
+  .matter-name { font-weight: 600; font-size: 13px; letter-spacing: -0.005em; }
+  .matter-cause { font-size: 11px; color: var(--t-muted); margin-top: 2px; display: flex; align-items: center; gap: 5px; }
+  .matter-code { font-family: var(--font-mono); font-size: 11px; color: var(--t-muted); margin-top: 2px; }
+  .owner-cell { display: flex; align-items: center; gap: 7px; }
+  .stage-cell { display: flex; flex-direction: column; gap: 4px; }
+  .stage-track { display: flex; gap: 2.5px; }
+  .stage-track i { width: 16px; height: 3.5px; border-radius: 2px; background: var(--bd-subtle); }
+  .stage-track i.done { background: var(--teal); }
+  .stage-track i.cur { background: var(--teal); opacity: .45; }
+  .stage-track i.risk { background: var(--amber); }
+  .dl-cell { display: flex; align-items: center; gap: 8px; }
+  .dl-chip { font-family: var(--font-mono); font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: var(--r-full); white-space: nowrap; }
+  .money { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12.75px; font-weight: 500; }
+  .pager { display: flex; align-items: center; justify-content: space-between; padding: 11px 16px; }
+  .pager-btns { display: flex; gap: 4px; }
+  .pg {
+    min-width: 28px; height: 28px; padding: 0 6px; border-radius: 7px; border: 1px solid transparent;
+    background: transparent; color: var(--t-secondary); font-size: 12.5px; font-family: var(--font-mono);
+    display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .pg:hover { background: var(--bg-hover); }
+  .pg.active { background: var(--bg-card); border-color: var(--bd-subtle); box-shadow: var(--sh-card); color: var(--t-primary); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3" y="2.6" width="2.7" height="10.8" rx="1.1" fill="#fff"/><rect x="8.4" y="2.6" width="2.7" height="10.8" rx="1.1" fill="#fff"/><rect x="3" y="6.8" width="8.1" height="2.4" rx="1.1" fill="#00A6A6"/></svg></div>
+      <div><div class="brand-name">立正律师事务所</div><div class="brand-sub">LawLink v4 效果图</div></div>
+    </div>
+    <nav class="nav">
+      <div class="nav-section-label">工作区</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12l9-9 9 9M5 10v10h14V10"/></svg>工作台</div>
+      <div class="nav-item active"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>案件<span class="count">42</span></div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>收案<span class="count">5</span></div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>审批<span class="count alert">5</span></div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>冲突检索</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg>日程</div>
+      <div class="nav-section-label">业务</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-6 7-6s7 2.5 7 6"/><circle cx="17" cy="9" r="2.5"/></svg>客户<span class="count">37</span></div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg>财务</div>
+      <div class="nav-section-label">知识</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/></svg>归档</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6" rx="0.5"/><rect x="12" y="7" width="3" height="10" rx="0.5"/><rect x="17" y="13" width="3" height="4" rx="0.5"/></svg>报表</div>
+    </nav>
+    <div class="nav-bottom">
+      <div class="user-card">
+        <div class="avatar av-teal">叶</div>
+        <div class="user-meta"><div class="user-name">叶森</div><div class="user-role">主任律师 · 超级管理员</div></div>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--t-faint)"><path d="M8 9l4-4 4 4M8 15l4 4 4-4"/></svg>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="searchbox">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        搜索案件、客户、材料正文…<span class="kbd">⌘K</span>
+      </div>
+      <div style="flex:1"></div>
+      <button class="btn btn-secondary btn-sm btn-icon" title="通知"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></button>
+      <button class="btn btn-primary btn-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>新建收案</button>
+      <div style="width:1px;height:22px;background:var(--bd-hair);margin:0 4px"></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:3px 10px 3px 4px;height:34px;border-radius:var(--r-full);border:1px solid var(--bd-hair);background:var(--bg-card);cursor:pointer">
+        <div class="avatar av-teal" style="width:26px;height:26px">叶</div><span style="font-size:12.5px;font-weight:550">叶森</span>
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--t-muted)"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- PageHeader -->
+      <div class="page-head">
+        <div>
+          <h1 class="ph-title">案件</h1>
+          <div class="ph-sub">共 <b>128</b> 件 · 当前范围「办理中」<b>42</b> 件 · 每页 12 条</div>
+        </div>
+        <div class="ph-actions">
+          <button class="btn btn-secondary btn-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>导出</button>
+          <button class="btn btn-primary btn-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>新建案件</button>
+        </div>
+      </div>
+
+      <!-- SegmentedNav -->
+      <div class="seg-nav">
+        <div class="segmented">
+          <button class="seg">全部 <span class="count">128</span></button>
+          <button class="seg active">办理中 <span class="count">42</span></button>
+          <button class="seg">待审批 <span class="count">5</span></button>
+          <button class="seg">待补正 <span class="count">2</span></button>
+          <button class="seg">已归档 <span class="count">81</span></button>
+        </div>
+      </div>
+
+      <!-- ListToolbar -->
+      <div class="toolbar">
+        <div class="input">
+          <svg class="ic-14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--t-faint)"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <span class="ph">按名称、案号、当事人搜索</span>
+        </div>
+        <button class="filter-btn on">案件类别 <span class="fv">民商事</span><span class="x">✕</span></button>
+        <button class="filter-btn">程序 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+        <button class="filter-btn on">团队 <span class="fv">建工地产组</span><span class="x">✕</span></button>
+        <button class="filter-btn">主办 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+        <button class="filter-btn">范围 <span class="fv">全部可见</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--t-faint)"><path d="M6 9l6 6 6-6"/></svg></button>
+        <div style="flex:1"></div>
+        <button class="filter-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--t-muted)"><path d="M3 6h18M6 12h12M10 18h4"/></svg>排序：最近更新</button>
+        <button class="filter-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="color:var(--t-muted)"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11"/></svg>列设置</button>
+      </div>
+
+      <!-- 表格 -->
+      <div class="card" style="overflow:hidden">
+        <table class="table mtable">
+          <thead>
+            <tr>
+              <th style="width:26%">案件 / 案由</th>
+              <th style="width:13%">委托方</th>
+              <th style="width:15%">案号</th>
+              <th style="width:11%">程序 · 阶段</th>
+              <th style="width:10%">主办 / 协办</th>
+              <th style="width:9%" class="th-num">标的额</th>
+              <th style="width:10%">最近期限</th>
+              <th style="width:6%">状态</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="spine-row sp-red">
+              <td style="padding-left:18px">
+                <div class="matter-name">华辰贸易诉环迅供应链买卖合同纠纷</div>
+                <div class="matter-cause"><span class="badge b-red" style="font-size:10px;padding:0 6px">逾期 1 天</span>答辩状尚未提交</div>
+                <div class="matter-code">LL-2026-诉-0022</div>
+              </td>
+              <td><div style="font-size:12.5px">上海华辰贸易…</div></td>
+              <td><span class="mono t-sm" style="color:var(--t-secondary)">(2026)沪0115民初8802号</span></td>
+              <td><div class="stage-cell"><span class="t-sm t-sec">一审 · 答辩</span><div class="stage-track"><i class="done"></i><i class="done"></i><i class="risk"></i><i></i><i></i></div></div></td>
+              <td><div class="owner-cell"><div class="avatar av-violet" style="width:22px;height:22px;font-size:9.5px">沈</div><span class="t-sm">沈青</span></div></td>
+              <td class="td-num money">¥864,000</td>
+              <td><div class="dl-chip" style="color:var(--red);background:var(--red-bg)">逾期 1 天</div></td>
+              <td><span class="badge b-blue"><span class="bdot"></span>进行中</span></td>
+            </tr>
+            <tr class="spine-row sp-blue">
+              <td style="padding-left:18px">
+                <div class="matter-name">青石建设诉华东置业建设工程合同纠纷</div>
+                <div class="matter-cause">建设工程施工合同纠纷 · 原告</div>
+                <div class="matter-code">LL-2026-诉-0015</div>
+              </td>
+              <td><div style="font-size:12.5px">上海青石建设…</div></td>
+              <td><span class="mono t-sm" style="color:var(--t-secondary)">(2026)沪0105民初4421号</span></td>
+              <td><div class="stage-cell"><span class="t-sm t-sec">一审 · 举证质证</span><div class="stage-track"><i class="done"></i><i class="done"></i><i class="cur"></i><i></i><i></i></div></div></td>
+              <td><div class="owner-cell"><div class="avatar av-teal" style="width:22px;height:22px;font-size:9.5px">叶</div><span class="t-sm">叶森</span><div class="avatar av-slate" style="width:22px;height:22px;font-size:9.5px;margin-left:-8px;box-shadow:0 0 0 2px #fff">沈</div></div></td>
+              <td class="td-num money">¥4,580,000</td>
+              <td><div class="dl-cell"><div class="ladder l-red"><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div><span class="dl-chip" style="color:var(--red);background:var(--red-bg)">举证 3 天</span></div></td>
+              <td><span class="badge b-blue"><span class="bdot"></span>进行中</span></td>
+            </tr>
+            <tr class="spine-row sp-amber">
+              <td style="padding-left:18px">
+                <div class="matter-name">明远科技股权转让纠纷</div>
+                <div class="matter-cause">股权转让纠纷 · 被告</div>
+                <div class="matter-code">LL-2026-诉-0009</div>
+              </td>
+              <td><div style="font-size:12.5px">杭州明远科技</div></td>
+              <td><span class="mono t-sm" style="color:var(--t-secondary)">沪仲案字第0388号</span></td>
+              <td><div class="stage-cell"><span class="t-sm t-sec">仲裁 · 审理</span><div class="stage-track"><i class="done"></i><i class="cur"></i><i></i><i></i><i></i></div></div></td>
+              <td><div class="owner-cell"><div class="avatar av-navy" style="width:22px;height:22px;font-size:9.5px">周</div><span class="t-sm">周岚</span></div></td>
+              <td class="td-num money">¥4,200,000</td>
+              <td><div class="dl-cell"><div class="ladder l-amber"><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div><span class="dl-chip" style="color:var(--amber);background:var(--amber-bg)">上诉 7 天</span></div></td>
+              <td><span class="badge b-blue"><span class="bdot"></span>进行中</span></td>
+            </tr>
+            <tr class="spine-row sp-blue">
+              <td style="padding-left:18px">
+                <div class="matter-name">林某与晟安人力资源劳动争议</div>
+                <div class="matter-cause">劳动争议 · 申请人代理</div>
+                <div class="matter-code">LL-2026-L-0018</div>
+              </td>
+              <td><div style="font-size:12.5px">林某（个人）</div></td>
+              <td><span class="mono t-sm" style="color:var(--t-muted)">暂无案号</span></td>
+              <td><div class="stage-cell"><span class="t-sm t-sec">一审 · 开庭准备</span><div class="stage-track"><i class="done"></i><i class="done"></i><i class="done"></i><i class="cur"></i><i></i></div></div></td>
+              <td><div class="owner-cell"><div class="avatar av-amber" style="width:22px;height:22px;font-size:9.5px">陈</div><span class="t-sm">陈曦</span></div></td>
+              <td class="td-num money">¥126,000</td>
+              <td><div class="dl-cell"><div class="ladder l-blue"><i class="on"></i><i class="on"></i><i></i><i></i></div><span class="dl-chip" style="color:var(--t-muted);background:var(--bg-sunken)">开庭 5 天</span></div></td>
+              <td><span class="badge b-blue"><span class="bdot"></span>进行中</span></td>
+            </tr>
+            <tr class="spine-row sp-teal">
+              <td style="padding-left:18px">
+                <div class="matter-name">恒信建材常年法律顾问（2026）</div>
+                <div class="matter-cause">常年法律顾问 · 顾问单位</div>
+                <div class="matter-code">LL-2026-C-0031</div>
+              </td>
+              <td><div style="font-size:12.5px">恒信建材集团</div></td>
+              <td><span class="mono t-sm" style="color:var(--t-muted)">—</span></td>
+              <td><div class="stage-cell"><span class="t-sm t-sec">顾问 · 履行中</span><div class="stage-track"><i class="done"></i><i class="cur"></i><i></i><i></i><i></i></div></div></td>
+              <td><div class="owner-cell"><div class="avatar av-teal" style="width:22px;height:22px;font-size:9.5px">叶</div><span class="t-sm">叶森</span></div></td>
+              <td class="td-num money">¥120,000/年</td>
+              <td><span class="t-xs t-mute">6-30 续约提醒</span></td>
+              <td><span class="badge b-blue"><span class="bdot"></span>进行中</span></td>
+            </tr>
+            <tr class="spine-row sp-slate">
+              <td style="padding-left:18px">
+                <div class="matter-name">鼎晖创投尽职调查专项</div>
+                <div class="matter-cause">非诉专项 · 尽职调查</div>
+                <div class="matter-code">LL-2026-N-0011</div>
+              </td>
+              <td><div style="font-size:12.5px">鼎晖创投</div></td>
+              <td><span class="mono t-sm" style="color:var(--t-muted)">—</span></td>
+              <td><div class="stage-cell"><span class="t-sm t-sec">专项 · 出具报告</span><div class="stage-track"><i class="done"></i><i class="done"></i><i class="cur"></i><i></i><i></i></div></div></td>
+              <td><div class="owner-cell"><div class="avatar av-navy" style="width:22px;height:22px;font-size:9.5px">周</div><span class="t-sm">周岚</span></div></td>
+              <td class="td-num money">¥300,000</td>
+              <td><span class="t-xs t-mute">—</span></td>
+              <td><span class="badge b-blue"><span class="bdot"></span>进行中</span></td>
+            </tr>
+            <tr class="spine-row sp-green">
+              <td style="padding-left:18px">
+                <div class="matter-name">云启软件技术服务合同纠纷</div>
+                <div class="matter-cause">技术服务合同纠纷 · 被告</div>
+                <div class="matter-code">LL-2025-诉-0074</div>
+              </td>
+              <td><div style="font-size:12.5px">云启软件</div></td>
+              <td><span class="mono t-sm" style="color:var(--t-secondary)">(2025)沪0107民初6120号</span></td>
+              <td><div class="stage-cell"><span class="t-sm t-sec">一审 · 已判决</span><div class="stage-track"><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i></div></div></td>
+              <td><div class="owner-cell"><div class="avatar av-violet" style="width:22px;height:22px;font-size:9.5px">沈</div><span class="t-sm">沈青</span></div></td>
+              <td class="td-num money">¥540,000</td>
+              <td><span class="t-xs t-mute">—</span></td>
+              <td><span class="badge b-green"><span class="bdot"></span>已结案</span></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="pager">
+          <span class="t-xs t-mute">第 1 – 7 条 · 共 42 件</span>
+          <div class="pager-btns">
+            <button class="pg">‹</button>
+            <button class="pg active">1</button>
+            <button class="pg">2</button>
+            <button class="pg">3</button>
+            <button class="pg">…</button>
+            <button class="pg">6</button>
+            <button class="pg">›</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:center;margin-top:14px">
+        <span class="t-xs t-faint">列表即档案架 · 左侧脊线代表案件状态 · 红色仅用于逾期与阻断</span>
+      </div>
+
+    </div>
+  </div>
+</div>
+</body>
+</html>

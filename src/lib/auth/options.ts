@@ -5,10 +5,16 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { resolveRoleUser } from "@/lib/roles/service";
 import { audit } from "@/server/audit";
+import { verifyLoginSecondFactor } from "@/server/auth/totp-actions";
+
+// v1.x P0-3: 登录失败锁定参数（连续 5 次失败锁 15 分钟；成功登录清零）
+const LOGIN_LOCKOUT_THRESHOLD = 5;
+const LOGIN_LOCKOUT_MINUTES = 15;
 
 const credentialsSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(1)
+  password: z.string().min(1),
+  totpCode: z.string().optional()
 });
 
 export const authOptions: NextAuthOptions = {
@@ -29,7 +35,7 @@ export const authOptions: NextAuthOptions = {
 
         const user = await prisma.user.findUnique({
           where: { email: parsed.data.email },
-          select: { id: true, name: true, email: true, passwordHash: true, active: true, role: true, systemRole: true, sessionVersion: true, avatar: true }
+          select: { id: true, name: true, email: true, passwordHash: true, active: true, role: true, systemRole: true, sessionVersion: true, avatar: true, failedLoginAttempts: true, lockedUntil: true, totpEnabled: true, totpEnforced: true }
         });
         if (!user || !user.active) {
           // 失败原因区分「账号不存在」与「已停用」，但都不回给前端，避免账号枚举
@@ -43,24 +49,74 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        const matches = await bcrypt.compare(parsed.data.password, user.passwordHash);
-        if (!matches) {
+        // v1.x P0-3: 登录失败锁定——锁定期间直接拒绝（不比较密码，不给爆破窗口）
+        if (user.lockedUntil && user.lockedUntil > new Date()) {
           await audit({
             userId: user.id,
-            action: "LOGIN_FAILED",
+            action: "LOGIN_LOCKED_REJECT",
             targetType: "User",
             targetId: user.id,
-            detail: { email: parsed.data.email, reason: "BAD_PASSWORD" }
+            detail: { email: parsed.data.email, lockedUntil: user.lockedUntil.toISOString() }
+          });
+          return null;
+        }
+
+        const matches = await bcrypt.compare(parsed.data.password, user.passwordHash);
+        if (!matches) {
+          // 连续失败累计，达到阈值锁定 15 分钟（成功登录清零）
+          const attempts = user.failedLoginAttempts + 1;
+          const lock = attempts >= LOGIN_LOCKOUT_THRESHOLD;
+          await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              failedLoginAttempts: attempts,
+              ...(lock ? { lockedUntil: new Date(Date.now() + LOGIN_LOCKOUT_MINUTES * 60_000) } : {})
+            }
+          });
+          await audit({
+            userId: user.id,
+            action: lock ? "LOGIN_LOCKED" : "LOGIN_FAILED",
+            targetType: "User",
+            targetId: user.id,
+            detail: { email: parsed.data.email, reason: "BAD_PASSWORD", attempts, locked: lock }
           });
           return null;
         }
 
         if (!(await resolveRoleUser(user.id, user.role)).enabled) return null;
 
-        // 更新最后登录时间（异步，不阻塞）
+        // v1.x P1 收尾 c: 管理端强制开启——enforced 且未绑定时拒绝登录（提示先绑定）。
+        // 密码已验明才走到这里：不计入失败锁定（凭据无误，是策略拦截而非爆破）。
+        if (user.totpEnforced && !user.totpEnabled) {
+          await audit({
+            userId: user.id,
+            action: "LOGIN_TOTP_ENFORCED_REJECT",
+            targetType: "User",
+            targetId: user.id,
+            detail: { email: parsed.data.email, hint: "BIND_TOTP_FIRST" }
+          });
+          return null;
+        }
+
+        // v1.x P1: 双步验证——已开启者必须提供动态码或恢复码（恒拒绝空码）
+        if (user.totpEnabled) {
+          const code = (parsed.data as { totpCode?: string }).totpCode?.trim() ?? "";
+          if (!code || !(await verifyLoginSecondFactor(user.id, code))) {
+            await audit({
+              userId: user.id,
+              action: "LOGIN_TOTP_FAILED",
+              targetType: "User",
+              targetId: user.id,
+              detail: { email: parsed.data.email }
+            });
+            return null;
+          }
+        }
+
+        // 更新最后登录时间 + 失败计数清零（异步，不阻塞）
         prisma.user.update({
           where: { id: user.id },
-          data: { lastLoginAt: new Date() }
+          data: { lastLoginAt: new Date(), failedLoginAttempts: 0, lockedUntil: null }
         }).catch(() => {
           // 忽略更新失败
         });
