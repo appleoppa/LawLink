@@ -1,108 +1,102 @@
 # LawLink
 
-LawLink 是一个开源、自部署的律师案件 / 项目管理系统，主要面向中小律所，也适用于独立律师和小团队自部署使用。
-
-第一版围绕律师日常办案主线：
+LawLink 是面向独立律师、小团队和中小律所的开源、自部署案件 / 项目管理系统。一家律所或团队部署一套实例，使用自己的数据库和文件存储。
 
 `收案登记 → 冲突检索 → 转正式案件 → 持续跟进 → 财务记录 → 结案归档 → 数据导出`
 
-> 项目状态：早期版本。适合本地试用、二次开发和自部署评估；正式用于真实案件前，请先完成服务器安全、备份、权限和密钥管理配置。
+> 当前维护版本：**v1.3.1**。v1.3.0 归集 2026 年 9 月 10 日前的开发；v1.3.1 修复自动检查并更新公开说明。后续开发不属于本版交付。项目仍处于早期阶段，正式使用前须在自己的部署环境验证权限、备份恢复及典型办案流程。
 
-## 技术栈
+> **当前部署限制（2026-09-13）**：生产依赖审计报告 9 个受影响依赖项，其中 2 个严重、5 个高危。尚未完成逐项可达性分析及修复回归；本版供版本留存与隔离评估，暂不建议直接部署到公网承载真实案件。详见[安全状态](./SECURITY.md#依赖审计状态)。
 
-- **框架**：Next.js 16 App Router + TypeScript
-- **UI**：shadcn/ui + Tailwind CSS + Framer Motion（深色科技感）
-- **数据库**：PostgreSQL 16 + Prisma 5
-- **鉴权**：NextAuth.js（Credentials Provider）
-- **图表**：Recharts
-- **表格**：TanStack Table
-- **部署**：Docker Compose 一键起
+## 本版提供什么
 
-## 文档
-
-| 文件 | 内容 |
+| 能力 | 说明 |
 |---|---|
-| [`AGENTS.md`](./AGENTS.md) | 工作区规则（所有协作者必读）|
-| [`docs/PRD.md`](./docs/PRD.md) | 产品需求与功能范围 |
-| [`docs/DATA-MODEL.md`](./docs/DATA-MODEL.md) | 数据模型详细设计 |
-| [`docs/UI-DESIGN.md`](./docs/UI-DESIGN.md) | 设计语言 + 关键页面 wireframe |
-| [`docs/PUBLIC_RELEASE_CHECKLIST.md`](./docs/PUBLIC_RELEASE_CHECKLIST.md) | GitHub 公开发布前的敏感数据与打包检查 |
-| [`docs/GITHUB_PUBLISHING_GUIDE.md`](./docs/GITHUB_PUBLISHING_GUIDE.md) | 第一次发布到 GitHub 的操作手册 |
-| [`docs/PUBLISH_READINESS_REPORT.md`](./docs/PUBLISH_READINESS_REPORT.md) | 当前发布准备度体检报告 |
-| [`docs/CLOUD-SERVER-INSTALLATION-GUIDE.md`](./docs/CLOUD-SERVER-INSTALLATION-GUIDE.md) | 面向技术小白的云服务器安装、HTTPS、备份与升级指南 |
-| [`CONTRIBUTING.md`](./CONTRIBUTING.md) | 贡献说明 |
-| [`SECURITY.md`](./SECURITY.md) | 安全问题报告方式 |
-| [`CHANGELOG.md`](./CHANGELOG.md) | 版本变更记录 |
+| 案件工作台 | 收案、冲突检索、多程序案件、任务、开庭、期限、材料、财务与报表 |
+| 独立管理后台 | `/admin` 集中管理律所、人员、岗位角色、律师团队、审批权限、归档制度和外部接入 |
+| 岗位与团队 | 内置及自定义岗位；常设律师团队与案件承办人员分开管理 |
+| 统一审批 | `/approvals` 集中处理收案、文书、归档、开票及用章，保留处理记录并区分批准与后续执行 |
+| 归档审阅 | 本所制度配置、实际材料关联、送审快照、缺项说明与归档包核验 |
+| 个人资料 | 本人资料及登录安全；人员证件资料、照片加密存储与访问审计 |
+| 可选接入 | AI、元典、日历订阅、群机器人提醒等；外部服务须另行配置并自行承担服务费用 |
 
-## 本地开发
+**配置前须理解的边界：**
 
-### 1. 准备环境
+- 系统管理员、业务岗位、事项审批是三种不同资格。超级管理员不会自动取得全所案件、财务或审批权限。
+- 团队只读权限不等于案件编辑、财务查看、附件下载或导出权限；审批权只开放对应申请所需资料。
+- 默认禁止审批本人申请。单人执业须显式设置本人审批例外，仍须匹配事项授权及印章规则。
+- 未配置本所归档制度时不能提交正式归档；电子文件存在、申请人勾选、审批人确认不能混为一谈。
+- 证件识别只作录入辅助，不是实名认证或真伪鉴定。期限计算、冲突命中和 AI 输出都需要人工核对。
 
-- Node.js 20.9+
-- PostgreSQL 16（本地建议用 Docker Compose 启动）
+## 安装与升级
+
+- **云服务器安装**：按[安装指南](./docs/CLOUD-SERVER-INSTALLATION-GUIDE.md)配置端口、HTTPS、初始化和备份。基础 Compose 文件是开发起点，不是完成生产配置的一键部署。
+- **从旧版升级**：先读[本版使用与升级说明](./docs/RELEASE-GUIDE-v1.3.md)，备份数据库、文件和密钥，并在隔离环境演练迁移。
+- **首次登录**：先设置独立账号、岗位、团队、审批权限和归档制度。完整步骤见[首次配置清单](./docs/RELEASE-GUIDE-v1.3.md#首次登录后的配置顺序)。
+- **版本选择**：部署固定版本标签。`main` 可能继续演进，不能以今天的分支内容推断旧标签包含的功能。
+
+## 本地开发与试用
+
+准备 Node.js 22（与仓库 CI 和容器版本一致）及 PostgreSQL 16。下列命令用于全新的本地试用环境；已有数据库先阅读升级说明。
 
 ```bash
+git clone --branch v1.3.1 --depth 1 https://github.com/lawflow-boop/LawLink.git
+cd LawLink
 cp .env.example .env
-
-# 生成 NEXTAUTH_SECRET 和 STORAGE_ENCRYPTION_KEY
-openssl rand -base64 32   # 复制到 .env 的 NEXTAUTH_SECRET
-openssl rand -base64 32   # 复制到 .env 的 STORAGE_ENCRYPTION_KEY
 ```
 
-### 2. 启动数据库（Docker Compose）
+编辑 `.env`，使数据库连接与 Compose 数据库账号一致，设置 `SEED_ADMIN_EMAIL` 和强密码，并分别生成 `NEXTAUTH_SECRET`、`STORAGE_ENCRYPTION_KEY`：
+
+```bash
+openssl rand -base64 32
+openssl rand -base64 32
+```
+
+保管好这两个独立值，然后执行：
 
 ```bash
 docker compose up -d db
-```
-
-只起 Postgres 容器；应用本地用 `npm run dev` 起。
-
-### 3. 初始化 schema 与 seed
-
-```bash
-npm install                       # 首次
-npx prisma migrate dev
-npx prisma db seed                # 创建 admin 账号 + 案由库样本
-```
-
-### 4. 启动 dev
-
-```bash
+npm ci
+npm run prisma:generate
+npx prisma migrate deploy
+npx prisma db seed
 npm run dev
 ```
 
-打开 http://localhost:3000，用初始管理员账号登录：
+打开 [本地登录页](http://localhost:3000/login)，用首次 seed 时设置的账号登录。模板中的 `admin@lawlink.local` / `ChangeMe!2026` 仅供本地试用；公开部署前须更换。已有账号不会因修改 `.env` 或重跑 seed 而改密码；不要用清空数据库的方式处理忘记密码。
 
-- 邮箱：`admin@lawlink.local`
-- 密码：`ChangeMe!2026`
-
-以上值来自 `.env.example`。如果你已经修改过 `.env` 里的 `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`，以 `.env` 中的实际值为准。公开部署或正式试用前，请先把 `SEED_ADMIN_PASSWORD` 改成强密码，再执行 seed；首次登录后也应在系统设置中修改密码。
-
-旧版本用户说明：如果你此前已经从 GitHub 下载过 LawLink，并且已经执行过 `npx prisma db seed`，更新 README 或 `.env.example` 不会自动修改数据库里已有管理员的密码。请优先使用当时 `.env` 中的 `SEED_ADMIN_PASSWORD` 登录；如果当时沿用了旧版占位值，密码可能是 `REPLACE_BEFORE_FIRST_LOGIN`。忘记密码时，可以重新初始化本地测试数据库，或在数据库中重置管理员密码哈希。
-
-本地开发使用 `.next-dev`，生产构建使用 `.next-build`，避免 `npm run build` 后覆盖正在运行的开发缓存导致页面不渲染。
+个人资料与登录安全位于 `/settings/profile`。开发使用 `.next-dev`，生产构建使用 `.next-build`。
 
 ## 验证
 
 ```bash
-npm run lint              # ESLint CLI
-npm run typecheck         # tsc --noEmit
-npm run prisma:validate   # Prisma schema 校验
-npm run build             # 生产构建（最严的检查）
+npm run lint
+npm run typecheck
+npm run prisma:validate
+npm run test:run
+npm run build
 ```
 
-## 全栈 Docker 部署
+CI 另用独立影子数据库检查迁移与模型一致性，并在另一个空数据库验证完整迁移、初始化和基础查询。测试通过不等于本所生产部署或安全审计已经完成。
 
-应用容器默认不启动。要起完整环境（db + app）：
+## 技术栈
 
-```bash
-docker compose --profile full up -d
-```
+Next.js 16 / React 19 / TypeScript；shadcn/ui、Tailwind CSS、Framer Motion；PostgreSQL 16 / Prisma 5；NextAuth.js；TanStack Table、Recharts。界面采用高密度浅色工作台。
 
-## 协议
+## 文档索引
 
-[MIT](./LICENSE) — 自由使用、修改、商用。
+| 文档 | 用途 |
+|---|---|
+| [本版使用与升级说明](./docs/RELEASE-GUIDE-v1.3.md) | 当前功能边界、首次配置、旧版迁移注意事项 |
+| [云服务器安装指南](./docs/CLOUD-SERVER-INSTALLATION-GUIDE.md) | 固定版本、HTTPS、初始化、备份与更新 |
+| [变更记录](./CHANGELOG.md) | 各版本变更与验证范围 |
+| [路线图](./docs/ROADMAP.md) | 已实现能力与后续方向，非排期承诺 |
+| [安全说明](./SECURITY.md) | 部署方职责及私密漏洞报告方式 |
+| [工作区规则](./AGENTS.md) / [贡献说明](./CONTRIBUTING.md) | 协作规范 |
+| [PRD](./docs/PRD.md) / [数据模型](./docs/DATA-MODEL.md) / [UI 规范](./docs/UI-DESIGN.md) | 当前设计入口与历史演进记录；旧章节不作为当前授权依据 |
+| [公开发布检查清单](./docs/PUBLIC_RELEASE_CHECKLIST.md) | 敏感资料与交付检查 |
+| [早期发布体检记录](./docs/PUBLISH_READINESS_REPORT.md) | 历史检查结果，不代表当前安全状态 |
 
-## 免责声明
+## 协议与使用边界
 
-LawLink 是通用案件管理软件，不提供法律意见，也不替代律师的专业判断。自行部署和使用时，请遵守所在地关于律师执业、个人信息保护、数据安全、档案管理和保密义务的规则。
+[MIT](./LICENSE) — 可使用、修改和商用。LawLink 是通用案件管理软件，不提供法律意见，不替代律师的专业判断。部署方应结合自己的数据与使用场景评估保密、个人信息保护及档案管理要求。

@@ -1,13 +1,20 @@
 # LawLink 云服务器安装指南（技术小白版）
 
-> 适用版本：LawLink `v1.2`  
-> 核对日期：2026-08-15  
-> 推荐系统：Ubuntu Server 24.04 LTS（64 位）  
+> 适用版本：LawLink `v1.3.1`
+>
+> 版本说明核对日期：2026-09-13
+>
+> 推荐系统：Ubuntu Server 24.04 LTS（64 位）
+>
 > 适用对象：独立律师、中小律所负责人、没有 Linux / Docker 经验的安装人员
 
-## 先说结论
+> **当前限制**：v1.3.1 依赖审计尚有严重、高危发现，详见[安全说明](../SECURITY.md#依赖审计状态)。以下用于隔离评估及部署准备；完成依赖修复、风险判断和实际环境验证前，不建议用于公网真实案件。本轮验证了源码 CI 与本地生产启动，没有实测下列整套云服务器/Docker/Caddy 部署。
+>
+> 同目录 Word 安装指南是 v1.2 历史副本，未随本轮修订，不作为当前步骤依据。
 
-如果准备存放真实案件材料，建议购买 **4 核 CPU、8 GB 内存、100 GB SSD、10 Mbps 或以上带宽**的云服务器，并准备一个单独的二级域名，例如 `law.example.com`。系统选择 Ubuntu Server 24.04 LTS，使用 Docker Compose 运行 LawLink 和 PostgreSQL，再用 Caddy 自动配置 HTTPS。
+## 部署方案
+
+如果准备存放真实案件材料，建议购买 **4 核 CPU、8 GB 内存、100 GB SSD、10 Mbps 或以上带宽**的云服务器，并准备一个单独的二级域名，例如 `law.example.com`。系统选择 Ubuntu Server 24.04 LTS，使用 Docker Compose 运行 LawLink 和 PostgreSQL，再用 Caddy 自动配置 HTTPS。资源表为经验估算，不构成容量或稳定性承诺。
 
 不建议把 2 核 2 GB 的低配服务器用于正式环境；首次构建 LawLink 时可能内存不足。2 核 4 GB、50 GB SSD 只适合 1—3 人短期试用。附件较多时，磁盘容量应优先增加。
 
@@ -26,7 +33,7 @@ LawLink 当前仍属于早期版本。正式导入真实案件前，至少要完
 
 `律师的浏览器 → HTTPS 域名 → Caddy 安全入口 → LawLink → PostgreSQL 数据库 / 加密附件`
 
-日常使用时，律师只需要在浏览器打开自己的域名，不需要接触服务器命令。服务器命令主要在首次安装、备份和版本更新时使用。
+日常使用时，律师只需要在浏览器打开自己的域名，不需要接触服务器命令。服务器命令主要在首次安装、备份和版本更新时使用。新版本的权限及首次配置步骤见[本版使用与升级说明](./RELEASE-GUIDE-v1.3.md)。
 
 ## 二、购买服务器和域名前怎么选
 
@@ -105,7 +112,7 @@ ssh ubuntu@YOUR_SERVER_IP
 ```bash
 sudo apt update
 sudo apt upgrade -y
-sudo apt install -y git nano openssl ca-certificates curl
+sudo apt install -y git nano openssl ca-certificates curl gnupg
 ```
 
 如果系统提示必须重启，执行：
@@ -154,12 +161,12 @@ sudo systemctl is-active docker
 
 ## 七、下载固定版本的 LawLink
 
-不要直接把持续变化的 `main` 分支用于真实案件。本指南已按 `v1.2` 核对，先安装这个固定版本：
+不要直接把持续变化的 `main` 分支用于真实案件。本指南对照 `v1.3.1` 的源码编排，评估时固定安装该版本：
 
 ```bash
 sudo mkdir -p /opt/lawlink
 sudo chown -R "$(id -un)":"$(id -gn)" /opt/lawlink
-git clone --branch v1.2 --depth 1 https://github.com/lawflow-boop/LawLink.git /opt/lawlink
+git clone --branch v1.3.1 --depth 1 https://github.com/lawflow-boop/LawLink.git /opt/lawlink
 cd /opt/lawlink
 ```
 
@@ -172,7 +179,7 @@ git describe --tags --exact-match
 应显示：
 
 ```text
-v1.2
+v1.3.1
 ```
 
 ## 八、创建服务器专用的安全配置
@@ -319,8 +326,13 @@ sudo docker compose run --rm app npx prisma migrate deploy
 
 ### 4. 创建初始管理员和基础数据
 
+当前运行镜像不含 `src/`，但 seed 的模板生成器依赖这些源码；须临时只读挂载与镜像同标签的 `src/` 和 `tsconfig.json`。直接运行旧版的 `app npx prisma db seed` 命令会缺少模块。下面挂载仅用于初始化，日常应用仍运行构建产物。
+
 ```bash
-sudo docker compose run --rm app npx prisma db seed
+sudo docker compose run --rm \
+  -v "$PWD/src:/app/src:ro" \
+  -v "$PWD/tsconfig.json:/app/tsconfig.json:ro" \
+  app npx prisma db seed
 ```
 
 成功标准：最后显示 `Seed 完成`。这一步只负责第一次初始化；以后重复执行 seed 不会把已有管理员密码重置为 `.env` 里的值。
@@ -344,7 +356,7 @@ sudo docker compose ps
 curl -fsS http://127.0.0.1:3000/api/health
 ```
 
-应返回类似：
+应返回类似（只证明进程能响应，不检查数据库、权限或备份）：
 
 ```json
 {"name":"LawLink","status":"ok","timestamp":"..."}
@@ -443,13 +455,14 @@ https://YOUR_DOMAIN/login
 
 登录后按顺序完成：
 
-1. 打开“设置 → 个人资料”，立即修改管理员密码；
-2. 打开“设置 → 用户管理”，为每位实际使用人创建独立账号，不要多人共用管理员账号；
-3. 检查律所名称、人员角色和案件可见范围；
-4. 先用虚构信息建立一个测试客户、收案线索和测试案件；
-5. 上传一个无敏感信息的测试文件，再下载并确认能正常打开；
-6. 退出登录，确认未登录时不能看到案件页面；
-7. 完成下一节的首次备份后，再决定是否导入真实案件。
+1. 打开“个人设置 → 个人资料”（`/settings/profile`），核对本人信息和密码；
+2. 进入“管理后台 → 律所信息”（`/admin/firm-profile`）补齐本所资料；
+3. 在“用户管理、岗位角色、律师团队”设置独立账号及真实岗位。新账号须登记证件与照片，先确认本所采集和保管安排；
+4. 在“审批权限”（`/admin/approval-permissions`）配置合格审批人和具体事项；超级管理员也须获事项授权。单人执业若需自批须显式开启例外；
+5. 在“归档制度”（`/admin/archive-policy`）录入本所制度原文及清单，否则不能提交正式归档；
+6. 按需配置外部服务和提醒；“订阅日历”入口在日程页；
+7. 用隔离测试资料验证收案、审批、材料上传下载、开票/用章及归档，不同岗位核对访问边界；
+8. 退出后核对未登录无法访问业务页面，完成首次备份与恢复演练。
 
 不要把身份证、真实案卷或客户联系方式作为“试试看”的第一批数据。
 
@@ -460,6 +473,8 @@ LawLink 的完整恢复至少需要三部分：
 - PostgreSQL 数据库；
 - `app_storage` 中的加密附件；
 - `.env` 中的 `STORAGE_ENCRYPTION_KEY` 等密钥。
+
+证件照片也属于文件存储的一部分，备份时一并保护；若另配对象存储，须备份对应存储桶。
 
 只备份数据库，不能恢复附件；只备份附件但丢失加密主密钥，也可能无法读取附件。
 
@@ -501,9 +516,11 @@ ls -lh "$LAWLINK_BACKUP_DIR"
 
 接下来必须把整个备份目录复制到服务器以外的加密存储，例如另一云账号的对象存储、NAS 的加密备份或加密移动硬盘。仅保存在同一台服务器上不算真正备份。
 
+默认 Docker 运行镜像未包含 `scripts/backup.sh` 和 `pg_dump`，应用里的备份定时任务注册不代表备份会成功。请在宿主机按上述命令设置独立备份任务，核对真实输出；本指南不将默认容器描述为自动完成备份。
+
 建议：
 
-- 每天自动备份数据库和附件；
+- 在宿主机安排每天备份数据库和附件；
 - 至少保留 7 个日备份、4 个周备份、6 个⽉备份；
 - 每月至少抽查一次备份大小和校验值；
 - 第一次正式使用前做一次恢复演练；
@@ -542,13 +559,16 @@ sudo apt upgrade -y
 
 数据库迁移可能不可逆。升级前必须先完成第十三节的完整备份，并查看 `CHANGELOG.md`。不要直接执行 `git pull` 跟随 `main`。
 
-推荐做法：由项目维护者确认要升级到的标签，例如未来的 `v1.3`，再执行：
+升级前先读[本版迁移注意事项](./RELEASE-GUIDE-v1.3.md#从-v12-或更早版本升级)。v1.3 拆分系统管理员与业务岗位，旧管理网址、旧角色审批授权不再沿用；迁移后须核对账号岗位、审批权限组、待办申请和归档制度。
+
+下列命令以已完成隔离迁移演练、获得部署负责人确认的 `v1.3.1` 为例；先停止应用写入再迁移，保留 `.env`、覆盖配置和存储卷：
 
 ```bash
 cd /opt/lawlink
 git fetch --tags
-git checkout v1.3
+git checkout v1.3.1
 sudo docker compose build app
+sudo docker compose stop app
 sudo docker compose run --rm app npx prisma migrate deploy
 sudo docker compose up -d
 ```
@@ -637,14 +657,18 @@ rm -rf /opt/lawlink
 
 ## 十八、正式上线验收清单
 
-以下项目全部勾选后，才建议导入真实案件：
+以下项目是环境验收的一部分，仍须先处理本页开头列明的依赖安全风险：
 
 - [ ] 使用 Ubuntu Server 24.04 LTS 64 位；
 - [ ] 服务器配置至少达到计划使用规模；
 - [ ] 安全组只开放必要的 22、80、443；
 - [ ] `3000`、`5432` 只绑定 `127.0.0.1`；
 - [ ] 域名和 HTTPS 正常，无证书警告；
+- [ ] 已处理适用的依赖安全风险并重跑审计、测试和构建；
 - [ ] 管理员密码已修改，每人使用独立账号；
+- [ ] 业务岗位、系统管理、团队访问和事项审批分别配置并验证；
+- [ ] 本所归档制度及材料清单已配置，实际审批/归档流程已验证；
+- [ ] 证件资料与照片采集、访问和保管安排已经核对；
 - [ ] `/api/health` 返回 `status: ok`；
 - [ ] 数据库容器为 `healthy`，应用容器为 `Up`；
 - [ ] 测试客户、测试案件、测试附件的创建和下载均正常；

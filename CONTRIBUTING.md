@@ -7,7 +7,8 @@
 开始前请先阅读：
 
 - [AGENTS.md](./AGENTS.md)：工作区规则和工程纪律。
-- [docs/PRD.md](./docs/PRD.md)：产品边界和主工作流。
+- [docs/RELEASE-GUIDE-v1.3.md](./docs/RELEASE-GUIDE-v1.3.md)：当前公开功能、权限和升级边界。
+- [docs/PRD.md](./docs/PRD.md)：产品设计与历史演进。
 - [docs/DATA-MODEL.md](./docs/DATA-MODEL.md)：数据模型。
 - [docs/UI-DESIGN.md](./docs/UI-DESIGN.md)：界面规范。
 
@@ -29,12 +30,15 @@
 
 ```bash
 cp .env.example .env
-npm install
+npm ci
 docker compose up -d db
-npx prisma migrate dev
+npm run prisma:generate
+npx prisma migrate deploy
 npx prisma db seed
 npm run dev
 ```
+
+首次运行前按 README 设置独立密钥和账号。上述命令用于安装已有迁移；只有获批修改模型时才生成新迁移，生成和执行分别按 AGENTS.md 确认。
 
 ## 提交前验证
 
@@ -42,6 +46,7 @@ npm run dev
 npm run lint
 npm run typecheck
 npm run prisma:validate
+npm run test:run
 npm run build
 ```
 

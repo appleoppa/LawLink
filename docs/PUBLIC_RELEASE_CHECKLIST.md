@@ -1,6 +1,6 @@
 # LawLink Public Release Checklist
 
-This checklist is for publishing LawLink as a clean open-source repository.
+This checklist applies to each public source release. Publishing source is separate from production deployment or security certification. Current user-facing behavior is documented in [the v1.3 release guide](./RELEASE-GUIDE-v1.3.md).
 
 ## What Must Not Be Published
 
@@ -19,12 +19,20 @@ This checklist is for publishing LawLink as a clean open-source repository.
 - Demo matters are disabled for public release.
 - AI and Yuandian API keys are not hard-coded. Runtime keys are stored in the database as encrypted `SystemSetting` values and must never be committed.
 
-## Before First GitHub Publication
+## Public Documentation and Version Boundary
+
+- Match README, installation commands, release notes and permission descriptions to the exact tag being published; do not include unfinished development.
+- Label historical reports and Word/design documents with their applicable version. Prior dependency audits are not current guarantees.
+- Run a fresh production dependency audit and report unresolved findings honestly; see [SECURITY.md](../SECURITY.md).
+- Verify fresh migration, seed and basic queries using a database separate from the shadow database. A successful health endpoint is not a complete deployment check.
+- Exclude both `output/` and `outputs/` scratch artifacts, even if a local ignore rule does not cover one spelling. Never stage all workspace files without review.
+
+## Before Each GitHub Publication
 
 1. Confirm `git status --short` only contains intentional source changes.
 2. Confirm tracked files do not include local data:
    ```bash
-   git ls-files | rg '^(\\.env$|\\.env\\.(local|production|development|test)|backups/|outputs/|\\.next|node_modules/)'
+   git ls-files | rg '^(\\.env$|\\.env\\.(local|production|development|test)|backups/|outputs?/|\\.next|node_modules/)'
    git ls-files storage | rg -v '^storage/\\.gitkeep$'
    ```
    Both commands should print nothing.
