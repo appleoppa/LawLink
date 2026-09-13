@@ -26,3 +26,6 @@ outputs
 
 截图
 参考
+
+# Local test and browser artifacts are not release content
+output/

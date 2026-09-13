@@ -50,3 +50,6 @@ tsconfig.tsbuildinfo
 
 # Working scratch (outside of project scope)
 outputs/
+
+# Local test and browser artifacts are not release content
+output/

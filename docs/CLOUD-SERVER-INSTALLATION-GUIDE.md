@@ -1,6 +1,6 @@
 # LawLink 云服务器安装指南（技术小白版）
 
-> 适用版本：LawLink `v1.3.1`
+> 适用版本：LawLink `v1.3.2`
 >
 > 版本说明核对日期：2026-09-13
 >
@@ -8,7 +8,7 @@
 >
 > 适用对象：独立律师、中小律所负责人、没有 Linux / Docker 经验的安装人员
 
-> **当前限制**：v1.3.1 依赖审计尚有严重、高危发现，详见[安全说明](../SECURITY.md#依赖审计状态)。以下用于隔离评估及部署准备；完成依赖修复、风险判断和实际环境验证前，不建议用于公网真实案件。本轮验证了源码 CI 与本地生产启动，没有实测下列整套云服务器/Docker/Caddy 部署。
+> **验证范围**：v1.3.2 已修复已知依赖问题，当日全量及生产依赖审计均为零已知告警，详见[安全说明](../SECURITY.md#依赖审计状态)。这不等于完成整体安全验收。本轮检查源码与本地生产启动，没有实测下列整套云服务器/Docker/Caddy 部署；正式使用前须在自己的环境验证权限、备份恢复和业务流程。
 >
 > 同目录 Word 安装指南是 v1.2 历史副本，未随本轮修订，不作为当前步骤依据。
 
@@ -161,12 +161,12 @@ sudo systemctl is-active docker
 
 ## 七、下载固定版本的 LawLink
 
-不要直接把持续变化的 `main` 分支用于真实案件。本指南对照 `v1.3.1` 的源码编排，评估时固定安装该版本：
+不要直接把持续变化的 `main` 分支用于真实案件。本指南对照 `v1.3.2` 的源码编排，评估时固定安装该版本：
 
 ```bash
 sudo mkdir -p /opt/lawlink
 sudo chown -R "$(id -un)":"$(id -gn)" /opt/lawlink
-git clone --branch v1.3.1 --depth 1 https://github.com/lawflow-boop/LawLink.git /opt/lawlink
+git clone --branch v1.3.2 --depth 1 https://github.com/lawflow-boop/LawLink.git /opt/lawlink
 cd /opt/lawlink
 ```
 
@@ -179,7 +179,7 @@ git describe --tags --exact-match
 应显示：
 
 ```text
-v1.3.1
+v1.3.2
 ```
 
 ## 八、创建服务器专用的安全配置
@@ -561,12 +561,12 @@ sudo apt upgrade -y
 
 升级前先读[本版迁移注意事项](./RELEASE-GUIDE-v1.3.md#从-v12-或更早版本升级)。v1.3 拆分系统管理员与业务岗位，旧管理网址、旧角色审批授权不再沿用；迁移后须核对账号岗位、审批权限组、待办申请和归档制度。
 
-下列命令以已完成隔离迁移演练、获得部署负责人确认的 `v1.3.1` 为例；先停止应用写入再迁移，保留 `.env`、覆盖配置和存储卷：
+下列命令以已完成隔离迁移演练、获得部署负责人确认的 `v1.3.2` 为例；先停止应用写入再迁移，保留 `.env`、覆盖配置和存储卷：
 
 ```bash
 cd /opt/lawlink
 git fetch --tags
-git checkout v1.3.1
+git checkout v1.3.2
 sudo docker compose build app
 sudo docker compose stop app
 sudo docker compose run --rm app npx prisma migrate deploy
@@ -692,3 +692,5 @@ rm -rf /opt/lawlink
 ---
 
 文档维护提示：LawLink 发布新标签、数据库初始化方式、Compose 文件或环境变量发生变化时，应先更新本指南，再调整对外安装实践。
+
+公开版全新安装的案件、客户及财务业务列表为空，管理员和基础字典/模板属于必要初始化配置。不要从开发环境复制模拟案件数据库或附件作为公开安装包。
