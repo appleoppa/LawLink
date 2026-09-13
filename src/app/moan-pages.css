@@ -624,3 +624,19 @@
 .mo-list-row:hover { background: var(--bg-hover); }
 .mo-list-row .rt { font-size: 13px; font-weight: 600; color: var(--t-primary); }
 .mo-list-row .rm { font-size: 11px; color: var(--t-muted); margin-top: 2px; }
+
+/* 05 新建收案 · 实现补充：input/textarea 复用 .finput，组合控件在抽屉内对齐 */
+.mo-intake input.finput, .mo-intake textarea.finput, .mo-intake button.finput { color: var(--t-primary); outline: none; font-family: inherit; }
+.mo-intake input.finput::placeholder, .mo-intake textarea.finput::placeholder { color: var(--t-faint); }
+.mo-intake .finput:focus, .mo-intake .finput:focus-within { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(0,123,127,0.12); }
+.mo-intake .finput[readonly] { background: var(--bg-hover); }
+.mo-intake .chip { font-family: inherit; }
+.mo-intake .id-body > div[hidden] { display: none !important; }
+.mo-intake .fsec-body button[role="combobox"] { height: 36px; border-radius: 8px; }
+@media (max-width: 640px) {
+  .mo-intake .frow { flex-direction: column; }
+  .mo-intake .fitem { max-width: none !important; }
+  .mo-intake .id-step .lbl { display: none; }
+  .mo-intake .id-head, .mo-intake .id-foot { padding-left: 16px; padding-right: 16px; }
+  .mo-intake .id-body { padding: 6px 12px 16px; }
+}
