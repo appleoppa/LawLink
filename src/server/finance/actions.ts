@@ -1,4 +1,8 @@
 "use server";
+import { roleMutation, checkRoleMutation } from "@/lib/roles/service";
+import { scopeFor } from "@/lib/roles/catalog";
+import { canReadDocument } from "@/lib/approvals/documents";
+import { requireApprovalRoute } from "@/lib/approvals/service";
 
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
@@ -8,11 +12,11 @@ import { audit } from "@/server/audit";
 import { assertMatterWritable } from "@/lib/archive/guard";
 import { serializeDecimals } from "@/lib/decimal";
 import {
-  assertCanAccessMatter,
+  assertCanAccessMatterFinance,
   assertCanAssociateMatter,
   assertCanLeadMatter,
   isManager,
-  matterVisibilityFilter
+  matterFinanceVisibilityFilter
 } from "@/lib/permissions";
 import {
   billingCreateSchema,
@@ -28,15 +32,16 @@ import {
   invoiceMatterSearchWhere
 } from "./invoice-matter-search";
 import { revalidateMatter } from "@/server/matters/route";
+import { allocateCommissions } from "./commissions";
 
 // ============ Billing ============
 
 export async function createBilling(input: BillingCreateInput) {
-  const session = await requireSession();
+  const session = await requireSession("finance.write");
   const data = billingCreateSchema.parse(input);
   await assertMatterWritable(data.matterId, { allowFinanceRole: true });
 
-  const created = await prisma.billing.create({
+  const created = await roleMutation(session.user, "finance.write", async roleDb => roleDb.billing.create({
     data: {
       matterId: data.matterId,
       title: data.title,
@@ -45,7 +50,7 @@ export async function createBilling(input: BillingCreateInput) {
       status: data.status,
       signedAt: data.signedAt
     }
-  });
+  }));
 
   await audit({
     userId: session.user.id,
@@ -60,21 +65,21 @@ export async function createBilling(input: BillingCreateInput) {
 }
 
 export async function deleteBilling(id: string) {
-  const session = await requireSession();
+  const session = await requireSession("finance.write");
   const billing = await prisma.billing.findUnique({
     where: { id },
     select: { matterId: true }
   });
   if (!billing) return { ok: false };
 
-  if (session.user.role === "FINANCE") {
+  if (session.user.role === "FINANCE" || (session.user.role === "CUSTOM" && scopeFor(session.user, "finance.write") === "ALL")) {
     await assertMatterWritable(billing.matterId, { allowFinanceRole: true });
   } else {
     await assertMatterWritable(billing.matterId);
     await assertCanLeadMatter(session.user.id, billing.matterId, "仅案件主办/协办或财务可删除合同");
   }
 
-  await prisma.billing.delete({ where: { id } });
+  await roleMutation(session.user, "finance.write", async roleDb => roleDb.billing.delete({ where: { id } }));
   await audit({
     userId: session.user.id,
     action: "BILLING_DELETE",
@@ -93,11 +98,12 @@ export async function deleteBilling(id: string) {
  * - parent / children 通过 parentFeeEntryId 关联
  */
 export async function createFeeEntry(input: FeeEntryCreateInput) {
-  const session = await requireSession();
+  const session = await requireSession("finance.write");
   const data = feeEntryCreateSchema.parse(input);
   await assertMatterWritable(data.matterId, { allowFinanceRole: true });
 
   const created = await prisma.$transaction(async (tx) => {
+    await checkRoleMutation(tx, session.user, "finance.write");
     const entry = await tx.feeEntry.create({
       data: {
         matterId: data.matterId,
@@ -118,15 +124,16 @@ export async function createFeeEntry(input: FeeEntryCreateInput) {
       const plans = await tx.commissionPlan.findMany({
         where: { matterId: data.matterId, active: true }
       });
-      for (const plan of plans) {
-        const share = Number(plan.percent) * data.amount / 100;
-        if (share <= 0) continue;
+      const shares = allocateCommissions(data.amount, plans);
+      for (const [index, plan] of plans.entries()) {
+        const share = shares[index];
+        if (share.lte(0)) continue;
         await tx.feeEntry.create({
           data: {
             matterId: data.matterId,
             billingId: data.billingId || null,
             type: "COMMISSION",
-            amount: new Prisma.Decimal(share.toFixed(2)),
+            amount: share,
             occurredAt: data.occurredAt,
             parentFeeEntryId: entry.id,
             beneficiaryUserId: plan.userId,
@@ -163,12 +170,13 @@ export async function createFeeEntry(input: FeeEntryCreateInput) {
 
   await revalidateMatter(data.matterId);
   revalidatePath("/finance");
+  revalidatePath("/approvals");
   return { ok: true, id: created.id };
 }
 
 export async function deleteFeeEntry(id: string) {
-  const session = await requireSession();
-  if (!isManager(session.user.role) && session.user.role !== "FINANCE") {
+  const session = await requireSession("finance.write");
+  if (session.user.role !== "CUSTOM" && !isManager(session.user.role) && session.user.role !== "FINANCE") {
     throw new Error("仅管理员、主办律师或财务可删除收付记录");
   }
   const entry = await prisma.feeEntry.findUnique({
@@ -180,6 +188,7 @@ export async function deleteFeeEntry(id: string) {
 
   // 删父条目时同时删除自动派生的分成
   await prisma.$transaction(async (tx) => {
+    await checkRoleMutation(tx, session.user, "finance.write");
     if (entry.commissionChildren.length > 0) {
       await tx.feeEntry.deleteMany({
         where: { id: { in: entry.commissionChildren.map((c) => c.id) } }
@@ -200,6 +209,7 @@ export async function deleteFeeEntry(id: string) {
   });
   await revalidateMatter(entry.matterId);
   revalidatePath("/finance");
+  revalidatePath("/approvals");
   return { ok: true };
 }
 
@@ -210,14 +220,15 @@ export async function deleteFeeEntry(id: string) {
  * 简单策略：删除所有现有 plan，按 items 创建新的。
  */
 export async function setCommissionPlan(input: CommissionPlanSetInput) {
-  const session = await requireSession();
+  const session = await requireSession("finance.write");
   const data = commissionPlanSetSchema.parse(input);
   await assertMatterWritable(data.matterId);
   await assertCanLeadMatter(session.user.id, data.matterId, "仅案件主办/协办可设置分成方案");
 
-  await prisma.$transaction([
-    prisma.commissionPlan.deleteMany({ where: { matterId: data.matterId } }),
-    prisma.commissionPlan.createMany({
+  await prisma.$transaction(async db => {
+    await checkRoleMutation(db, session.user, "finance.write");
+    await db.commissionPlan.deleteMany({ where: { matterId: data.matterId } });
+    await db.commissionPlan.createMany({
       data: data.items.map((it) => ({
         matterId: data.matterId,
         userId: it.userId,
@@ -225,8 +236,8 @@ export async function setCommissionPlan(input: CommissionPlanSetInput) {
         label: it.label || null,
         active: true
       }))
-    })
-  ]);
+    });
+  });
 
   await audit({
     userId: session.user.id,
@@ -243,8 +254,8 @@ export async function setCommissionPlan(input: CommissionPlanSetInput) {
 // ============ 全局财务统计 ============
 
 export async function getMatterFinance(matterId: string) {
-  const session = await requireSession();
-  await assertCanAccessMatter(session.user.id, session.user.role, matterId);
+  const session = await requireSession("finance.read");
+  await assertCanAccessMatterFinance(session.user.id, session.user.role, matterId, session.user.rolePermissions);
 
   const [billings, entries, plans, issuedInvoices] = await Promise.all([
     prisma.billing.findMany({
@@ -291,8 +302,8 @@ export async function getMatterFinance(matterId: string) {
  * v0.11: 列出案件下的申请发票
  */
 export async function listMatterInvoiceRequests(matterId: string) {
-  const session = await requireSession();
-  await assertCanAccessMatter(session.user.id, session.user.role, matterId);
+  const session = await requireSession("approval");
+  await assertCanAccessMatterFinance(session.user.id, session.user.role, matterId, session.user.rolePermissions);
   const rows = await prisma.invoiceRequest.findMany({
     where: { matterId },
     orderBy: { requestedAt: "desc" },
@@ -320,8 +331,8 @@ export async function listMatterInvoiceRequests(matterId: string) {
  * v0.12: 获取案件用于开票的默认信息（客户抬头 + 关联 Intake id）
  */
 export async function getMatterInvoiceContext(matterId: string) {
-  const session = await requireSession();
-  await assertCanAccessMatter(session.user.id, session.user.role, matterId);
+  const session = await requireSession("approval");
+  await assertCanAccessMatterFinance(session.user.id, session.user.role, matterId, session.user.rolePermissions);
   const m = await prisma.matter.findUnique({
     where: { id: matterId },
     select: {
@@ -417,12 +428,13 @@ export async function createInvoiceRequest(input: {
   evidenceDocIds: string[];
   requestNote?: string | null;
 }) {
-  const session = await requireSession();
+  const session = await requireSession("approval");
   if (input.matterId) {
     await assertCanAssociateMatter(session.user.id, input.matterId);
+    await assertMatterWritable(input.matterId);
   } else {
     // 无关联案件开票仅财务 / 管理员 / 主任可发起，且必须说明原因
-    if (!isManager(session.user.role) && session.user.role !== "FINANCE") {
+    if (!isManager(session.user.role) && session.user.role !== "FINANCE" && !(session.user.role === "CUSTOM" && scopeFor(session.user, "finance.write") === "ALL")) {
       throw new Error("无关联案件开票仅财务 / 管理员 / 主任律师可发起");
     }
     if (!input.noMatterReason?.trim()) {
@@ -449,6 +461,12 @@ export async function createInvoiceRequest(input: {
   }
 
   const isSpecial = input.invoiceType === "SPECIAL";
+  const approvalMatter = input.matterId ? await prisma.matter.findUniqueOrThrow({ where: { id: input.matterId }, select: { category: true } }) : null;
+  await requireApprovalRoute({ action: "INVOICE_APPROVE", category: approvalMatter?.category ?? null, requesterId: session.user.id });
+  for (const id of input.evidenceDocIds) {
+    const doc = await prisma.document.findUnique({ where: { id } });
+    if (!doc || !await canReadDocument(session.user.id, doc)) throw new Error("开票依据不存在或无权访问");
+  }
   const created = await prisma.invoiceRequest.create({
     data: {
       matterId: input.matterId,
@@ -478,7 +496,7 @@ export async function createInvoiceRequest(input: {
     : null;
 
   await notifyRoleApprovers({
-    roles: ["ADMIN", "PRINCIPAL_LAWYER", "FINANCE"],
+    roles: ["PRINCIPAL_LAWYER", "FINANCE"],
     excludeUserId: session.user.id,
     title: "新的发票审批待处理",
     content: `${session.user.name ?? "有用户"} 提交了开票申请：${
@@ -491,13 +509,14 @@ export async function createInvoiceRequest(input: {
   });
 
   revalidatePath("/finance");
+  revalidatePath("/approvals");
   if (input.matterId) await revalidateMatter(input.matterId);
   return created;
 }
 
 /** v0.43 项5：财务页开票弹窗用——搜索当前用户可关联案件（轻量，返回编号+标题） */
 export async function searchMattersForInvoice(q?: string) {
-  const session = await requireSession();
+  const session = await requireSession("approval");
   return prisma.matter.findMany({
     where: invoiceMatterSearchWhere(session.user.id, q),
     select: { id: true, internalCode: true, title: true },
@@ -510,8 +529,8 @@ export async function listAllFeeEntries(params: {
   type?: "RECEIVABLE" | "RECEIVED" | "REFUND" | "COST" | "COMMISSION";
   limit?: number;
 }) {
-  const session = await requireSession();
-  const visFilter = matterVisibilityFilter(session.user.id, session.user.role);
+  const session = await requireSession("finance.read");
+  const visFilter = matterFinanceVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions);
   const rows = await prisma.feeEntry.findMany({
     where: {
       ...(params.type ? { type: params.type } : {}),
@@ -529,8 +548,8 @@ export async function listAllFeeEntries(params: {
 }
 
 export async function getMonthlyRevenue(months = 6) {
-  const session = await requireSession();
-  const visFilter = matterVisibilityFilter(session.user.id, session.user.role);
+  const session = await requireSession("finance.read");
+  const visFilter = matterFinanceVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions);
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
 
@@ -565,7 +584,7 @@ export async function getMonthlyRevenue(months = 6) {
 }
 
 export async function getPersonalRevenue(userId: string) {
-  const session = await requireSession();
+  const session = await requireSession("finance.read");
   if (!isManager(session.user.role) && session.user.id !== userId) {
     throw new Error("只能查看自己的收入数据");
   }

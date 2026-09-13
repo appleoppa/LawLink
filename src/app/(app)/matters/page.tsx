@@ -1,3 +1,4 @@
+import { listReadableTeams } from "@/server/teams/actions";
 import { listMatters } from "@/server/matters/actions";
 import { listIntakes } from "@/server/intakes/actions";
 import { listClients } from "@/server/clients/actions";
@@ -83,6 +84,9 @@ type Props = {
     sortDir?: string;
     page?: string;
     new?: string;
+    scope?: "all" | "mine" | "team";
+    teamId?: string;
+    ownerId?: string;
   }>;
 };
 
@@ -96,9 +100,10 @@ export default async function MattersPage({ searchParams }: Props) {
   const dateTo = resolveDateEnd(params.to);
 
   // 收案抽屉所需：客户下拉 + 同事列表
-  const [clientsResponse, colleagues] = await Promise.all([
+  const [clientsResponse, colleagues, readableTeams] = await Promise.all([
     listClients({ pageSize: 100 }),
-    listActiveColleagues()
+    listActiveColleagues(),
+    listReadableTeams()
   ]);
 
   if (tab === "intake" || tab === "revision") {
@@ -106,6 +111,7 @@ export default async function MattersPage({ searchParams }: Props) {
     const intakeSortBy = sortBy === "claimAmount" ? "claimAmount" : "intakeDate";
     const intakes = await listIntakes({
       search: params.search,
+      scope: params.scope, teamId: params.teamId, ownerId: params.ownerId,
       category: params.category,
       statusIn:
         tab === "intake"
@@ -146,7 +152,9 @@ export default async function MattersPage({ searchParams }: Props) {
           type: c.type
         }))}
         colleagues={colleagues}
+        readableTeams={readableTeams}
         initialFilters={{
+          scope: params.scope ?? "all", teamId: params.teamId, ownerId: params.ownerId,
           search: params.search ?? "",
           category: params.category ?? "ALL",
           from: params.from,
@@ -180,6 +188,7 @@ export default async function MattersPage({ searchParams }: Props) {
   }
 
   const matters = await listMatters({
+    scope: params.scope, teamId: params.teamId, ownerId: params.ownerId,
     search: params.search,
     category: params.category,
     page,
@@ -209,7 +218,9 @@ export default async function MattersPage({ searchParams }: Props) {
         type: c.type
       }))}
       colleagues={colleagues}
+      readableTeams={readableTeams}
       initialFilters={{
+          scope: params.scope ?? "all", teamId: params.teamId, ownerId: params.ownerId,
         search: params.search ?? "",
         category: params.category ?? "ALL",
         status: params.status,

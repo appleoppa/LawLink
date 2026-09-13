@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/session";
+import { isSystemAdmin } from "@/lib/auth/system-role";
 import { audit } from "@/server/audit";
 import {
   getWebhookSettings,
@@ -21,8 +22,8 @@ const saveSchema = z.object({
 
 async function requireManager() {
   const session = await requireSession();
-  if (session.user.role !== "ADMIN" && session.user.role !== "PRINCIPAL_LAWYER") {
-    throw new Error("仅管理员 / 主任律师可配置提醒推送");
+  if (!isSystemAdmin(session.user) && session.user.role !== "PRINCIPAL_LAWYER") {
+    throw new Error("仅系统超级管理员 / 主任律师可配置提醒推送");
   }
   return session;
 }
@@ -45,7 +46,8 @@ export async function saveWebhookSettingsAction(input: z.infer<typeof saveSchema
     targetId: "notifyWebhook",
     detail: { enabled: data.enabled, hasUrl: Boolean(data.url) }
   });
-  revalidatePath("/settings/reminders");
+  revalidatePath("/admin/reminders");
+  revalidatePath("/admin/reminders");
   return { ok: true };
 }
 

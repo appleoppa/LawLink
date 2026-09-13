@@ -84,7 +84,7 @@ function mergeResults(results: ParsedPleading[]): ParsedPleading {
 }
 
 export async function parsePleading(form: FormData): Promise<ParsedPleading> {
-  await requireSession();
+  await requireSession("intakes.create");
   const file = form.get("file");
   if (!(file instanceof File)) throw new Error("缺少文件");
 

@@ -24,7 +24,7 @@ const PROMPT = `下方图片是一张快递面单 / 快递单照片。请严格�
 - 仅 JSON，不要解释`;
 
 export async function parseExpressLabel(form: FormData): Promise<ParsedExpressLabel> {
-  await requireSession();
+  await requireSession("express.manage");
   const file = form.get("file");
   if (!(file instanceof File)) throw new Error("缺少文件");
   if (!SUPPORTED.has(file.type)) {

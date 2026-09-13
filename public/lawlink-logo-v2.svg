@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 156" role="img" aria-labelledby="title desc">
+  <title id="title">LawLink logo</title>
+  <desc id="desc">LawLink wordmark with a linked double-L legal technology mark.</desc>
+  <defs>
+    <linearGradient id="lawlink-logo-bg" x1="16" y1="10" x2="80" y2="88" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#13243d"/>
+      <stop offset="1" stop-color="#0f1b2d"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(24 18) scale(1.25)">
+    <rect x="6" y="6" width="84" height="84" rx="22" fill="url(#lawlink-logo-bg)"/>
+    <path d="M31 25v40h11" fill="none" stroke="#f8fafc" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M65 25v40H54" fill="none" stroke="#f8fafc" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M40 48h16" fill="none" stroke="#00a6a6" stroke-width="10" stroke-linecap="round"/>
+    <circle cx="48" cy="48" r="3.25" fill="#ecfafa"/>
+  </g>
+  <text
+    x="168"
+    y="94"
+    fill="#0f1b2d"
+    font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', Inter, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif"
+    font-size="64"
+    font-weight="760"
+  >LawLink</text>
+</svg>

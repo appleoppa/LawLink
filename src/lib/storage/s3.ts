@@ -101,7 +101,8 @@ export class S3StorageProvider implements StorageProvider {
   async writeFile(scope: string, data: Buffer): Promise<string> {
     const now = new Date();
     const yyyymm = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
-    const safeScope = scope.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const safeScope = scope.split("/").filter(Boolean).map(part => part.replace(/[^a-zA-Z0-9_-]/g, "_")).join("/");
+    if (!safeScope) throw new Error("存储范围不能为空");
     const relPath = `${safeScope}/${yyyymm}/${randomUUID()}.bin`;
     const key = this.prefix + relPath;
 

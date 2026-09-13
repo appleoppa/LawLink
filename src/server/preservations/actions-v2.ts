@@ -1,4 +1,5 @@
 "use server";
+import { roleMutation, checkRoleMutation } from "@/lib/roles/service";
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -25,7 +26,7 @@ import { revalidateMatter } from "@/server/matters/route";
 // ━━━━ Read ━━━━
 
 export async function listPreservationCases(input?: z.input<typeof caseListFilterSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("matters.read");
   const filter = caseListFilterSchema.parse(input ?? {});
 
   const accessWhere: Prisma.PreservationCaseWhereInput = {
@@ -103,7 +104,7 @@ async function assertCanAccessPreservationCase(userId: string, id: string) {
 // ━━━━ Case CRUD ━━━━
 
 export async function createPreservationCase(input: z.infer<typeof caseCreateSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const data = caseCreateSchema.parse(input);
 
   if (data.matterId) {
@@ -113,7 +114,7 @@ export async function createPreservationCase(input: z.infer<typeof caseCreateSch
     await assertMatterWritable(data.matterId);
   }
 
-  const created = await prisma.preservationCase.create({
+  const created = await roleMutation(session.user, "matters.write", async roleDb => roleDb.preservationCase.create({
     data: {
       matterId: data.matterId ?? null,
       type: data.type,
@@ -144,7 +145,7 @@ export async function createPreservationCase(input: z.infer<typeof caseCreateSch
       } : undefined
     },
     select: { id: true, matterId: true }
-  });
+  }));
 
   await audit({
     userId: session.user.id,
@@ -160,7 +161,7 @@ export async function createPreservationCase(input: z.infer<typeof caseCreateSch
 }
 
 export async function updatePreservationCase(input: z.infer<typeof caseUpdateSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const data = caseUpdateSchema.parse(input);
   const { id, matterId, court, rulingNumber, note, ownerId, guaranteeType, ...rest } = data;
 
@@ -179,7 +180,7 @@ export async function updatePreservationCase(input: z.infer<typeof caseUpdateSch
   if (note !== undefined) patch.note = note?.trim() || null;
   if (guaranteeType !== undefined) patch.guaranteeType = guaranteeType ?? null;
 
-  await prisma.preservationCase.update({ where: { id }, data: patch });
+  await roleMutation(session.user, "matters.write", async roleDb => roleDb.preservationCase.update({ where: { id }, data: patch }));
 
   await audit({
     userId: session.user.id,
@@ -194,16 +195,16 @@ export async function updatePreservationCase(input: z.infer<typeof caseUpdateSch
 }
 
 export async function deletePreservationCase(input: z.infer<typeof deleteSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const data = deleteSchema.parse(input);
-  if (session.user.role !== "ADMIN" && session.user.role !== "PRINCIPAL_LAWYER") {
-    throw new Error("仅管理员或主任律师可删除保全记录");
+  if (session.user.role !== "PRINCIPAL_LAWYER") {
+    throw new Error("仅主任律师可删除保全记录");
   }
 
   const cs = await assertCanAccessPreservationCase(session.user.id, data.id);
   if (cs.matterId) await assertMatterWritable(cs.matterId);
 
-  await prisma.preservationCase.delete({ where: { id: data.id } });
+  await roleMutation(session.user, "matters.write", async roleDb => roleDb.preservationCase.delete({ where: { id: data.id } }));
 
   await audit({
     userId: session.user.id,
@@ -220,15 +221,15 @@ export async function deletePreservationCase(input: z.infer<typeof deleteSchema>
 // ━━━━ Target CRUD ━━━━
 
 export async function addTarget(input: z.infer<typeof targetCreateSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const data = targetCreateSchema.parse(input);
 
   const cs = await assertCanAccessPreservationCase(session.user.id, data.caseId);
   if (cs.matterId) await assertMatterWritable(cs.matterId);
 
-  const created = await prisma.preservationTarget.create({
+  const created = await roleMutation(session.user, "matters.write", async roleDb => roleDb.preservationTarget.create({
     data: { caseId: data.caseId, name: data.name.trim(), note: data.note?.trim() || null }
-  });
+  }));
 
   revalidatePath("/preservation");
   if (cs.matterId) await revalidateMatter(cs.matterId);
@@ -236,7 +237,7 @@ export async function addTarget(input: z.infer<typeof targetCreateSchema>) {
 }
 
 export async function updateTarget(input: z.infer<typeof targetUpdateSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const data = targetUpdateSchema.parse(input);
   const target = await prisma.preservationTarget.findUnique({
     where: { id: data.id },
@@ -249,13 +250,13 @@ export async function updateTarget(input: z.infer<typeof targetUpdateSchema>) {
   const patch: Prisma.PreservationTargetUpdateInput = {};
   if (data.name !== undefined) patch.name = data.name.trim();
   if (data.note !== undefined) patch.note = data.note?.trim() || null;
-  await prisma.preservationTarget.update({ where: { id: data.id }, data: patch });
+  await roleMutation(session.user, "matters.write", async roleDb => roleDb.preservationTarget.update({ where: { id: data.id }, data: patch }));
   revalidatePath("/preservation");
   return { ok: true };
 }
 
 export async function deleteTarget(id: string) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const target = await prisma.preservationTarget.findUnique({
     where: { id },
     include: { case: { select: { id: true, matterId: true, ownerId: true } } }
@@ -264,7 +265,7 @@ export async function deleteTarget(id: string) {
   await assertCanAccessPreservationCaseRecord(session.user.id, target.case);
   if (target.case.matterId) await assertMatterWritable(target.case.matterId);
 
-  await prisma.preservationTarget.delete({ where: { id } });
+  await roleMutation(session.user, "matters.write", async roleDb => roleDb.preservationTarget.delete({ where: { id } }));
   revalidatePath("/preservation");
   return { ok: true };
 }
@@ -272,7 +273,7 @@ export async function deleteTarget(id: string) {
 // ━━━━ Property CRUD ━━━━
 
 export async function addProperty(input: z.infer<typeof propertyCreateSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const data = propertyCreateSchema.parse(input);
   if (data.expiryDate <= data.startDate) throw new Error("到期日期必须晚于生效日期");
 
@@ -284,7 +285,7 @@ export async function addProperty(input: z.infer<typeof propertyCreateSchema>) {
   await assertCanAccessPreservationCaseRecord(session.user.id, target.case);
   if (target.case.matterId) await assertMatterWritable(target.case.matterId);
 
-  const created = await prisma.preservationProperty.create({
+  const created = await roleMutation(session.user, "matters.write", async roleDb => roleDb.preservationProperty.create({
     data: {
       targetId: data.targetId,
       propertyType: data.propertyType,
@@ -295,7 +296,7 @@ export async function addProperty(input: z.infer<typeof propertyCreateSchema>) {
       expiryDate: data.expiryDate,
       status: "ACTIVE"
     }
-  });
+  }));
 
   await audit({
     userId: session.user.id,
@@ -311,7 +312,7 @@ export async function addProperty(input: z.infer<typeof propertyCreateSchema>) {
 }
 
 export async function updateProperty(input: z.infer<typeof propertyUpdateSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const data = propertyUpdateSchema.parse(input);
   const { id, amount, propertyDetail, ...rest } = data;
   const property = await prisma.preservationProperty.findUnique({
@@ -326,14 +327,14 @@ export async function updateProperty(input: z.infer<typeof propertyUpdateSchema>
   if (amount !== undefined) patch.amount = amount != null ? new Prisma.Decimal(amount) : null;
   if (propertyDetail !== undefined) patch.propertyDetail = propertyDetail?.trim() || null;
 
-  await prisma.preservationProperty.update({ where: { id }, data: patch });
+  await roleMutation(session.user, "matters.write", async roleDb => roleDb.preservationProperty.update({ where: { id }, data: patch }));
 
   revalidatePath("/preservation");
   return { ok: true };
 }
 
 export async function renewProperty(input: z.infer<typeof propertyRenewSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const data = propertyRenewSchema.parse(input);
 
   const prop = await prisma.preservationProperty.findUnique({
@@ -348,8 +349,9 @@ export async function renewProperty(input: z.infer<typeof propertyRenewSchema>) 
     throw new Error("新到期日必须晚于原到期日");
   }
 
-  await prisma.$transaction([
-    prisma.preservationPropertyRenewal.create({
+  await prisma.$transaction(async db => {
+    await checkRoleMutation(db, session.user, "matters.write");
+    await db.preservationPropertyRenewal.create({
       data: {
         propertyId: data.propertyId,
         renewedAt: new Date(),
@@ -359,12 +361,12 @@ export async function renewProperty(input: z.infer<typeof propertyRenewSchema>) 
         note: data.note?.trim() || null,
         performedById: session.user.id
       }
-    }),
-    prisma.preservationProperty.update({
+    });
+    await db.preservationProperty.update({
       where: { id: data.propertyId },
       data: { expiryDate: data.newExpiryDate, status: "RENEWED" }
-    })
-  ]);
+    });
+  });
 
   revalidatePath("/preservation");
   if (prop.target.case.matterId) await revalidateMatter(prop.target.case.matterId);
@@ -372,7 +374,7 @@ export async function renewProperty(input: z.infer<typeof propertyRenewSchema>) 
 }
 
 export async function liftProperty(propertyId: string) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const prop = await prisma.preservationProperty.findUnique({
     where: { id: propertyId },
     include: { target: { include: { case: { select: { id: true, matterId: true, ownerId: true } } } } }
@@ -381,12 +383,12 @@ export async function liftProperty(propertyId: string) {
   await assertCanAccessPreservationCaseRecord(session.user.id, prop.target.case);
   if (prop.target.case.matterId) await assertMatterWritable(prop.target.case.matterId);
 
-  await prisma.preservationProperty.update({
+  await roleMutation(session.user, "matters.write", async roleDb => roleDb.preservationProperty.update({
     where: { id: propertyId },
     data: {
       status: "LIFTED",
     }
-  });
+  }));
 
   revalidatePath("/preservation");
   if (prop.target.case.matterId) await revalidateMatter(prop.target.case.matterId);
@@ -394,7 +396,7 @@ export async function liftProperty(propertyId: string) {
 }
 
 export async function deleteProperty(id: string) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const property = await prisma.preservationProperty.findUnique({
     where: { id },
     include: { target: { include: { case: { select: { id: true, matterId: true, ownerId: true } } } } }
@@ -403,14 +405,14 @@ export async function deleteProperty(id: string) {
   await assertCanAccessPreservationCaseRecord(session.user.id, property.target.case);
   if (property.target.case.matterId) await assertMatterWritable(property.target.case.matterId);
 
-  await prisma.preservationProperty.delete({ where: { id } });
+  await roleMutation(session.user, "matters.write", async roleDb => roleDb.preservationProperty.delete({ where: { id } }));
   revalidatePath("/preservation");
   return { ok: true };
 }
 
 // for dashboard alerts
 export async function listExpiringProperties(daysAhead = 60) {
-  const session = await requireSession();
+  const session = await requireSession("matters.read");
   const end = new Date();
   end.setDate(end.getDate() + daysAhead);
 

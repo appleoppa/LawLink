@@ -1,3 +1,5 @@
+import { buildIntakeConflictQueries } from "@/lib/approvals/intake-detail";
+import { canApproveItem } from "@/lib/approvals/service";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Users, FileText, AlertTriangle } from "lucide-react";
@@ -24,6 +26,19 @@ export default async function IntakeDetailPage({ params }: PageProps) {
   const { id } = await params;
   const [intake, session] = await Promise.all([getIntakeById(id), getSession()]);
   if (!intake) notFound();
+  if (intake.teamReadOnly) return <div className="space-y-4">
+    <Link href="/matters?tab=intake" className="inline-flex items-center gap-1 text-sm text-muted-foreground"><ArrowLeft className="h-4 w-4" />返回收案列表</Link>
+    <header className="ll-hero-surface space-y-2 p-5"><Badge variant="secondary">{intakeStatusLabel[intake.status]}</Badge><h1 className="text-xl font-semibold">{intake.title}</h1><p className="text-sm text-muted-foreground">团队查看 · 收案信息</p></header>
+    <section className="ll-surface space-y-3 p-5 text-sm">
+      <p>主办律师：{intake.ownerUser?.name ?? "尚未指定"}</p><p>客户：{intake.client?.name ?? "未填写"}</p>
+      <p>收案时间：{new Date(intake.receivedAt).toLocaleDateString("zh-CN")}</p>
+      <p>案由：{intake.cause?.name ?? intake.causeFreeText ?? "未填写"}</p>
+      <p>办理机构：{intake.firstAgency ?? "未填写"}</p>
+      <p>当事人：{intake.parties.map((party) => party.name).join("、") || "未填写"}</p>
+      {intake.description && <p className="whitespace-pre-wrap leading-relaxed">{intake.description}</p>}
+    </section>
+    <p className="text-xs text-muted-foreground">审批、修改、财务和材料下载按原有权限开放。</p>
+  </div>;
 
   const opposing = intake.parties.filter((p) => p.role === "OPPOSING_PARTY");
   const thirdParty = intake.parties.filter((p) => p.role === "THIRD_PARTY");
@@ -168,7 +183,7 @@ export default async function IntakeDetailPage({ params }: PageProps) {
           </div>
 
           {intake.status !== "CONVERTED" && intake.status !== "DECLINED" && (
-            <IntakeActions intakeId={intake.id} status={intake.status} />
+            <IntakeActions intakeId={intake.id} status={intake.status} canApprove={!!session?.user && await canApproveItem(session.user.id, "INTAKE_APPROVE", intake.id)} canResubmit={session?.user.id === intake.createdById || session?.user.id === intake.ownerUserId} />
           )}
         </div>
 
@@ -228,16 +243,7 @@ export default async function IntakeDetailPage({ params }: PageProps) {
       {/* 冲突检索 */}
       <ConflictSection
         intakeId={intake.id}
-        intakeClientName={intake.client?.name}
-        intakeClientIdNumber={intake.client?.idNumber ?? undefined}
-        opposingParties={opposing.map((p) => ({
-          name: p.name,
-          idNumber: p.idNumber ?? undefined
-        }))}
-        thirdParties={thirdParty.map((p) => ({
-          name: p.name,
-          idNumber: p.idNumber ?? undefined
-        }))}
+        queries={buildIntakeConflictQueries(intake)}
         latestCheck={latestCheck}
         canEditConclusion={intake.status !== "CONVERTED" && intake.status !== "DECLINED"}
       />

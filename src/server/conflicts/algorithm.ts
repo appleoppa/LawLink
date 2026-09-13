@@ -103,6 +103,10 @@ export type ConflictCheckResult = {
   idMatchedClients: IdMatchedClient[];
 };
 
+export function conflictHitKey(hit: { targetId: string; matchedField: string; matchedValue: string; matchedName: string }) {
+  return JSON.stringify([hit.targetId, hit.matchedField, hit.matchedValue, hit.matchedName]);
+}
+
 const SEV_ORDER = { LOW: 0, MEDIUM: 1, HIGH: 2, BLOCKING: 3 } as const;
 const SEV_BY_ORDER = ["LOW", "MEDIUM", "HIGH", "BLOCKING"] as const;
 
@@ -320,10 +324,10 @@ export async function runConflictCheck(queries: QueryItem[]): Promise<ConflictCh
     }
   }
 
-  // 去重：同一 (targetId,matchedField,matchedValue) 保留最高严重度
+  // 同案同查询下的不同命中名称必须保留；相同命中才合并最高严重度。
   const dedup = new Map<string, ConflictHitDraft>();
   for (const h of hits) {
-    const key = `${h.targetId}|${h.matchedField}|${h.matchedValue}`;
+    const key = conflictHitKey(h);
     const existing = dedup.get(key);
     if (!existing || SEV_ORDER[h.severity] > SEV_ORDER[existing.severity]) {
       dedup.set(key, h);

@@ -3,13 +3,14 @@
  *
  * 3 个 sheet：案件清单（本期新收）/ 收款明细（本期 RECEIVED）/ 律师产出（本期聚合）
  */
+import type { ReportAccess } from "@/lib/roles/report-scope";
 import ExcelJS from "exceljs";
 import { prisma } from "@/lib/prisma";
 import { matterCategoryLabel, matterStatusLabel } from "@/lib/enums";
 import type { ReportPeriod } from "./queries";
 import { getReportData } from "./queries";
 
-export async function buildReportWorkbook(period: ReportPeriod): Promise<Buffer> {
+export async function buildReportWorkbook(period: ReportPeriod, access: ReportAccess = { matters: {}, finance: {} }): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   wb.creator = "LawLink";
   wb.created = new Date();
@@ -18,7 +19,7 @@ export async function buildReportWorkbook(period: ReportPeriod): Promise<Buffer>
   const matters = await prisma.matter.findMany({
     where: {
       createdAt: { gte: period.start, lt: period.end },
-      deletedAt: null
+      deletedAt: null, AND: [access.matters]
     },
     select: {
       internalCode: true,
@@ -68,7 +69,8 @@ export async function buildReportWorkbook(period: ReportPeriod): Promise<Buffer>
   const receivedFees = await prisma.feeEntry.findMany({
     where: {
       type: "RECEIVED",
-      occurredAt: { gte: period.start, lt: period.end }
+      occurredAt: { gte: period.start, lt: period.end },
+      matter: { deletedAt: null, AND: [access.finance] }
     },
     select: {
       occurredAt: true,
@@ -116,7 +118,7 @@ export async function buildReportWorkbook(period: ReportPeriod): Promise<Buffer>
   sheetFees.getColumn("amount").numFmt = "#,##0.00";
 
   // Sheet 3: 律师产出（来自 getReportData 已聚合的数据，避免重算）
-  const data = await getReportData(period);
+  const data = await getReportData(period, access);
   const sheetLawyer = wb.addWorksheet("律师产出");
   sheetLawyer.columns = [
     { header: "律师", key: "name", width: 12 },

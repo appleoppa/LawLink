@@ -93,7 +93,7 @@ export async function recommendCause(input: {
   procedureType?: ProcedureType | null;
   situation: string;
 }): Promise<CauseRecommendation[]> {
-  await requireSession();
+  await requireSession("intakes.create");
 
   const situation = input.situation.trim();
   if (situation.length < 5) {

@@ -1,22 +1,17 @@
 import Link from "next/link";
-import { Settings, Users, Layers, ScrollText, KeyRound, Sparkles, Package, ListChecks, BellRing, Building2, FileUp } from "lucide-react";
-import { getSession } from "@/lib/auth/session";
+import { KeyRound, Settings } from "lucide-react";
 
 export default async function SettingsLayout({
   children
 }: {
   children: React.ReactNode;
 }) {
-  const session = await getSession();
-  const isAdmin = session?.user.role === "ADMIN";
-  const isManager = isAdmin || session?.user.role === "PRINCIPAL_LAWYER";
-
   return (
     <div className="space-y-5">
       <header>
         <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
           <Settings className="h-5 w-5 text-primary" />
-          设置
+          个人设置
         </h1>
       </header>
 
@@ -27,70 +22,8 @@ export default async function SettingsLayout({
               href="/settings/profile"
               icon={<KeyRound className="h-3.5 w-3.5" />}
             >
-              个人 / 改密码
+              个人资料与安全
             </SettingsNavLink>
-            {isManager && (
-              <>
-                <SettingsNavLink
-                  href="/settings/reminders"
-                  icon={<BellRing className="h-3.5 w-3.5" />}
-                >
-                  提醒维护
-                </SettingsNavLink>
-                <SettingsNavLink
-                  href="/settings/import"
-                  icon={<FileUp className="h-3.5 w-3.5" />}
-                >
-                  批量导入
-                </SettingsNavLink>
-              </>
-            )}
-            {isAdmin && (
-              <>
-                <SettingsNavLink
-                  href="/settings/firm-profile"
-                  icon={<Building2 className="h-3.5 w-3.5" />}
-                >
-                  律所信息
-                </SettingsNavLink>
-                <SettingsNavLink
-                  href="/settings/users"
-                  icon={<Users className="h-3.5 w-3.5" />}
-                >
-                  用户管理
-                </SettingsNavLink>
-                <SettingsNavLink
-                  href="/settings/templates"
-                  icon={<Layers className="h-3.5 w-3.5" />}
-                >
-                  阶段模板
-                </SettingsNavLink>
-                <SettingsNavLink
-                  href="/settings/custom-fields"
-                  icon={<ListChecks className="h-3.5 w-3.5" />}
-                >
-                  自定义字段
-                </SettingsNavLink>
-                <SettingsNavLink
-                  href="/settings/ai"
-                  icon={<Sparkles className="h-3.5 w-3.5" />}
-                >
-                  AI 接入
-                </SettingsNavLink>
-                <SettingsNavLink
-                  href="/settings/express"
-                  icon={<Package className="h-3.5 w-3.5" />}
-                >
-                  快递接入
-                </SettingsNavLink>
-                <SettingsNavLink
-                  href="/settings/audit"
-                  icon={<ScrollText className="h-3.5 w-3.5" />}
-                >
-                  审计日志
-                </SettingsNavLink>
-              </>
-            )}
           </ul>
         </nav>
 

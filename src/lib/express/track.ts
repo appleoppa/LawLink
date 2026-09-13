@@ -173,7 +173,7 @@ export async function trackExpress(input: {
 }): Promise<TrackResult> {
   const s = await getExpressSettings();
   if (!s.kdniao.configured && !s.kuaidi100.configured) {
-    throw new Error("请先到 设置 → 快递接入 配置 快递鸟 或 快递100");
+    throw new Error("请先到 管理后台 → 快递接入 配置 快递鸟 或 快递100");
   }
 
   const cnName =

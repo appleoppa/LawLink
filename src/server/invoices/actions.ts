@@ -1,5 +1,10 @@
 "use server";
 
+import { approvalTransaction, approvalAudit, assertApprovalItem, canExecuteInvoice, requireApprovalRoute } from "@/lib/approvals/service";
+
+
+import { scopeFor, type RoleGrant } from "@/lib/roles/catalog";
+import { matterFinanceVisibilityFilter } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
@@ -8,7 +13,7 @@ import { requireSession } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import { assertMatterWritable } from "@/lib/archive/guard";
 import {
-  assertCanAccessMatter,
+  assertCanAccessMatterFinance,
   assertCanAssociateMatter,
   assertCanLeadMatter,
   isManager,
@@ -23,11 +28,6 @@ import { revalidateMatter } from "@/server/matters/route";
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
 
-function requireFinanceOrApprover(role: string) {
-  if (role !== "FINANCE" && role !== "ADMIN" && role !== "PRINCIPAL_LAWYER") {
-    throw new Error("仅财务 / 管理员 / 主任律师可处理开票");
-  }
-}
 
 function canReviewInvoiceRequests(role: string) {
   return isManager(role) || role === "FINANCE";
@@ -35,8 +35,13 @@ function canReviewInvoiceRequests(role: string) {
 
 function invoiceRequestVisibilityWhere(
   userId: string,
-  role: string
+  role: string,
+  grants?: RoleGrant[]
 ): Prisma.InvoiceRequestWhereInput {
+  if (role === "CUSTOM") {
+    if (scopeFor({ role, rolePermissions: grants }, "finance.read") === "ALL") return {};
+    return { OR: [{ requestedById: userId }, { matter: { deletedAt: null, ...matterFinanceVisibilityFilter(userId, role, grants) } }] };
+  }
   if (canReviewInvoiceRequests(role)) return {};
   return {
     OR: [
@@ -60,13 +65,15 @@ const createSchema = z.object({
 });
 
 export async function createInvoiceRequest(input: z.infer<typeof createSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("approval");
   const data = createSchema.parse(input);
   await assertCanAssociateMatter(session.user.id, data.matterId);
   await assertMatterWritable(data.matterId);
 
   await assertCanLeadMatter(session.user.id, data.matterId, "仅案件主办/协办律师可申请开票");
 
+  const approvalMatter = data.matterId ? await prisma.matter.findUniqueOrThrow({ where: { id: data.matterId }, select: { category: true } }) : null;
+  await requireApprovalRoute({ action: "INVOICE_APPROVE", category: approvalMatter?.category ?? null, requesterId: session.user.id });
   const created = await prisma.invoiceRequest.create({
     data: {
       matterId: data.matterId,
@@ -92,7 +99,7 @@ export async function createInvoiceRequest(input: z.infer<typeof createSchema>) 
   });
 
   await notifyRoleApprovers({
-    roles: ["ADMIN", "PRINCIPAL_LAWYER", "FINANCE"],
+    roles: ["PRINCIPAL_LAWYER", "FINANCE"],
     excludeUserId: session.user.id,
     title: "新的发票审批待处理",
     content: `${session.user.name ?? "有用户"} 提交了开票申请：${
@@ -106,13 +113,14 @@ export async function createInvoiceRequest(input: z.infer<typeof createSchema>) 
 
   await revalidateMatter(data.matterId);
   revalidatePath("/finance");
+  revalidatePath("/approvals");
   return { ok: true, id: created.id };
 }
 
 export async function listInvoiceRequests(filter?: { status?: "PENDING" | "ISSUED" | "REJECTED" | "APPROVED" }) {
-  const session = await requireSession();
+  const session = await requireSession("approval");
   const where: Prisma.InvoiceRequestWhereInput = {
-    ...invoiceRequestVisibilityWhere(session.user.id, session.user.role),
+    ...invoiceRequestVisibilityWhere(session.user.id, session.user.role, session.user.rolePermissions),
     ...(filter?.status ? { status: filter.status } : {})
   };
   const rows = await prisma.invoiceRequest.findMany({
@@ -146,8 +154,8 @@ export async function listInvoiceRequests(filter?: { status?: "PENDING" | "ISSUE
 }
 
 export async function listInvoiceRequestsByMatter(matterId: string) {
-  const session = await requireSession();
-  await assertCanAccessMatter(session.user.id, session.user.role, matterId);
+  const session = await requireSession("approval");
+  await assertCanAccessMatterFinance(session.user.id, session.user.role, matterId, session.user.rolePermissions);
   const rows = await prisma.invoiceRequest.findMany({
     where: { matterId },
     orderBy: { requestedAt: "desc" },
@@ -170,25 +178,36 @@ export async function listInvoiceRequestsByMatter(matterId: string) {
  * contractScan 仅保留兼容旧数据流；申请依据应由申请人上传到 evidenceDocIds。
  */
 export async function approveInvoiceRequest(formData: FormData) {
-  const session = await requireSession();
-  requireFinanceOrApprover(session.user.role);
+  const session = await requireSession("approval");
 
   const requestId = formData.get("requestId");
   if (typeof requestId !== "string" || !requestId) throw new Error("requestId 缺失");
 
   const existing = await prisma.invoiceRequest.findUnique({
     where: { id: requestId },
-    select: { id: true, matterId: true, status: true }
+    select: { id: true, matterId: true, status: true, updatedAt: true, evidenceDocIds: true, contractScanId: true, invoiceFileId: true }
   });
   if (!existing) throw new Error("申请不存在");
   if (existing.status === "ISSUED") throw new Error("此申请已开具");
   if (existing.status === "REJECTED") throw new Error("此申请已驳回");
 
+  if (existing.status === "APPROVED") {
+    if (!await canExecuteInvoice(session.user.id, requestId)) throw new Error("没有此申请的开票执行权限");
+  } else {
+    await assertApprovalItem(session.user.id, "INVOICE_APPROVE", requestId);
+  }
   const processNote = formData.get("processNote");
   const contractScan = formData.get("contractScan");
   const invoiceFile = formData.get("invoiceFile");
   // v0.14: 真实发票号（财务批准/开具时回填）
   const invoiceNo = formData.get("invoiceNo");
+  const invoiceNoStr = typeof invoiceNo === "string" ? invoiceNo.trim() : "";
+  if (session.user.role === "CUSTOM" && existing.status === "PENDING" && invoiceFile instanceof File && invoiceFile.size > 0) throw new Error("请先完成审批，再由具备开票执行权限的人员上传发票");
+  if (invoiceFile instanceof File && invoiceFile.size > 0 && !invoiceNoStr) {
+    throw new Error("上传电子发票时必须填写发票号码");
+  }
+
+  if (existing.status === "APPROVED" && !(invoiceFile instanceof File && invoiceFile.size > 0)) throw new Error("申请已批准，请上传电子发票完成开具");
 
   let contractScanDocId: string | undefined;
   let invoiceFileDocId: string | undefined;
@@ -251,11 +270,12 @@ export async function approveInvoiceRequest(formData: FormData) {
       ? ("APPROVED" as const)
       : ("APPROVED" as const);
 
-  const invoiceNoStr =
-    typeof invoiceNo === "string" && invoiceNo.trim() ? invoiceNo.trim() : null;
-
-  await prisma.invoiceRequest.update({
-    where: { id: requestId },
+  await approvalTransaction(async tx => {
+    if (existing.status === "APPROVED") {
+      if (!await canExecuteInvoice(session.user.id, requestId, tx)) throw new Error("开票执行权限已失效");
+    } else await assertApprovalItem(session.user.id, "INVOICE_APPROVE", requestId, tx);
+  await tx.invoiceRequest.update({
+    where: { id: requestId, status: existing.status, updatedAt: existing.updatedAt },
     data: {
       status: finalStatus,
       processNote: typeof processNote === "string" ? processNote.trim() || null : null,
@@ -264,26 +284,20 @@ export async function approveInvoiceRequest(formData: FormData) {
       ...(contractScanDocId ? { contractScanId: contractScanDocId } : {}),
       ...(invoiceFileDocId ? { invoiceFileId: invoiceFileDocId } : {}),
       // v0.14: 开票完成（ISSUED）时回填真实发票号 + 时间
-      ...(finalStatus === "ISSUED" && invoiceNoStr
+      ...(finalStatus === "ISSUED"
         ? { invoiceNo: invoiceNoStr, issuedAt: new Date() }
         : {})
     }
   });
-
-  await audit({
-    userId: session.user.id,
-    action: finalStatus === "ISSUED" ? "INVOICE_ISSUED" : "INVOICE_APPROVED",
-    targetType: "InvoiceRequest",
-    targetId: requestId,
-    detail: {
-      matterId: existing.matterId,
-      hasContract: !!contractScanDocId,
-      hasInvoice: !!invoiceFileDocId
-    }
+    const attachmentIds = [...existing.evidenceDocIds, ...[contractScanDocId ?? existing.contractScanId, invoiceFileDocId ?? existing.invoiceFileId].filter((id): id is string => !!id)];
+    if (existing.status === "PENDING") await approvalAudit(tx, session.user.id, "INVOICE_APPROVED", requestId, { note: typeof processNote === "string" ? processNote.trim() : "", attachmentIds });
+    if (finalStatus === "ISSUED") await approvalAudit(tx, session.user.id, "INVOICE_ISSUED", requestId, { note: typeof processNote === "string" ? processNote.trim() : "", attachmentIds });
   });
+
 
   if (existing.matterId) await revalidateMatter(existing.matterId);
   revalidatePath("/finance");
+  revalidatePath("/approvals");
   return { ok: true, status: finalStatus };
 }
 
@@ -297,19 +311,20 @@ const rejectSchema = z.object({
 });
 
 export async function rejectInvoiceRequest(input: z.infer<typeof rejectSchema>) {
-  const session = await requireSession();
-  requireFinanceOrApprover(session.user.role);
+  const session = await requireSession("approval");
   const data = rejectSchema.parse(input);
 
   const existing = await prisma.invoiceRequest.findUnique({
     where: { id: data.requestId },
-    select: { matterId: true, status: true }
+    select: { matterId: true, status: true, evidenceDocIds: true, contractScanId: true, invoiceFileId: true }
   });
   if (!existing) throw new Error("申请不存在");
   if (existing.status === "ISSUED") throw new Error("已开具的申请不可驳回");
 
-  await prisma.invoiceRequest.update({
-    where: { id: data.requestId },
+  await approvalTransaction(async tx => {
+    await assertApprovalItem(session.user.id, "INVOICE_APPROVE", data.requestId, tx);
+  await tx.invoiceRequest.update({
+    where: { id: data.requestId, status: "PENDING" },
     data: {
       status: "REJECTED",
       processNote: data.reason,
@@ -317,26 +332,22 @@ export async function rejectInvoiceRequest(input: z.infer<typeof rejectSchema>) 
       processedAt: new Date()
     }
   });
-
-  await audit({
-    userId: session.user.id,
-    action: "INVOICE_REJECTED",
-    targetType: "InvoiceRequest",
-    targetId: data.requestId,
-    detail: { matterId: existing.matterId, reason: data.reason }
+    await approvalAudit(tx, session.user.id, "INVOICE_REJECTED", data.requestId, { reason: data.reason, attachmentIds: [...existing.evidenceDocIds, ...[existing.contractScanId, existing.invoiceFileId].filter((id): id is string => !!id)] });
   });
+
 
   if (existing.matterId) await revalidateMatter(existing.matterId);
   revalidatePath("/finance");
+  revalidatePath("/approvals");
   return { ok: true };
 }
 
 /** 财务页 KPI：本月已开票合计 */
 export async function getInvoiceStats() {
-  const session = await requireSession();
+  const session = await requireSession("approval");
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const visibilityWhere = invoiceRequestVisibilityWhere(session.user.id, session.user.role);
+  const visibilityWhere = invoiceRequestVisibilityWhere(session.user.id, session.user.role, session.user.rolePermissions);
   const issued = await prisma.invoiceRequest.aggregate({
     where: {
       ...visibilityWhere,

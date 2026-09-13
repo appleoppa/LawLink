@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
 import { listExternalContacts } from "@/server/external-contacts/actions";
 import { prisma } from "@/lib/prisma";
+import { withRoleNames } from "@/lib/roles/presentation";
 import { ContactsView } from "./_components/contacts-view";
 
 export default async function ContactsPage() {
@@ -22,10 +23,11 @@ export default async function ContactsPage() {
 
   return (
     <ContactsView
-      colleagues={colleagues}
+      colleagues={await withRoleNames(colleagues)}
       externalContacts={externalContacts}
       currentUserId={session.user.id}
       currentUserRole={session.user.role}
+      rolePermissions={session.user.rolePermissions}
     />
   );
 }

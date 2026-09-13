@@ -45,7 +45,7 @@ export function ReviewSummaryCard({
         <div className="mt-3 space-y-1.5">
           <div className="flex items-center gap-1 text-[10px] text-rose-700">
             <AlertTriangle className="h-3 w-3" />
-            最近 HIGH 风险（最多 3 条）
+            最近高风险（最多 3 条）
           </div>
           <ul className="space-y-1">
             {summary.topHighItems.map((it, i) => (

@@ -82,7 +82,7 @@ export function ReportsView({
   }
 
   function handlePushWeekly() {
-    if (!confirm("立刻给所有 ADMIN / 主任律师 / 律师推送本周报告？每人收到一条通知。")) return;
+    if (!confirm("立刻给所有主任律师和律师推送本周报告？每人收到一条通知。")) return;
     startPushing(async () => {
       try {
         const res = await pushWeeklyReportToAll();

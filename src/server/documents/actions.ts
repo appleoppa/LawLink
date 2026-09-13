@@ -1,4 +1,9 @@
 "use server";
+import { roleMutation } from "@/lib/roles/service";
+
+import { notifyRoleApprovers } from "@/server/notifications/approval";
+import { approvalTransaction, approvalAudit, assertApprovalItem, approvalContextFor, requireApprovalRoute } from "@/lib/approvals/service";
+
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -7,11 +12,12 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import { assertDocumentWritable } from "@/lib/archive/guard";
-import { matterVisibilityFilter, isManager, assertCanAccessMatter, assertCanLeadMatter } from "@/lib/permissions";
+import { matterVisibilityFilter, matterAssociationFilter, isManager, assertCanAccessMatter, assertCanLeadMatter } from "@/lib/permissions";
 import { storage } from "@/lib/storage";
 import { validateUploadedFile } from "@/lib/storage/file-validator";
 import { encryptBuffer, sha256 } from "@/lib/storage/crypto";
 import { revalidateMatter } from "@/server/matters/route";
+import { assertDocumentNotInPendingArchive } from "@/server/archive/verification";
 
 const documentCategorySchema = z.enum([
   "EVIDENCE",
@@ -29,7 +35,7 @@ const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
  * 加密分支：encrypted=true 时把文件用 AES-256-GCM 加密后写盘。
  */
 export async function uploadDocument(formData: FormData) {
-  const session = await requireSession();
+  const session = await requireSession("documents.write");
 
   const matterIdRaw = formData.get("matterId");
   const intakeIdRaw = formData.get("intakeId");
@@ -70,7 +76,7 @@ export async function uploadDocument(formData: FormData) {
       select: { id: true, status: true }
     });
     if (!matter) throw new Error("案件不存在");
-    await assertCanAccessMatter(session.user.id, session.user.role, matterId);
+    await assertCanAccessMatter(session.user.id, session.user.role, matterId, session.user.rolePermissions);
 
     if (folderId) {
       const folder = await prisma.documentFolder.findUnique({
@@ -143,7 +149,7 @@ export async function uploadDocument(formData: FormData) {
       ? archiveChecklistItemIdRaw
       : null;
 
-  const created = await prisma.document.create({
+  const created = await roleMutation(session.user, "documents.write", async roleDb => roleDb.document.create({
     data: {
       matterId,
       intakeId,
@@ -168,7 +174,7 @@ export async function uploadDocument(formData: FormData) {
       archiveChecklistItemId,
       uploadedById: session.user.id
     }
-  });
+  }));
 
   await audit({
     userId: session.user.id,
@@ -180,7 +186,7 @@ export async function uploadDocument(formData: FormData) {
 
   // v0.43 项4：写入案件动态时间线（仅案件文档）
   if (matterId) {
-    await prisma.timelineEvent.create({
+    await roleMutation(session.user, "documents.write", async roleDb => roleDb.timelineEvent.create({
       data: {
         matterId,
         eventType: "DOCUMENT_UPLOADED",
@@ -189,7 +195,7 @@ export async function uploadDocument(formData: FormData) {
         refType: "Document",
         refId: created.id
       }
-    });
+    }));
   }
 
   if (matterId) await revalidateMatter(matterId);
@@ -198,9 +204,10 @@ export async function uploadDocument(formData: FormData) {
 }
 
 export async function deleteDocument(id: string) {
-  const session = await requireSession();
+  const session = await requireSession("documents.write");
   const doc = await prisma.document.findUnique({ where: { id } });
   if (!doc) return { ok: false };
+  await assertDocumentNotInPendingArchive(id);
 
   if (doc.matterId) {
     await assertDocumentWritable(doc.matterId, { kind: "modify" });
@@ -209,17 +216,16 @@ export async function deleteDocument(id: string) {
     }
   } else if (
     doc.uploadedById !== session.user.id &&
-    session.user.role !== "ADMIN" &&
     session.user.role !== "PRINCIPAL_LAWYER"
   ) {
     throw new Error("只能删除自己上传的材料");
   }
 
   // 软删除（保留文件以备审计），如需物理删除走单独脚本
-  await prisma.document.update({
+  await roleMutation(session.user, "documents.write", async roleDb => roleDb.document.update({
     where: { id },
     data: { deletedAt: new Date() }
-  });
+  }));
 
   await audit({
     userId: session.user.id,
@@ -230,21 +236,23 @@ export async function deleteDocument(id: string) {
   });
 
   if (doc.matterId) await revalidateMatter(doc.matterId);
+  revalidatePath("/approvals");
   if (doc.intakeId) revalidatePath(`/intakes/${doc.intakeId}`);
   return { ok: true };
 }
 
 export async function hardDeleteDocument(id: string) {
-  const session = await requireSession();
-  if (session.user.role !== "ADMIN") {
-    throw new Error("仅 ADMIN 可彻底删除材料");
+  const session = await requireSession("documents.write");
+  if (session.user.role !== "PRINCIPAL_LAWYER") {
+    throw new Error("仅主任律师可彻底删除材料");
   }
   const doc = await prisma.document.findUnique({ where: { id } });
   if (!doc) return { ok: false };
+  await assertDocumentNotInPendingArchive(id);
   await assertDocumentWritable(doc.matterId, { kind: "modify" });
 
   await storage.deleteFile(doc.path);
-  await prisma.document.delete({ where: { id } });
+  await roleMutation(session.user, "documents.write", async roleDb => roleDb.document.delete({ where: { id } }));
 
   await audit({
     userId: session.user.id,
@@ -255,6 +263,7 @@ export async function hardDeleteDocument(id: string) {
   });
 
   if (doc.matterId) await revalidateMatter(doc.matterId);
+  revalidatePath("/approvals");
   if (doc.intakeId) revalidatePath(`/intakes/${doc.intakeId}`);
   return { ok: true };
 }
@@ -267,10 +276,10 @@ const docListQuerySchema = z.object({
 });
 
 export async function listAllDocuments(input: Partial<z.infer<typeof docListQuerySchema>> = {}) {
-  const session = await requireSession();
+  const session = await requireSession("documents.read");
   const query = docListQuerySchema.parse(input);
 
-  const visFilter = matterVisibilityFilter(session.user.id, session.user.role);
+  const visFilter = session.user.role === "FINANCE" ? matterAssociationFilter(session.user.id) : matterVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions);
   const where: Prisma.DocumentWhereInput = {
     deletedAt: null,
     matter: { deletedAt: null, ...visFilter },
@@ -300,19 +309,21 @@ export async function listAllDocuments(input: Partial<z.infer<typeof docListQuer
 // ============ v0.10: 文书审批流程 ============
 
 export async function submitDocumentForReview(id: string) {
-  const session = await requireSession();
+  const session = await requireSession("documents.write");
   const doc = await prisma.document.findUnique({ where: { id, deletedAt: null } });
   if (!doc) throw new Error("材料不存在");
   if (doc.matterId) {
-    await assertCanAccessMatter(session.user.id, session.user.role, doc.matterId);
+    await assertCanAccessMatter(session.user.id, session.user.role, doc.matterId, session.user.rolePermissions);
     await assertDocumentWritable(doc.matterId, { kind: "modify" });
   }
+  if (doc.uploadedById !== session.user.id) throw new Error("仅上传人可提交此材料审核");
+  await requireApprovalRoute(await approvalContextFor("DOCUMENT_APPROVE", id));
   if (doc.status !== "DRAFT") throw new Error("只有草稿状态的材料才能提交审核");
 
-  await prisma.document.update({
-    where: { id },
+  await roleMutation(session.user, "documents.write", async roleDb => roleDb.document.update({
+    where: { id, status: "DRAFT", updatedAt: doc.updatedAt },
     data: { status: "PENDING_REVIEW" },
-  });
+  }));
 
   await audit({
     userId: session.user.id,
@@ -322,82 +333,74 @@ export async function submitDocumentForReview(id: string) {
     detail: { matterId: doc.matterId, name: doc.name },
   });
 
+  await notifyRoleApprovers({ roles: ["PRINCIPAL_LAWYER"], excludeUserId: session.user.id, title: "新的文书待审批", content: doc.name, href: "/approvals", refType: "Document", refId: id });
   if (doc.matterId) await revalidateMatter(doc.matterId);
+  revalidatePath("/approvals");
   return { ok: true };
 }
 
-export async function approveDocument(id: string) {
-  const session = await requireSession();
-  if (!isManager(session.user.role)) {
-    throw new Error("仅管理员或主办律师可审批文书");
-  }
+export async function approveDocument(id: string, note?: string) {
+  const session = await requireSession("approval");
   const doc = await prisma.document.findUnique({ where: { id, deletedAt: null } });
   if (!doc) throw new Error("材料不存在");
   if (doc.status !== "PENDING_REVIEW") throw new Error("材料不在待审核状态");
 
-  await prisma.document.update({
-    where: { id },
+  await approvalTransaction(async tx => {
+    await assertApprovalItem(session.user.id, "DOCUMENT_APPROVE", id, tx);
+  await tx.document.update({
+    where: { id, status: "PENDING_REVIEW", updatedAt: doc.updatedAt },
     data: {
       status: "APPROVED",
       approvedById: session.user.id,
       approvedAt: new Date(),
     },
   });
-
-  await audit({
-    userId: session.user.id,
-    action: "DOCUMENT_APPROVE",
-    targetType: "Document",
-    targetId: id,
-    detail: { matterId: doc.matterId, name: doc.name },
+    await approvalAudit(tx, session.user.id, "DOCUMENT_APPROVE", id, { note: note?.trim().slice(0, 500) ?? "", attachmentIds: [id] });
   });
 
+
   if (doc.matterId) await revalidateMatter(doc.matterId);
+  revalidatePath("/approvals");
   return { ok: true };
 }
 
 export async function rejectDocument(id: string, reason?: string) {
-  const session = await requireSession();
-  if (!isManager(session.user.role)) {
-    throw new Error("仅管理员或主办律师可驳回文书");
-  }
+  const session = await requireSession("approval");
   const doc = await prisma.document.findUnique({ where: { id, deletedAt: null } });
   if (!doc) throw new Error("材料不存在");
   if (doc.status !== "PENDING_REVIEW") throw new Error("材料不在待审核状态");
 
-  await prisma.document.update({
-    where: { id },
+  await approvalTransaction(async tx => {
+    await assertApprovalItem(session.user.id, "DOCUMENT_APPROVE", id, tx);
+  await tx.document.update({
+    where: { id, status: "PENDING_REVIEW", updatedAt: doc.updatedAt },
     data: {
       status: "DRAFT",
       reviewedById: session.user.id,
       reviewedAt: new Date(),
     },
   });
-
-  await audit({
-    userId: session.user.id,
-    action: "DOCUMENT_REJECT",
-    targetType: "Document",
-    targetId: id,
-    detail: { matterId: doc.matterId, name: doc.name, reason },
+    await approvalAudit(tx, session.user.id, "DOCUMENT_REJECT", id, { reason: reason?.trim() ?? "", attachmentIds: [id] });
   });
 
+
   if (doc.matterId) await revalidateMatter(doc.matterId);
+  revalidatePath("/approvals");
   return { ok: true };
 }
 
 export async function fileDocument(id: string) {
-  const session = await requireSession();
+  const session = await requireSession("documents.write");
   const doc = await prisma.document.findUnique({ where: { id, deletedAt: null } });
   if (!doc) throw new Error("材料不存在");
   if (doc.matterId)
-    await assertCanAccessMatter(session.user.id, session.user.role, doc.matterId);
+    await assertCanAccessMatter(session.user.id, session.user.role, doc.matterId, session.user.rolePermissions);
   if (doc.status !== "APPROVED") throw new Error("只有已审批的材料才能归档");
 
-  await prisma.document.update({
+  await roleMutation(session.user, "documents.write", async roleDb => roleDb.document.update({
     where: { id },
     data: { status: "FILED" },
-  });
+  }));
 
   await audit({
     userId: session.user.id,
@@ -408,5 +411,6 @@ export async function fileDocument(id: string) {
   });
 
   if (doc.matterId) await revalidateMatter(doc.matterId);
+  revalidatePath("/approvals");
   return { ok: true };
 }

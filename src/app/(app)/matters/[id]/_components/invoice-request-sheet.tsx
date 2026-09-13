@@ -1,5 +1,7 @@
 "use client";
 
+import { FormDialogContent as DialogContent } from "@/components/patterns/form-dialog";
+
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Loader2, Paperclip, FileText, X, Receipt } from "lucide-react";
@@ -9,7 +11,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
-  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -210,7 +211,7 @@ export function InvoiceRequestSheet({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[88vh] w-[92vw] max-w-xl flex-col gap-0 p-0">
+      <DialogContent className="max-w-xl">
         <DialogHeader className="border-b border-border px-5 py-3">
           <DialogTitle className="flex items-center gap-2">
             <Receipt className="h-4 w-4 text-primary" />

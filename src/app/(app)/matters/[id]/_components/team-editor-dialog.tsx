@@ -1,5 +1,7 @@
 "use client";
 
+import { ColleaguePicker } from "@/components/matters/colleague-picker";
+
 /**
  * v0.27: 由"编辑团队"扩展为"编辑案件"。
  *
@@ -63,7 +65,7 @@ import {
   isNationalAgency
 } from "@/lib/china-regions";
 
-type UserOption = { id: string; name: string; role: string };
+type UserOption = { id: string; name: string; role: string; roleName?: string; isTeammate?: boolean; active?: boolean };
 
 type MatterMeta = {
   intakeDate: Date | null;
@@ -1215,9 +1217,9 @@ export function TeamEditorDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {userOptions.map((u) => (
+                    {userOptions.filter((u) => u.active !== false || u.id === ownerId).map((u) => (
                       <SelectItem key={u.id} value={u.id}>
-                        {u.name} · {userRoleLabel[u.role as keyof typeof userRoleLabel] ?? u.role}
+                        {u.name} · {u.roleName ?? userRoleLabel[u.role as keyof typeof userRoleLabel] ?? u.role}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1226,29 +1228,14 @@ export function TeamEditorDialog({
 
               <div className="space-y-1.5">
                 <Label className={formLabelClass}>协办律师（可多选）</Label>
-                <div className="grid grid-cols-1 gap-2 rounded-md border border-[#D9E0EA] bg-white p-2.5 sm:grid-cols-2">
-                  {userOptions
-                    .filter((u) => u.id !== ownerId)
-                    .map((u) => (
-                      <label
-                        key={u.id}
-                        className="flex min-h-8 cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] transition-colors hover:bg-muted hover:text-foreground"
-                      >
-                        <Checkbox
-                          checked={coLeads.includes(u.id)}
-                          onCheckedChange={() => toggle(coLeads, setCoLeads, u.id)}
-                        />
-                        <span>{u.name}</span>
-                      </label>
-                    ))}
-                </div>
+                <ColleaguePicker people={userOptions.filter((u) => u.id !== ownerId)} selected={coLeads} onChange={(ids) => { setCoLeads(ids); setAssistants((current) => current.filter((id) => !ids.includes(id))); }} />
               </div>
 
               <div className="space-y-1.5">
                 <Label className={formLabelClass}>助理（可多选）</Label>
                 <div className="grid grid-cols-1 gap-2 rounded-md border border-[#D9E0EA] bg-white p-2.5 sm:grid-cols-2">
                   {userOptions
-                    .filter((u) => u.id !== ownerId && !coLeads.includes(u.id))
+                    .filter((u) => u.id !== ownerId && !coLeads.includes(u.id) && (u.active !== false || assistants.includes(u.id)))
                     .map((u) => (
                       <label
                         key={u.id}

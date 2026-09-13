@@ -2,7 +2,7 @@
  * LawLink 初始 seed
  *
  * 包含：
- *   1. 默认 ADMIN 账号（从 SEED_ADMIN_* 环境变量读取）
+ *   1. 默认系统超级管理员账号（从 SEED_ADMIN_* 环境变量读取，业务岗位默认为经办律师）
  *   2. 案由库样本：民事 / 刑事 / 行政 各约 30 条最常用案由
  *      （V1 用样本即可工作；完整案由库 Stage 3 通过元典 MCP 抓取）
  *   3. 阶段模板、系统设置、文书模板和用章配置
@@ -13,7 +13,7 @@
  * 幂等：所有 upsert 操作，可重复运行不会报错或重复插入。
  */
 
-import { MatterCategory, PrismaClient, UserRole } from "@prisma/client";
+import { MatterCategory, PrismaClient, SystemRole, UserRole } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { civilCauses } from "./seeds/causes-civil";
 import { criminalCauses } from "./seeds/causes-criminal";
@@ -43,15 +43,16 @@ async function seedAdmin() {
     create: {
       email,
       name,
-      role: UserRole.ADMIN,
+      role: UserRole.LAWYER,
+      systemRole: SystemRole.SUPER_ADMIN,
       passwordHash,
       active: true
     }
   });
 
-  console.log(`✓ ADMIN 已就绪：${admin.email}`);
+  console.log(`✓ 系统超级管理员已就绪：${admin.email}`);
   if (password === "ChangeMe!2026") {
-    console.warn("  ⚠ 当前使用默认密码 ChangeMe!2026，请尽快在 /settings 修改");
+    console.warn("  ⚠ 当前使用默认密码 ChangeMe!2026，请尽快在 /settings/profile 修改");
   }
 }
 

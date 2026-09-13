@@ -1,8 +1,9 @@
 "use server";
 
+import { customMatterFilter } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
-import { matterVisibilityFilter, intakeVisibilityFilter } from "@/lib/permissions";
+import { matterFinanceVisibilityFilter, matterReadVisibilityFilter, intakeReadVisibilityFilter } from "@/lib/permissions";
 import { matterCategoryColor, matterCategoryLabel, matterCategoryShort } from "@/lib/enums";
 import { matterHref } from "@/lib/matters/route";
 
@@ -50,12 +51,13 @@ export type HeroData = {
 // ============ KPIs ============
 
 export async function getDashboardKpis(): Promise<KpiItem[]> {
-  const session = await requireSession();
+  const session = await requireSession("personal");
   const userId = session.user.id;
   const role = session.user.role;
 
-  const mVis = matterVisibilityFilter(userId, role);
-  const iVis = intakeVisibilityFilter(userId, role);
+  const mVis = matterReadVisibilityFilter(userId, role, session.user.rolePermissions);
+  const iVis = intakeReadVisibilityFilter(userId, role, session.user.rolePermissions);
+  const sVis = role === "CUSTOM" ? { AND: [mVis, customMatterFilter(userId, session.user.rolePermissions, "schedule.read", true)] } : mVis;
 
   const now = new Date();
   const in7d = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -74,7 +76,7 @@ export async function getDashboardKpis(): Promise<KpiItem[]> {
         completed: false,
         procedure: {
           engagement: "ENGAGED",
-          matter: { deletedAt: null, ...mVis }
+          matter: { deletedAt: null, ...sVis }
         }
       }
     }),
@@ -82,7 +84,7 @@ export async function getDashboardKpis(): Promise<KpiItem[]> {
       where: {
         type: "RECEIVED",
         occurredAt: { gte: monthStart },
-        matter: { deletedAt: null, ...mVis }
+        matter: { deletedAt: null, ...matterFinanceVisibilityFilter(userId, role, session.user.rolePermissions) }
       },
       _sum: { amount: true }
     })
@@ -130,8 +132,8 @@ export async function getDashboardKpis(): Promise<KpiItem[]> {
 // ============ Revenue Trend ============
 
 export async function getDashboardRevenueTrend(months = 6) {
-  const session = await requireSession();
-  const visFilter = matterVisibilityFilter(session.user.id, session.user.role);
+  const session = await requireSession("personal");
+  const visFilter = matterFinanceVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions);
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
 
@@ -175,8 +177,8 @@ export async function getDashboardRevenueTrend(months = 6) {
 // ============ Category Distribution ============
 
 export async function getDashboardCategoryDistribution() {
-  const session = await requireSession();
-  const visFilter = matterVisibilityFilter(session.user.id, session.user.role);
+  const session = await requireSession("personal");
+  const visFilter = matterReadVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions);
 
   const groups = await prisma.matter.groupBy({
     by: ["category"],
@@ -206,8 +208,10 @@ export async function getDashboardCategoryDistribution() {
 // ============ Schedule (past 2 days to next 15 days：开庭 + 期限) ============
 
 export async function getDashboardSchedule(): Promise<ScheduleItem[]> {
-  const session = await requireSession();
-  const visFilter = matterVisibilityFilter(session.user.id, session.user.role);
+  const session = await requireSession("personal");
+  const visFilter = matterReadVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions);
+
+  if (session.user.role === "CUSTOM") visFilter.AND = [matterReadVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions), customMatterFilter(session.user.id, session.user.rolePermissions, "schedule.read", true)];
 
   const now = new Date();
   const from = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
@@ -314,10 +318,12 @@ export async function getDashboardSchedule(): Promise<ScheduleItem[]> {
 // ============ Hero Data ============
 
 export async function getDashboardHeroData(): Promise<HeroData> {
-  const session = await requireSession();
+  const session = await requireSession("personal");
   const userId = session.user.id;
   const role = session.user.role;
-  const visFilter = matterVisibilityFilter(userId, role);
+  const visFilter = matterReadVisibilityFilter(userId, role, session.user.rolePermissions);
+
+  if (session.user.role === "CUSTOM") visFilter.AND = [matterReadVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions), customMatterFilter(session.user.id, session.user.rolePermissions, "schedule.read", true)];
 
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());

@@ -1,3 +1,6 @@
+import { hasCustomPermission } from "@/lib/roles/catalog";
+import { hasMatterBusinessAccess } from "@/lib/permissions";
+import { TeamMatterOverview } from "./_components/team-matter-overview";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -34,6 +37,12 @@ export default async function MatterDetailPage({ params }: PageProps) {
 
   if (param !== route.internalCode) redirect(matterHref(route));
 
+  if (session?.user && !await hasMatterBusinessAccess(session.user.id, session.user.role, matterRaw.id, session.user.rolePermissions)) {
+    return <TeamMatterOverview matter={matterRaw} />;
+  }
+
+  if (!session?.user) redirect("/login");
+  const allowed = (key: import("@/lib/roles/catalog").PermissionKey) => hasCustomPermission(session.user, key);
   const matter = {
     ...matterRaw,
     claimAmount: nullableDecimalToNumber(matterRaw.claimAmount)
@@ -52,14 +61,10 @@ export default async function MatterDetailPage({ params }: PageProps) {
     customFieldDefs,
     preservationCases
   ] = await Promise.all([
-    getMatterFinance(matter.id),
-    prisma.user.findMany({
-      where: { active: true },
-      select: { id: true, name: true, role: true },
-      orderBy: { name: "asc" }
-    }),
+    allowed("finance.read") ? getMatterFinance(matter.id) : Promise.resolve({ billings: [], entries: [], plans: [], stats: { contractAmount: 0, receivable: 0, received: 0, refund: 0, cost: 0, commission: 0, invoiced: 0 } }),
+    listActiveColleagues(),
     prisma.document.findMany({
-      where: { matterId: matter.id, deletedAt: null },
+      where: { matterId: matter.id, deletedAt: null, ...(!allowed("documents.read") ? { id: { in: [] } } : {}) },
       orderBy: { createdAt: "desc" },
       include: {
         uploadedBy: { select: { id: true, name: true } },
@@ -68,7 +73,7 @@ export default async function MatterDetailPage({ params }: PageProps) {
     }),
     // v0.8: 卷宗
     prisma.documentFolder.findMany({
-      where: { matterId: matter.id },
+      where: { matterId: matter.id, ...(!allowed("documents.read") ? { id: { in: [] } } : {}) },
       orderBy: [{ orderIndex: "asc" }, { createdAt: "asc" }],
       select: { id: true, name: true, orderIndex: true, isDefault: true }
     }),
@@ -95,7 +100,7 @@ export default async function MatterDetailPage({ params }: PageProps) {
     listActiveColleagues(),
     // v0.11: 案件下用印申请关联的合同附件（待盖章稿 + 盖章后扫描件）
     prisma.sealRequest.findMany({
-      where: { matterId: matter.id },
+      where: { matterId: matter.id, ...(session.user.role === "CUSTOM" ? { requestedById: session.user.id } : {}) },
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
@@ -109,7 +114,7 @@ export default async function MatterDetailPage({ params }: PageProps) {
     }),
     // v0.11: 案件下快递追踪
     prisma.expressTracking.findMany({
-      where: { matterId: matter.id },
+      where: { matterId: matter.id, ...(!allowed("express.manage") ? { id: { in: [] } } : {}) },
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
@@ -123,7 +128,7 @@ export default async function MatterDetailPage({ params }: PageProps) {
       }
     }),
     // v0.18: 最新归档申请状态（用于显示"归档中"/"已驳回" banner）
-    getLatestArchiveRecord(matter.id),
+    allowed("archive.read") ? getLatestArchiveRecord(matter.id) : Promise.resolve(null),
     // v0.28: 案件自定义字段定义（启用项）
     prisma.customFieldDef.findMany({
       where: { entityType: "MATTER", enabled: true },
@@ -155,22 +160,22 @@ export default async function MatterDetailPage({ params }: PageProps) {
   const finance = financeRaw;
 
   // v0.22: 本案 AI 审查总览（聚合 ReviewRecord）
-  const reviewSummary = await getMatterReviewSummary(matter.id);
+  const reviewSummary = allowed("documents.read") ? await getMatterReviewSummary(matter.id) : null;
   const currentMatterMember = session?.user.id
     ? matter.members.find((member) => member.userId === session.user.id)
     : null;
   const canAssociateThisMatter = Boolean(
-    session?.user.id &&
+    allowed("matters.write") && session?.user.id &&
       (matter.ownerId === session.user.id ||
         currentMatterMember)
   );
   const canLeadThisMatter = Boolean(
-    session?.user.id &&
+    allowed("matters.write") && session?.user.id &&
       (matter.ownerId === session.user.id ||
         currentMatterMember?.role === "LEAD" ||
         currentMatterMember?.role === "CO_LEAD")
   );
-  const canOwnThisMatter = Boolean(session?.user.id && matter.ownerId === session.user.id);
+  const canOwnThisMatter = Boolean(allowed("matters.write") && session?.user.id && matter.ownerId === session.user.id);
 
   // v0.8: 卷宗对应文档（含 templateId 标识）
   const folderDocuments = documents.map((d) => ({
@@ -193,12 +198,15 @@ export default async function MatterDetailPage({ params }: PageProps) {
         返回案件列表
       </Link>
 
-      <ReviewSummaryCard summary={reviewSummary} matterId={matter.id} />
+      {reviewSummary && <ReviewSummaryCard summary={reviewSummary} matterId={matter.id} />}
 
       <MatterDetailTabs
         matter={matter}
         finance={finance}
-        userOptions={userOptions}
+        userOptions={[
+          ...userOptions,
+          ...matter.members.filter((m) => !userOptions.some((u) => u.id === m.userId)).map((m) => ({ ...m.user, active: false, isTeammate: false }))
+        ]}
         documents={documents}
         folders={folders}
         folderDocuments={folderDocuments}
@@ -207,6 +215,7 @@ export default async function MatterDetailPage({ params }: PageProps) {
           variables: Array.isArray(t.variables) ? (t.variables as string[]) : []
         }))}
         colleagues={allColleagues.map((c) => ({ id: c.id, name: c.name }))}
+        rolePermissions={session.user.rolePermissions}
         currentUserRole={session?.user.role ?? null}
         canAssociateThisMatter={canAssociateThisMatter}
         canLeadThisMatter={canLeadThisMatter}

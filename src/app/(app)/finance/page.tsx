@@ -53,7 +53,6 @@ export default async function FinancePage() {
       invoiceRequests={invoiceRequests}
       canApproveInvoice={
         session!.user.role === "FINANCE" ||
-        session!.user.role === "ADMIN" ||
         session!.user.role === "PRINCIPAL_LAWYER"
       }
     />

@@ -8,7 +8,7 @@ import { getYuandianSettings, type ResolvedYuandianSettings } from "./settings";
 
 export class YuandianNotConfiguredError extends Error {
   constructor() {
-    super("元典 API 未配置，请先到 设置 → AI 接入 填写元典 API key");
+    super("元典 API 未配置，请先到 管理后台 → AI 与元典 填写元典 API key");
     this.name = "YuandianNotConfiguredError";
   }
 }

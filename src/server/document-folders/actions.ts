@@ -1,4 +1,5 @@
 "use server";
+import { roleMutation, checkRoleMutation } from "@/lib/roles/service";
 
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
@@ -22,8 +23,8 @@ async function requireFolderEditor(matterId: string, session: { user: { id: stri
 }
 
 export async function listFoldersByMatter(matterId: string) {
-  const session = await requireSession();
-  await assertCanAccessMatter(session.user.id, session.user.role, matterId);
+  const session = await requireSession("documents.read");
+  await assertCanAccessMatter(session.user.id, session.user.role, matterId, session.user.rolePermissions);
   return prisma.documentFolder.findMany({
     where: { matterId },
     orderBy: [{ orderIndex: "asc" }, { createdAt: "asc" }],
@@ -34,7 +35,7 @@ export async function listFoldersByMatter(matterId: string) {
 }
 
 export async function createFolder(input: z.infer<typeof folderCreateSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("documents.write");
   const data = folderCreateSchema.parse(input);
   await requireFolderEditor(data.matterId, session);
   await assertMatterWritable(data.matterId);
@@ -49,14 +50,14 @@ export async function createFolder(input: z.infer<typeof folderCreateSchema>) {
 
   let created;
   try {
-    created = await prisma.documentFolder.create({
+    created = await roleMutation(session.user, "documents.write", async roleDb => roleDb.documentFolder.create({
       data: {
         matterId: data.matterId,
         name: data.name.trim(),
         orderIndex,
         isDefault: false
       }
-    });
+    }));
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       throw new Error(`已有同名卷宗「${data.name.trim()}」`);
@@ -77,7 +78,7 @@ export async function createFolder(input: z.infer<typeof folderCreateSchema>) {
 }
 
 export async function renameFolder(input: z.infer<typeof folderRenameSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("documents.write");
   const data = folderRenameSchema.parse(input);
 
   const folder = await prisma.documentFolder.findUnique({
@@ -89,10 +90,10 @@ export async function renameFolder(input: z.infer<typeof folderRenameSchema>) {
   await assertMatterWritable(folder.matterId);
 
   try {
-    await prisma.documentFolder.update({
+    await roleMutation(session.user, "documents.write", async roleDb => roleDb.documentFolder.update({
       where: { id: data.id },
       data: { name: data.name.trim() }
-    });
+    }));
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       throw new Error(`已有同名卷宗「${data.name.trim()}」`);
@@ -113,7 +114,7 @@ export async function renameFolder(input: z.infer<typeof folderRenameSchema>) {
 }
 
 export async function deleteFolder(input: z.infer<typeof folderDeleteSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("documents.write");
   const data = folderDeleteSchema.parse(input);
 
   const folder = await prisma.documentFolder.findUnique({
@@ -126,13 +127,14 @@ export async function deleteFolder(input: z.infer<typeof folderDeleteSchema>) {
   await assertMatterWritable(folder.matterId);
 
   // 卷宗内的文档不删，移到"散件"（folderId = null）
-  await prisma.$transaction([
-    prisma.document.updateMany({
+  await prisma.$transaction(async db => {
+    await checkRoleMutation(db, session.user, "documents.write");
+    await db.document.updateMany({
       where: { folderId: data.id },
       data: { folderId: null }
-    }),
-    prisma.documentFolder.delete({ where: { id: data.id } })
-  ]);
+    });
+    await db.documentFolder.delete({ where: { id: data.id } });
+  });
 
   await audit({
     userId: session.user.id,
@@ -147,26 +149,26 @@ export async function deleteFolder(input: z.infer<typeof folderDeleteSchema>) {
 }
 
 export async function reorderFolders(input: z.infer<typeof folderReorderSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("documents.write");
   const data = folderReorderSchema.parse(input);
   await requireFolderEditor(data.matterId, session);
   await assertMatterWritable(data.matterId);
 
-  await prisma.$transaction(
-    data.orderedIds.map((id, i) =>
-      prisma.documentFolder.update({
-        where: { id },
-        data: { orderIndex: i }
-      })
-    )
-  );
+  await prisma.$transaction(async db => {
+    await checkRoleMutation(db, session.user, "documents.write");
+    for (const [i, id] of data.orderedIds.entries()) {
+      const folder = await db.documentFolder.findFirst({ where: { id, matterId: data.matterId }, select: { id: true } });
+      if (!folder) throw new Error("卷宗不存在或不属于此案件");
+      await db.documentFolder.update({ where: { id }, data: { orderIndex: i } });
+    }
+  });
 
   await revalidateMatter(data.matterId);
   return { ok: true };
 }
 
 export async function moveDocumentToFolder(input: z.infer<typeof moveDocumentToFolderSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("documents.write");
   const data = moveDocumentToFolderSchema.parse(input);
 
   const doc = await prisma.document.findUnique({
@@ -188,10 +190,10 @@ export async function moveDocumentToFolder(input: z.infer<typeof moveDocumentToF
   await requireFolderEditor(doc.matterId, session);
   await assertMatterWritable(doc.matterId);
 
-  await prisma.document.update({
+  await roleMutation(session.user, "documents.write", async roleDb => roleDb.document.update({
     where: { id: data.documentId },
     data: { folderId: data.folderId }
-  });
+  }));
 
   await audit({
     userId: session.user.id,

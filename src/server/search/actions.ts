@@ -1,11 +1,13 @@
 "use server";
 
+import { hasCustomPermission } from "@/lib/roles/catalog";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import {
   matterVisibilityFilter,
+  matterReadVisibilityFilter,
+  intakeReadVisibilityFilter,
   clientVisibilityFilter,
-  intakeVisibilityFilter
 } from "@/lib/permissions";
 import { matterHref } from "@/lib/matters/route";
 
@@ -25,7 +27,7 @@ export interface GlobalSearchResult {
 }
 
 export async function globalSearch(query: string): Promise<GlobalSearchResult> {
-  const session = await requireSession();
+  const session = await requireSession("personal");
   if (!query || query.trim().length < 1) {
     return { matters: [], clients: [], intakes: [], documents: [] };
   }
@@ -33,9 +35,9 @@ export async function globalSearch(query: string): Promise<GlobalSearchResult> {
   const q = query.trim();
   const userId = session.user.id;
   const role = session.user.role;
-  const mVis = matterVisibilityFilter(userId, role);
-  const cVis = clientVisibilityFilter(userId, role);
-  const iVis = intakeVisibilityFilter(userId, role);
+  const mVis = matterReadVisibilityFilter(userId, role, session.user.rolePermissions);
+  const cVis = clientVisibilityFilter(userId, role, session.user.rolePermissions);
+  const iVis = intakeReadVisibilityFilter(userId, role, session.user.rolePermissions);
   const limit = 5;
 
   const [matters, clients, intakes, documents] = await Promise.all([
@@ -50,7 +52,7 @@ export async function globalSearch(query: string): Promise<GlobalSearchResult> {
       orderBy: { updatedAt: "desc" },
     }),
     prisma.client.findMany({
-      where: { deletedAt: null, ...cVis, OR: [
+      where: { deletedAt: null, AND: [cVis], OR: [
         { name: { contains: q, mode: "insensitive" } },
         { idNumber: { contains: q } },
         { phone: { contains: q } },
@@ -75,7 +77,8 @@ export async function globalSearch(query: string): Promise<GlobalSearchResult> {
     prisma.document.findMany({
       where: {
         deletedAt: null,
-        matter: { deletedAt: null, ...mVis },
+        ...(!hasCustomPermission(session.user, "documents.read") ? { id: { in: [] } } : {}),
+        matter: { deletedAt: null, ...matterVisibilityFilter(userId, role, session.user.rolePermissions) },
         OR: [
           { name: { contains: q, mode: "insensitive" } },
           { tags: { has: q } },

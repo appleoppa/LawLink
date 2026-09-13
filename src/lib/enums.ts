@@ -14,8 +14,29 @@ import type {
   FeeType,
   InvoiceRequestStatus,
   PartyType,
-  BarFilingType
+  BarFilingType,
+  ConflictConclusion,
+  DeadlineCategory
 } from "@prisma/client";
+
+export const conflictConclusionLabel: Record<ConflictConclusion, string> = {
+  PENDING: "待结论",
+  SAME_SUBJECT: "有冲突",
+  DIFFERENT: "可承接",
+  NEED_INFO: "信息不足"
+};
+
+export const deadlineCategoryLabel: Record<DeadlineCategory, string> = {
+  LIMITATION: "诉讼时效",
+  EVIDENCE: "举证期限",
+  APPEAL: "上诉期",
+  PERFORMANCE: "履行期",
+  RESPONSE: "答辩期",
+  ENFORCEMENT: "执行申请",
+  ARBITRATION_SET_ASIDE: "撤销仲裁期",
+  PRESERVATION: "保全期限",
+  CUSTOM: "其他"
+};
 
 export const clientTypeLabel: Record<ClientType, string> = {
   INDIVIDUAL: "自然人",
@@ -168,7 +189,7 @@ export const intakeStatusLabel: Record<IntakeStatus, string> = {
 };
 
 export const userRoleLabel: Record<UserRole, string> = {
-  ADMIN: "系统管理员",
+  CUSTOM: "自定义角色",
   PRINCIPAL_LAWYER: "主办律师",
   LAWYER: "经办律师",
   ASSISTANT: "助理",

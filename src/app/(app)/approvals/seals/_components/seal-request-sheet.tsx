@@ -1,14 +1,16 @@
 "use client";
 
+import { FormDialogContent as DialogContent, FormDialogBody, FormSection } from "@/components/patterns/form-dialog";
+
 import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { FileText, Loader2, Paperclip, Link2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
-  DialogContent,
   DialogFooter,
   DialogHeader,
+  DialogDescription,
   DialogTitle
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -17,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioChips } from "@/components/ui/radio-chips";
+import { listActiveSealPurposes } from "@/server/approval-permissions/actions";
 import { createSealRequest } from "@/server/seals/actions";
 import {
   type SealTypeConfigRow,
@@ -37,18 +40,23 @@ export function SealRequestSheet({
   onOpenChange,
   configs,
   matters,
-  preset
+  preset,
+  onSubmitted
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   configs: SealTypeConfigRow[];
   matters: MatterOption[];
+  onSubmitted?: (id: string) => void;
   preset: {
     draftDocId?: string;
     matterId?: string;
     documentTitle?: string;
   } | null;
 }) {
+  const [purposeConfigId, setPurposeConfigId] = useState("");
+  const [purposes, setPurposes] = useState<Awaited<ReturnType<typeof listActiveSealPurposes>>>([]);
+  useEffect(() => { if (open) listActiveSealPurposes().then(setPurposes).catch(() => toast.error("无法读取用章事项，请重新打开申请")); }, [open]);
   const [sealType, setSealType] = useState<string>("");
   const [matterId, setMatterId] = useState<string>("");
   const [purposePreset, setPurposePreset] = useState<PurposePreset | "">("");
@@ -72,6 +80,7 @@ export function SealRequestSheet({
 
   const reset = () => {
     setSealType("");
+    setPurposeConfigId("");
     setMatterId("");
     setPurposePreset("");
     setPurposeOther("");
@@ -124,6 +133,7 @@ export function SealRequestSheet({
 
     const fd = new FormData();
     fd.set("sealType", sealType);
+    if (purposeConfigId) fd.set("purposeConfigId", purposeConfigId);
     if (matterId) fd.set("matterId", matterId);
     fd.set("purpose", resolvedPurpose);
     fd.set("documentTitle", documentTitle.trim());
@@ -147,7 +157,7 @@ export function SealRequestSheet({
         toast.success(`已提交 ${res.code}${alsoLegalRep && sealType !== "LEGAL_REP_SEAL" ? "（含法人章配套申请）" : ""}`);
         reset();
         onOpenChange(false);
-        router.refresh();
+        if (onSubmitted) onSubmitted(res.id); else router.refresh();
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "提交失败");
       }
@@ -156,22 +166,26 @@ export function SealRequestSheet({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[88vh] w-[92vw] max-w-3xl overflow-y-auto">
+      <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>新建用章申请</DialogTitle>
+          <DialogDescription>填写用印事项并核对待盖章文件，提交后可在审批工作台跟进。</DialogDescription>
         </DialogHeader>
+        <FormDialogBody>
 
-        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="space-y-6">
+        <FormSection title="用章事项" description="选择印章、关联案件与用印事由">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {/* 联动提示 */}
           {hasExisting && (
             <div
               className="ll-surface flex items-start gap-2 rounded p-2.5 text-[12px] md:col-span-2"
-              style={{ background: "rgb(96 165 250 / 0.08)" }}
+
             >
               <Link2 className="mt-0.5 h-3.5 w-3.5 text-primary" />
               <div>
                 <p className="text-foreground">已关联卷宗文档作为待盖章稿</p>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                <p className="mt-0.5 text-xs text-muted-foreground">
                   {preset?.documentTitle}
                 </p>
               </div>
@@ -179,7 +193,7 @@ export function SealRequestSheet({
           )}
 
           <div className="md:col-span-2">
-            <Label className="text-[11px]">章种类 *</Label>
+            <Label className="text-xs">章种类 *</Label>
             <RadioChips
               className="mt-2"
               items={enabledConfigs.map((c) => ({
@@ -191,7 +205,7 @@ export function SealRequestSheet({
               onChange={setSealType}
             />
             {sealType && (
-              <p className="mt-1.5 text-[10px] text-muted-foreground">
+              <p className="mt-1.5 text-[11px] text-muted-foreground">
                 {enabledConfigs.find((c) => c.type === sealType)?.description}
               </p>
             )}
@@ -202,7 +216,7 @@ export function SealRequestSheet({
                   onCheckedChange={(v) => setAlsoLegalRep(v === true)}
                 />
                 <span>同时加盖 <strong className="text-foreground">法定代表人章</strong></span>
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-[11px] text-muted-foreground">
                   会自动建一条配套的法人章审批，与本章并行
                 </span>
               </label>
@@ -210,12 +224,12 @@ export function SealRequestSheet({
           </div>
 
           <div>
-            <Label className="text-[11px]">关联案件 (可选)</Label>
+            <Label className="text-xs">关联案件 (可选)</Label>
             <div className="mt-1">
               {preset?.matterId ? (
                 // 从案件详情页发起时，case 已锁定，不展示可切换的下拉
                 <div className="flex h-9 items-center gap-2 rounded-md border border-border bg-muted/40 px-2.5 text-[12px]">
-                  <span className="text-[10px] text-muted-foreground">已关联</span>
+                  <span className="text-[11px] text-muted-foreground">已关联</span>
                   <span className="truncate">
                     {matters.find((m) => m.id === preset.matterId)?.title ?? "当前案件"}
                   </span>
@@ -232,7 +246,13 @@ export function SealRequestSheet({
           </div>
 
           <div className="md:col-span-2">
-            <Label className="text-[11px]">用印事由 *</Label>
+            <Label className="block text-xs">审批事项
+              <select className="my-2 h-9 w-full rounded-md border bg-background px-2 text-sm" value={purposeConfigId} onChange={e => setPurposeConfigId(e.target.value)}>
+                <option value="">请选择管理员配置的事项</option>{purposes.filter(p => !sealType || p.allowedSealTypes.some(t => t === sealType)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </Label>
+            {!purposes.length && <p className="mb-2 text-xs text-muted-foreground">尚未配置用章事项；启用按事项审批后需由管理员先配置。</p>}
+            <Label className="text-xs">用印事由 *</Label>
             <RadioChips
               className="mt-2"
               items={PURPOSE_PRESETS.map((p) => ({ value: p, label: p }))}
@@ -250,8 +270,11 @@ export function SealRequestSheet({
             )}
           </div>
 
+        </div></FormSection>
+        <FormSection title="文件信息" description="核对文件名称、数量与盖章要求">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="md:col-span-2">
-            <Label className="text-[11px]">文件标题 *</Label>
+            <Label className="text-xs">文件标题 *</Label>
             <Input
               value={documentTitle}
               onChange={(e) => setDocumentTitle(e.target.value)}
@@ -261,7 +284,7 @@ export function SealRequestSheet({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <Label className="text-[11px]">页数</Label>
+              <Label className="text-xs">页数</Label>
               <Input
                 type="number"
                 min={1}
@@ -271,7 +294,7 @@ export function SealRequestSheet({
               />
             </div>
             <div>
-              <Label className="text-[11px]">份数</Label>
+              <Label className="text-xs">份数</Label>
               <Input
                 type="number"
                 min={1}
@@ -301,8 +324,11 @@ export function SealRequestSheet({
             />
           </div>
 
+        </div></FormSection>
+        <FormSection title="材料与说明">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="md:col-span-2">
-            <Label className="text-[11px]">备注</Label>
+            <Label className="text-xs">备注</Label>
             <Textarea
               value={requestNote}
               onChange={(e) => setRequestNote(e.target.value)}
@@ -313,7 +339,7 @@ export function SealRequestSheet({
 
           {!hasExisting && (
             <div className="md:col-span-2">
-              <Label className="text-[11px]">待盖章稿 *</Label>
+              <Label className="text-xs">待盖章稿 *</Label>
               <div className="mt-1">
                 <label className="flex cursor-pointer items-center gap-2 rounded border border-dashed border-border px-3 py-3 text-[12px] text-muted-foreground hover:bg-muted/30">
                   <Paperclip className="h-3.5 w-3.5" />
@@ -344,8 +370,9 @@ export function SealRequestSheet({
               </div>
             </div>
           )}
+        </div></FormSection>
         </div>
-
+        </FormDialogBody>
         <DialogFooter className="mt-6">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             取消

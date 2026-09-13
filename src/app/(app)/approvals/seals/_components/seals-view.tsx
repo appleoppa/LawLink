@@ -67,7 +67,7 @@ export function SealsView({
     [mine]
   );
   const approvableIds = useMemo(() => new Set(toApprove.map((r) => r.id)), [toApprove]);
-  const firmTabLabel = currentUser.role === "FINANCE" ? "财务章审批" : "全所审批";
+  const firmTabLabel = "我可查看的申请";
   const rows =
     tab === "allMine"
       ? mine
@@ -86,9 +86,10 @@ export function SealsView({
         <div>
           <h1 className="text-2xl">审批 · 用章</h1>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
-            未来可扩展文书内审等其他审批类型
+            按事项分配审批，用章回填单独授权。
           </p>
         </div>
+        <a className="text-sm text-primary" href="/approvals">全部审批事项</a>
         <Button onClick={() => setSheetOpen(true)} className="gap-1.5">
           <Plus className="h-3.5 w-3.5" />
           新建用章申请
@@ -286,12 +287,7 @@ function SealRow({
 }) {
   const colors = SEAL_STATUS_COLOR[row.status];
   const isOwner = row.requestedById === currentUser.id;
-  const isAdmin = currentUser.role === "ADMIN" || currentUser.role === "PRINCIPAL_LAWYER";
-  const canStamp =
-    isOwner ||
-    currentUser.role === "ADMIN" ||
-    currentUser.role === "PRINCIPAL_LAWYER" ||
-    (currentUser.role === "FINANCE" && row.sealType === "FINANCE_SEAL");
+  const canStamp = row.canStamp === true;
 
   return (
     <tr className="ll-row border-t border-border">
@@ -381,7 +377,7 @@ function SealRow({
             下载
           </a>
         )}
-        {row.status === "REJECTED" && isAdmin && (
+        {row.status === "REJECTED" && (
           <span className="text-[10px] text-muted-foreground">已驳回</span>
         )}
       </td>

@@ -48,7 +48,7 @@ export async function recognizeInvoiceFromImage(formData: FormData): Promise<
   | { ok: true; data: RecognizedInvoice; raw: string }
   | { ok: false; message: string }
 > {
-  const session = await requireSession();
+  const session = await requireSession("finance.write");
 
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {

@@ -10,6 +10,7 @@
  *
  * 文档上传 / 删除 需要 isArchiveFolder() 配合放行 ARCHIVE 卷宗。
  */
+import { scopeFor } from "@/lib/roles/catalog";
 import { requireSession } from "@/lib/auth/session";
 import { matterAssociationFilter } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
@@ -23,8 +24,8 @@ async function findWritableMatter(
   matterId: string,
   opts?: Pick<WritableGuardOptions, "allowFinanceRole">
 ) {
-  const session = await requireSession();
-  const allowByFinanceRole = opts?.allowFinanceRole && session.user.role === "FINANCE";
+  const session = await requireSession("personal");
+  const allowByFinanceRole = opts?.allowFinanceRole && (session.user.role === "FINANCE" || (session.user.role === "CUSTOM" && scopeFor(session.user, "finance.write") === "ALL"));
   return prisma.matter.findFirst({
     where: {
       id: matterId,

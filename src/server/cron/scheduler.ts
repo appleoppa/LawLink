@@ -93,13 +93,13 @@ export function registerCronJobs() {
     { timezone: TIMEZONE }
   );
 
-  // 每天 03:00 清理超过 N 天的 AuditLog（默认 365 天，AUDIT_RETENTION_DAYS 可覆盖）
+  // 每天 03:00 统计可考虑归档的 AuditLog，全部记录仍保留
   cron.schedule(
     "0 3 * * *",
     () =>
       runWithFailureAudit(
-        "AuditLog 清理",
-        "AUDIT_CLEANUP_FAILED_CRON",
+        "AuditLog 保留检查",
+        "AUDIT_RETENTION_CHECK_FAILED_CRON",
         () => runAuditCleanup()
       ),
     { timezone: TIMEZONE }

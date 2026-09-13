@@ -34,7 +34,7 @@ const SYSTEM_PROMPT = `你是一名资深中国执业律师，擅长起草各类
 4. 文末注明这是 AI 生成的草稿，需律师核校后使用。`;
 
 export async function draftDocument(input: DraftInput): Promise<DraftResult> {
-  await requireSession();
+  await requireSession("documents.write");
 
   const docType = input.docType?.trim();
   if (!docType) {

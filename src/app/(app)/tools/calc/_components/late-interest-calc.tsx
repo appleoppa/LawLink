@@ -84,7 +84,7 @@ export function LateInterestCalc() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <div>
-            <Label className="text-[11px]">LPR 1Y（%）</Label>
+            <Label className="text-[11px]">一年期 LPR（%）</Label>
             <Input
               type="number"
               step="0.01"
@@ -141,7 +141,7 @@ export function LateInterestCalc() {
           </div>
           <p className="mt-3 flex items-start gap-1.5 text-[11px] text-muted-foreground">
             <Info className="mt-0.5 h-3 w-3 shrink-0" />
-            算法：判决金额 × (LPR 1Y + {extraPercent}%) × 迟延天数 / 365。LPR 以中国人民银行公布为准，建议办案时确认当前值。
+            算法：判决金额 × (一年期 LPR + {extraPercent}%) × 迟延天数 / 365。LPR 以中国人民银行公布为准，建议办案时确认当前值。
           </p>
         </>
       )}

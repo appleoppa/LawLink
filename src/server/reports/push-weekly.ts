@@ -7,7 +7,7 @@
  * - admin 手动：pushWeeklyReportToAll（require session）
  * - cron 自动（v0.22）：runWeeklyReportPush（无 auth，trigger=cron）
  *
- * 收件人：所有 active 的 ADMIN / PRINCIPAL_LAWYER / LAWYER。
+ * 收件人：所有 active 的 PRINCIPAL_LAWYER / LAWYER。
  * 每人收到自己的 LawyerWeeklyDigest 摘要，作为 Notification（type=SYSTEM）。
  */
 import { prisma } from "@/lib/prisma";
@@ -37,7 +37,7 @@ export async function runWeeklyReportPush(
   const recipients = await prisma.user.findMany({
     where: {
       active: true,
-      role: { in: ["ADMIN", "PRINCIPAL_LAWYER", "LAWYER"] }
+      role: { in: ["PRINCIPAL_LAWYER", "LAWYER"] }
     },
     select: { id: true, name: true }
   });
@@ -89,8 +89,8 @@ export async function runWeeklyReportPush(
 
 export async function pushWeeklyReportToAll(): Promise<WeeklyPushResult> {
   const session = await requireSession();
-  if (session.user.role !== "ADMIN" && session.user.role !== "PRINCIPAL_LAWYER") {
-    throw new Error("仅管理员 / 主任律师可推送周报");
+  if (session.user.role !== "PRINCIPAL_LAWYER") {
+    throw new Error("仅主任律师可推送周报");
   }
   return runWeeklyReportPush(session.user.id);
 }

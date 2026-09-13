@@ -1,4 +1,5 @@
 "use client";
+import { hasCustomPermission, type RoleGrant } from "@/lib/roles/catalog";
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -73,8 +74,9 @@ type MatterPayloadBase = Prisma.MatterGetPayload<{
   };
 }>;
 
-type MatterPayload = Omit<MatterPayloadBase, "claimAmount"> & {
+type MatterPayload = Omit<MatterPayloadBase, "claimAmount" | "members"> & {
   claimAmount: number | null;
+  members: (MatterPayloadBase["members"][number] & { user: MatterPayloadBase["members"][number]["user"] & { roleName?: string } })[];
 };
 
 export type FinancePayload = {
@@ -108,7 +110,7 @@ export type FinancePayload = {
     percent: number;
     label: string | null;
     active: boolean;
-    user: { id: string; name: string; role: string };
+    user: { id: string; name: string; role: string; roleName?: string; isTeammate?: boolean; active?: boolean };
   }[];
   stats: {
     contractAmount: number;
@@ -121,7 +123,7 @@ export type FinancePayload = {
   };
 };
 
-type UserOption = { id: string; name: string; role: string };
+type UserOption = { id: string; name: string; role: string; roleName?: string; isTeammate?: boolean; active?: boolean };
 
 export type NotePayload = {
   id: string;
@@ -144,6 +146,7 @@ export function MatterDetailTabs({
   templates,
   colleagues,
   currentUserRole,
+  rolePermissions,
   canAssociateThisMatter,
   canLeadThisMatter,
   canOwnThisMatter,
@@ -162,6 +165,7 @@ export function MatterDetailTabs({
   templates: TemplateSummary[];
   colleagues: PresUserOption[];
   currentUserRole: string | null;
+  rolePermissions?: RoleGrant[];
   canAssociateThisMatter: boolean;
   canLeadThisMatter: boolean;
   canOwnThisMatter: boolean;
@@ -186,6 +190,7 @@ export function MatterDetailTabs({
   }[];
   preservationCases: WorkflowPreservationCase[];
 }) {
+  const allowed = (key: import("@/lib/roles/catalog").PermissionKey) => hasCustomPermission({ role: currentUserRole ?? "", rolePermissions }, key);
   const [selectedProcId, setSelectedProcId] = useState<string | null>(null);
   const [addProcOpen, setAddProcOpen] = useState(false);
   const [matterEditorOpen, setMatterEditorOpen] = useState(false);
@@ -407,15 +412,15 @@ export function MatterDetailTabs({
             matterId={matter.id}
             matterTitle={matter.title}
             sealContracts={sealContracts}
-            canRequest={canAssociateThisMatter}
+            canRequest={canAssociateThisMatter && allowed("seals.request")}
           />
-          <FinancePanel
+          {allowed("finance.read") && <FinancePanel
             matterId={matter.id}
             finance={finance}
             userOptions={userOptions}
             canRequestInvoice={canAssociateThisMatter}
             compact
-          />
+          />}
         </aside>
       </div>
 
@@ -461,7 +466,7 @@ export function MatterDetailTabs({
           canManageProcedure={Boolean(currentProcedure && canAssociateThisMatter)}
         />
       )}
-      {canLeadThisMatter && (
+      {canLeadThisMatter && allowed("archive.submit") && (
         <ArchiveWizardDialog
           matterId={matter.id}
           open={archiveOpen}

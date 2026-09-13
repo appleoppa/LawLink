@@ -1,4 +1,5 @@
 "use server";
+import { roleMutation } from "@/lib/roles/service";
 
 /**
  * v0.19: 文书智能审查
@@ -64,7 +65,7 @@ async function extractDocumentText(
 export async function reviewDocument(input: {
   documentId: string;
 }): Promise<ReviewResult> {
-  const session = await requireSession();
+  const session = await requireSession("documents.write");
 
   const doc = await prisma.document.findFirst({
     where: { id: input.documentId, deletedAt: null }
@@ -72,7 +73,7 @@ export async function reviewDocument(input: {
   if (!doc) throw new Error("材料不存在");
 
   if (doc.matterId) {
-    await assertCanAccessMatter(session.user.id, session.user.role, doc.matterId);
+    await assertCanAccessMatter(session.user.id, session.user.role, doc.matterId, session.user.rolePermissions);
   }
 
   // 读取 + 解密
@@ -121,10 +122,11 @@ export async function reviewDocument(input: {
 
   // v0.21: 写入历史（仅当 doc 属于某个 Matter 才能记录）
   let recordId: string | null = null;
-  if (doc.matterId) {
-    const rec = await prisma.reviewRecord.create({
+  const reviewMatterId = doc.matterId;
+  if (reviewMatterId) {
+    const rec = await roleMutation(session.user, "documents.write", async roleDb => roleDb.reviewRecord.create({
       data: {
-        matterId: doc.matterId,
+        matterId: reviewMatterId,
         documentId: doc.id,
         reviewedById: session.user.id,
         itemCount: items.length,
@@ -133,7 +135,7 @@ export async function reviewDocument(input: {
         truncated
       },
       select: { id: true }
-    });
+    }));
     recordId = rec.id;
   }
 

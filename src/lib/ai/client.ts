@@ -33,7 +33,7 @@ export interface AiChatResult {
 
 export class AiNotConfiguredError extends Error {
   constructor() {
-    super("AI 未配置，请先到 设置 → AI 接入 填写 API key");
+    super("AI 未配置，请先到 管理后台 → AI 与元典 填写 API key");
     this.name = "AiNotConfiguredError";
   }
 }

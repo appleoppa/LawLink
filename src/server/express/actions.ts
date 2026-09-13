@@ -1,10 +1,12 @@
 "use server";
+import { roleMutation } from "@/lib/roles/service";
 
+import { scopeFor, type RoleUser } from "@/lib/roles/catalog";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireSession } from "@/lib/auth/session";
+import { requireSession, requireSystemAdmin } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import { assertMatterWritable } from "@/lib/archive/guard";
 import { assertCanAssociateMatter, matterAssociationFilter } from "@/lib/permissions";
@@ -26,10 +28,10 @@ import { revalidateMatter } from "@/server/matters/route";
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export async function listExpress(input?: z.input<typeof expressListFilterSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("express.manage");
   const filter = expressListFilterSchema.parse(input ?? {});
 
-  const accessWhere: Prisma.ExpressTrackingWhereInput = {
+  const accessWhere: Prisma.ExpressTrackingWhereInput = session.user.role === "CUSTOM" && scopeFor(session.user, "express.manage") === "ALL" ? {} : {
     OR: [
       { matter: { deletedAt: null, ...matterAssociationFilter(session.user.id) } },
       { matterId: null, createdById: session.user.id }
@@ -65,8 +67,8 @@ export async function listExpress(input?: z.input<typeof expressListFilterSchema
 }
 
 export async function getExpress(id: string) {
-  const session = await requireSession();
-  await assertCanAccessExpressRecord(session.user.id, id);
+  const session = await requireSession("express.manage");
+  await assertCanAccessExpressRecord(session.user.id, id, session.user);
   return prisma.expressTracking.findUnique({
     where: { id },
     include: {
@@ -76,12 +78,13 @@ export async function getExpress(id: string) {
   });
 }
 
-async function assertCanAccessExpressRecord(userId: string, id: string) {
+async function assertCanAccessExpressRecord(userId: string, id: string, user?: RoleUser) {
   const record = await prisma.expressTracking.findUnique({
     where: { id },
     select: { id: true, matterId: true, createdById: true }
   });
   if (!record) throw new Error("快递记录不存在");
+  if (user?.role === "CUSTOM" && scopeFor(user, "express.manage") === "ALL") return record;
   if (record.matterId) {
     await assertCanAssociateMatter(userId, record.matterId);
     return record;
@@ -95,7 +98,7 @@ async function assertCanAccessExpressRecord(userId: string, id: string) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export async function createExpress(input: z.infer<typeof expressCreateSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("express.manage");
   const data = expressCreateSchema.parse(input);
 
   // 自动识别公司（如未指定）
@@ -127,7 +130,7 @@ export async function createExpress(input: z.infer<typeof expressCreateSchema>) 
     // 静默：用户可以稍后手动刷新
   }
 
-  const created = await prisma.expressTracking.create({
+  const created = await roleMutation(session.user, "express.manage", async roleDb => roleDb.expressTracking.create({
     data: {
       trackingNo: data.trackingNo.trim(),
       companyCode,
@@ -142,7 +145,7 @@ export async function createExpress(input: z.infer<typeof expressCreateSchema>) 
       createdById: session.user.id
     },
     select: { id: true, matterId: true }
-  });
+  }));
 
   await audit({
     userId: session.user.id,
@@ -162,10 +165,10 @@ export async function createExpress(input: z.infer<typeof expressCreateSchema>) 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export async function refreshExpress(input: z.infer<typeof expressIdSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("express.manage");
   const data = expressIdSchema.parse(input);
 
-  await assertCanAccessExpressRecord(session.user.id, data.id);
+  await assertCanAccessExpressRecord(session.user.id, data.id, session.user);
   const e = await prisma.expressTracking.findUniqueOrThrow({
     where: { id: data.id },
     select: { id: true, trackingNo: true, companyCode: true, matterId: true }
@@ -176,7 +179,7 @@ export async function refreshExpress(input: z.infer<typeof expressIdSchema>) {
     companyCode: e.companyCode ?? undefined
   });
 
-  await prisma.expressTracking.update({
+  await roleMutation(session.user, "express.manage", async roleDb => roleDb.expressTracking.update({
     where: { id: data.id },
     data: {
       companyCode: r.companyName,
@@ -184,7 +187,7 @@ export async function refreshExpress(input: z.infer<typeof expressIdSchema>) {
       tracesJson: r.traces as unknown as Prisma.InputJsonValue,
       lastUpdateAt: new Date()
     }
-  });
+  }));
 
   await audit({
     userId: session.user.id,
@@ -200,12 +203,12 @@ export async function refreshExpress(input: z.infer<typeof expressIdSchema>) {
 }
 
 export async function deleteExpress(input: z.infer<typeof expressIdSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("express.manage");
   const data = expressIdSchema.parse(input);
 
-  const e = await assertCanAccessExpressRecord(session.user.id, data.id);
+  const e = await assertCanAccessExpressRecord(session.user.id, data.id, session.user);
 
-  await prisma.expressTracking.delete({ where: { id: data.id } });
+  await roleMutation(session.user, "express.manage", async roleDb => roleDb.expressTracking.delete({ where: { id: data.id } }));
 
   await audit({
     userId: session.user.id,
@@ -220,24 +223,16 @@ export async function deleteExpress(input: z.infer<typeof expressIdSchema>) {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 配置（仅 ADMIN）
+// 接入配置（仅系统超级管理员）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-async function requireAdmin() {
-  const session = await requireSession();
-  if (session.user.role !== "ADMIN") {
-    throw new Error("仅管理员可修改快递接入配置");
-  }
-  return session;
-}
-
 export async function getExpressSettingsPublic() {
-  await requireAdmin();
+  await requireSystemAdmin();
   return readPublicExpressSettings();
 }
 
 export async function saveExpressSettingsAction(input: z.infer<typeof expressSettingsSaveSchema>) {
-  const session = await requireAdmin();
+  const session = await requireSystemAdmin();
   const data = expressSettingsSaveSchema.parse(input);
 
   await saveSettings({

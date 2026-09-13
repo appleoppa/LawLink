@@ -1,11 +1,20 @@
 "use server";
+import { hasCustomPermission, scopeFor } from "@/lib/roles/catalog";
+import { clientVisibilityFilter } from "@/lib/permissions";
+import { roleMutation } from "@/lib/roles/service";
+
+import { assertAssignableColleagues } from "@/lib/teams/validate-colleagues";
+
+import { buildIntakeConflictQueries, conflictPartyRoleLabel } from "@/lib/approvals/intake-detail";
+import { approvalTransaction, approvalAudit, assertApprovalItem, approvalContextFor, requireApprovalRoute } from "@/lib/approvals/service";
+
 
 import { revalidatePath } from "next/cache";
-import { Prisma, type ClientType, type LitigationStanding, type PartyType } from "@prisma/client";
+import { Prisma, type ClientType, type LitigationStanding, type PartyType, type PartyRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
-import { intakeVisibilityFilter } from "@/lib/permissions";
+import { intakeVisibilityFilter, intakeReadVisibilityFilter, teamIntakeFilter } from "@/lib/permissions";
 import { assertAgencyAllowedForProcedure, normalizeJurisdictionForAgency } from "@/lib/china-regions";
 import { serializeDecimals } from "@/lib/decimal";
 import {
@@ -28,11 +37,6 @@ function emptyToNull<T extends Record<string, unknown>>(obj: T): T {
   return out as T;
 }
 
-function requireApprover(role: string) {
-  if (role !== "ADMIN" && role !== "PRINCIPAL_LAWYER") {
-    throw new Error("仅管理员或主任律师可审批收案");
-  }
-}
 
 /** 按 {委托方} 与 {对方} {案由} 自动生成标题 — 案由本身通常已含"纠纷"二字 */
 function generateTitle(
@@ -53,7 +57,7 @@ function clientTypeToPartyType(type: ClientType): PartyType {
   return "OTHER_ORG";
 }
 
-type IntakeConflictRole = "CLIENT_PARTY" | "OPPOSING_PARTY" | "THIRD_PARTY";
+type IntakeConflictRole = PartyRole;
 
 type IntakeConflictQuery = {
   role: IntakeConflictRole;
@@ -63,7 +67,7 @@ type IntakeConflictQuery = {
 
 type IntakeConflictGateInput = {
   client: { name: string; idNumber: string | null } | null;
-  parties: { role: string; name: string; idNumber: string | null }[];
+  parties: { role: PartyRole; name: string; idNumber: string | null; enterpriseSocialCode?: string | null }[];
   conflictChecks: {
     conclusion: string;
     note: string | null;
@@ -77,13 +81,13 @@ function normalizeConflictQuery(q: {
   name?: string | null;
   idNumber?: string | null;
 }): IntakeConflictQuery | null {
-  if (q.role !== "CLIENT_PARTY" && q.role !== "OPPOSING_PARTY" && q.role !== "THIRD_PARTY") {
+  if (!q.role || !Object.prototype.hasOwnProperty.call(conflictPartyRoleLabel, q.role)) {
     return null;
   }
   const name = q.name?.trim() ?? "";
   const idNumber = q.idNumber?.trim() ?? "";
   if (!name && !idNumber) return null;
-  return { role: q.role, name, idNumber };
+  return { role: q.role as PartyRole, name, idNumber };
 }
 
 function conflictQueryKey(q: IntakeConflictQuery) {
@@ -91,33 +95,11 @@ function conflictQueryKey(q: IntakeConflictQuery) {
 }
 
 function formatConflictQuery(q: IntakeConflictQuery) {
-  const roleLabel: Record<IntakeConflictRole, string> = {
-    CLIENT_PARTY: "委托方",
-    OPPOSING_PARTY: "对方",
-    THIRD_PARTY: "第三人"
-  };
-  return `${roleLabel[q.role]}「${q.name || q.idNumber}」`;
+  return `${conflictPartyRoleLabel[q.role]}「${q.name || "仅证件条件"}」`;
 }
 
 function buildExpectedConflictQueries(intake: IntakeConflictGateInput) {
-  const queries: IntakeConflictQuery[] = [];
-  const clientQuery = normalizeConflictQuery({
-    role: "CLIENT_PARTY",
-    name: intake.client?.name,
-    idNumber: intake.client?.idNumber
-  });
-  if (clientQuery) queries.push(clientQuery);
-
-  for (const p of intake.parties) {
-    const q = normalizeConflictQuery({
-      role: p.role,
-      name: p.name,
-      idNumber: p.idNumber
-    });
-    if (q) queries.push(q);
-  }
-
-  return queries;
+  return buildIntakeConflictQueries(intake);
 }
 
 function getCheckedConflictQueries(payload: Prisma.JsonValue) {
@@ -183,7 +165,7 @@ function assertConflictReviewAllowsConversion(intake: IntakeConflictGateInput) {
 }
 
 export async function listIntakes(input: Partial<IntakeListQuery> = {}) {
-  const session = await requireSession();
+  const session = await requireSession("matters.read");
   const query = intakeListQuerySchema.parse(input);
 
   const statusWhere: Prisma.IntakeWhereInput = query.statusIn?.length
@@ -198,9 +180,12 @@ export async function listIntakes(input: Partial<IntakeListQuery> = {}) {
       : [{ receivedAt: query.sortDir }];
 
   const whereParts: Prisma.IntakeWhereInput[] = [
-    intakeVisibilityFilter(session.user.id, session.user.role),
+    intakeReadVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions),
     statusWhere
   ];
+  if (query.scope === "mine") whereParts.push(intakeVisibilityFilter(session.user.id, "LAWYER", session.user.rolePermissions));
+  if (query.scope === "team" || query.teamId) whereParts.push(teamIntakeFilter(session.user.id, query.teamId));
+  if (query.ownerId) whereParts.push({ ownerUserId: query.ownerId });
   if (query.category) whereParts.push({ category: query.category });
   if (query.receivedAtFrom || query.receivedAtTo) {
     whereParts.push({
@@ -227,7 +212,8 @@ export async function listIntakes(input: Partial<IntakeListQuery> = {}) {
       orderBy,
       skip: (query.page - 1) * query.pageSize,
       take: query.pageSize,
-      include: {
+      select: {
+        id: true, title: true, category: true, status: true, receivedAt: true, claimAmount: true,
         client: { select: { id: true, name: true, type: true } },
         cause: { select: { id: true, name: true } },
         conflictChecks: {
@@ -247,22 +233,12 @@ export async function listIntakes(input: Partial<IntakeListQuery> = {}) {
 }
 
 export async function getIntakeById(id: string) {
-  const session = await requireSession();
-  // 单条收案权限检查：manager 看全部，其他人只能看自己参与或创建的
-  if (session.user.role !== "ADMIN" && session.user.role !== "PRINCIPAL_LAWYER") {
-    const owned = await prisma.intake.findFirst({
-      where: {
-        id,
-        OR: [
-          { createdById: session.user.id },
-          { ownerUserId: session.user.id },
-          { coUserIds: { has: session.user.id } }
-        ]
-      },
-      select: { id: true }
-    });
-    if (!owned) throw new Error("收案记录不存在");
-  }
+  const session = await requireSession("matters.read");
+  const visible = await prisma.intake.findFirst({
+    where: { id, ...intakeReadVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions) },
+    select: { id: true }
+  });
+  if (!visible) throw new Error("收案记录不存在");
   const intake = await prisma.intake.findUnique({
     where: { id },
     include: {
@@ -290,12 +266,24 @@ export async function getIntakeById(id: string) {
       targetId: id
     });
   }
-  return intake;
+  if (!intake) return null;
+  const businessAccess = await prisma.intake.findFirst({
+    where: { id, ...intakeVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions) }, select: { id: true }
+  });
+  if (!businessAccess) return { ...intake, teamReadOnly: true,
+    feeType: null, feeAmount: null, contingencyTerms: null, feeSchedule: null, feeNote: null,
+    documents: [], conflictChecks: []
+  };
+  return { ...intake, teamReadOnly: !hasCustomPermission(session.user, "matters.write"),
+    ...(!hasCustomPermission(session.user, "finance.read") ? { feeType: null, feeAmount: null, contingencyTerms: null, feeSchedule: null, feeNote: null } : {}),
+    ...(!hasCustomPermission(session.user, "documents.read") ? { documents: [] } : {})
+  };
 }
 
 export async function createIntake(input: IntakeCreateInput) {
-  const session = await requireSession();
+  const session = await requireSession("intakes.create");
   const data = intakeCreateSchema.parse(input);
+  await requireApprovalRoute({ action: "INTAKE_APPROVE", category: data.category, requesterId: session.user.id });
   assertAgencyAllowedForProcedure(data.firstAgency, data.firstProcedureType);
   await assertCauseAllowedForSelection({
     causeId: data.causeId,
@@ -303,13 +291,15 @@ export async function createIntake(input: IntakeCreateInput) {
     procedureType: data.firstProcedureType
   });
 
+  await assertAssignableColleagues([data.ownerUserId || session.user.id, ...data.coUserIds]);
+
   // ----- 解析客户：已选 / 自由输入新建 -----
   let resolvedClientId: string | null = data.clientId || null;
   let resolvedClientName: string | null = null;
 
   if (!resolvedClientId && data.clientName && data.clientName.trim()) {
     const name = data.clientName.trim();
-    const newClient = await prisma.client.create({
+    const newClient = await roleMutation(session.user, "intakes.create", async roleDb => roleDb.client.create({
       data: {
         name,
         type: data.clientType ?? "INDIVIDUAL",
@@ -329,7 +319,7 @@ export async function createIntake(input: IntakeCreateInput) {
               }
             : undefined
       }
-    });
+    }));
     resolvedClientId = newClient.id;
     resolvedClientName = name;
     await audit({
@@ -340,6 +330,7 @@ export async function createIntake(input: IntakeCreateInput) {
       detail: { name, type: newClient.type, source: "intake" }
     });
   } else if (resolvedClientId) {
+    if (session.user.role === "CUSTOM" && !await prisma.client.count({ where: { id: resolvedClientId, deletedAt: null, ...clientVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions) } })) throw new Error("客户不存在或无权选择");
     const c = await prisma.client.findUnique({
       where: { id: resolvedClientId },
       select: { name: true }
@@ -347,7 +338,11 @@ export async function createIntake(input: IntakeCreateInput) {
     resolvedClientName = c?.name ?? null;
 
     // 已有客户也补一条联系人（如果填了且现有不存在同名联系人）
-    if (data.contactName?.trim() || data.contactPhone?.trim()) {
+    if ((data.contactName?.trim() || data.contactPhone?.trim()) && hasCustomPermission(session.user, "clients.write")) {
+      if (session.user.role === "CUSTOM") {
+        const scope = scopeFor(session.user, "clients.write");
+        if (!scope || !await prisma.client.count({ where: { id: resolvedClientId, ...clientVisibilityFilter(session.user.id, session.user.role, [{ permissionKey: "clients.read", scope }]) } })) throw new Error("无权维护此客户的联系人");
+      }
       const existing = await prisma.contact.findFirst({
         where: {
           clientId: resolvedClientId,
@@ -355,14 +350,15 @@ export async function createIntake(input: IntakeCreateInput) {
         }
       });
       if (!existing) {
-        await prisma.contact.create({
+    const contactClientId = resolvedClientId;
+        await roleMutation(session.user, "intakes.create", async roleDb => roleDb.contact.create({
           data: {
-            clientId: resolvedClientId,
+            clientId: contactClientId,
             name: (data.contactName || resolvedClientName || "联系人").trim(),
             phone: data.contactPhone?.trim() || null,
             isPrimary: false
           }
-        });
+        }));
       }
     }
   }
@@ -387,7 +383,7 @@ export async function createIntake(input: IntakeCreateInput) {
       ? data.title.trim()
       : generateTitle(resolvedClientName, opposingNames, causeName);
 
-  const created = await prisma.intake.create({
+  const created = await roleMutation(session.user, "intakes.create", async roleDb => roleDb.intake.create({
     data: {
       title: finalTitle,
       category: data.category,
@@ -448,7 +444,7 @@ export async function createIntake(input: IntakeCreateInput) {
         )
       }
     }
-  });
+  }));
 
   await audit({
     userId: session.user.id,
@@ -464,7 +460,7 @@ export async function createIntake(input: IntakeCreateInput) {
   });
 
   await notifyRoleApprovers({
-    roles: ["ADMIN", "PRINCIPAL_LAWYER"],
+    roles: ["PRINCIPAL_LAWYER"],
     excludeUserId: session.user.id,
     title: "新的案件审批待处理",
     content: `${session.user.name ?? "有用户"} 提交了案件审批：${created.title}`,
@@ -475,32 +471,31 @@ export async function createIntake(input: IntakeCreateInput) {
   });
 
   revalidatePath("/intakes");
+  revalidatePath("/approvals");
   revalidatePath("/matters");
   return { ok: true, id: created.id, clientId: resolvedClientId };
 }
 
 export async function declineIntake(input: DeclineIntakeInput) {
-  const session = await requireSession();
-  requireApprover(session.user.role);
+  const session = await requireSession("approval");
   const data = declineIntakeSchema.parse(input);
 
-  await prisma.intake.update({
-    where: { id: data.id },
+  await approvalTransaction(async tx => {
+    await assertApprovalItem(session.user.id, "INTAKE_APPROVE", data.id, tx);
+  await tx.intake.update({
+    where: { id: data.id, status: "PENDING_CONFIRMATION" },
     data: {
       status: "DECLINED",
       declinedReason: data.reason
     }
   });
-
-  await audit({
-    userId: session.user.id,
-    action: "INTAKE_DECLINE",
-    targetType: "Intake",
-    targetId: data.id,
-    detail: { reason: data.reason }
+    const attachments = await tx.document.findMany({ where: { intakeId: data.id, deletedAt: null }, select: { id: true } });
+    await approvalAudit(tx, session.user.id, "INTAKE_DECLINE", data.id, { reason: data.reason, attachmentIds: attachments.map(d => d.id) });
   });
 
+
   revalidatePath("/intakes");
+  revalidatePath("/approvals");
   revalidatePath(`/intakes/${data.id}`);
   revalidatePath("/matters");
   return { ok: true };
@@ -508,27 +503,25 @@ export async function declineIntake(input: DeclineIntakeInput) {
 
 /** v0.14: 标记需补正 — 让律师补充材料后可再次提交（区别于 DECLINED 终态） */
 export async function markIntakeNeedsRevision(input: { id: string; reason: string }) {
-  const session = await requireSession();
-  requireApprover(session.user.role);
+  const session = await requireSession("approval");
   if (!input.reason.trim()) throw new Error("请填写补正原因");
 
-  await prisma.intake.update({
-    where: { id: input.id },
+  await approvalTransaction(async tx => {
+    await assertApprovalItem(session.user.id, "INTAKE_APPROVE", input.id, tx);
+  await tx.intake.update({
+    where: { id: input.id, status: "PENDING_CONFIRMATION" },
     data: {
       status: "NEEDS_REVISION",
       declinedReason: input.reason
     }
   });
-
-  await audit({
-    userId: session.user.id,
-    action: "INTAKE_NEEDS_REVISION",
-    targetType: "Intake",
-    targetId: input.id,
-    detail: { reason: input.reason }
+    const attachments = await tx.document.findMany({ where: { intakeId: input.id, deletedAt: null }, select: { id: true } });
+    await approvalAudit(tx, session.user.id, "INTAKE_NEEDS_REVISION", input.id, { reason: input.reason.trim(), attachmentIds: attachments.map(d => d.id) });
   });
 
+
   revalidatePath("/intakes");
+  revalidatePath("/approvals");
   revalidatePath(`/intakes/${input.id}`);
   revalidatePath("/matters");
   return { ok: true };
@@ -536,33 +529,35 @@ export async function markIntakeNeedsRevision(input: { id: string; reason: strin
 
 /** v0.14: 律师补完材料后重新提交（NEEDS_REVISION → PENDING_CONFIRMATION） */
 export async function resubmitIntake(id: string) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
 
   const intake = await prisma.intake.findUnique({
     where: { id },
-    select: { status: true, title: true, createdById: true, ownerUserId: true }
+    select: { status: true, title: true, createdById: true, ownerUserId: true, declinedReason: true }
   });
   if (!intake) throw new Error("收案不存在");
+  if (intake.createdById !== session.user.id && intake.ownerUserId !== session.user.id) throw new Error("仅申请人或主办可重新提交");
+  await requireApprovalRoute(await approvalContextFor("INTAKE_APPROVE", id));
   if (intake.status !== "NEEDS_REVISION") throw new Error("只有待补正状态可重新提交");
 
-  await prisma.intake.update({
-    where: { id },
+  await roleMutation(session.user, "matters.write", async roleDb => roleDb.intake.update({
+    where: { id, status: "NEEDS_REVISION" },
     data: {
       status: "PENDING_CONFIRMATION",
       declinedReason: null
     }
-  });
+  }));
 
   await audit({
     userId: session.user.id,
     action: "INTAKE_RESUBMIT",
     targetType: "Intake",
     targetId: id,
-    detail: {}
+    detail: { note: intake.declinedReason ? `前次补正意见（原记录）：${intake.declinedReason}` : "" }
   });
 
   await notifyRoleApprovers({
-    roles: ["ADMIN", "PRINCIPAL_LAWYER"],
+    roles: ["PRINCIPAL_LAWYER"],
     excludeUserId: session.user.id,
     title: "案件审批已重新提交",
     content: `${session.user.name ?? "有用户"} 重新提交了案件审批：${intake.title}`,
@@ -573,15 +568,16 @@ export async function resubmitIntake(id: string) {
   });
 
   revalidatePath("/intakes");
+  revalidatePath("/approvals");
   revalidatePath(`/intakes/${id}`);
   revalidatePath("/matters");
   return { ok: true };
 }
 
 /** 转 Matter：把 intake 上的全部字段铺到 Matter / 首程序 / 程序当事人 / Billing / MatterMember / Document */
-export async function convertIntakeToMatter(intakeId: string) {
-  const session = await requireSession();
-  requireApprover(session.user.role);
+export async function convertIntakeToMatter(intakeId: string, note?: string) {
+  const session = await requireSession("approval");
+  await assertApprovalItem(session.user.id, "INTAKE_APPROVE", intakeId);
   const intake = await prisma.intake.findUnique({
     where: { id: intakeId },
     include: {
@@ -601,7 +597,7 @@ export async function convertIntakeToMatter(intakeId: string) {
     }
   });
   if (!intake) throw new Error("Intake 不存在");
-  if (intake.status === "CONVERTED") throw new Error("此 Intake 已转化");
+  if (intake.status !== "PENDING_CONFIRMATION") throw new Error("仅待审批收案可转为正式案件");
   assertConflictReviewAllowsConversion(intake);
 
   const { generateInternalCode, generateFirmCaseNo } = await import("@/server/matters/code-generator");
@@ -623,7 +619,10 @@ export async function convertIntakeToMatter(intakeId: string) {
     procedureType: firstProcedureType
   });
 
-  const matter = await prisma.$transaction(async (tx) => {
+  const matter = await approvalTransaction(async (tx) => {
+    await assertApprovalItem(session.user.id, "INTAKE_APPROVE", intakeId, tx);
+    await tx.intake.update({ where: { id: intakeId, status: "PENDING_CONFIRMATION", updatedAt: intake.updatedAt }, data: { status: "CONVERTED" } });
+    await approvalAudit(tx, session.user.id, "INTAKE_APPROVE", intakeId, { note: note?.trim().slice(0, 500) ?? "", attachmentIds: intake.documents.map(d => d.id) });
     const ownerId = intake.ownerUserId ?? session.user.id;
 
     const m = await tx.matter.create({
@@ -633,6 +632,7 @@ export async function convertIntakeToMatter(intakeId: string) {
         title: intake.title,
         category: intake.category,
         ownerId,
+        registeredById: intake.createdById,
         causeId: intake.causeId,
         causeFreeText: intake.causeFreeText,
         primaryClientId: intake.clientId,
@@ -810,6 +810,7 @@ export async function convertIntakeToMatter(intakeId: string) {
   });
 
   revalidatePath("/intakes");
+  revalidatePath("/approvals");
   revalidatePath(`/intakes/${intake.id}`);
   revalidatePath("/matters");
   return { ok: true, matterId: matter.id, internalCode };

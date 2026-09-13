@@ -6,6 +6,7 @@
  * 内容 = 该用户可见范围内 过去 7 天 ~ 未来 90 天 的开庭 / 期限 / 任务 / 保全到期。
  * 苹果日历 / Google Calendar / Outlook 订阅 URL 后自动定期刷新。
  */
+import { resolveRoleUser } from "@/lib/roles/service";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { queryScheduleItems } from "@/server/schedule/query";
@@ -35,7 +36,7 @@ export async function GET(
     where: { calendarToken: token },
     select: { id: true, role: true, active: true, name: true }
   });
-  if (!user || !user.active) {
+  if (!user || !user.active || !(await resolveRoleUser(user.id, user.role)).enabled) {
     return new NextResponse("Not found", { status: 404 });
   }
 

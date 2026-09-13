@@ -25,7 +25,7 @@ export type ReviewHistoryEntry = {
 export async function listReviewHistory(input: {
   documentId: string;
 }): Promise<ReviewHistoryEntry[]> {
-  const session = await requireSession();
+  const session = await requireSession("documents.read");
 
   const doc = await prisma.document.findFirst({
     where: { id: input.documentId, deletedAt: null },
@@ -33,7 +33,7 @@ export async function listReviewHistory(input: {
   });
   if (!doc) return [];
   if (doc.matterId) {
-    await assertCanAccessMatter(session.user.id, session.user.role, doc.matterId);
+    await assertCanAccessMatter(session.user.id, session.user.role, doc.matterId, session.user.rolePermissions);
   }
 
   const list = await prisma.reviewRecord.findMany({
@@ -79,7 +79,7 @@ export async function getReviewRecord(input: {
   truncated: boolean;
   items: ReviewItem[];
 } | null> {
-  const session = await requireSession();
+  const session = await requireSession("documents.read");
   const rec = await prisma.reviewRecord.findUnique({
     where: { id: input.recordId },
     select: {
@@ -94,7 +94,7 @@ export async function getReviewRecord(input: {
     }
   });
   if (!rec) return null;
-  await assertCanAccessMatter(session.user.id, session.user.role, rec.matterId);
+  await assertCanAccessMatter(session.user.id, session.user.role, rec.matterId, session.user.rolePermissions);
   return {
     id: rec.id,
     reviewedAt: rec.reviewedAt,

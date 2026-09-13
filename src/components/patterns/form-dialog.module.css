@@ -1,0 +1,15 @@
+.frame > [data-slot="dialog-header"] { margin: 0; padding: 22px 52px 19px 24px; background: hsl(var(--card)); }
+.frame > [data-slot="dialog-footer"] { margin: 0; padding: 15px 24px; background: hsl(var(--muted) / .4); }
+.body { flex: 1; min-height: 0; min-width: 0; overflow-y: auto; overscroll-behavior: contain; padding: 22px 24px; }
+.body > * + * { margin-top: 18px; }
+.section + .section { margin-top: 26px; }
+.section > header { margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid hsl(var(--border)); }
+.section h3 { font-size: 14px; font-weight: 600; }
+.section header p { margin-top: 5px; font-size: 12px; line-height: 1.7; color: hsl(var(--muted-foreground)); }
+.section > div { display: grid; gap: 15px; }
+@media (max-width: 640px) {
+  .frame { max-height: calc(100dvh - 16px); width: calc(100% - 16px); }
+  .frame > [data-slot="dialog-header"] { padding: 18px 48px 16px 18px; }
+  .frame > [data-slot="dialog-footer"] { padding: 12px 18px max(12px, env(safe-area-inset-bottom)); }
+  .body { padding: 18px; }
+}

@@ -2,7 +2,7 @@
 
 import { Users, Briefcase } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { userRoleLabel } from "@/lib/enums";
+import { procedureTypeLabel, userRoleLabel } from "@/lib/enums";
 import type { MatterPayload } from "./matter-detail-tabs";
 
 export function OverviewPanel({ matter }: { matter: MatterPayload }) {
@@ -10,7 +10,7 @@ export function OverviewPanel({ matter }: { matter: MatterPayload }) {
     .flatMap((p) =>
       p.deadlines
         .filter((d) => !d.completed)
-        .map((d) => ({ ...d, procedureLabel: p.customLabel ?? p.type }))
+        .map((d) => ({ ...d, procedureLabel: p.customLabel ?? procedureTypeLabel[p.type] }))
     )
     .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime())
     .slice(0, 5);
@@ -19,7 +19,7 @@ export function OverviewPanel({ matter }: { matter: MatterPayload }) {
     .flatMap((p) =>
       p.hearings
         .filter((h) => new Date(h.startsAt) >= new Date())
-        .map((h) => ({ ...h, procedureLabel: p.customLabel ?? p.type }))
+        .map((h) => ({ ...h, procedureLabel: p.customLabel ?? procedureTypeLabel[p.type] }))
     )
     .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())
     .slice(0, 3);
@@ -122,7 +122,7 @@ export function OverviewPanel({ matter }: { matter: MatterPayload }) {
                 <div>
                   <div className="text-sm font-medium">{m.user.name}</div>
                   <div className="text-xs text-muted-foreground">
-                    {userRoleLabel[m.user.role]}
+                    {m.user.roleName ?? userRoleLabel[m.user.role]}
                   </div>
                 </div>
               </div>

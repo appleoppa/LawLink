@@ -191,7 +191,7 @@ export function CaseSearchPanel({ matterId, matterCategory, defaultCauseName }: 
             类案检索
           </h3>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
-            元典案例库 · 每次检索扣 10 POINT
+            元典案例库 · 每次检索扣 10 积分
           </p>
         </div>
         <div className="flex rounded-md border border-border bg-card p-0.5">
@@ -250,7 +250,7 @@ export function CaseSearchPanel({ matterId, matterCategory, defaultCauseName }: 
           </div>
           {mode === "keyword" && (
             <div>
-              <Label className="text-[11px]">全文关键词（空格 AND 拼接）</Label>
+              <Label className="text-[11px]">全文关键词（以空格分隔，需同时包含）</Label>
               <Input
                 value={qw}
                 onChange={(e) => setQw(e.target.value)}
@@ -357,7 +357,7 @@ export function CaseSearchPanel({ matterId, matterCategory, defaultCauseName }: 
           <p className="text-[11px] text-muted-foreground">
             命中 <span className="font-mono text-foreground">{keywordResult.total}</span> 条，
             已返回 <span className="font-mono text-foreground">{keywordResult.items.length}</span> 条，
-            本次扣 <span className="font-mono text-foreground">{keywordResult.pointsCharged}</span> POINT
+            本次扣 <span className="font-mono text-foreground">{keywordResult.pointsCharged}</span> 积分
           </p>
           <ul className="space-y-2">
             {keywordResult.items.map((c) => (
@@ -432,7 +432,7 @@ export function CaseSearchPanel({ matterId, matterCategory, defaultCauseName }: 
         <div className="space-y-2">
           <p className="text-[11px] text-muted-foreground">
             语义检索返回 <span className="font-mono text-foreground">{vectorResult.items.length}</span> 条（按相似度评分排序），
-            本次扣 <span className="font-mono text-foreground">{vectorResult.pointsCharged}</span> POINT
+            本次扣 <span className="font-mono text-foreground">{vectorResult.pointsCharged}</span> 积分
           </p>
           <ul className="space-y-2">
             {vectorResult.items.map((c) => (

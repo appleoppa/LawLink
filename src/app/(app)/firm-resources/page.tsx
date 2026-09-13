@@ -1,3 +1,4 @@
+import { customOrLegacy } from "@/lib/roles/catalog";
 /**
  * v0.38: 律所文书恢复独立页（v0.37 曾并入 /service-center，现拆回真实页面）
  * v0.44: 分类改为合同/函件/证照/其他
@@ -19,7 +20,7 @@ export default async function FirmResourcesPage({
   if (!session?.user) redirect("/login");
 
   const isManager =
-    session.user.role === "ADMIN" || session.user.role === "PRINCIPAL_LAWYER";
+    customOrLegacy(session.user, "firm-files.manage", session.user.role === "PRINCIPAL_LAWYER");
 
   const category =
     searchParams.category && (VALID_CATEGORIES as string[]).includes(searchParams.category)

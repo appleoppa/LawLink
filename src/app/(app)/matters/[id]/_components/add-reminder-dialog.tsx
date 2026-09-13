@@ -1,5 +1,7 @@
 "use client";
 
+import { FormDialogContent as DialogContent, FormDialogBody } from "@/components/patterns/form-dialog";
+
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -10,7 +12,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
-  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -104,6 +105,7 @@ export function AddReminderDialog({
             可用作截止日期、关键节点或自定义提醒事项
           </DialogDescription>
         </DialogHeader>
+        <FormDialogBody>
 
         <div className="space-y-3">
           <div className="space-y-1.5">
@@ -183,6 +185,7 @@ export function AddReminderDialog({
           </div>
         </div>
 
+        </FormDialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
             取消

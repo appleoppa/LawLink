@@ -166,6 +166,7 @@ export async function renderArchiveCatalog(
     userId: string;
     extras: ArchiveExtras;
     excludeDocIds?: string[]; // 通常传入封皮 doc id
+    documentIds: string[];
   }
 ): Promise<string> {
   const { tmpl, templateBuffer } = await loadBuiltinTemplate(prisma, "archive_catalog");
@@ -177,16 +178,21 @@ export async function renderArchiveCatalog(
   });
   if (!matter) throw new Error("案件不存在");
 
-  const docs = await prisma.document.findMany({
+  const docsUnordered = await prisma.document.findMany({
     where: {
       matterId: opts.matterId,
       deletedAt: null,
+      id: { in: opts.documentIds },
       ...(opts.excludeDocIds && opts.excludeDocIds.length > 0
-        ? { id: { notIn: opts.excludeDocIds } }
+        ? { NOT: { id: { in: opts.excludeDocIds } } }
         : {})
     },
     select: { id: true, name: true, category: true, createdAt: true },
-    orderBy: { createdAt: "asc" }
+  });
+  const byId = new Map(docsUnordered.map((doc) => [doc.id, doc]));
+  const docs = opts.documentIds.flatMap((id) => {
+    const doc = byId.get(id);
+    return doc ? [doc] : [];
   });
 
   const entries: CatalogDocEntry[] = docs.map((d, i) => ({

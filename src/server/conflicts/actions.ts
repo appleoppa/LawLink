@@ -1,4 +1,5 @@
 "use server";
+import { roleMutation } from "@/lib/roles/service";
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -6,11 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import { matterAssociationFilter } from "@/lib/permissions";
-import { runConflictCheck, type MatterInfoForHit, type QueryItem } from "./algorithm";
-
-function hitKey(hit: { targetId: string; matchedField: string; matchedValue: string }) {
-  return `${hit.targetId}|${hit.matchedField}|${hit.matchedValue}`;
-}
+import { runConflictCheck, conflictHitKey, type MatterInfoForHit, type QueryItem } from "./algorithm";
 
 function serializeMatterInfo(info: MatterInfoForHit | undefined, canViewMatter: boolean) {
   if (!info) return null;
@@ -62,6 +59,10 @@ const queryItemSchema = z
 const runCheckSchema = z.object({
   intakeId: z.string().cuid().optional(),
   queries: z.array(queryItemSchema).min(1)
+}).superRefine((data, ctx) => {
+  if (data.intakeId) data.queries.forEach((query, index) => {
+    if (!query.role) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["queries", index, "role"], message: "收案检索必须包含当事人身份，请从收案页面重新检索" });
+  });
 });
 
 /**
@@ -69,7 +70,7 @@ const runCheckSchema = z.object({
  * 如果 intakeId 在，则把 ConflictCheck 挂在该 Intake 上；否则单独存（targetType=Intake 为空）。
  */
 export async function runCheckAndSave(input: z.infer<typeof runCheckSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("intakes.create");
   const data = runCheckSchema.parse(input);
 
   // 清理 query（v0.4: 允许 name 为空，由 idNumber 兜底；role 缺省视为 OPPOSING_PARTY）
@@ -81,13 +82,13 @@ export async function runCheckAndSave(input: z.infer<typeof runCheckSchema>) {
 
   const result = await runConflictCheck(queries);
   const noHits = result.hits.length === 0;
-  const matterInfoByHit = new Map(result.hits.map((h) => [hitKey(h), h.matterInfo]));
+  const matterInfoByHit = new Map(result.hits.map((h) => [conflictHitKey(h), h.matterInfo]));
   const openableMatterIds = await getOpenableMatterIds(
     session.user.id,
     result.hits.filter((h) => h.targetType === "Matter").map((h) => h.targetId)
   );
 
-  const check = await prisma.conflictCheck.create({
+  const check = await roleMutation(session.user, "intakes.create", async roleDb => roleDb.conflictCheck.create({
     data: {
       intakeId: data.intakeId,
       queryPayload: {
@@ -114,7 +115,7 @@ export async function runCheckAndSave(input: z.infer<typeof runCheckSchema>) {
       }
     },
     include: { hits: true }
-  });
+  }));
 
   await audit({
     userId: session.user.id,
@@ -140,7 +141,7 @@ export async function runCheckAndSave(input: z.infer<typeof runCheckSchema>) {
       return {
         ...h,
         targetId: h.targetType === "Matter" && !canViewMatter ? "" : h.targetId,
-        matterInfo: serializeMatterInfo(matterInfoByHit.get(hitKey(h)), canViewMatter)
+        matterInfo: serializeMatterInfo(matterInfoByHit.get(conflictHitKey(h)), canViewMatter)
       };
     }),
     sameNameClients: result.sameNameClients,
@@ -155,10 +156,10 @@ const conclusionSchema = z.object({
 });
 
 export async function setConflictConclusion(input: z.infer<typeof conclusionSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("intakes.create");
   const data = conclusionSchema.parse(input);
 
-  const updated = await prisma.conflictCheck.update({
+  const updated = await roleMutation(session.user, "intakes.create", async roleDb => roleDb.conflictCheck.update({
     where: { id: data.checkId },
     data: {
       conclusion: data.conclusion,
@@ -167,7 +168,7 @@ export async function setConflictConclusion(input: z.infer<typeof conclusionSche
       note: data.note || null
     },
     include: { intake: { select: { id: true } } }
-  });
+  }));
 
   await audit({
     userId: session.user.id,

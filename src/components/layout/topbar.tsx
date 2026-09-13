@@ -1,4 +1,5 @@
 "use client";
+import { roleDisplayName } from "@/lib/roles/catalog";
 
 import { useState } from "react";
 import { useSession, signOut } from "next-auth/react";
@@ -17,7 +18,8 @@ import {
   Contact,
   Compass,
   Megaphone,
-  BookText
+  BookText,
+  ShieldCheck
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -35,14 +37,9 @@ import { NotificationPopover } from "@/components/layout/notification-popover";
 import { SearchDialog } from "@/components/layout/search-dialog";
 import { ToolsDialog } from "@/components/layout/tools-dialog";
 import { cn } from "@/lib/utils";
+import { canEnterAdminWorkspace } from "@/lib/auth/system-role";
 
-const roleLabels: Record<string, string> = {
-  ADMIN: "系统管理员",
-  PRINCIPAL_LAWYER: "主办律师",
-  LAWYER: "经办律师",
-  ASSISTANT: "助理",
-  FINANCE: "财务"
-};
+
 
 // 应用菜单聚合入口（v0.38：各分类拆回独立页；实务工具=全局弹窗；法律导航=外链）
 // kind: "tools" 触发工具箱弹窗（不跳转）；"external" 新标签外链；其余 Link 跳独立页
@@ -63,7 +60,7 @@ export function Topbar({ onMobileMenuToggle, userAvatar }: { onMobileMenuToggle?
   const [toolsOpen, setToolsOpen] = useState(false);
   const user = session?.user;
   const displayName = user?.name ?? "";
-  const roleLabel = user?.role ? (roleLabels[user.role] ?? user.role) : "";
+  const roleLabel = user?.role ? roleDisplayName(user) : "";
   const initial = displayName ? displayName.charAt(0) : "?";
 
   return (
@@ -198,9 +195,17 @@ export function Topbar({ onMobileMenuToggle, userAvatar }: { onMobileMenuToggle?
           <DropdownMenuItem asChild>
             <Link href="/settings" className="cursor-pointer">
               <SettingsIcon className="mr-2 h-4 w-4" />
-              偏好设置
+              个人设置
             </Link>
           </DropdownMenuItem>
+          {canEnterAdminWorkspace(user) && (
+            <DropdownMenuItem asChild>
+              <Link href="/admin" className="cursor-pointer">
+                <ShieldCheck className="mr-2 h-4 w-4" />
+                管理后台
+              </Link>
+            </DropdownMenuItem>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onSelect={(e) => {

@@ -61,6 +61,7 @@ function SealDetailDialog({ row, onClose }: { row: SealRequestRow; onClose: () =
         <div className="min-w-0 space-y-2 rounded border border-border bg-muted/20 p-3 text-[12px]">
           <Field k="流水号" v={row.code} mono />
           <Field k="状态" v={SEAL_STATUS_CN[row.status] ?? row.status} />
+          <Field k="审批事项" v={row.purposeLabel ?? "尚未分类"} />
           <Field k="章种类" v={SEAL_TYPE_CN[row.sealType] ?? row.sealType} />
           <Field k="申请人" v={row.requestedBy.name} />
           {row.matter && (

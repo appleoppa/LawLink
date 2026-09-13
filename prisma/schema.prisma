@@ -16,11 +16,35 @@ datasource db {
 // ============================================================
 
 enum UserRole {
-  ADMIN
+  CUSTOM
   PRINCIPAL_LAWYER
   LAWYER
   ASSISTANT
   FINANCE
+}
+
+enum SystemRole {
+  NONE
+  SUPER_ADMIN
+}
+
+enum IdentityDocumentType {
+  PRC_RESIDENT_ID
+  HK_MACAO_TAIWAN_RESIDENCE_PERMIT
+  PRC_HK_MACAO_TRAVEL_PERMIT
+  HK_MACAO_MAINLAND_TRAVEL_PERMIT
+  TAIWAN_MAINLAND_TRAVEL_PERMIT
+  PASSPORT
+  FOREIGN_PERMANENT_RESIDENT_ID
+  OTHER
+}
+
+enum IdentityDocumentPageKind {
+  PORTRAIT_SIDE
+  EMBLEM_SIDE
+  DATA_PAGE
+  SUPPLEMENTARY_PAGE
+  OTHER
 }
 
 enum MatterCategory {
@@ -334,20 +358,53 @@ enum Urgency {
 // 用户与权限
 // ============================================================
 
+model RoleDefinition {
+  id String @id @default(cuid())
+  name String @unique @db.VarChar(60)
+  normalizedName String @unique @db.VarChar(60)
+  description String @default("") @db.VarChar(300)
+  active Boolean @default(true)
+  version Int @default(1)
+  permissions RolePermission[]
+  users User[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model RolePermission {
+  roleId String
+  role RoleDefinition @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  permissionKey String @db.VarChar(60)
+  scope String @db.VarChar(20)
+  @@id([roleId, permissionKey])
+}
+
 model User {
   id           String    @id @default(cuid())
   name         String
   email        String    @unique
   passwordHash String
   role         UserRole  @default(LAWYER)
+  systemRole   SystemRole @default(NONE)
+  roleDefinitionId String?
+  roleDefinition RoleDefinition? @relation(fields: [roleDefinitionId], references: [id], onDelete: Restrict)
   phone        String?
+  identityDocumentType IdentityDocumentType?
+  identityDocumentName String? @db.VarChar(60)
+  identityDocumentNumber String? @db.VarChar(50)
   avatar       String?
   active       Boolean   @default(true)
   lastLoginAt  DateTime?
+  sessionVersion Int @default(0)
+  approvalMemberships ApprovalPermissionMember[]
   // v0.50: ICS 日历订阅 token（URL 即凭证，可重置）
   calendarToken String?  @unique
 
   ownedMatters          Matter[]              @relation("MatterOwner")
+  registeredMatters     Matter[]              @relation("MatterRegistrar")
+  createdIntakes        Intake[]              @relation("IntakeCreator")
+  ledTeams              Team[]                @relation("TeamLeader")
+  teamMemberships       TeamMember[]
   memberships           MatterMember[]
   commissionPlans       CommissionPlan[]
   feeEntriesBeneficiary FeeEntry[]            @relation("FeeBeneficiary")
@@ -385,13 +442,67 @@ model User {
   reviewedExternalContacts ExternalContact[]  @relation("ExternalContactReviewer")
   // v0.44: 程序主办律师
   leadProcedures         MatterProcedure[]     @relation("ProcedureLeadLawyer")
+  identityDocuments      UserIdentityDocument[] @relation("IdentityOwner")
+  uploadedIdentityDocuments UserIdentityDocument[] @relation("IdentityUploader")
   createdAt             DateTime              @default(now())
   updatedAt             DateTime              @updatedAt
+
+  @@index([roleDefinitionId])
+  @@unique([identityDocumentType, identityDocumentNumber])
+}
+
+model UserIdentityDocument {
+  id            String                   @id @default(cuid())
+  userId        String
+  user          User                     @relation("IdentityOwner", fields: [userId], references: [id], onDelete: Restrict)
+  pageKind      IdentityDocumentPageKind
+  path          String
+  mimeType      String
+  size          Int
+  sha256        String
+  algorithm     String
+  iv            String
+  authTag       String
+  uploadedById  String
+  uploadedBy    User                     @relation("IdentityUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  active        Boolean                  @default(true)
+  supersededAt  DateTime?
+  createdAt     DateTime                 @default(now())
+
+  @@index([userId, active])
+  @@index([uploadedById, createdAt])
 }
 
 // ============================================================
 // 客户与联系人
 // ============================================================
+
+model Team {
+  id        String       @id @default(cuid())
+  name      String       @unique
+  leaderId  String
+  leader    User         @relation("TeamLeader", fields: [leaderId], references: [id], onDelete: Restrict)
+  active    Boolean      @default(true)
+  members   TeamMember[]
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@index([leaderId, active])
+}
+
+model TeamMember {
+  teamId            String
+  team              Team     @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  active            Boolean  @default(true)
+  canViewAllMatters  Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@id([teamId, userId])
+  @@index([userId, active])
+}
 
 model Client {
   id          String         @id @default(cuid())
@@ -531,6 +642,7 @@ model Intake {
   documents      Document[]
 
   createdById String
+  createdBy   User @relation("IntakeCreator", fields: [createdById], references: [id], onDelete: Restrict)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -578,6 +690,8 @@ model Matter {
 
   ownerId String
   owner   User           @relation("MatterOwner", fields: [ownerId], references: [id])
+  registeredById String?
+  registeredBy User? @relation("MatterRegistrar", fields: [registeredById], references: [id], onDelete: Restrict)
   members MatterMember[]
 
   intakeId String? @unique
@@ -620,6 +734,7 @@ model Matter {
 
   @@index([status, updatedAt])
   @@index([ownerId])
+  @@index([registeredById])
   @@index([primaryClientId])
   @@index([category, status])
   @@index([causeId])
@@ -1385,6 +1500,9 @@ model SealRequest {
   matterId String?
   matter   Matter?  @relation(fields: [matterId], references: [id])
 
+  purposeConfigId      String?
+  purposeConfig        SealPurposeConfig? @relation(fields: [purposeConfigId], references: [id], onDelete: Restrict)
+  purposeLabel         String? // 提交时事项名称快照
   purpose              String // 用章事由
   documentTitle        String // 待盖章文件标题
   pageCount            Int     @default(1)
@@ -1812,4 +1930,70 @@ model ExternalContact {
   @@index([status, archivedAt, createdAt])
   @@index([reviewedById])
   @@index([name])
+}
+
+
+// 独立于岗位/团队的业务审批授权；历史授权停用留存。
+enum ApprovalAction {
+  INTAKE_APPROVE
+  DOCUMENT_APPROVE
+  ARCHIVE_APPROVE
+  INVOICE_APPROVE
+  SEAL_APPROVE
+  SEAL_STAMP
+}
+
+enum ApprovalCaseScope {
+  ALL_CASES
+  CATEGORIES
+  NON_CASE
+}
+
+model ApprovalPermissionGroup {
+  id String @id @default(cuid())
+  name String @unique
+  description String?
+  active Boolean @default(true)
+  members ApprovalPermissionMember[]
+  rules ApprovalPermissionRule[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ApprovalPermissionMember {
+  groupId String
+  group ApprovalPermissionGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  active Boolean @default(true)
+  updatedAt DateTime @updatedAt
+  @@id([groupId, userId])
+  @@index([userId, active])
+}
+
+model ApprovalPermissionRule {
+  id String @id @default(cuid())
+  groupId String
+  group ApprovalPermissionGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  action ApprovalAction
+  caseScope ApprovalCaseScope
+  categories MatterCategory[]
+  allSealPurposes Boolean @default(false)
+  purposeId String?
+  purpose SealPurposeConfig? @relation(fields: [purposeId], references: [id], onDelete: Restrict)
+  sealTypes SealType[]
+  active Boolean @default(true)
+  @@index([groupId, active, action])
+}
+
+model SealPurposeConfig {
+  id String @id @default(cuid())
+  name String @unique
+  description String?
+  allowedSealTypes SealType[]
+  active Boolean @default(true)
+  rules ApprovalPermissionRule[]
+  requests SealRequest[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

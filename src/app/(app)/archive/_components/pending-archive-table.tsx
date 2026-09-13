@@ -34,16 +34,10 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
+import { matterCategoryLabel } from "@/lib/enums";
 import { matterHref } from "@/lib/matters/route";
 
-const CATEGORY_CN: Record<string, string> = {
-  CIVIL_COMMERCIAL: "民商",
-  CRIMINAL: "刑事",
-  ADMINISTRATIVE: "行政",
-  NON_LITIGATION: "非诉",
-  LEGAL_COUNSEL: "顾问",
-  SPECIAL_PROJECT: "专项"
-};
+
 
 interface PendingRecord {
   id: string;
@@ -181,7 +175,7 @@ export function PendingArchiveTable({ records }: { records: PendingRecord[] }) {
                   </Link>
                 </td>
                 <td className="px-3 py-2.5 text-xs">
-                  {CATEGORY_CN[rec.matter.category] ?? rec.matter.category}
+                  {matterCategoryLabel[rec.matter.category as keyof typeof matterCategoryLabel] ?? "类别待核实"}
                 </td>
                 <td className="px-3 py-2.5 text-xs">
                   <User className="h-3 w-3 inline mr-1 text-muted-foreground" />
@@ -593,7 +587,9 @@ function ApproveDialog({
       try {
         await approveArchiveRecord({
           archiveId: record.id,
-          note: note.trim() || undefined
+          note: note.trim() || undefined,
+          verificationIds: [],
+          exceptionApproved: false
         });
         toast.success(`已通过归档申请（${record.archiveNo}）`);
         onClose();
@@ -615,7 +611,7 @@ function ApproveDialog({
             通过归档申请
           </DialogTitle>
           <DialogDescription>
-            通过后案件状态变为「已归档」，全部 server action 进入只读门禁。
+            通过后案件状态变为「已归档」，案件业务信息将变为只读。
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">

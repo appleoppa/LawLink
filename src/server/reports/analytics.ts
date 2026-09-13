@@ -4,6 +4,7 @@
  * - 办案周期：本期已结案件的 closedAt - createdAt 天数，按 category 统计
  * - AI 审查 top issues：本期 ReviewRecord.itemsJson 聚合，找高频 title
  */
+import type { ReportAccess } from "@/lib/roles/report-scope";
 import { prisma } from "@/lib/prisma";
 import type { MatterCategory } from "@prisma/client";
 import type { ReportPeriod } from "./queries";
@@ -22,11 +23,11 @@ export type CycleStats = {
  * 计算"收案→结案"周期。本期 closedAt 落入的案件为口径。
  * 用 JS 端排序算中位数（prisma groupBy 不支持中位数）。
  */
-export async function getCaseCycleAnalysis(period: ReportPeriod): Promise<CycleStats[]> {
+export async function getCaseCycleAnalysis(period: ReportPeriod, access: ReportAccess = { matters: {}, finance: {} }): Promise<CycleStats[]> {
   const closed = await prisma.matter.findMany({
     where: {
       closedAt: { gte: period.start, lt: period.end },
-      deletedAt: null,
+      deletedAt: null, AND: [access.matters],
       createdAt: { lt: period.end } // 防御性：createdAt 应当 <= closedAt
     },
     select: { category: true, createdAt: true, closedAt: true }
@@ -85,9 +86,9 @@ export type ReviewIssueAnalysis = {
  * 本期 AI 审查的跨案件聚合统计。
  * 从 ReviewRecord.itemsJson 拉出来 JS 聚合（PG jsonb 函数路径 prisma 不友好）。
  */
-export async function getReviewIssueAnalysis(period: ReportPeriod): Promise<ReviewIssueAnalysis> {
+export async function getReviewIssueAnalysis(period: ReportPeriod, access: ReportAccess = { matters: {}, finance: {} }): Promise<ReviewIssueAnalysis> {
   const records = await prisma.reviewRecord.findMany({
-    where: { reviewedAt: { gte: period.start, lt: period.end } },
+    where: { reviewedAt: { gte: period.start, lt: period.end }, document: { matter: { deletedAt: null, AND: [access.matters] } } },
     select: { id: true, documentId: true, itemsJson: true }
   });
 

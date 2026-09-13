@@ -1,39 +1,21 @@
 import Link from "next/link";
 import { Lock, FileText, Calendar, User, Download } from "lucide-react";
 import {
-  listArchivedMatters,
-  listPendingArchiveRecords
+  listArchivedMatters
 } from "@/server/archive/actions";
 import { CLOSED_REASON_CN } from "@/server/archive/schemas";
 import { Badge } from "@/components/ui/badge";
 import { requireSession } from "@/lib/auth/session";
-import { PendingArchiveTable } from "./_components/pending-archive-table";
-import { ArchiveTabs } from "./_components/archive-tabs";
+import { isSystemAdmin } from "@/lib/auth/system-role";
+import { matterCategoryLabel } from "@/lib/enums";
 import { matterHref } from "@/lib/matters/route";
 
-const CATEGORY_CN: Record<string, string> = {
-  CIVIL_COMMERCIAL: "民商",
-  CRIMINAL: "刑事",
-  ADMINISTRATIVE: "行政",
-  NON_LITIGATION: "非诉",
-  LEGAL_COUNSEL: "顾问",
-  SPECIAL_PROJECT: "专项"
-};
 
-export default async function ArchivePage({
-  searchParams
-}: {
-  searchParams?: { tab?: string };
-}) {
-  const session = await requireSession();
-  const isAdmin = session.user.role === "ADMIN";
-  const activeTab =
-    isAdmin && searchParams?.tab === "pending" ? "pending" : "approved";
 
-  const [items, pending] = await Promise.all([
-    listArchivedMatters(),
-    isAdmin ? listPendingArchiveRecords() : Promise.resolve([])
-  ]);
+export default async function ArchivePage() {
+  const session = await requireSession("archive.read");
+  const canAuditAll = isSystemAdmin(session.user);
+  const items = await listArchivedMatters();
 
   return (
     <div className="px-6 py-6 space-y-5">
@@ -44,25 +26,15 @@ export default async function ArchivePage({
             归档管理
           </h1>
           <p className="text-xs text-muted-foreground mt-1">
-            {isAdmin
-              ? "管理员视角：审批待归档申请 + 查看已归档案件。"
-              : "已归档案件按归档日期降序排列。点击进入案件详情可查看卷宗封皮与目录，或导出归档包。"}
+            已归档案件按归档日期降序排列。点击进入案件详情可查看卷宗封皮与目录，或导出归档包。
           </p>
         </div>
         <span className="text-xs text-muted-foreground">
-          {activeTab === "pending"
-            ? `待审批 ${pending.length} 件`
-            : `已归档 ${items.length} 件`}
+          已归档 {items.length} 件
         </span>
       </header>
 
-      {isAdmin && (
-        <ArchiveTabs active={activeTab} pendingCount={pending.length} />
-      )}
-
-      {activeTab === "pending" && isAdmin ? (
-        <PendingArchiveTable records={pending} />
-      ) : items.length === 0 ? (
+      {items.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border/60 py-16 text-center text-sm text-muted-foreground">
           暂无已归档案件。在案件详情顶部&ldquo;状态 → 归档&rdquo;完成归档流程后，会出现在这里。
         </div>
@@ -79,7 +51,9 @@ export default async function ArchivePage({
                 <th className="px-3 py-2 text-left font-normal w-28">结案日期</th>
                 <th className="px-3 py-2 text-left font-normal w-28">归档日期</th>
                 <th className="px-3 py-2 text-left font-normal w-20">归档人</th>
-                <th className="px-3 py-2 text-left font-normal w-16">缺项</th>
+                <th className="px-3 py-2 text-left font-normal w-20">必交缺项</th>
+                <th className="px-3 py-2 text-left font-normal w-24">材料核验</th>
+                <th className="px-3 py-2 text-left font-normal w-20">审阅记录</th>
                 <th className="px-3 py-2 text-left font-normal w-16">导出</th>
               </tr>
             </thead>
@@ -99,7 +73,7 @@ export default async function ArchivePage({
                     </Link>
                   </td>
                   <td className="px-3 py-2.5 text-xs">
-                    {CATEGORY_CN[rec.matter.category] ?? rec.matter.category}
+                    {matterCategoryLabel[rec.matter.category as keyof typeof matterCategoryLabel] ?? "类别待核实"}
                   </td>
                   <td className="px-3 py-2.5 text-xs">
                     <User className="h-3 w-3 inline mr-1 text-muted-foreground" />
@@ -117,23 +91,31 @@ export default async function ArchivePage({
                   </td>
                   <td className="px-3 py-2.5 text-xs">{rec.archivedBy}</td>
                   <td className="px-3 py-2.5">
-                    {rec.missingItems.length > 0 ? (
+                    {!rec.materialSnapshotVerified ? (
+                      <span className="text-xs text-amber-600">待核验</span>
+                    ) : rec.missingItems.length > 0 ? (
                       <Badge variant="outline" className="border-amber-500/40 text-amber-400 text-[10px]">
                         {rec.missingItems.length} 项
                       </Badge>
                     ) : (
-                      <span className="text-xs text-muted-foreground">齐</span>
+                      <span className="text-xs text-muted-foreground">无</span>
                     )}
                   </td>
+                  <td className="px-3 py-2.5 text-xs">
+                    {rec.materialSnapshotVerified ? <span className="text-emerald-600">已固定</span> : <span className="text-amber-600">历史未固定</span>}
+                  </td>
+                  <td className="px-3 py-2.5 text-xs">
+                    {(canAuditAll || rec.archivedById === session.user.id) ? <Link className="text-primary underline" href={`/approvals?type=ARCHIVE_APPROVE&id=${rec.id}`}>查看</Link> : <span className="text-muted-foreground">—</span>}
+                  </td>
                   <td className="px-3 py-2.5">
-                    <a
-                      href={`/api/archive/${rec.matter.id}/export`}
+                    {rec.materialSnapshotVerified ? <a
+                      href={`/api/archive/${rec.matter.id}/export?archiveId=${rec.id}`}
                       className="inline-flex items-center gap-1 text-xs text-[#5B8DEF] hover:text-[#5B8DEF]/80"
                       title="导出归档 ZIP"
                     >
                       <Download className="h-3 w-3" />
                       ZIP
-                    </a>
+                    </a> : <span className="text-xs text-muted-foreground" title="历史记录没有固定获批材料，不能生成可核验归档包">待核验</span>}
                   </td>
                 </tr>
               ))}

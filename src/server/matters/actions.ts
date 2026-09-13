@@ -1,4 +1,10 @@
 "use server";
+import { withRoleNames } from "@/lib/roles/presentation";
+import { hasCustomPermission } from "@/lib/roles/catalog";
+import { checkRoleMutation, roleMutation } from "@/lib/roles/service";
+import { approvalSettings } from "@/lib/approvals/service";
+
+import { assertAssignableColleagues } from "@/lib/teams/validate-colleagues";
 
 import { revalidatePath } from "next/cache";
 import { LitigationStanding, PartyRole, PartyType, Prisma } from "@prisma/client";
@@ -9,7 +15,10 @@ import { assertMatterWritable } from "@/lib/archive/guard";
 import { serializeDecimals } from "@/lib/decimal";
 import {
   matterAssociationFilter,
-  matterVisibilityFilter,
+  matterReadVisibilityFilter,
+  teamMatterFilter,
+  assertCanReadMatter,
+  hasMatterBusinessAccess,
   assertCanAccessMatter,
   assertCanAssociateMatter,
   assertCanLeadMatter,
@@ -41,13 +50,15 @@ function emptyToNull<T extends Record<string, unknown>>(obj: T): T {
 }
 
 export async function listMatters(input: Partial<MatterListQuery> = {}) {
-  const session = await requireSession();
+  const session = await requireSession("matters.read");
   const query = matterListQuerySchema.parse(input);
 
   const whereParts: Prisma.MatterWhereInput[] = [
-    matterVisibilityFilter(session.user.id, session.user.role),
+    matterReadVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions),
     { deletedAt: null }
   ];
+  if (query.scope === "mine") whereParts.push(matterAssociationFilter(session.user.id));
+  if (query.scope === "team" || query.teamId) whereParts.push(teamMatterFilter(session.user.id, query.teamId));
   if (query.category) whereParts.push({ category: query.category });
   if (query.status) whereParts.push({ status: query.status });
   if (query.statusIn) whereParts.push({ status: { in: query.statusIn } });
@@ -207,13 +218,13 @@ export async function updateProcedureInfo(input: {
     standings: LitigationStanding[];
   }[];
 }) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const proc = await prisma.matterProcedure.findUnique({
     where: { id: input.procedureId },
     select: { matterId: true, type: true }
   });
   if (!proc) throw new Error("程序不存在");
-  await assertCanAccessMatter(session.user.id, session.user.role, proc.matterId);
+  await assertCanAccessMatter(session.user.id, session.user.role, proc.matterId, session.user.rolePermissions);
   await assertMatterWritable(proc.matterId);
   assertAgencyAllowedForProcedure(input.handlingAgency, proc.type);
 
@@ -272,6 +283,7 @@ export async function updateProcedureInfo(input: {
   }
 
   await prisma.$transaction(async (tx) => {
+    await checkRoleMutation(tx, session.user, "matters.write");
     const mergedProcedureParties = [...(partyRows ?? [])];
     for (const row of updatedPartyRows) {
       await tx.party.update({
@@ -550,7 +562,7 @@ function normalizeNewProcedureParties(rows: NewProcedurePartyInput[]) {
 
 // v0.32: 关联案件 —— 搜索 / 关联 / 解除
 export async function searchMattersForLink(matterId: string, q: string) {
-  const session = await requireSession();
+  const session = await requireSession("matters.read");
   await assertCanAssociateMatter(session.user.id, matterId);
   const query = q.trim();
   // 已关联的（两个方向）排除
@@ -585,15 +597,15 @@ export async function searchMattersForLink(matterId: string, q: string) {
 }
 
 export async function addMatterLink(matterId: string, relatedMatterId: string) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   await assertCanAssociateMatter(session.user.id, matterId);
   await assertCanAssociateMatter(session.user.id, relatedMatterId);
   if (matterId === relatedMatterId) throw new Error("不能关联到自身");
-  await prisma.matterLink.upsert({
+  await roleMutation(session.user, "matters.write", async roleDb => roleDb.matterLink.upsert({
     where: { matterId_relatedMatterId: { matterId, relatedMatterId } },
     create: { matterId, relatedMatterId },
     update: {}
-  });
+  }));
   await audit({
     userId: session.user.id,
     action: "MATTER_LINK_ADD",
@@ -605,18 +617,18 @@ export async function addMatterLink(matterId: string, relatedMatterId: string) {
 }
 
 export async function removeMatterLink(matterId: string, relatedMatterId: string) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   await assertCanAssociateMatter(session.user.id, matterId);
   await assertCanAssociateMatter(session.user.id, relatedMatterId);
   // 两个方向都删（无论当初谁关联谁）
-  await prisma.matterLink.deleteMany({
+  await roleMutation(session.user, "matters.write", async roleDb => roleDb.matterLink.deleteMany({
     where: {
       OR: [
         { matterId, relatedMatterId },
         { matterId: relatedMatterId, relatedMatterId: matterId }
       ]
     }
-  });
+  }));
   await audit({
     userId: session.user.id,
     action: "MATTER_LINK_REMOVE",
@@ -628,14 +640,17 @@ export async function removeMatterLink(matterId: string, relatedMatterId: string
 }
 
 export async function getMatterById(id: string) {
-  const session = await requireSession();
-  await assertCanAccessMatter(session.user.id, session.user.role, id);
+  const session = await requireSession("matters.read");
+  await assertCanReadMatter(session.user.id, session.user.role, id, session.user.rolePermissions);
+  const scheduleDenied = !hasCustomPermission(session.user, "schedule.read") ? { where: { id: { in: [] as string[] } } } : {};
+  const businessAccess = await hasMatterBusinessAccess(session.user.id, session.user.role, id, session.user.rolePermissions);
   const matter = await prisma.matter.findFirst({
     where: { id, deletedAt: null },
     include: {
       primaryClient: { include: { contacts: { where: { isPrimary: true }, take: 1 } } },
       clientLinks: { include: { client: { select: { id: true, name: true, type: true, idNumber: true } } } },
       owner: { select: { id: true, name: true, role: true } },
+      registeredBy: { select: { name: true } },
       members: {
         include: { user: { select: { id: true, name: true, role: true } } }
       },
@@ -644,30 +659,35 @@ export async function getMatterById(id: string) {
       relatedEntities: { orderBy: { createdAt: "asc" } },
       intake: { select: { counterclaim: true, claimDescription: true } },
       linksFrom: {
+        where: { relatedMatter: { deletedAt: null, ...matterReadVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions) } },
         include: { relatedMatter: { select: { id: true, internalCode: true, firmCaseNo: true, title: true } } }
       },
       linksTo: {
+        where: { matter: { deletedAt: null, ...matterReadVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions) } },
         include: { matter: { select: { id: true, internalCode: true, firmCaseNo: true, title: true } } }
       },
       procedures: {
         orderBy: { order: "asc" },
         include: {
-          deadlines: { orderBy: [{ completed: "asc" }, { dueAt: "asc" }] },
-          hearings: { orderBy: { startsAt: "asc" } },
+          deadlines: { ...scheduleDenied, orderBy: [{ completed: "asc" }, { dueAt: "asc" }] },
+          hearings: { ...scheduleDenied, orderBy: { startsAt: "asc" } },
           stages: {
             orderBy: { order: "asc" },
             include: {
-              tasks: { orderBy: [{ completed: "asc" }, { dueAt: "asc" }, { createdAt: "asc" }] }
+              tasks: { ...scheduleDenied, orderBy: [{ completed: "asc" }, { dueAt: "asc" }, { createdAt: "asc" }] }
             }
           },
           procedureParties: {
             orderBy: [{ standing: "asc" }, { ordinal: "asc" }],
             include: { party: true }
           },
-          memos: { orderBy: [{ done: "asc" }, { createdAt: "desc" }] }
+          memos: { ...scheduleDenied, orderBy: [{ done: "asc" }, { createdAt: "desc" }] }
         }
       },
-      timelineEvents: { orderBy: { occurredAt: "desc" }, take: 50 }
+      timelineEvents: {
+        ...(!businessAccess || session.user.role === "CUSTOM" ? { where: { eventType: { in: ["MATTER_CREATED", "PROCEDURE_ADDED", "STAGE_ADDED", "STAGE_REMOVED", "DEADLINE_ADDED", "HEARING_SCHEDULED", "TEAM_CHANGED", "MATTER_CLOSED", "MATTER_REOPENED", "MATTER_ON_HOLD", "MATTER_ARCHIVED"] } } } : {}),
+        orderBy: { occurredAt: "desc" }, take: 50
+      }
     }
   });
 
@@ -679,12 +699,16 @@ export async function getMatterById(id: string) {
       targetId: id
     });
   }
-  return matter;
+  if (!matter) return null;
+  const people = await withRoleNames([matter.owner, ...matter.members.map(member => member.user)]);
+  const byId = new Map(people.map(user => [user.id, user]));
+  return { ...matter, owner: byId.get(matter.owner.id)!, members: matter.members.map(member => ({ ...member, user: byId.get(member.user.id)! })) };
 }
 
 export async function createMatter(input: MatterCreateInput) {
-  const session = await requireSession();
+  const session = await requireSession("intakes.create");
   const data = matterCreateSchema.parse(input);
+  if ((await approvalSettings()).enabled) throw new Error("按事项审批已启用，请先收案登记并完成审批后转为正式案件");
   assertAgencyAllowedForProcedure(data.firstProcedure.handlingAgency, data.firstProcedure.type);
   await assertCauseAllowedForSelection({
     causeId: data.causeId,
@@ -697,6 +721,7 @@ export async function createMatter(input: MatterCreateInput) {
   const [primaryClientId, ...otherClientIds] = data.clientIds;
 
   const created = await prisma.$transaction(async (tx) => {
+    await checkRoleMutation(tx, session.user, "intakes.create");
     const matter = await tx.matter.create({
       data: {
         internalCode,
@@ -704,6 +729,7 @@ export async function createMatter(input: MatterCreateInput) {
         title: data.title,
         category: data.category,
         ownerId: session.user.id,
+        registeredById: session.user.id,
 
         ...emptyToNull({
           causeId: data.causeId,
@@ -813,14 +839,17 @@ export async function updateMatterTeam(input: {
   coLeadIds: string[];
   assistantIds: string[];
 }) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const matter = await prisma.matter.findUnique({
     where: { id: input.matterId, deletedAt: null },
-    select: { id: true, ownerId: true }
+    select: { id: true, ownerId: true, members: { select: { userId: true } } }
   });
   if (!matter) throw new Error("案件不存在");
   await assertMatterWritable(input.matterId);
   await assertCanOwnMatter(session.user.id, input.matterId, "只有当前主办律师可以修改承办团队");
+
+  await assertAssignableColleagues([input.ownerId, ...input.coLeadIds, ...input.assistantIds], matter.members.map((m) => m.userId));
+  if (input.ownerId !== matter.ownerId) await assertAssignableColleagues([input.ownerId]);
 
   // 校验：coLeadIds / assistantIds 不能与 ownerId 重叠
   const co = input.coLeadIds.filter((id) => id !== input.ownerId);
@@ -829,6 +858,7 @@ export async function updateMatterTeam(input: {
   );
 
   await prisma.$transaction(async (tx) => {
+    await checkRoleMutation(tx, session.user, "matters.write");
     // 更新 Matter.ownerId
     if (matter.ownerId !== input.ownerId) {
       await tx.matter.update({
@@ -865,7 +895,7 @@ export async function updateMatterTeam(input: {
   });
 
   // v0.43 项4：写入案件动态时间线
-  await prisma.timelineEvent.create({
+  await roleMutation(session.user, "matters.write", async roleDb => roleDb.timelineEvent.create({
     data: {
       matterId: input.matterId,
       eventType: "TEAM_CHANGED",
@@ -874,7 +904,7 @@ export async function updateMatterTeam(input: {
       refType: "Matter",
       refId: input.matterId
     }
-  });
+  }));
 
   await revalidateMatter(input.matterId);
   return { ok: true };
@@ -882,7 +912,7 @@ export async function updateMatterTeam(input: {
 
 // v0.27: 编辑案件基本信息（收案日期 readonly，状态走 lifecycle）
 export async function updateMatterBasicInfo(input: MatterUpdateBasicInput) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const data = matterUpdateBasicSchema.parse(input);
 
   const matter = await prisma.matter.findUnique({
@@ -899,7 +929,7 @@ export async function updateMatterBasicInfo(input: MatterUpdateBasicInput) {
   await assertCanLeadMatter(session.user.id, data.id, "只有案件主办/协办可以编辑案件基本信息");
   await assertCauseAllowedForMatter(data.id, data.causeId);
 
-  await prisma.matter.update({
+  await roleMutation(session.user, "matters.write", async roleDb => roleDb.matter.update({
     where: { id: data.id },
     data: {
       title: data.title,
@@ -911,7 +941,7 @@ export async function updateMatterBasicInfo(input: MatterUpdateBasicInput) {
           : new Prisma.Decimal(data.claimAmount),
       ourStanding: data.ourStanding ?? null
     }
-  });
+  }));
 
   await audit({
     userId: session.user.id,
@@ -926,14 +956,14 @@ export async function updateMatterBasicInfo(input: MatterUpdateBasicInput) {
 }
 
 export async function softDeleteMatter(id: string) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   await assertMatterWritable(id);
   await assertCanOwnMatter(session.user.id, id, "只有当前主办律师可以删除案件");
 
-  await prisma.matter.update({
+  await roleMutation(session.user, "matters.write", async roleDb => roleDb.matter.update({
     where: { id },
     data: { deletedAt: new Date() }
-  });
+  }));
 
   await audit({
     userId: session.user.id,

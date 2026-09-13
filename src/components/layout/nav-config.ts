@@ -32,7 +32,7 @@ export const primaryNav: NavItem[] = [
   { label: "客户", href: "/clients", icon: Users },
   { label: "财务", href: "/finance", icon: Wallet },
   { label: "日程", href: "/schedule", icon: Calendar },
-  { label: "审批", href: "/approvals/seals", icon: ClipboardCheck }
+  { label: "审批", href: "/approvals", icon: ClipboardCheck }
 ];
 
 export const secondaryNav: NavItem[] = [
@@ -40,5 +40,5 @@ export const secondaryNav: NavItem[] = [
   { label: "归档", href: "/archive", icon: Archive },
   { label: "报表", href: "/reports", icon: BarChart3 },
   // v0.43: 「审计」入口移除（审计日志在 设置 → 审计日志）
-  { label: "设置", href: "/settings", icon: Settings }
+  { label: "个人设置", href: "/settings", icon: Settings }
 ];

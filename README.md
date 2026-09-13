@@ -29,6 +29,7 @@ LawLink 是一个开源、自部署的律师案件 / 项目管理系统，主要
 | [`docs/PUBLIC_RELEASE_CHECKLIST.md`](./docs/PUBLIC_RELEASE_CHECKLIST.md) | GitHub 公开发布前的敏感数据与打包检查 |
 | [`docs/GITHUB_PUBLISHING_GUIDE.md`](./docs/GITHUB_PUBLISHING_GUIDE.md) | 第一次发布到 GitHub 的操作手册 |
 | [`docs/PUBLISH_READINESS_REPORT.md`](./docs/PUBLISH_READINESS_REPORT.md) | 当前发布准备度体检报告 |
+| [`docs/CLOUD-SERVER-INSTALLATION-GUIDE.md`](./docs/CLOUD-SERVER-INSTALLATION-GUIDE.md) | 面向技术小白的云服务器安装、HTTPS、备份与升级指南 |
 | [`CONTRIBUTING.md`](./CONTRIBUTING.md) | 贡献说明 |
 | [`SECURITY.md`](./SECURITY.md) | 安全问题报告方式 |
 | [`CHANGELOG.md`](./CHANGELOG.md) | 版本变更记录 |

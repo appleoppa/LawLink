@@ -55,7 +55,7 @@ export function AnnouncementsView({
             公告指引
           </h1>
           <p className="mt-0.5 text-[12px] text-muted-foreground">
-            共 {active.length} 条公告 · 置顶公告会显示在全站顶部 banner
+            共 {active.length} 条公告 · 置顶公告会显示在全站顶部 公告栏
           </p>
         </div>
         {isManager && (

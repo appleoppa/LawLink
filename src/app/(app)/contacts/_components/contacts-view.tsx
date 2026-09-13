@@ -1,4 +1,5 @@
 "use client";
+import { customOrLegacy, hasCustomPermission, scopeFor, type RoleGrant } from "@/lib/roles/catalog";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -21,7 +22,7 @@ type ColleagueItem = {
   name: string;
   email: string;
   phone: string | null;
-  role: string;
+  role: string; roleName?: string;
   avatar: string | null;
 };
 
@@ -60,20 +61,22 @@ export function ContactsView({
   colleagues,
   externalContacts,
   currentUserId,
-  currentUserRole
+  currentUserRole,
+  rolePermissions
 }: {
   colleagues: ColleagueItem[];
   externalContacts: ExternalContactItem[];
   currentUserId: string;
   currentUserRole: string;
+  rolePermissions?: RoleGrant[];
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ExternalContactItem | null>(null);
   const [filter, setFilter] = useState<ExternalContactCategory | "ALL">("ALL");
   const [search, setSearch] = useState("");
   const router = useRouter();
-  const canReviewContacts =
-    currentUserRole === "ADMIN" || currentUserRole === "PRINCIPAL_LAWYER";
+  const roleUser = { role: currentUserRole, rolePermissions };
+  const canReviewContacts = customOrLegacy(roleUser, "contacts.review", currentUserRole === "PRINCIPAL_LAWYER");
   const pendingCount = externalContacts.filter((c) => c.status === "PENDING_REVIEW").length;
 
   const filteredExternal = externalContacts.filter((c) => {
@@ -150,7 +153,7 @@ export function ContactsView({
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-medium">{u.name}</div>
                 <div className="text-[11px] text-muted-foreground">
-                  {userRoleLabel[u.role as keyof typeof userRoleLabel] ?? u.role}
+                  {u.roleName ?? userRoleLabel[u.role as keyof typeof userRoleLabel] ?? u.role}
                 </div>
                 <div className="mt-1 space-y-0.5 text-[11px] text-foreground/80">
                   <div className="truncate font-mono">{u.email}</div>
@@ -231,9 +234,8 @@ export function ContactsView({
           <ul className="space-y-1.5">
             {filteredExternal.map((c) => {
               const canEdit =
-                currentUserRole === "ADMIN" ||
-                currentUserRole === "PRINCIPAL_LAWYER" ||
-                c.createdBy.id === currentUserId;
+                hasCustomPermission(roleUser, "contacts.manage") && (currentUserRole === "PRINCIPAL_LAWYER" ||
+                scopeFor(roleUser, "contacts.manage") === "ALL" || c.createdBy.id === currentUserId);
               return (
                 <li
                   key={c.id}

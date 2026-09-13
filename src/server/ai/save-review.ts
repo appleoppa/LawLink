@@ -1,4 +1,5 @@
 "use server";
+import { roleMutation } from "@/lib/roles/service";
 
 /**
  * v0.20: 文书 AI 审查结果保存为案件 Document（与 A3 类案存档对称的模式）
@@ -72,8 +73,8 @@ export async function saveReviewToMatter(input: {
   reviewedDocName: string;
   items: ReviewItem[];
 }): Promise<{ ok: true; documentId: string; documentName: string }> {
-  const session = await requireSession();
-  await assertCanAccessMatter(session.user.id, session.user.role, input.matterId);
+  const session = await requireSession("documents.write");
+  await assertCanAccessMatter(session.user.id, session.user.role, input.matterId, session.user.rolePermissions);
 
   const matter = await prisma.matter.findUnique({
     where: { id: input.matterId, deletedAt: null },
@@ -91,7 +92,7 @@ export async function saveReviewToMatter(input: {
   const ts = new Date().toISOString().slice(0, 10);
   const docName = `AI审查_${safeFileName(input.reviewedDocName)}_${ts}.md`;
 
-  const doc = await prisma.document.create({
+  const doc = await roleMutation(session.user, "documents.write", async roleDb => roleDb.document.create({
     data: {
       matterId: input.matterId,
       uploadedById: session.user.id,
@@ -105,7 +106,7 @@ export async function saveReviewToMatter(input: {
       tags: ["AI审查", "存档"]
     },
     select: { id: true, name: true }
-  });
+  }));
 
   await audit({
     userId: session.user.id,

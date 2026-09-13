@@ -35,7 +35,7 @@ export default function LoginPage() {
 
           <ul className="space-y-3.5 text-sm text-muted-foreground">
             <Feature icon={<ShieldCheck className="h-3.5 w-3.5" />}>
-              数据自托管，附件可选加密，不依赖第三方 SaaS
+              数据自托管，附件可选加密，不依赖第三方托管服务
             </Feature>
             <Feature icon={<Sparkles className="h-3.5 w-3.5" />}>
               覆盖收案、冲突检索、多程序串接、财务分成、归档全流程

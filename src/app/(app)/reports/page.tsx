@@ -1,3 +1,5 @@
+import { customOrLegacy } from "@/lib/roles/catalog";
+import { reportAccess } from "@/lib/roles/report-scope";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
 import { getReportData, periodPresets } from "@/server/reports/queries";
@@ -15,15 +17,15 @@ export default async function ReportsPage({
 }) {
   const session = await getSession();
   if (!session?.user) redirect("/login");
-  if (session.user.role !== "ADMIN" && session.user.role !== "PRINCIPAL_LAWYER") {
+  if (!customOrLegacy(session.user, "reports.read", session.user.role === "PRINCIPAL_LAWYER")) {
     redirect("/");
   }
 
   const resolved = resolveReportPeriod(searchParams);
   const [data, cycle, reviewAnalysis] = await Promise.all([
-    getReportData(resolved.period),
-    getCaseCycleAnalysis(resolved.period),
-    getReviewIssueAnalysis(resolved.period)
+    getReportData(resolved.period, reportAccess(session.user)),
+    getCaseCycleAnalysis(resolved.period, reportAccess(session.user)),
+    getReviewIssueAnalysis(resolved.period, reportAccess(session.user))
   ]);
   const presets = periodPresets();
 

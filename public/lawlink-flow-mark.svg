@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="title desc">
+  <title id="title">LawLink flow mark</title>
+  <desc id="desc">A document and matter-route symbol for legal workflow connection.</desc>
+  <defs>
+    <linearGradient id="flow-bg" x1="14" y1="9" x2="82" y2="89" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#13243d"/>
+      <stop offset="1" stop-color="#0f1b2d"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="29" y1="20" x2="68" y2="78" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#edf0f4"/>
+    </linearGradient>
+  </defs>
+  <rect x="7" y="7" width="82" height="82" rx="23" fill="url(#flow-bg)"/>
+  <path d="M31 21h27l10 10v44H31z" fill="url(#paper)"/>
+  <path d="M58 21v10h10" fill="none" stroke="#cfd8e3" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M26 63c12 0 13-17 25-17 10 0 10-14 22-14" fill="none" stroke="#00a6a6" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="26" cy="63" r="5.5" fill="#f7fbfb" stroke="#00a6a6" stroke-width="4"/>
+  <circle cx="51" cy="46" r="5.5" fill="#f7fbfb" stroke="#00a6a6" stroke-width="4"/>
+  <circle cx="73" cy="32" r="5.5" fill="#f7fbfb" stroke="#00a6a6" stroke-width="4"/>
+  <path d="M40 61h20M40 68h15" stroke="#9aa8b8" stroke-width="3" stroke-linecap="round"/>
+</svg>

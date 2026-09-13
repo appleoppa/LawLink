@@ -88,7 +88,8 @@ export async function scanDueReminders(): Promise<DueReminderScanResult> {
 
   for (const offset of OFFSETS) {
     const target = new Date(now);
-    target.setDate(target.getDate() + offset);
+    // offset 是通知相对到期日的位置，提前提醒应查询未来日期。
+    target.setDate(target.getDate() - offset);
     const dayStart = startOfLocalDay(target);
     const dayEnd = endOfLocalDay(target);
 

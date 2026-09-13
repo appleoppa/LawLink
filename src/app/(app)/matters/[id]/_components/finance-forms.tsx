@@ -435,7 +435,7 @@ export function EditCommissionPlanDialog({
   open: boolean;
   onOpenChange: (o: boolean) => void;
   matterId: string;
-  userOptions: { id: string; name: string; role: string }[];
+  userOptions: { id: string; name: string; role: string; roleName?: string }[];
   initialPlans: PlanRow[];
 }) {
   const [isPending, startTransition] = useTransition();
@@ -514,7 +514,7 @@ export function EditCommissionPlanDialog({
                       <SelectContent>
                         {userOptions.map((u) => (
                           <SelectItem key={u.id} value={u.id}>
-                            {u.name} · {userRoleLabel[u.role as keyof typeof userRoleLabel] ?? u.role}
+                            {u.name} · {u.roleName ?? userRoleLabel[u.role as keyof typeof userRoleLabel] ?? u.role}
                           </SelectItem>
                         ))}
                       </SelectContent>

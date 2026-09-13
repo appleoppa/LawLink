@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { MatterCategory } from "@prisma/client";
 
-import { requireSession } from "@/lib/auth/session";
+import { requireSystemAdmin } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import { saveFirmProfile, CATEGORY_WORD_DEFAULTS } from "./firm-profile";
 
@@ -24,16 +24,8 @@ const saveSchema = z.object({
   categoryWords: z.record(z.string(), z.string().trim().max(12)).optional()
 });
 
-async function requireAdmin() {
-  const session = await requireSession();
-  if (session.user.role !== "ADMIN") {
-    throw new Error("仅管理员可修改律所信息配置");
-  }
-  return session;
-}
-
 export async function saveFirmProfileAction(input: z.infer<typeof saveSchema>) {
-  const session = await requireAdmin();
+  const session = await requireSystemAdmin();
   const data = saveSchema.parse(input);
 
   // Logo 校验：必须是 image/* 的 base64 data URL，且体积受限

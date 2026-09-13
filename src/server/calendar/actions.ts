@@ -15,7 +15,7 @@ function newToken() {
  * 泄露时用 regenerateCalendarToken 作废旧链接。
  */
 export async function getCalendarToken() {
-  const session = await requireSession();
+  const session = await requireSession("personal");
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
     select: { calendarToken: true }
@@ -37,7 +37,7 @@ export async function getCalendarToken() {
 }
 
 export async function regenerateCalendarToken() {
-  const session = await requireSession();
+  const session = await requireSession("personal");
   const token = newToken();
   await prisma.user.update({
     where: { id: session.user.id },

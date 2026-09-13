@@ -1,5 +1,7 @@
 "use client";
 
+import { FormDialogContent as DialogContent, FormDialogBody } from "@/components/patterns/form-dialog";
+
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -11,7 +13,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
-  DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle
@@ -141,6 +142,7 @@ export function ExternalContactDialog({
         <DialogHeader>
           <DialogTitle>{editing ? "编辑联系人" : "新增外部联系人"}</DialogTitle>
         </DialogHeader>
+        <FormDialogBody>
 
         <div className="space-y-3 py-2">
           <div className="grid grid-cols-2 gap-3">
@@ -238,6 +240,7 @@ export function ExternalContactDialog({
           </div>
         </div>
 
+        </FormDialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
             取消

@@ -4,7 +4,7 @@
  * v0.22: AuditLog 查询（admin-only 审计回放）
  */
 import { prisma } from "@/lib/prisma";
-import { requireSession } from "@/lib/auth/session";
+import { requireSystemAdmin } from "@/lib/auth/session";
 
 export type AuditFilter = {
   userId?: string;
@@ -33,11 +33,7 @@ export type AuditListResult = {
 };
 
 async function requireAdmin() {
-  const session = await requireSession();
-  if (session.user.role !== "ADMIN" && session.user.role !== "PRINCIPAL_LAWYER") {
-    throw new Error("仅管理员 / 主任律师可访问审计日志");
-  }
-  return session;
+  return requireSystemAdmin();
 }
 
 function parseDate(s: string | undefined): Date | undefined {

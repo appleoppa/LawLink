@@ -25,7 +25,8 @@ import {
 } from "@/components/ui/dialog";
 import { cn, daysUntil } from "@/lib/utils";
 import type { ScheduleItem } from "@/server/schedule/query";
-import { procedureTypeLabel } from "@/lib/enums";
+import { deadlineCategoryLabel, procedureTypeLabel } from "@/lib/enums";
+import { CalendarSubscriptionDialog } from "./calendar-subscription-dialog";
 import { AddTaskDialog } from "./add-task-dialog";
 import { matterHref } from "@/lib/matters/route";
 
@@ -93,6 +94,7 @@ export function ScheduleView({
         </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2">
+            <CalendarSubscriptionDialog />
             <Button size="sm" onClick={() => openAddDialog()} className="h-8 gap-1.5">
               <Plus className="h-3.5 w-3.5" strokeWidth={1.8} />
               添加日程
@@ -623,7 +625,7 @@ function ScheduleItemDialog({
                 <DetailLine label="程序" value={formatProcedureLabel(item.procedureLabel)} />
               )}
               {item.type === "deadline" && item.category && (
-                <DetailLine label="期限类型" value={item.category} />
+                <DetailLine label="期限类型" value={deadlineCategoryLabel[item.category as keyof typeof deadlineCategoryLabel] ?? "类型待核实"} />
               )}
               {item.type === "deadline" && item.remindDays !== undefined && (
                 <DetailLine label="提醒" value={`提前 ${item.remindDays} 天`} />

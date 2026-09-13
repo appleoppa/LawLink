@@ -2,7 +2,7 @@
  * v0.8 内置 8 个开源模板的 docx 文件动态生成（首批 ★ 模板）
  *
  * 用 docx 库构造 docx Buffer，docxtemplater 占位符使用 {{var}} 语法。
- * 律所部署后可在 /settings/templates 上传自定义模板替换。
+ * 律所部署后可在 /admin/templates 上传自定义模板替换。
  *
  * 8 个：
  *   1. 民事案件收案登记表

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 168" role="img" aria-labelledby="title desc">
+  <title id="title">LawLink continuum logo</title>
+  <desc id="desc">LawLink wordmark with a continuous legal-work route forming an integrated link mark.</desc>
+  <defs>
+    <linearGradient id="continuum-bg" x1="13" y1="9" x2="83" y2="88" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#eef3f7"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(28 28) scale(1.18)">
+    <rect x="7" y="7" width="82" height="82" rx="24" fill="url(#continuum-bg)"/>
+    <rect x="7.5" y="7.5" width="81" height="81" rx="23.5" fill="none" stroke="#d8e1ea"/>
+    <path
+      d="M30 66C30 43 41 29 58 29C70 29 77 37 77 48C77 59 69 67 58 67H39C28 67 20 59 20 48C20 37 28 29 39 29H46"
+      fill="none"
+      stroke="#0f1b2d"
+      stroke-width="11"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <path
+      d="M50 67H58C69 67 77 59 77 48C77 37 70 29 58 29C41 29 30 43 30 66"
+      fill="none"
+      stroke="#007b7f"
+      stroke-width="11"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <path d="M42 48h12" fill="none" stroke="#eef3f7" stroke-width="4" stroke-linecap="round"/>
+  </g>
+  <text
+    x="168"
+    y="103"
+    fill="#0f1b2d"
+    font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', Inter, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif"
+    font-size="66"
+    font-weight="740"
+  >LawLink</text>
+  <text
+    x="172"
+    y="133"
+    fill="#5f6d7e"
+    font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif"
+    font-size="18"
+    font-weight="520"
+  >Matter flow, fully connected</text>
+</svg>

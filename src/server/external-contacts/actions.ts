@@ -1,4 +1,5 @@
 "use server";
+import { roleMutation } from "@/lib/roles/service";
 
 /**
  * v0.27: 服务中心 - 外部联系人通讯录
@@ -8,6 +9,7 @@
  *
  * 权限：所有登录用户可看已通过联系人，可新建；普通成员新建后需管理层审核。
  */
+import { customOrLegacy, scopeFor, type RoleGrant } from "@/lib/roles/catalog";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
@@ -59,8 +61,8 @@ function empty(s?: string | null) {
 export async function listExternalContacts(
   filter: { category?: (typeof categories)[number] | "ALL"; search?: string } = {}
 ) {
-  const session = await requireSession();
-  const canReview = isManager(session.user.role);
+  const session = await requireSession("personal");
+  const canReview = customOrLegacy(session.user, "contacts.review", isManager(session.user.role));
   const where: Prisma.ExternalContactWhereInput = {
     archivedAt: null,
     status: canReview ? { in: ["APPROVED", "PENDING_REVIEW"] } : "APPROVED"
@@ -103,25 +105,25 @@ async function notifyRequester(userId: string, input: {
   });
 }
 
-async function assertCanModify(id: string, sessionUserId: string, role: string) {
+async function assertCanModify(id: string, sessionUserId: string, role: string, grants?: RoleGrant[]) {
   const c = await prisma.externalContact.findUnique({
     where: { id },
     select: { createdById: true }
   });
   if (!c) throw new Error("联系人不存在");
   const allowed =
-    role === "ADMIN" || role === "PRINCIPAL_LAWYER" || c.createdById === sessionUserId;
+    role === "PRINCIPAL_LAWYER" || (role === "CUSTOM" && scopeFor({ role, rolePermissions: grants }, "contacts.manage") === "ALL") || c.createdById === sessionUserId;
   if (!allowed) throw new Error("无权修改此联系人");
 }
 
 export async function createExternalContact(input: z.infer<typeof externalContactSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("contacts.manage");
   const data = externalContactSchema.parse(input);
   // v1.0: 审核流默认关闭（小所信任环境，新增直接通过）；可在设置里打开
   const { externalContactReview } = await getWorkflowToggles();
   const status =
-    !externalContactReview || isManager(session.user.role) ? "APPROVED" : "PENDING_REVIEW";
-  const created = await prisma.externalContact.create({
+    !externalContactReview || customOrLegacy(session.user, "contacts.review", isManager(session.user.role)) ? "APPROVED" : "PENDING_REVIEW";
+  const created = await roleMutation(session.user, "contacts.manage", async roleDb => roleDb.externalContact.create({
     data: {
       name: data.name.trim(),
       category: data.category,
@@ -136,7 +138,7 @@ export async function createExternalContact(input: z.infer<typeof externalContac
       createdById: session.user.id,
       status
     }
-  });
+  }));
   await audit({
     userId: session.user.id,
     action: "EXTERNAL_CONTACT_CREATE",
@@ -146,7 +148,7 @@ export async function createExternalContact(input: z.infer<typeof externalContac
   });
   if (created.status === "PENDING_REVIEW") {
     await notifyRoleApprovers({
-      roles: ["ADMIN", "PRINCIPAL_LAWYER"],
+      roles: ["PRINCIPAL_LAWYER"],
       excludeUserId: session.user.id,
       title: "新的通讯录联系人待审核",
       content: `${session.user.name ?? "同事"} 新增了外部联系人「${created.name}」`,
@@ -161,10 +163,10 @@ export async function createExternalContact(input: z.infer<typeof externalContac
 }
 
 export async function updateExternalContact(input: z.infer<typeof externalContactUpdateSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("contacts.manage");
   const data = externalContactUpdateSchema.parse(input);
-  await assertCanModify(data.id, session.user.id, session.user.role);
-  const updated = await prisma.externalContact.update({
+  await assertCanModify(data.id, session.user.id, session.user.role, session.user.rolePermissions);
+  const updated = await roleMutation(session.user, "contacts.manage", async roleDb => roleDb.externalContact.update({
     where: { id: data.id },
     data: {
       name: data.name.trim(),
@@ -178,7 +180,7 @@ export async function updateExternalContact(input: z.infer<typeof externalContac
       notes: empty(data.notes),
       tags: data.tags
     }
-  });
+  }));
   await audit({
     userId: session.user.id,
     action: "EXTERNAL_CONTACT_UPDATE",
@@ -191,8 +193,8 @@ export async function updateExternalContact(input: z.infer<typeof externalContac
 }
 
 export async function approveExternalContact(input: z.infer<typeof externalContactReviewSchema>) {
-  const session = await requireSession();
-  if (!isManager(session.user.role)) throw new Error("仅管理员可审核联系人");
+  const session = await requireSession("contacts.review");
+  if (!customOrLegacy(session.user, "contacts.review", isManager(session.user.role))) throw new Error("仅管理员可审核联系人");
   const data = externalContactReviewSchema.parse(input);
   const current = await prisma.externalContact.findUnique({
     where: { id: data.id },
@@ -201,7 +203,7 @@ export async function approveExternalContact(input: z.infer<typeof externalConta
   if (!current) throw new Error("联系人不存在");
   if (current.status !== "PENDING_REVIEW") throw new Error("该联系人当前不在待审核状态");
 
-  const approved = await prisma.externalContact.update({
+  const approved = await roleMutation(session.user, "contacts.review", async roleDb => roleDb.externalContact.update({
     where: { id: data.id },
     data: {
       status: "APPROVED",
@@ -209,7 +211,7 @@ export async function approveExternalContact(input: z.infer<typeof externalConta
       reviewedAt: new Date(),
       reviewNote: empty(data.note)
     }
-  });
+  }));
 
   await audit({
     userId: session.user.id,
@@ -230,8 +232,8 @@ export async function approveExternalContact(input: z.infer<typeof externalConta
 }
 
 export async function rejectExternalContact(input: z.infer<typeof externalContactReviewSchema>) {
-  const session = await requireSession();
-  if (!isManager(session.user.role)) throw new Error("仅管理员可审核联系人");
+  const session = await requireSession("contacts.review");
+  if (!customOrLegacy(session.user, "contacts.review", isManager(session.user.role))) throw new Error("仅管理员可审核联系人");
   const data = externalContactReviewSchema.parse(input);
   const current = await prisma.externalContact.findUnique({
     where: { id: data.id },
@@ -240,7 +242,7 @@ export async function rejectExternalContact(input: z.infer<typeof externalContac
   if (!current) throw new Error("联系人不存在");
   if (current.status !== "PENDING_REVIEW") throw new Error("该联系人当前不在待审核状态");
 
-  const rejected = await prisma.externalContact.update({
+  const rejected = await roleMutation(session.user, "contacts.review", async roleDb => roleDb.externalContact.update({
     where: { id: data.id },
     data: {
       status: "REJECTED",
@@ -248,7 +250,7 @@ export async function rejectExternalContact(input: z.infer<typeof externalContac
       reviewedAt: new Date(),
       reviewNote: empty(data.note)
     }
-  });
+  }));
 
   await audit({
     userId: session.user.id,
@@ -269,12 +271,12 @@ export async function rejectExternalContact(input: z.infer<typeof externalContac
 }
 
 export async function archiveExternalContact(id: string) {
-  const session = await requireSession();
-  await assertCanModify(id, session.user.id, session.user.role);
-  await prisma.externalContact.update({
+  const session = await requireSession("contacts.manage");
+  await assertCanModify(id, session.user.id, session.user.role, session.user.rolePermissions);
+  await roleMutation(session.user, "contacts.manage", async roleDb => roleDb.externalContact.update({
     where: { id },
     data: { archivedAt: new Date() }
-  });
+  }));
   await audit({
     userId: session.user.id,
     action: "EXTERNAL_CONTACT_ARCHIVE",

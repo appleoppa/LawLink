@@ -12,7 +12,7 @@ export type SealRequestRow = Prisma.SealRequestGetPayload<{
     draftDoc: { select: { id: true; name: true; size: true } };
     stampedDoc: { select: { id: true; name: true; size: true } };
   };
-}>;
+}> & { canApprove?: boolean; canStamp?: boolean };
 
 export type SealTypeConfigRow = Prisma.SealTypeConfigGetPayload<{}>;
 

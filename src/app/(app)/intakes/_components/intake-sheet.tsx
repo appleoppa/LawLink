@@ -1,5 +1,7 @@
 "use client";
 
+import { ColleaguePicker } from "@/components/matters/colleague-picker";
+
 import { useState, useTransition, useRef, useMemo, useEffect } from "react";
 import {
   useForm,
@@ -51,7 +53,6 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   matterCategoryLabel,
@@ -59,7 +60,6 @@ import {
   litigationStandingLabel,
   feeTypeLabel,
   procedureToStandingOptions,
-  userRoleLabel,
   barFilingLabel,
   BAR_FILING_OPTIONS,
   matterCategoryKind,
@@ -188,7 +188,7 @@ const defaults: IntakeCreateInput = {
   ]
 };
 
-type Colleague = { id: string; name: string; role: UserRole };
+type Colleague = { id: string; name: string; role: UserRole; isTeammate?: boolean };
 
 function firstFormErrorMessage(value: unknown): string | undefined {
   if (!value || typeof value !== "object") return undefined;
@@ -205,12 +205,14 @@ export function IntakeSheet({
   open,
   onOpenChange,
   clientOptions,
-  colleagues
+  colleagues,
+  onSubmitted
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   clientOptions: ClientOption[];
   colleagues: Colleague[];
+  onSubmitted?: (id: string) => void;
 }) {
   const router = useRouter();
   const { data: session } = useSession();
@@ -409,7 +411,7 @@ export function IntakeSheet({
       setCauseName("");
       setContracts([]);
       onOpenChange(false);
-      if (res.id) router.push(`/intakes/${res.id}`);
+      if (res.id) { if (onSubmitted) onSubmitted(res.id); else router.push(`/intakes/${res.id}`); }
     } catch (err) {
       toast.error("创建失败", {
         description: err instanceof Error ? err.message : ""
@@ -579,12 +581,7 @@ export function IntakeSheet({
     }
   }
 
-  function toggleCo(uid: string) {
-    const next = coUserIds.includes(uid)
-      ? coUserIds.filter((id) => id !== uid)
-      : [...coUserIds, uid];
-    setValue("coUserIds", next, { shouldDirty: true });
-  }
+
 
   async function handlePickYuandian(candidate: EnterpriseSearchItem) {
     // 委托方行恒为 parties[0]
@@ -671,29 +668,7 @@ export function IntakeSheet({
             portalled={false}
             className="w-[--radix-popover-trigger-width] p-1.5"
           >
-            <div className="max-h-56 space-y-0.5 overflow-y-auto">
-              {colleagues.filter((u) => u.id !== ownerUserId).length === 0 ? (
-                <p className="py-4 text-center text-xs text-muted-foreground">暂无可选协办</p>
-              ) : (
-                colleagues
-                  .filter((u) => u.id !== ownerUserId)
-                  .map((u) => (
-                    <label
-                      key={u.id}
-                      className="flex min-h-8 cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] transition-colors hover:bg-muted hover:text-foreground"
-                    >
-                      <Checkbox
-                        checked={coUserIds.includes(u.id)}
-                        onCheckedChange={() => toggleCo(u.id)}
-                      />
-                      <span>{u.name}</span>
-                      <span className="text-[10px] text-muted-foreground">
-                        {userRoleLabel[u.role]}
-                      </span>
-                    </label>
-                  ))
-              )}
-            </div>
+            <ColleaguePicker people={colleagues.filter((u) => u.id !== ownerUserId)} selected={coUserIds} onChange={(ids) => setValue("coUserIds", ids, { shouldDirty: true })} />
           </PopoverContent>
         </Popover>
       </Field>

@@ -1,3 +1,4 @@
+import type { RoleGrant } from "@/lib/roles/catalog";
 import ExcelJS from "exceljs";
 import {
   MatterCategory,
@@ -11,7 +12,7 @@ import {
   type ProcedureStatus
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { intakeVisibilityFilter, matterVisibilityFilter } from "@/lib/permissions";
+import { intakeVisibilityFilter, matterVisibilityFilter, matterAssociationFilter, teamMatterFilter, teamIntakeFilter } from "@/lib/permissions";
 import {
   barFilingLabel,
   clientTypeLabel,
@@ -31,6 +32,9 @@ type MatterSortDir = "asc" | "desc";
 
 export type MattersExportParams = {
   tab: MattersExportTab;
+  scope?: "all" | "mine" | "team";
+  teamId?: string;
+  ownerId?: string;
   search?: string;
   category?: MatterCategory;
   status?: string;
@@ -43,6 +47,7 @@ export type MattersExportParams = {
 type ExportUser = {
   id: string;
   role: string;
+  rolePermissions?: RoleGrant[];
 };
 
 const EXPORT_TABS: MattersExportTab[] = [
@@ -236,6 +241,9 @@ export function resolveMattersExportParams(searchParams: URLSearchParams): Matte
 
   return {
     tab,
+    scope: searchParams.get("scope") === "mine" ? "mine" : searchParams.get("scope") === "team" ? "team" : "all",
+    teamId: cleanText(searchParams.get("teamId")),
+    ownerId: cleanText(searchParams.get("ownerId")),
     search: cleanText(searchParams.get("search")),
     category,
     status: cleanText(searchParams.get("status")),
@@ -375,11 +383,14 @@ function groupRowsByCategory<T extends { category: MatterCategory }>(
 
 function buildIntakeWhere(params: MattersExportParams, user: ExportUser): Prisma.IntakeWhereInput {
   const parts: Prisma.IntakeWhereInput[] = [
-    intakeVisibilityFilter(user.id, user.role),
+    intakeVisibilityFilter(user.id, user.role === "CUSTOM" ? "LAWYER" : user.role),
     params.tab === "revision"
       ? { status: { in: ["NEEDS_REVISION"] } }
       : { status: { in: ["INTAKE", "PENDING_CONFIRMATION"] } }
   ];
+  if (params.scope === "mine") parts.push(intakeVisibilityFilter(user.id, "LAWYER"));
+  if (params.scope === "team" || params.teamId) parts.push(teamIntakeFilter(user.id, params.teamId));
+  if (params.ownerId) parts.push({ ownerUserId: params.ownerId });
   if (params.category) parts.push({ category: params.category });
   const from = resolveDateBoundary(params.from, false);
   const to = resolveDateBoundary(params.to, true);
@@ -407,10 +418,13 @@ function buildIntakeWhere(params: MattersExportParams, user: ExportUser): Prisma
 
 function buildMatterWhere(params: MattersExportParams, user: ExportUser): Prisma.MatterWhereInput {
   const parts: Prisma.MatterWhereInput[] = [
-    matterVisibilityFilter(user.id, user.role),
+    (user.role === "CUSTOM" ? matterAssociationFilter(user.id) : matterVisibilityFilter(user.id, user.role)),
     { deletedAt: null },
     matterStatusWhere(params)
   ];
+  if (params.scope === "mine") parts.push(matterAssociationFilter(user.id));
+  if (params.scope === "team" || params.teamId) parts.push(teamMatterFilter(user.id, params.teamId));
+  if (params.ownerId) parts.push({ ownerId: params.ownerId });
   if (params.category) parts.push({ category: params.category });
   const from = resolveDateBoundary(params.from, false);
   const to = resolveDateBoundary(params.to, true);

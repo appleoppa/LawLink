@@ -32,7 +32,7 @@ import { MattersTable, type MatterRow } from "./matters-table";
 import { IntakesTable, type IntakeRow } from "./intakes-table";
 
 export type ClientOption = { id: string; name: string; type: ClientType };
-export type ColleagueOption = { id: string; name: string; role: UserRole };
+export type ColleagueOption = { id: string; name: string; role: UserRole; isTeammate?: boolean };
 
 type Tab = "intake" | "active" | "archived" | "revision" | "all";
 type SortBy = "hearing" | "intakeDate" | "claimAmount" | "archivedAt";
@@ -44,7 +44,11 @@ type Props = {
   intakeData?: { items: IntakeRow[]; total: number; page: number; pageSize: number };
   clientOptions: ClientOption[];
   colleagues: ColleagueOption[];
+  readableTeams?: { id: string; name: string }[];
   initialFilters: {
+    scope?: "all" | "mine" | "team";
+    teamId?: string;
+    ownerId?: string;
     search: string;
     category: MatterCategory | "ALL";
     status?: string; // all tab 下 status 筛选
@@ -131,6 +135,7 @@ export function MattersView({
   clientOptions,
   colleagues,
   initialFilters,
+  readableTeams = [],
   autoOpenIntake
 }: Props) {
   const router = useRouter();
@@ -176,6 +181,9 @@ export function MattersView({
 
   function intakeUrlWithoutNew() {
     const params = new URLSearchParams();
+    if (initialFilters.scope && initialFilters.scope !== "all") params.set("scope", initialFilters.scope);
+    if (initialFilters.teamId) params.set("teamId", initialFilters.teamId);
+    if (initialFilters.ownerId) params.set("ownerId", initialFilters.ownerId);
     if (tab !== "active") params.set("tab", tab);
     if (initialFilters.search) params.set("search", initialFilters.search);
     if (initialFilters.category !== "ALL") params.set("category", initialFilters.category);
@@ -211,8 +219,17 @@ export function MattersView({
       sortBy?: SortBy;
       sortDir?: SortDir;
       page?: number;
+      scope?: string;
+      teamId?: string;
+      ownerId?: string;
     }) => {
       const params = new URLSearchParams();
+      const scope = override.scope ?? initialFilters.scope ?? "all";
+      const teamId = override.teamId ?? initialFilters.teamId;
+      const ownerId = override.ownerId ?? initialFilters.ownerId;
+      if (scope !== "all") params.set("scope", scope);
+      if (teamId) params.set("teamId", teamId);
+      if (ownerId) params.set("ownerId", ownerId);
       const t = override.tab ?? tab;
       const s = override.search ?? search;
       const c = override.category ?? category;
@@ -234,7 +251,7 @@ export function MattersView({
       if (p > 1) params.set("page", String(p));
       return `/matters${params.toString() ? `?${params.toString()}` : ""}`;
     },
-    [tab, search, category, statusFilter, dateFrom, dateTo, sortBy, sortDir, currentPage]
+    [tab, search, category, statusFilter, dateFrom, dateTo, sortBy, sortDir, currentPage, initialFilters.scope, initialFilters.teamId, initialFilters.ownerId]
   );
 
   const buildExportUrl = useCallback(() => {
@@ -278,6 +295,7 @@ export function MattersView({
   }
 
   const hasFilters =
+    initialFilters.scope === "mine" || initialFilters.scope === "team" || initialFilters.teamId || initialFilters.ownerId ||
     search ||
     category !== "ALL" ||
     (isAll && statusFilter !== "ALL") ||
@@ -301,7 +319,7 @@ export function MattersView({
         </div>
         <div className="flex items-center gap-2">
             <Button asChild variant="outline" className="gap-1.5 px-3">
-              <a href={buildExportUrl()}>
+              <a href={buildExportUrl()} title="仅导出本人经办或原有管理权限范围内的案件；团队查看权不含导出">
                 <Download className="h-4 w-4" strokeWidth={2} />
                 导出
               </a>
@@ -364,6 +382,19 @@ export function MattersView({
 
       {/* 筛选 / 排序 */}
       <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-muted/70 px-2 py-2">
+        <CompactSelect label="范围" value={initialFilters.scope ?? "all"} onValueChange={(scope) => startTransition(() => router.replace(buildUrl({ scope, teamId: "", page: 1 })))} className="w-40">
+          <SelectItem value="all">全部可见</SelectItem>
+          <SelectItem value="mine">我经办的</SelectItem>
+          {readableTeams.length > 0 && <SelectItem value="team">团队案件</SelectItem>}
+        </CompactSelect>
+        {initialFilters.scope === "team" && readableTeams.length > 0 && <CompactSelect label="团队" value={initialFilters.teamId ?? "ALL"} onValueChange={(teamId) => startTransition(() => router.replace(buildUrl({ teamId: teamId === "ALL" ? "" : teamId, page: 1 })))} className="w-44">
+          <SelectItem value="ALL">全部获权团队</SelectItem>
+          {readableTeams.map((team) => <SelectItem key={team.id} value={team.id}>{team.name}</SelectItem>)}
+        </CompactSelect>}
+        <CompactSelect label="主办" value={initialFilters.ownerId ?? "ALL"} onValueChange={(ownerId) => startTransition(() => router.replace(buildUrl({ ownerId: ownerId === "ALL" ? "" : ownerId, page: 1 })))} className="w-36">
+          <SelectItem value="ALL">全部律师</SelectItem>
+          {colleagues.map((user) => <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>)}
+        </CompactSelect>
         <CompactSelect
           label="类型"
           value={category}

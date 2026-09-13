@@ -188,6 +188,8 @@ export const matterUpdateBasicSchema = z.object({
 export type MatterUpdateBasicInput = z.infer<typeof matterUpdateBasicSchema>;
 
 export const matterListQuerySchema = z.object({
+  scope: z.enum(["all", "mine", "team"]).default("all"),
+  teamId: z.string().cuid().optional(),
   search: z.string().optional(),
   category: matterCategorySchema.optional(),
   status: matterStatusSchema.optional(),

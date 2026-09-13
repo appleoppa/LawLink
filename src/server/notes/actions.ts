@@ -1,11 +1,12 @@
 "use server";
+import { roleMutation } from "@/lib/roles/service";
 
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import { assertMatterWritable } from "@/lib/archive/guard";
-import { assertCanAccessMatter } from "@/lib/permissions";
+import { assertCanReadMatter, assertCanModifyMatter } from "@/lib/permissions";
 import { revalidateMatter } from "@/server/matters/route";
 
 const noteChannelSchema = z.enum(["PHONE", "WECHAT", "EMAIL", "MEETING", "COURT", "OTHER"]);
@@ -27,12 +28,12 @@ export type NoteCreateInput = z.infer<typeof noteCreateSchema>;
 export type NoteUpdateInput = z.infer<typeof noteUpdateSchema>;
 
 export async function createNote(input: NoteCreateInput) {
-  const session = await requireSession();
+  const session = await requireSession("schedule.write");
   const data = noteCreateSchema.parse(input);
-  await assertCanAccessMatter(session.user.id, session.user.role, data.matterId);
+  await assertCanModifyMatter(session.user.id, session.user.role, data.matterId);
   await assertMatterWritable(data.matterId);
 
-  const created = await prisma.note.create({
+  const created = await roleMutation(session.user, "schedule.write", async roleDb => roleDb.note.create({
     data: {
       matterId: data.matterId,
       authorId: session.user.id,
@@ -42,7 +43,7 @@ export async function createNote(input: NoteCreateInput) {
       content: data.content,
       tags: data.tags
     }
-  });
+  }));
 
   await audit({
     userId: session.user.id,
@@ -57,17 +58,18 @@ export async function createNote(input: NoteCreateInput) {
 }
 
 export async function updateNote(input: NoteUpdateInput) {
-  const session = await requireSession();
+  const session = await requireSession("schedule.write");
   const data = noteUpdateSchema.parse(input);
 
   const existing = await prisma.note.findUnique({ where: { id: data.id } });
   if (!existing) throw new Error("沟通记录不存在");
-  if (existing.authorId !== session.user.id && session.user.role !== "ADMIN") {
+  if (existing.authorId !== session.user.id) {
     throw new Error("只能编辑自己的沟通记录");
   }
+  await assertCanModifyMatter(session.user.id, session.user.role, existing.matterId);
   await assertMatterWritable(existing.matterId);
 
-  await prisma.note.update({
+  await roleMutation(session.user, "schedule.write", async roleDb => roleDb.note.update({
     where: { id: data.id },
     data: {
       channel: data.channel,
@@ -76,7 +78,7 @@ export async function updateNote(input: NoteUpdateInput) {
       content: data.content,
       tags: data.tags
     }
-  });
+  }));
 
   await audit({
     userId: session.user.id,
@@ -90,18 +92,19 @@ export async function updateNote(input: NoteUpdateInput) {
 }
 
 export async function deleteNote(id: string) {
-  const session = await requireSession();
+  const session = await requireSession("schedule.write");
   const existing = await prisma.note.findUnique({ where: { id } });
   if (!existing) return { ok: false };
-  if (existing.authorId !== session.user.id && session.user.role !== "ADMIN") {
+  if (existing.authorId !== session.user.id) {
     throw new Error("只能删除自己的沟通记录");
   }
+  await assertCanModifyMatter(session.user.id, session.user.role, existing.matterId);
   await assertMatterWritable(existing.matterId);
 
-  await prisma.note.update({
+  await roleMutation(session.user, "schedule.write", async roleDb => roleDb.note.update({
     where: { id },
     data: { deletedAt: new Date() }
-  });
+  }));
 
   await audit({
     userId: session.user.id,
@@ -115,8 +118,8 @@ export async function deleteNote(id: string) {
 }
 
 export async function listNotes(matterId: string) {
-  const session = await requireSession();
-  await assertCanAccessMatter(session.user.id, session.user.role, matterId);
+  const session = await requireSession("schedule.read");
+  await assertCanReadMatter(session.user.id, session.user.role, matterId, session.user.rolePermissions);
   return prisma.note.findMany({
     where: { matterId, deletedAt: null },
     orderBy: { occurredAt: "desc" },

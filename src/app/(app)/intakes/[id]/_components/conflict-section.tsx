@@ -26,7 +26,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { runCheckAndSave, setConflictConclusion } from "@/server/conflicts/actions";
-import { litigationStandingLabel, matterCategoryLabel, matterStatusLabel } from "@/lib/enums";
+import { conflictConclusionLabel, litigationStandingLabel, matterCategoryLabel, matterStatusLabel } from "@/lib/enums";
+import type { buildIntakeConflictQueries } from "@/lib/approvals/intake-detail";
 import { cn } from "@/lib/utils";
 import { matterHref } from "@/lib/matters/route";
 
@@ -73,10 +74,7 @@ type LatestCheck = {
 
 type Props = {
   intakeId: string;
-  intakeClientName?: string;
-  intakeClientIdNumber?: string;
-  opposingParties: { name: string; idNumber?: string }[];
-  thirdParties: { name: string; idNumber?: string }[];
+  queries: ReturnType<typeof buildIntakeConflictQueries>;
   latestCheck: LatestCheck | null;
   canEditConclusion: boolean;
 };
@@ -86,13 +84,6 @@ const severityStyle: Record<ConflictSeverity, { color: string; bg: string; label
   HIGH: { color: "#EA580C", bg: "rgba(234,88,12,0.10)", label: "高" },
   MEDIUM: { color: "#D97706", bg: "rgba(217,119,6,0.10)", label: "中" },
   LOW: { color: "#65A30D", bg: "rgba(101,163,13,0.10)", label: "低" }
-};
-
-const conclusionLabel: Record<ConflictConclusion, string> = {
-  PENDING: "待结论",
-  SAME_SUBJECT: "有冲突",
-  DIFFERENT: "可承接",
-  NEED_INFO: "信息不足"
 };
 
 const partyRoleLabel: Record<PartyRole, string> = {
@@ -107,10 +98,7 @@ const partyRoleLabel: Record<PartyRole, string> = {
 
 export function ConflictSection({
   intakeId,
-  intakeClientName,
-  intakeClientIdNumber,
-  opposingParties,
-  thirdParties,
+  queries,
   latestCheck,
   canEditConclusion
 }: Props) {
@@ -120,24 +108,6 @@ export function ConflictSection({
     latestCheck?.hits.some((h) => h.severity === "HIGH" || h.severity === "BLOCKING") ?? false;
 
   function handleRunCheck() {
-    const queries: {
-      role: "CLIENT_PARTY" | "OPPOSING_PARTY" | "THIRD_PARTY";
-      name: string;
-      idNumber?: string;
-    }[] = [];
-    if (intakeClientName) {
-      queries.push({
-        role: "CLIENT_PARTY",
-        name: intakeClientName,
-        idNumber: intakeClientIdNumber
-      });
-    }
-    for (const p of opposingParties) {
-      queries.push({ role: "OPPOSING_PARTY", name: p.name, idNumber: p.idNumber });
-    }
-    for (const p of thirdParties) {
-      queries.push({ role: "THIRD_PARTY", name: p.name, idNumber: p.idNumber });
-    }
     if (queries.length === 0) {
       toast.warning("没有可检索的当事人", { description: "请先在收案中添加委托方或对方" });
       return;
@@ -147,7 +117,7 @@ export function ConflictSection({
       try {
         const res = await runCheckAndSave({ intakeId, queries });
         toast.success("冲突检索完成", {
-          description: `命中 ${res.hits.length} 条 · 客户库同名 ${res.sameNameClients.length} 个`
+          description: `命中 ${res.hits.length} 条，请逐条核查`
         });
       } catch (err) {
         toast.error("检索失败", {
@@ -235,7 +205,7 @@ export function ConflictSection({
                 latestCheck.conclusion === "NEED_INFO" && "border-amber-500/40 text-amber-600"
               )}
             >
-              {conclusionLabel[latestCheck.conclusion]}
+              {conflictConclusionLabel[latestCheck.conclusion]}
             </Badge>
             {latestCheck.decidedBy && (
               <span className="ml-auto text-[11px] text-muted-foreground">

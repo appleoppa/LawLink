@@ -1,4 +1,5 @@
 "use server";
+import { checkRoleMutation } from "@/lib/roles/service";
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -27,12 +28,13 @@ export type HoldMatterInput = z.infer<typeof holdMatterSchema>;
  * 不强制要求所有 procedure 都 concluded，律师自行判断。
  */
 export async function closeMatter(input: CloseMatterInput) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const data = closeMatterSchema.parse(input);
   await assertMatterWritable(data.id);
   await assertCanLeadMatter(session.user.id, data.id, "仅案件主办/协办可以结案");
 
   await prisma.$transaction(async (tx) => {
+    await checkRoleMutation(tx, session.user, "matters.write");
     await tx.matter.update({
       where: { id: data.id },
       data: {
@@ -71,10 +73,10 @@ export async function closeMatter(input: CloseMatterInput) {
 
 /**
  * 重新开放（从 ON_HOLD / CLOSED 回到 IN_PROGRESS）。
- * ARCHIVED 状态不能重新开放（如需要应由 ADMIN 走单独路径）。
+ * ARCHIVED 状态不能重新开放（如需更正应走单独的审计流程）。
  */
 export async function reopenMatter(id: string) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const matter = await prisma.matter.findUnique({ where: { id }, select: { status: true } });
   if (!matter) throw new Error("案件不存在");
   await assertMatterWritable(id);
@@ -84,6 +86,7 @@ export async function reopenMatter(id: string) {
   }
 
   await prisma.$transaction(async (tx) => {
+    await checkRoleMutation(tx, session.user, "matters.write");
     await tx.matter.update({
       where: { id },
       data: {
@@ -117,12 +120,13 @@ export async function reopenMatter(id: string) {
  * 暂停案件（客户失联、待补充材料等）。
  */
 export async function holdMatter(input: HoldMatterInput) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const data = holdMatterSchema.parse(input);
   await assertMatterWritable(data.id);
   await assertCanLeadMatter(session.user.id, data.id, "仅案件主办/协办可以暂停案件");
 
   await prisma.$transaction(async (tx) => {
+    await checkRoleMutation(tx, session.user, "matters.write");
     await tx.matter.update({
       where: { id: data.id },
       data: { status: "ON_HOLD" }

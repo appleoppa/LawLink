@@ -86,11 +86,16 @@ User ─── (member of) ──── Matter ──┬── 引用 ─┘
 
 ```prisma
 enum UserRole {
-  ADMIN
+  CUSTOM
   PRINCIPAL_LAWYER
   LAWYER
   ASSISTANT
   FINANCE
+}
+
+enum SystemRole {
+  NONE
+  SUPER_ADMIN
 }
 
 model User {
@@ -99,6 +104,7 @@ model User {
   email         String    @unique
   passwordHash  String
   role          UserRole  @default(LAWYER)
+  systemRole    SystemRole @default(NONE)
   phone         String?
   avatar        String?
   active        Boolean   @default(true)
@@ -113,6 +119,8 @@ model User {
   updatedAt       DateTime         @updatedAt
 }
 ```
+
+`role` 表示业务岗位，决定案件、客户、财务等业务访问；`systemRole` 只表示系统管理资格，不自动授予案件正文、附件、财务、导出或审批权限。二者可以同时存在，但互不推导。新系统初始化账号使用真实业务岗位，系统维护者另授 `SUPER_ADMIN`。
 
 ### 4.2 Client + Contact（客户与联系人）
 
@@ -1086,7 +1094,7 @@ model CauseOfAction {
 | `variables` | Json `string[]`：该模板用到的变量路径清单，用于缺失提示 |
 | `isBuiltIn` | 系统内置（不可删） |
 | `enabled` | 是否上架（管理员可禁用） |
-| `createdById` | 创建者（内置由首个 ADMIN 持有） |
+| `createdById` | 创建者（内置由初始化系统超级管理员账号持有） |
 
 **渲染机制**（`src/lib/template-engine.ts`）：
 - 占位符语法 `{{var}}`（双大括号，避免与 docx 内嵌"{"冲突）
@@ -1102,7 +1110,7 @@ model CauseOfAction {
 |---|---|
 | `type` | SealType 枚举（@id） |
 | `label` | 中文显示名 |
-| `approverRoles` | UserRole[]，多角色 OR 关系（v0.8.9 决策 #2） |
+| `approverRoles` | 保留的配置列；新系统审批鉴权不读取，实际资格统一来自 ApprovalPermissionRule |
 | `requiresLegalRep` | 是否必须法定代表人本人审批（取 SystemSetting `firmLegalRepUserId`） |
 | `enabled` | 是否启用 |
 
@@ -1113,7 +1121,7 @@ model CauseOfAction {
 - `LEGAL_REP_SEAL` 法定代表人章 → `requiresLegalRep=true`（仅 Settings 指定 User）
 - `CONTRACT_REVIEW_SEAL` 合同审核章 → PRINCIPAL_LAWYER
 
-ADMIN 跨章种类总可审批（in code，不在 approverRoles 数组里）。
+任何业务岗位或系统管理身份都不能跨章种类自动审批；用章审批与盖章回填统一匹配审批权限组规则。
 
 ### 4.18 SealRequest（用章申请工作流）⭐ v0.8 新增
 
@@ -1256,7 +1264,9 @@ PRD §二十。触发事件 → 期限 → 法条依据，AddDeadlineDialog 按�
 | 字段 | 处理 |
 |---|---|
 | `User.passwordHash` | bcrypt cost=12 |
-| `Client.idNumber` / `Party.idNumber` | 入库明文，**展示时按权限脱敏**（仅 ADMIN / Matter.owner / 主办协办可看明文，其他角色看 `***`） |
+| `User.identityDocumentNumber` | 按本人或 SUPER_ADMIN 权限脱敏展示；明文查看写审计 |
+| `UserIdentityDocument.path` | 始终 AES-256-GCM 加密，鉴权接口按需解密且 `Cache-Control: no-store` |
+| `Client.idNumber` / `Party.idNumber` | 入库明文，**展示时按业务权限脱敏**；系统管理身份本身不授予案件正文或当事人资料访问 |
 | `Document.path` | 不暴露给前端，统一走 `/api/documents/[id]/download` 鉴权 |
 | `Document` 加密 | 可选 AES-256-GCM；密钥环境变量 `STORAGE_ENCRYPTION_KEY` 独立保管 |
 | `AuditLog` | 不可由业务代码 DELETE，只能由维护脚本归档 |
@@ -1281,3 +1291,38 @@ PRD §二十。触发事件 → 期限 → 法条依据，AddDeadlineDialog 按�
 | 12 | **诉讼地位独立建模**（`Matter.ourStanding`）：原告/被告/第三人/反诉原告/反诉被告/刑事被告人/被害人/自诉人/仲裁申请人 等 |
 | 13 | **案由规范化**（`CauseOfAction`）：从最高法案由规定 + 刑法罪名 + 行政案由规定 seed，禁止随意手填；兜底 `causeFreeText` 字段仅在极特殊场景使用 |
 | 14 | `intakeDate`（律师收案日）与 `firstAcceptedAt`（首次立案日）拆为两个字段 |
+
+
+### 常设律师团队（2026-09-06）
+
+新增 Team（名称、负责人、active、时间）、TeamMember（teamId/userId 联合唯一、active、canViewAllMatters、时间）。负责人同时作为有效成员保存；移除成员采用停用关系，保留审计。User 与 TeamMember、负责团队反向关联。
+
+Matter 新增可空 registeredById 原始立案人外键及索引；收案转正式案件取 Intake.createdById，直接立案与导入记录实际操作人。Intake 为既有 createdById 增加 User 关系，以查询当前团队；迁移前必须检查孤立创建人。
+
+历史 registeredById 优先取原 Intake 创建人，其次取最早 MATTER_CREATE 审计中有效 User；不根据审批人或现任主办推断。团队授权查询依靠关系过滤实时生效，不缓存成员 ID 到 JWT。成员账号停用不抹除其团队归属，访问者自身必须仍有效。
+
+迁移采用增量建表、索引、外键和已核实创建人回填；SQL 审阅后才执行，不重置或删除现有数据。
+
+
+## 2026-09-06 账号与审批授权扩展
+
+按已确认的《LawLink-账号与审批权限改造方案》实施。基础岗位继续控制业务操作，审批权限组独立分配给账号。规则包含操作、案件类别范围（全部案件/指定类别/非案件）、用章事项与印章范围，组间 OR、规则内 AND，空范围拒绝授权。系统超级管理员不因 `SUPER_ADMIN` 身份自动取得审批或盖章回填权限；所有人员均按审批权限组、本人审批规则和法定代表人章身份限制进行判断。
+
+新增 ApprovalPermissionGroup、ApprovalPermissionMember、ApprovalPermissionRule、SealPurposeConfig；User.sessionVersion 用于撤销会话；SealRequest 增加结构化事项关联和名称快照。权限组/事项只停用，不删除历史记录。系统设置 approvalAuthorization 保存是否允许本人审批；历史 enabled 字段不再控制授权，审批规则始终生效并实时查询账号和授权。权限变更和审批审计须同事务。
+
+配置步骤：完成已批准的数据库迁移 → 为需要审批的人员配置权限组和账号 → 配置用章事项。审批规则始终生效，无需另行启用。系统管理身份、岗位、团队查看权限与审批资格相互独立。
+
+## 用户本人身份标识（2026-09-06）
+
+`User.idNumber` 扩展并重命名为 `identityDocumentNumber String? @db.VarChar(50)`，同时增加 `identityDocumentType` 和仅供 `OTHER` 使用的 `identityDocumentName`。人员查重使用 `(identityDocumentType, identityDocumentNumber)` 复合唯一约束；类型与号码必须同时为空或同时非空。既有非空号码在迁移中保留并回填为 `PRC_RESIDENT_ID`，不根据号码推断更多事实。全部业务关系继续引用原 `User.id`。
+
+新增 `UserIdentityDocument` 保存用户、页别、密文路径、MIME、大小、明文 SHA-256、AES-256-GCM 算法及 IV/Tag、上传人、是否有效和被替代时间。证件文件所有者与上传人分别关联 `User`，均使用 `onDelete: Restrict`；账号停用不破坏历史文件与审计。照片始终加密，数据库不保存原始文件名和 AI 返回内容。
+
+证件类型包括 `PRC_RESIDENT_ID`、`HK_MACAO_TAIWAN_RESIDENCE_PERMIT`、`PRC_HK_MACAO_TRAVEL_PERMIT`、`HK_MACAO_MAINLAND_TRAVEL_PERMIT`、`TAIWAN_MAINLAND_TRAVEL_PERMIT`、`PASSPORT`、`FOREIGN_PERMANENT_RESIDENT_ID`、`OTHER`；页别包括人像面、国徽面、资料页、补充页和其他。Schema 修改已确认，正式迁移执行单独确认。
+
+
+## 自定义角色管理（2026-09-06 批准）
+
+新增 RoleDefinition、RolePermission，User.role 新增 CUSTOM 并以 roleDefinitionId 关联；角色配置带 version；角色关联与权限键受约束，保留原有角色枚举和账号。 详细边界、目录及验收见 `docs/ROLE-MANAGEMENT-PLAN.md`。
+
+后续内置角色调整不新增 Schema：行政保留 `cmrolesadministrative00001` 固定记录，由服务端保护其权限及启停状态；仍通过既有 CUSTOM 关联解析权限，产品分类为内置角色。原五种内置角色的名称、介绍及版本保存在 `SystemSetting` 的 `roles.builtinPresentation`，系统身份和授权始终依固定标识。修改显示资料与审计同事务，角色名称与自定义角色统一判重。

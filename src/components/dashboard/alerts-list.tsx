@@ -28,7 +28,7 @@ async function loadAlerts(userId: string | null, role: string | null): Promise<A
   const now = new Date();
   const in30 = new Date();
   in30.setDate(in30.getDate() + 30);
-  const isManager = role === "ADMIN" || role === "PRINCIPAL_LAWYER";
+  const isManager = role === "PRINCIPAL_LAWYER";
 
   const [preservationProperties, unprocessedSms, pendingSeals] = await Promise.all([
     userId && role

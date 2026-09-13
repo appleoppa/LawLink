@@ -22,7 +22,7 @@ export type CaseSearchHit = Omit<PtalCase, "url"> & {
 export async function searchSimilarCases(
   params: PtalSearchParams & { matterId?: string }
 ): Promise<{ total: number; items: CaseSearchHit[]; pointsCharged: number }> {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
 
   const settings = await getYuandianSettings();
   if (!settings.configured) throw new YuandianNotConfiguredError();
@@ -67,7 +67,7 @@ export type VectorCaseHit = Omit<VectorCase, "scid"> & {
 export async function searchSimilarCasesByVector(
   params: VectorSearchParams & { matterId?: string }
 ): Promise<{ items: VectorCaseHit[]; pointsCharged: number }> {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const settings = await getYuandianSettings();
   if (!settings.configured) throw new YuandianNotConfiguredError();
 

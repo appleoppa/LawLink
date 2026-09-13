@@ -39,8 +39,8 @@ export type BatchReviewSummary = {
 export async function batchReviewMatterDocuments(input: {
   matterId: string;
 }): Promise<BatchReviewSummary> {
-  const session = await requireSession();
-  await assertCanAccessMatter(session.user.id, session.user.role, input.matterId);
+  const session = await requireSession("documents.write");
+  await assertCanAccessMatter(session.user.id, session.user.role, input.matterId, session.user.rolePermissions);
 
   // 拿本案 documents 当中可审查的
   const docs = await prisma.document.findMany({

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { ProcedureType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireSession } from "@/lib/auth/session";
+import { requireSystemAdmin } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 
 const stepSchema = z.object({
@@ -22,21 +22,15 @@ const templateUpdateSchema = z.object({
 export type StepInput = z.infer<typeof stepSchema>;
 export type TemplateUpdateInput = z.infer<typeof templateUpdateSchema>;
 
-async function requireAdmin() {
-  const session = await requireSession();
-  if (session.user.role !== "ADMIN") throw new Error("仅管理员可执行");
-  return session;
-}
-
 export async function listStageTemplates() {
-  await requireAdmin();
+  await requireSystemAdmin();
   return prisma.stageTemplate.findMany({
     orderBy: { procedureType: "asc" }
   });
 }
 
 export async function upsertStageTemplate(input: TemplateUpdateInput) {
-  const session = await requireAdmin();
+  const session = await requireSystemAdmin();
   const data = templateUpdateSchema.parse(input);
   const id = `default-${data.procedureType}`;
 
@@ -63,7 +57,8 @@ export async function upsertStageTemplate(input: TemplateUpdateInput) {
     detail: { procedureType: data.procedureType, stepCount: data.steps.length }
   });
 
-  revalidatePath("/settings/templates");
+  revalidatePath("/admin/templates");
+  revalidatePath("/admin/templates");
   return { ok: true };
 }
 
@@ -77,7 +72,7 @@ const auditQuerySchema = z.object({
 export type AuditQuery = z.infer<typeof auditQuerySchema>;
 
 export async function listAuditLogs(input: Partial<AuditQuery> = {}) {
-  await requireAdmin();
+  await requireSystemAdmin();
   const query = auditQuerySchema.parse(input);
   const since = new Date(Date.now() - query.days * 24 * 60 * 60 * 1000);
 

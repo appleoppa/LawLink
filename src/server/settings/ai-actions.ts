@@ -1,7 +1,7 @@
 "use server";
 
 import { z } from "zod";
-import { requireSession } from "@/lib/auth/session";
+import { requireSystemAdmin } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import {
   saveAiSettings as saveSettings,
@@ -18,21 +18,13 @@ const saveSchema = z.object({
 
 const clearSchema = z.object({ confirm: z.literal(true) });
 
-async function requireAdmin() {
-  const session = await requireSession();
-  if (session.user.role !== "ADMIN") {
-    throw new Error("仅管理员可修改 AI 配置");
-  }
-  return session;
-}
-
 export async function getAiSettingsPublic() {
-  await requireAdmin();
+  await requireSystemAdmin();
   return readPublicAiSettings();
 }
 
 export async function saveAiSettingsAction(input: z.infer<typeof saveSchema>) {
-  const session = await requireAdmin();
+  const session = await requireSystemAdmin();
   const data = saveSchema.parse(input);
 
   await saveSettings({
@@ -58,7 +50,7 @@ export async function saveAiSettingsAction(input: z.infer<typeof saveSchema>) {
 }
 
 export async function clearAiKeyAction(input: z.infer<typeof clearSchema>) {
-  const session = await requireAdmin();
+  const session = await requireSystemAdmin();
   clearSchema.parse(input);
 
   await saveSettings({ clearKey: true });
@@ -75,7 +67,7 @@ export async function clearAiKeyAction(input: z.infer<typeof clearSchema>) {
 
 /** 测试连接：发一个 ping，验证 base_url + key + text_model 可用 */
 export async function testAiConnection() {
-  await requireAdmin();
+  await requireSystemAdmin();
   try {
     const res = await aiChat({
       messages: [

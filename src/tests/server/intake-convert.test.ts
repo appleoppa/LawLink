@@ -15,13 +15,21 @@ const {
     procedureParty: { createMany: vi.fn() },
     billing: { create: vi.fn() },
     document: { updateMany: vi.fn() },
-    intake: { update: vi.fn() },
+    intake: { update: vi.fn(), findUniqueOrThrow: vi.fn() },
+    user: { findUnique: vi.fn() },
+    systemSetting: { findUnique: vi.fn() },
+    approvalPermissionRule: { findMany: vi.fn() },
+    auditLog: { create: vi.fn() },
+    $queryRaw: vi.fn(),
     timelineEvent: { create: vi.fn() }
   };
   return {
     txMock: tx,
     prismaMock: {
-      intake: { findUnique: vi.fn() },
+      intake: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn() },
+      user: { findUnique: vi.fn() },
+      systemSetting: { findUnique: vi.fn() },
+      approvalPermissionRule: { findMany: vi.fn() },
       $transaction: vi.fn((fn) => fn(tx))
     },
     auditMock: vi.fn(),
@@ -41,7 +49,7 @@ vi.mock("@/lib/prisma", () => ({
 
 vi.mock("@/lib/auth/session", () => ({
   requireSession: vi.fn().mockResolvedValue({
-    user: { id: "approver-1", role: "ADMIN", name: "审批人" }
+    user: { id: "approver-1", role: "LAWYER", systemRole: "SUPER_ADMIN", name: "审批人" }
   })
 }));
 
@@ -72,7 +80,7 @@ function validConflictChecks() {
       queryPayload: {
         queries: [
           { role: "CLIENT_PARTY", name: "甲公司", idNumber: "91330000123456789X" },
-          { role: "OPPOSING_PARTY", name: "乙公司" },
+          { role: "OPPOSING_PARTY", name: "乙公司", idNumber: "91330000999999999X" },
           { role: "THIRD_PARTY", name: "丙", idNumber: "330100199001010000" }
         ]
       },
@@ -83,6 +91,13 @@ function validConflictChecks() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // 系统管理身份不提供审批特权，转案仍依赖按事项授权。
+  for (const db of [prismaMock, txMock]) {
+    db.user.findUnique.mockResolvedValue({ active: true, role: "LAWYER" });
+    db.systemSetting.findUnique.mockResolvedValue(null);
+    db.approvalPermissionRule.findMany.mockResolvedValue([{ action: "INTAKE_APPROVE", caseScope: "CATEGORIES", categories: ["CIVIL_COMMERCIAL"], allSealPurposes: false, purposeId: null, sealTypes: [] }]);
+    db.intake.findUniqueOrThrow.mockImplementation((args) => prismaMock.intake.findUnique(args));
+  }
   generateInternalCodeMock.mockResolvedValue("LL-2026-001");
   generateFirmCaseNoMock.mockResolvedValue("YS-2026-民-001");
   txMock.matter.create.mockResolvedValue({ id: "matter-1", internalCode: "LL-2026-001" });
@@ -94,7 +109,20 @@ beforeEach(() => {
 });
 
 describe("convertIntakeToMatter", () => {
-  it("按收案当前程序创建首程序，并同步当事人诉讼地位为程序当事人", async () => {
+  it("共同诉讼人也必须完成带身份的检索，不能漏查后转案", async () => {
+    prismaMock.intake.findUnique.mockResolvedValue({ id: "intake-1", category: "CIVIL_COMMERCIAL", createdById: "applicant", status: "PENDING_CONFIRMATION", client: null,
+      parties: [{ role: "CO_LITIGANT", name: "测试共同诉讼人", idNumber: null }], conflictChecks: validConflictChecks(), documents: [] });
+    await expect(convertIntakeToMatter("intake-1")).rejects.toThrow("共同诉讼人「测试共同诉讼人」");
+    expect(txMock.matter.create).not.toHaveBeenCalled();
+  });
+  it("未配置事项权限时，普通律师不能转案", async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ active: true, role: "LAWYER" });
+    prismaMock.intake.findUnique.mockResolvedValue({ id: "intake-1", category: "CIVIL_COMMERCIAL", createdById: "applicant" });
+    prismaMock.approvalPermissionRule.findMany.mockResolvedValue([]);
+    await expect(convertIntakeToMatter("intake-1")).rejects.toThrow("未获授此事项");
+    expect(txMock.matter.create).not.toHaveBeenCalled();
+  });
+  it("获事项授权的系统管理员可按收案当前程序转案，并同步当事人诉讼地位", async () => {
     prismaMock.intake.findUnique.mockResolvedValue({
       id: "intake-1",
       status: "PENDING_CONFIRMATION",
@@ -114,6 +142,7 @@ describe("convertIntakeToMatter", () => {
       },
       receivedAt: new Date("2026-06-01T00:00:00Z"),
       ownerUserId: "lawyer-1",
+      createdById: "original-registrar",
       coUserIds: [],
       firstProcedureType: "FIRST_INSTANCE",
       firstAgency: "杭州市西湖区人民法院",
@@ -169,6 +198,9 @@ describe("convertIntakeToMatter", () => {
     });
 
     await convertIntakeToMatter("intake-1");
+    expect(txMock.matter.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ registeredById: "original-registrar", ownerId: "lawyer-1" })
+    }));
 
     expect(txMock.matterProcedure.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -209,6 +241,8 @@ describe("convertIntakeToMatter", () => {
   it("未运行利益冲突检索时拒绝转正式案件", async () => {
     prismaMock.intake.findUnique.mockResolvedValue({
       id: "intake-1",
+      category: "CIVIL_COMMERCIAL",
+      createdById: "applicant",
       status: "PENDING_CONFIRMATION",
       client: { name: "甲公司", idNumber: null },
       parties: [],
@@ -225,6 +259,8 @@ describe("convertIntakeToMatter", () => {
   it("高风险命中没有备注排除理由时拒绝转正式案件", async () => {
     prismaMock.intake.findUnique.mockResolvedValue({
       id: "intake-1",
+      category: "CIVIL_COMMERCIAL",
+      createdById: "applicant",
       status: "PENDING_CONFIRMATION",
       client: { name: "甲公司", idNumber: null },
       parties: [],

@@ -147,6 +147,9 @@ export const intakeUpdateSchema = intakeCreateBaseSchema.extend({
 }).superRefine(requireLitigationStandings);
 
 export const intakeListQuerySchema = z.object({
+  scope: z.enum(["all", "mine", "team"]).default("all"),
+  teamId: z.string().cuid().optional(),
+  ownerId: z.string().cuid().optional(),
   search: z.string().optional(),
   category: matterCategorySchema.optional(),
   status: intakeStatusSchema.optional(),

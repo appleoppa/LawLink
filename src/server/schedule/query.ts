@@ -3,8 +3,10 @@
  * 被 listScheduleItems（server action）和 ICS 日历订阅路由共用；
  * 调用方负责确定 userId / role 的可信来源（session 或 calendarToken）。
  */
+import { resolveRoleUser } from "@/lib/roles/service";
+import { customMatterFilter } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import { matterAssociationFilter, matterVisibilityFilter } from "@/lib/permissions";
+import { matterAssociationFilter, matterVisibilityFilter, matterReadVisibilityFilter } from "@/lib/permissions";
 
 export type ScheduleItem = {
   id: string;
@@ -30,13 +32,16 @@ export async function queryScheduleItems(
     to?: Date;
     includeCompleted?: boolean;
     onlyMine?: boolean;
+    includeTeam?: boolean;
   } = {}
 ): Promise<ScheduleItem[]> {
   const from = params.from ?? new Date(new Date().setHours(0, 0, 0, 0));
   const to = params.to ?? new Date(from.getTime() + 365 * 24 * 60 * 60 * 1000);
-  const matterFilter = params.onlyMine
+  const access = await resolveRoleUser(userId, role);
+  if (!access.enabled) return [];
+  const matterFilter = role === "CUSTOM" ? { AND: [customMatterFilter(userId, access.rolePermissions, "schedule.read", !params.onlyMine), matterReadVisibilityFilter(userId, role, access.rolePermissions), ...(params.onlyMine ? [matterAssociationFilter(userId)] : [])] } : params.onlyMine
     ? matterAssociationFilter(userId)
-    : matterVisibilityFilter(userId, role);
+    : params.includeTeam ? matterReadVisibilityFilter(userId, role) : matterVisibilityFilter(userId, role);
 
   const [hearings, deadlines, tasks, preservationProperties] = await Promise.all([
     prisma.hearing.findMany({

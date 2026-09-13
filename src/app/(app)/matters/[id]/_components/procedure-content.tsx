@@ -45,6 +45,7 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { deadlineCategoryLabel } from "@/lib/enums";
 import { cn, daysUntil } from "@/lib/utils";
 import { procedureTypeLabel } from "@/lib/enums";
 import {
@@ -226,7 +227,7 @@ function ImportantItemsCard({
   const total = hearings.length + deadlines.length + expresses.length + memos.length;
   const allItems = buildAllImportantItems({ hearings, deadlines, expresses, memos });
   const filters: { value: ImportantFilter; label: string; count: number }[] = [
-    { value: "all", label: "ALL", count: total },
+    { value: "all", label: "全部", count: total },
     { value: "hearing", label: "开庭", count: hearings.length },
     { value: "deadline", label: "时限", count: deadlines.length },
     { value: "express", label: "快递", count: expresses.length },
@@ -746,18 +747,6 @@ function MemoRow({
 }
 
 // ============ 统一添加重要事项 ============
-
-const deadlineCategoryLabel: Record<DeadlineCreateInput["category"], string> = {
-  LIMITATION: "诉讼时效",
-  EVIDENCE: "举证期限",
-  APPEAL: "上诉期",
-  PERFORMANCE: "履行期",
-  RESPONSE: "答辩期",
-  ENFORCEMENT: "执行申请",
-  ARBITRATION_SET_ASIDE: "撤销仲裁期",
-  PRESERVATION: "保全期限",
-  CUSTOM: "其他"
-};
 
 const importantTypeMeta: Record<ImportantCategory, { label: string; icon: React.ElementType }> = {
   hearing: { label: "开庭", icon: Gavel },

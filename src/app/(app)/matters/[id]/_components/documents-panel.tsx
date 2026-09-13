@@ -39,6 +39,7 @@ import {
   SheetFooter
 } from "@/components/ui/sheet";
 import { uploadDocument, deleteDocument } from "@/server/documents/actions";
+import { procedureTypeLabel } from "@/lib/enums";
 import { cn } from "@/lib/utils";
 import { DocumentReviewDialog } from "./document-review-dialog";
 
@@ -229,7 +230,7 @@ export function DocumentsPanel({
                       {categoryLabel[d.category]}
                     </Badge>
                     {d.procedure && (
-                      <span>{d.procedure.customLabel ?? d.procedure.type}</span>
+                      <span>{d.procedure.customLabel ?? procedureTypeLabel[d.procedure.type as keyof typeof procedureTypeLabel] ?? "程序类型待核实"}</span>
                     )}
                     {d.size && <span className="font-mono tabular">{formatBytes(d.size)}</span>}
                     <span>·</span>
@@ -546,7 +547,7 @@ function UploadSheet({
                 加密存储
               </div>
               <p className="mt-0.5 text-[11px] text-muted-foreground">
-                敏感材料建议开启。下载时自动解密；STORAGE_ENCRYPTION_KEY 丢失则
+                敏感材料建议开启。下载时自动解密；加密密钥丢失则
                 此材料不可恢复
               </p>
             </div>

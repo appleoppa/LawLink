@@ -11,6 +11,7 @@ const sealTypes = [
 export const sealCreateSchema = z.object({
   sealType: z.enum(sealTypes),
   matterId: z.string().cuid().optional().nullable(),
+  purposeConfigId: z.string().cuid().optional().nullable(),
   purpose: z.string().min(1, "用章事由必填").max(500),
   documentTitle: z.string().min(1, "文件标题必填").max(200),
   pageCount: z.coerce.number().int().positive().default(1),

@@ -9,6 +9,7 @@
  *
  * 时间范围：调用方传 [start, end]，按 Matter.createdAt 落入本期为「新收」。
  */
+import type { ReportAccess } from "@/lib/roles/report-scope";
 import { prisma } from "@/lib/prisma";
 import type { MatterCategory } from "@prisma/client";
 
@@ -113,25 +114,25 @@ export type ReportData = {
   byClientReceivable: ClientReceivable[];
 };
 
-export async function getReportData(period: ReportPeriod): Promise<ReportData> {
+export async function getReportData(period: ReportPeriod, access: ReportAccess = { matters: {}, finance: {} }): Promise<ReportData> {
   // KPI 1: 本期新收（createdAt 落入本期）
   const newIntake = await prisma.matter.count({
     where: {
       createdAt: { gte: period.start, lt: period.end },
-      deletedAt: null
+      deletedAt: null, AND: [access.matters]
     }
   });
 
   // KPI 2: 在办（status = IN_PROGRESS，不论何时建的）
   const inProgress = await prisma.matter.count({
-    where: { status: "IN_PROGRESS", deletedAt: null }
+    where: { status: "IN_PROGRESS", deletedAt: null, AND: [access.matters] }
   });
 
   // KPI 3: 本期已结（closedAt 落入本期）
   const closed = await prisma.matter.count({
     where: {
       closedAt: { gte: period.start, lt: period.end },
-      deletedAt: null
+      deletedAt: null, AND: [access.matters]
     }
   });
 
@@ -139,7 +140,7 @@ export async function getReportData(period: ReportPeriod): Promise<ReportData> {
   const archived = await prisma.matter.count({
     where: {
       archivedAt: { gte: period.start, lt: period.end },
-      deletedAt: null
+      deletedAt: null, AND: [access.matters]
     }
   });
 
@@ -150,7 +151,7 @@ export async function getReportData(period: ReportPeriod): Promise<ReportData> {
     by: ["category"],
     where: {
       createdAt: { gte: period.start, lt: period.end },
-      deletedAt: null
+      deletedAt: null, AND: [access.matters]
     },
     _count: { _all: true }
   });
@@ -164,7 +165,7 @@ export async function getReportData(period: ReportPeriod): Promise<ReportData> {
     by: ["ownerId"],
     where: {
       createdAt: { gte: period.start, lt: period.end },
-      deletedAt: null
+      deletedAt: null, AND: [access.matters]
     },
     _count: { _all: true }
   });
@@ -172,7 +173,7 @@ export async function getReportData(period: ReportPeriod): Promise<ReportData> {
     by: ["ownerId"],
     where: {
       closedAt: { gte: period.start, lt: period.end },
-      deletedAt: null
+      deletedAt: null, AND: [access.matters]
     },
     _count: { _all: true }
   });
@@ -181,7 +182,8 @@ export async function getReportData(period: ReportPeriod): Promise<ReportData> {
   const feeReceivedRaw = await prisma.feeEntry.findMany({
     where: {
       type: "RECEIVED",
-      occurredAt: { gte: period.start, lt: period.end }
+      occurredAt: { gte: period.start, lt: period.end },
+      matter: { deletedAt: null, AND: [access.finance] }
     },
     select: { amount: true, matter: { select: { ownerId: true } } }
   });
@@ -218,7 +220,8 @@ export async function getReportData(period: ReportPeriod): Promise<ReportData> {
   const fees = await prisma.feeEntry.findMany({
     where: {
       type: { in: ["RECEIVABLE", "RECEIVED"] },
-      occurredAt: { gte: period.start, lt: period.end }
+      occurredAt: { gte: period.start, lt: period.end },
+      matter: { deletedAt: null, AND: [access.finance] }
     },
     select: {
       type: true,

@@ -1,10 +1,12 @@
 "use server";
+import { approvalSettings } from "@/lib/approvals/service";
 
 import { revalidatePath } from "next/cache";
 import ExcelJS from "exceljs";
 
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
+import { isSystemAdmin } from "@/lib/auth/system-role";
 import { audit } from "@/server/audit";
 import { seedDefaultFolders } from "@/lib/default-folders";
 import { generateInternalCode, generateFirmCaseNo } from "@/server/matters/code-generator";
@@ -21,8 +23,8 @@ import {
 
 async function requireManager() {
   const session = await requireSession();
-  if (session.user.role !== "ADMIN" && session.user.role !== "PRINCIPAL_LAWYER") {
-    throw new Error("仅管理员 / 主任律师可批量导入案件");
+  if (!isSystemAdmin(session.user) && session.user.role !== "PRINCIPAL_LAWYER") {
+    throw new Error("仅系统超级管理员 / 主任律师可批量导入案件");
   }
   return session;
 }
@@ -238,6 +240,7 @@ async function createOneMatter(n: NormalizedRow, currentUserId: string) {
         category: n.category,
         status: n.status,
         ownerId,
+        registeredById: currentUserId,
         intakeDate,
         claimAmount: n.claimAmount ?? undefined,
         causeId,
@@ -300,6 +303,7 @@ export async function commitMatterImportAction(input: {
   rows: { rowNo: number; raw: RawRow }[];
 }): Promise<ImportResult> {
   const session = await requireManager();
+  if ((await approvalSettings()).enabled) throw new Error("按事项审批已启用，批量直接立案已停用，请使用收案审批流程");
   const succeeded: ImportResult["succeeded"] = [];
   const failed: ImportResult["failed"] = [];
 

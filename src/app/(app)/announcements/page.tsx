@@ -1,3 +1,4 @@
+import { customOrLegacy } from "@/lib/roles/catalog";
 /**
  * v0.38: 公告指引独立页（v0.37 曾并入 /service-center，现拆回）
  */
@@ -11,7 +12,7 @@ export default async function AnnouncementsPage() {
   if (!session?.user) redirect("/login");
 
   const isManager =
-    session.user.role === "ADMIN" || session.user.role === "PRINCIPAL_LAWYER";
+    customOrLegacy(session.user, "announcements.manage", session.user.role === "PRINCIPAL_LAWYER");
   const announcements = await listAnnouncements();
 
   return (

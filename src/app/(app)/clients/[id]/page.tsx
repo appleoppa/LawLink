@@ -1,3 +1,5 @@
+import { requireSession } from "@/lib/auth/session";
+import { hasCustomPermission } from "@/lib/roles/catalog";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import {
@@ -55,7 +57,9 @@ function dateText(date: Date | string | null | undefined) {
 export default async function ClientDetailPage({ params }: { params: { id: string } }) {
   const client = await getClientById(params.id);
   if (!client) notFound();
-  const finance = await getClientFinanceSummary(params.id);
+  const session = await requireSession("clients.read");
+  const canReadFinance = hasCustomPermission(session.user, "finance.read");
+  const finance = canReadFinance ? await getClientFinanceSummary(params.id) : { contractTotal: 0, receivable: 0, received: 0, pending: 0, matterCount: 0, billings: [] };
 
   const isIndividual = client.type === "INDIVIDUAL";
   const TypeIcon = isIndividual ? User : client.type === "COMPANY" ? Building2 : Briefcase;
@@ -126,14 +130,14 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
               </div>
             </div>
           </div>
-          <ClientEditButton client={client} />
+          {hasCustomPermission(session.user, "clients.write") && <ClientEditButton client={client} />}
         </div>
 
         <div className="relative z-[1] mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <HeroStat label="累计委托" value={`${finance.matterCount} 件`} icon={<Briefcase className="h-3.5 w-3.5" />} />
+          <HeroStat label="累计委托" value={canReadFinance ? `${finance.matterCount} 件` : "未授权"} icon={<Briefcase className="h-3.5 w-3.5" />} />
           <HeroStat label="办理中" value={`${activeMatterCount} 件`} icon={<Clock className="h-3.5 w-3.5" />} accent />
-          <HeroStat label="累计实收" value={yuan(finance.received)} icon={<Coins className="h-3.5 w-3.5" />} />
-          <HeroStat label="待收" value={yuan(finance.pending)} icon={<Wallet className="h-3.5 w-3.5" />} tone="warn" />
+          <HeroStat label="累计实收" value={canReadFinance ? yuan(finance.received) : "未授权"} icon={<Coins className="h-3.5 w-3.5" />} />
+          <HeroStat label="待收" value={canReadFinance ? yuan(finance.pending) : "未授权"} icon={<Wallet className="h-3.5 w-3.5" />} tone="warn" />
         </div>
       </section>
 
@@ -353,10 +357,10 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
               <span className="font-mono text-xs text-muted-foreground">{paidRate}%</span>
             </header>
             <div className="space-y-2">
-              <SummaryField label="累计合同" value={yuan(finance.contractTotal)} />
-              <SummaryField label="累计应收" value={yuan(finance.receivable)} />
-              <SummaryField label="累计实收" value={yuan(finance.received)} accent="green" />
-              <SummaryField label="待收" value={yuan(finance.pending)} accent="warn" />
+              <SummaryField label="累计合同" value={canReadFinance ? yuan(finance.contractTotal) : "未授权"} />
+              <SummaryField label="累计应收" value={canReadFinance ? yuan(finance.receivable) : "未授权"} />
+              <SummaryField label="累计实收" value={canReadFinance ? yuan(finance.received) : "未授权"} accent="green" />
+              <SummaryField label="待收" value={canReadFinance ? yuan(finance.pending) : "未授权"} accent="warn" />
             </div>
             <div className="mt-4">
               <div className="mb-1.5 flex items-center justify-between text-[11px] text-muted-foreground">

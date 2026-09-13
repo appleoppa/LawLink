@@ -173,7 +173,7 @@ export function ClientSheet({ open, onOpenChange, editingClient }: Props) {
         const r = await searchEnterpriseCandidates(name);
         if (!r.configured) {
           toast.error("元典 API 未配置", {
-            description: "请在 设置 → AI 与元典 中配置 API Key"
+            description: "请在 管理后台 → AI 与元典 中配置 API Key"
           });
           return;
         }

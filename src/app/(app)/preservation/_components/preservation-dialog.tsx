@@ -1,10 +1,12 @@
 "use client";
 
+import { FormDialogContent as DialogContent, FormDialogBody } from "@/components/patterns/form-dialog";
+
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import type { PreservationType, PropertyType } from "@prisma/client";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -111,6 +113,7 @@ export function PreservationCaseDialog({
         <DialogHeader>
           <DialogTitle>{isEdit ? "编辑保全" : "新建保全"}</DialogTitle>
         </DialogHeader>
+        <FormDialogBody>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <Field label="关联案件">
@@ -168,6 +171,7 @@ export function PreservationCaseDialog({
             </div>
           )}
         </div>
+        </FormDialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>取消</Button>
           <Button onClick={handleSubmit} disabled={isPending} className="gap-1.5">
@@ -203,7 +207,9 @@ export function AddTargetDialog({ open, onOpenChange, caseId }: { open: boolean;
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm">
         <DialogHeader><DialogTitle>添加被保全人</DialogTitle></DialogHeader>
+        <FormDialogBody>
         <Field label="被保全人名称 *"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="名称" className="h-9 text-xs" /></Field>
+        </FormDialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
           <Button onClick={handleSubmit} disabled={isPending || !name.trim()} className="gap-1.5">{isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}添加</Button>
@@ -259,6 +265,7 @@ export function AddPropertyDialog({ open, onOpenChange, targetId }: { open: bool
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader><DialogTitle>添加保全财产</DialogTitle></DialogHeader>
+        <FormDialogBody>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <Field label="财产类型 *">
@@ -273,6 +280,7 @@ export function AddPropertyDialog({ open, onOpenChange, targetId }: { open: bool
             <Field label="保全期限（天）"><Input type="number" value={duration || String(defaultDurationDays(startDate ? new Date(startDate) : new Date(), propertyType))} onChange={(e) => setDuration(e.target.value)} className="h-9 text-xs font-mono" /></Field>
           </div>
         </div>
+        </FormDialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
           <Button onClick={handleSubmit} disabled={isPending} className="gap-1.5">{isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}添加</Button>
@@ -307,11 +315,13 @@ export function RenewPropertyDialog({ open, onOpenChange, property }: { open: bo
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm">
         <DialogHeader><DialogTitle>续保</DialogTitle></DialogHeader>
+        <FormDialogBody>
         <div className="space-y-3">
           <p className="text-xs text-muted-foreground">当前到期日：{property.expiryDate.toLocaleDateString("zh-CN")}</p>
           <Field label="续保天数"><Input type="number" value={days} onChange={(e) => setDays(e.target.value)} className="h-9 text-xs font-mono" /></Field>
           <Field label="备注"><Input value={note} onChange={(e) => setNote(e.target.value)} className="h-9 text-xs" /></Field>
         </div>
+        </FormDialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
           <Button onClick={handleSubmit} disabled={isPending} className="gap-1.5">{isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}确认续保</Button>

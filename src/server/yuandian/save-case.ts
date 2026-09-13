@@ -1,4 +1,5 @@
 "use server";
+import { roleMutation } from "@/lib/roles/service";
 
 /**
  * v0.20: 把检索到的元典类案保存为案件 Document（category=JUDGMENT）
@@ -64,8 +65,8 @@ export async function saveCaseToMatter(input: SaveCaseInput): Promise<{
   documentId: string;
   documentName: string;
 }> {
-  const session = await requireSession();
-  await assertCanAccessMatter(session.user.id, session.user.role, input.matterId);
+  const session = await requireSession("matters.write");
+  await assertCanAccessMatter(session.user.id, session.user.role, input.matterId, session.user.rolePermissions);
 
   const matter = await prisma.matter.findUnique({
     where: { id: input.matterId, deletedAt: null },
@@ -82,7 +83,7 @@ export async function saveCaseToMatter(input: SaveCaseInput): Promise<{
   const hash = sha256(buf);
   const docName = `类案_${safeFileName(input.caseHit.ah)}.md`;
 
-  const doc = await prisma.document.create({
+  const doc = await roleMutation(session.user, "matters.write", async roleDb => roleDb.document.create({
     data: {
       matterId: input.matterId,
       uploadedById: session.user.id,
@@ -96,7 +97,7 @@ export async function saveCaseToMatter(input: SaveCaseInput): Promise<{
       tags: ["类案", "元典"]
     },
     select: { id: true, name: true }
-  });
+  }));
 
   await audit({
     userId: session.user.id,
@@ -176,8 +177,8 @@ export async function saveVectorCaseToMatter(input: SaveVectorCaseInput): Promis
   documentId: string;
   documentName: string;
 }> {
-  const session = await requireSession();
-  await assertCanAccessMatter(session.user.id, session.user.role, input.matterId);
+  const session = await requireSession("matters.write");
+  await assertCanAccessMatter(session.user.id, session.user.role, input.matterId, session.user.rolePermissions);
 
   const matter = await prisma.matter.findUnique({
     where: { id: input.matterId, deletedAt: null },
@@ -196,7 +197,7 @@ export async function saveVectorCaseToMatter(input: SaveVectorCaseInput): Promis
   const tag = input.caseHit.ah?.trim() || input.caseHit.scid.slice(0, 12);
   const docName = `类案_${safeFileName(tag)}.md`;
 
-  const doc = await prisma.document.create({
+  const doc = await roleMutation(session.user, "matters.write", async roleDb => roleDb.document.create({
     data: {
       matterId: input.matterId,
       uploadedById: session.user.id,
@@ -210,7 +211,7 @@ export async function saveVectorCaseToMatter(input: SaveVectorCaseInput): Promis
       tags: ["类案", "元典", "语义"]
     },
     select: { id: true, name: true }
-  });
+  }));
 
   await audit({
     userId: session.user.id,

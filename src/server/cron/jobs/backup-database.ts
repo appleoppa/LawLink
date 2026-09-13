@@ -3,7 +3,7 @@
  *
  * 每天 02:30 调 scripts/backup.sh（pg_dump + storage 打包），备份到
  * BACKUP_DIR（默认 ./backups），并做保留数清理（BACKUP_KEEP，默认 14 份）。
- * 失败时给所有 ADMIN 发站内通知——备份静默失败等于没有备份。
+ * 失败时给所有系统超级管理员发站内通知——备份静默失败等于没有备份。
  *
  * 关闭方式：环境变量 BACKUP_CRON_ENABLED=false（部署环境没有 pg_dump 时）。
  */
@@ -90,7 +90,7 @@ async function pruneOldBackups(baseDir: string, keep: number): Promise<number> {
 
 async function notifyAdmins(title: string, content: string) {
   const admins = await prisma.user.findMany({
-    where: { role: "ADMIN", active: true },
+    where: { systemRole: "SUPER_ADMIN", active: true },
     select: { id: true }
   });
   for (const admin of admins) {
@@ -100,7 +100,7 @@ async function notifyAdmins(title: string, content: string) {
       priority: "HIGH",
       title,
       content,
-      href: "/settings"
+      href: "/admin"
     });
   }
 }

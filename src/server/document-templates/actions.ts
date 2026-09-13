@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireSession } from "@/lib/auth/session";
+import { requireSession, requireSystemAdmin } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import { storage } from "@/lib/storage";
 import { assertMatterWritable } from "@/lib/archive/guard";
@@ -20,7 +20,7 @@ import {
 import { revalidateMatter } from "@/server/matters/route";
 
 export async function listTemplates(input?: z.input<typeof templateListFilterSchema>) {
-  await requireSession();
+  await requireSession("personal");
   const filter = templateListFilterSchema.parse(input ?? {});
 
   const where: Prisma.DocumentTemplateWhereInput = {};
@@ -52,7 +52,7 @@ export async function listTemplates(input?: z.input<typeof templateListFilterSch
 }
 
 export async function getTemplate(id: string) {
-  await requireSession();
+  await requireSession("personal");
   return prisma.documentTemplate.findUnique({
     where: { id },
     include: {
@@ -63,10 +63,7 @@ export async function getTemplate(id: string) {
 }
 
 export async function toggleTemplate(input: z.infer<typeof templateToggleSchema>) {
-  const session = await requireSession();
-  if (session.user.role !== "ADMIN") {
-    throw new Error("仅管理员可启用/禁用模板");
-  }
+  const session = await requireSystemAdmin();
   const data = templateToggleSchema.parse(input);
 
   await prisma.documentTemplate.update({
@@ -82,7 +79,8 @@ export async function toggleTemplate(input: z.infer<typeof templateToggleSchema>
     detail: { enabled: data.enabled }
   });
 
-  revalidatePath("/settings/templates");
+  revalidatePath("/admin/templates");
+  revalidatePath("/admin/templates");
   return { ok: true };
 }
 
@@ -95,7 +93,7 @@ export async function toggleTemplate(input: z.infer<typeof templateToggleSchema>
  *   5. 返回新 documentId，UI 拿去下载
  */
 export async function renderTemplate(input: z.infer<typeof templateRenderSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("documents.write");
   const data = templateRenderSchema.parse(input);
 
   await assertMatterWritable(data.matterId);
