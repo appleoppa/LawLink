@@ -112,11 +112,20 @@ jobs:
             if (!(await bcrypt.compare(password, admin.passwordHash))) {
               throw new Error('README 所载初始密码无法登录，seed 与文档已不一致');
             }
-            const businessTables = ['matter', 'client', 'intake', 'party', 'feeEntry', 'billing', 'document', 'invoiceRequest', 'deadline'];
+            const businessTables = ['matter', 'client', 'intake', 'party', 'feeEntry', 'billing', 'invoiceRequest', 'deadline'];
             for (const table of businessTables) {
               const count = await prisma[table].count();
               if (count !== 0) throw new Error('公开版初始化不应包含业务数据：' + table + ' / ' + count);
             }
+            // 内置空白模板的文件也存储在 Document；仅允许这些基础文件，不允许业务材料。
+            const builtIns = await prisma.documentTemplate.findMany({
+              where: { isBuiltIn: true }, select: { docxBlobId: true }
+            });
+            const businessDocuments = await prisma.document.count({ where: { OR: [
+              { id: { notIn: builtIns.map((t) => t.docxBlobId) } },
+              { matterId: { not: null } }, { intakeId: { not: null } }
+            ] } });
+            if (businessDocuments !== 0) throw new Error('公开版初始化不应包含案件材料');
             const causes = await prisma.causeOfAction.count();
             const templates = await prisma.documentTemplate.count();
             const rules = await prisma.deadlineRule.count();
