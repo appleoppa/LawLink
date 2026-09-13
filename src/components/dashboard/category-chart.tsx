@@ -6,7 +6,11 @@ const PALETTE = ["#007B7F", "#1E56C8", "#8A6B3E", "#96650B", "#6C3FC5", "#4A5560
 export function CategoryChart({ data }: { data: CategoryItem[] }) {
   const total = data.reduce((s, d) => s + d.value, 0);
   const C = 2 * Math.PI * 44;
-  let offset = 0;
+  const segments = data.map((d, i) => {
+    const len = total ? (d.value / total) * C : 0;
+    const start = data.slice(0, i).reduce((s, x) => s + (total ? (x.value / total) * C : 0), 0);
+    return { ...d, len, start };
+  });
   return (
     <div className="card">
       <div className="panel-head">
@@ -19,14 +23,9 @@ export function CategoryChart({ data }: { data: CategoryItem[] }) {
         <div style={{ padding: "12px 16px 14px", display: "flex", alignItems: "center", gap: 18 }}>
           <svg width="92" height="92" viewBox="0 0 120 120" style={{ flexShrink: 0 }} role="img" aria-label={`在办 ${total} 件`}>
             <circle cx="60" cy="60" r="44" fill="none" stroke="#E9EDEB" strokeWidth="13" />
-            {data.map((d, i) => {
-              const len = (d.value / total) * C;
-              const el = (
-                <circle key={d.code} cx="60" cy="60" r="44" fill="none" stroke={PALETTE[i % PALETTE.length]} strokeWidth="13" strokeDasharray={`${Math.max(0, len - 1)} ${C}`} strokeDashoffset={-offset} transform="rotate(-90 60 60)" />
-              );
-              offset += len;
-              return el;
-            })}
+            {segments.map((d, i) => (
+              <circle key={d.code} cx="60" cy="60" r="44" fill="none" stroke={PALETTE[i % PALETTE.length]} strokeWidth="13" strokeDasharray={`${Math.max(0, d.len - 1)} ${C}`} strokeDashoffset={-d.start} transform="rotate(-90 60 60)" />
+            ))}
             <text x="60" y="58" textAnchor="middle" fontFamily="SF Mono, ui-monospace, monospace" fontSize="21" fontWeight="600" fill="#0C1927">{total}</text>
             <text x="60" y="73" textAnchor="middle" fontSize="9" fill="#68747F">在办</text>
           </svg>
