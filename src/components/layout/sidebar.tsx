@@ -4,7 +4,6 @@ import { hasCustomPermission, type PermissionKey } from "@/lib/roles/catalog";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Scale } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { primaryNav, secondaryNav, type NavItem } from "./nav-config";
 
@@ -46,9 +45,13 @@ export function NavContent({ firm }: { firm: FirmBrand }) {
             className="h-[30px] w-[30px] shrink-0 rounded-lg object-contain"
           />
         ) : (
-          <div className="brand-mark">
-            <Scale className="h-[15px] w-[15px]" strokeWidth={1.8} />
-          </div>
+          // 品牌兜底用正式标志（docs/BRAND.md：双立柱 + teal 连接件），不用天平等传统符号
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src="/brand/lawlink-mark.svg"
+            alt={firm.name}
+            className="h-[30px] w-[30px] shrink-0 rounded-lg"
+          />
         )}
         <div className="flex min-w-0 flex-col leading-tight">
           <span className="truncate text-[13px] font-semibold text-foreground">{firm.name}</span>
@@ -70,6 +73,7 @@ export function NavContent({ firm }: { firm: FirmBrand }) {
       </nav>
 
       <div className="border-t border-border px-2 py-2">
+        <div className="nav-section-label">资料</div>
         <div className="space-y-0.5">
           {secondaryNav.filter(visible).map((item) => (
             <NavLink key={item.href} item={item} active={isActive(pathname, item.href)} />

@@ -1,7 +1,7 @@
 import { Metadata } from "next";
 import { Suspense } from "react";
 import { LoginForm } from "./login-form";
-import { Scale, ShieldCheck, Sparkles, Loader2 } from "lucide-react";
+import { BookOpen, ShieldCheck, Sparkles, Loader2 } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "登录 — LawLink"
@@ -25,9 +25,9 @@ export default function LoginPage() {
           }}
         />
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <Scale className="h-4 w-4" strokeWidth={1.8} />
-          </div>
+          {/* 墨案品牌时刻：正式标志（双立柱 + teal 连接件，见 docs/BRAND.md） */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/lawlink-mark.svg" alt="LawLink" className="h-9 w-9 rounded-[10px]" />
           <div>
             <div className="text-lg font-semibold tracking-tight text-white">LawLink</div>
             <div className="mt-0.5 text-[11px] text-white/55">律师工作台</div>
@@ -55,7 +55,7 @@ export default function LoginPage() {
             <Feature icon={<Sparkles className="h-3.5 w-3.5" />}>
               覆盖收案、冲突检索、多程序串接、财务分成、归档全流程
             </Feature>
-            <Feature icon={<Scale className="h-3.5 w-3.5" />}>
+            <Feature icon={<BookOpen className="h-3.5 w-3.5" />}>
               规范案由库（民商事 / 刑事 / 行政）从源头消除字符串歧义
             </Feature>
           </ul>
