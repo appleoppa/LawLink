@@ -9,8 +9,9 @@
 .fields dt { color: hsl(var(--muted-foreground)); }
 .fields dd { overflow-wrap: anywhere; }
 .fields > .longField { grid-column: 1 / -1; grid-template-columns: 1fr; gap: 5px; }
-.emptyFields { margin-top: 10px; }
-.emptyFields summary { width: fit-content; cursor: pointer; color: hsl(var(--muted-foreground)); font-size: 11px; }
+.emptyFields { margin: 0; }
+.emptyFields summary { cursor: pointer; list-style: none; }
+.emptyFields summary::-webkit-details-marker { display: none; }
 .emptyFields summary span { margin-left: 4px; font-variant-numeric: tabular-nums; }
 .check { border: 1px solid hsl(var(--border)); border-radius: 10px; padding: 16px; }
 .check > summary { line-height: 1.8; }

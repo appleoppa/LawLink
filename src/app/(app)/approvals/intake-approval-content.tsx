@@ -1,11 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, Scale, Users, Wallet, Building2, BriefcaseBusiness } from "lucide-react";
+import { AlertTriangle, FileText, Scale, Users, Wallet, Building2, BriefcaseBusiness, ChevronRight } from "lucide-react";
 import styles from "./intake-approval.module.css";
-import reviewStyles from "@/components/patterns/review-dialog.module.css";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { conflictMatchKind, conflictMatchKinds, conflictMatchedFieldLabel, conflictPartyRoleLabel, conflictSeverityLabel, type IntakeReviewField } from "@/lib/approvals/intake-detail";
 import type { getApprovalDetail } from "@/server/approval-permissions/inbox";
 
@@ -18,32 +16,43 @@ export function IntakeReviewValue({ label, value, sensitive }: IntakeReviewField
   const masked = sensitive && value !== "未填写" && value !== "未记录" && value !== "";
   return <span className="whitespace-pre-wrap break-words">
     {masked && !revealed ? "••••••" : value}
-    {masked && <Button type="button" size="sm" variant="ghost" className="ml-1 h-6 px-2 text-xs" aria-label={`${revealed ? "隐藏" : "显示"}${label}`} aria-pressed={revealed} onClick={() => setRevealed(!revealed)}>{revealed ? "隐藏" : "显示"}</Button>}
+    {masked && <button type="button" className="ml-1.5 text-[11.5px] font-[550] text-[var(--teal-deep)]" aria-label={`${revealed ? "隐藏" : "显示"}${label}`} aria-pressed={revealed} onClick={() => setRevealed(!revealed)}>{revealed ? "隐藏" : "明文"}</button>}
   </span>;
 }
 
 const keyFields = new Set(["案件名称", "案件类别", "案由", "主办律师", "首个程序 / 审级", "委托方诉讼地位", "办理机构", "管辖地", "标的金额（元）", "委托方", "姓名 / 名称", "本案角色", "诉讼地位", "收费方式", "收费金额（元）", "基础办案费（元）"]);
 const longFields = new Set(["事实摘要", "补正或不接案说明", "服务范围", "交付成果", "付款节点", "收费说明", "备注", "非金钱标的"]);
 
-export function IntakeApprovalContent({ detail, view = "all" }: { detail: Detail; view?: "all" | "overview" | "conflicts" }) {
-  return <div className="space-y-7">
-    {view !== "conflicts" && detail.sections.map((section, index) => {
+export function IntakeApprovalContent({ detail, view = "all", onOpenConflicts }: { detail: Detail; view?: "all" | "overview" | "conflicts"; onOpenConflicts?: () => void }) {
+  const latest = detail.checks[0];
+  return <div>
+    {view !== "conflicts" && detail.sections.map((section) => {
       const empty = section.fields.filter(f => f.value === "未填写" && !keyFields.has(f.label));
       const visible = section.fields.filter(f => !empty.includes(f));
       const party = section.title.startsWith("当事人 ");
       const Icon = party ? Users : section.title.includes("收费") ? Wallet : section.title.includes("程序") ? Scale : section.title.includes("委托方") ? Building2 : section.title.includes("顾问") ? BriefcaseBusiness : FileText;
-      const fields = (items: IntakeReviewField[]) => <dl className={styles.fields}>{items.map(f => <div key={f.label} className={longFields.has(f.label) ? styles.longField : undefined}><dt>{f.label}</dt><dd className={f.value === "未填写" ? "text-muted-foreground" : undefined}><IntakeReviewValue {...f} /></dd></div>)}</dl>;
-      return <section key={section.title} className={styles.section}>
-        <header className={styles.sectionHeading}><span className={reviewStyles.sectionIcon}><Icon size={17} /></span><h3>{section.title}</h3>{party && <Badge variant="outline">{section.fields.find(f => f.label === "本案角色")?.value}</Badge>}<span className={styles.sectionNumber}>{String(index + 1).padStart(2, "0")}</span></header>
-        {section.note && <p className={styles.sectionNote}>{section.note}</p>}
-        {fields(visible)}
-        {!!empty.length && <details className={styles.emptyFields}><summary>查看未填写项 <span>{empty.length}</span></summary>{fields(empty)}</details>}
+      const rows = (items: IntakeReviewField[]) => items.map(f => <div key={f.label} className="arow"><span className="k">{f.label}</span><span className={`v min-w-0 break-words ${f.value === "未填写" ? "t-faint" : ""}`}><IntakeReviewValue {...f} /></span></div>);
+      return <section key={section.title} className="rv-section">
+        <div className="rv-sec-head"><Icon className="h-[14px] w-[14px] text-[var(--teal)]" />{section.title}{party && <span className="badge b-white" style={{ fontSize: 10 }}>{section.fields.find(f => f.label === "本案角色")?.value}</span>}</div>
+        {section.note && <div className="arow"><span className="v t-xs t-mute">{section.note}</span></div>}
+        {rows(visible)}
+        {!!empty.length && <details className={styles.emptyFields}><summary className="arow fold"><span className="k">未填写项</span><span className="v">查看未填写项 {empty.length}</span></summary>{rows(empty)}</details>}
       </section>;
     })}
-    {view !== "overview" && <section className="space-y-4">
-
-      <h3 className="text-base font-semibold">利益冲突核查详情</h3>
-      <p className="text-sm leading-relaxed text-muted-foreground">请逐条核对命中主体和历史代理关系，系统提示不能代替审批判断。</p>
+    {view === "overview" && <section className="rv-section">
+      <div className="rv-sec-head"><AlertTriangle className="h-[14px] w-[14px] text-[var(--red)]" />冲突核查摘要{onOpenConflicts && <button type="button" onClick={onOpenConflicts} className="ml-auto text-[11px] font-[550] text-[var(--teal-deep)]">查看完整检索记录 →</button>}</div>
+      <div className="conf-sum">
+        <div className="cs-ic" style={!latest || latest.hits.length ? undefined : { background: "var(--green-bg)", color: "var(--green)" }}><AlertTriangle /></div>
+        <div style={{ flex: 1 }}>
+          <div className="cs-t">{!latest ? "尚未进行冲突检索" : latest.hits.length ? conflictMatchKinds.map(k => ({ k, n: latest.hits.filter(h => conflictMatchKind(h) === k.key).length })).filter(x => x.n).map(x => `${x.k.label} × ${x.n}`).join(" · ") : "系统检索未命中"}</div>
+          <div className="cs-d">{!latest ? "当前没有可供核查的检索记录，请退回补正或要求重新检索。" : `最近一次检索 ${dateText(latest.checkedAt)} · 当前结论「${latest.conclusion}」${latest.coversCurrentParties ? "" : " · 检索资料不完整，请重新检索"}。未命中不等于人工确认无冲突。`}</div>
+        </div>
+        {onOpenConflicts && <ChevronRight className="h-4 w-4 text-[var(--t-faint)]" />}
+      </div>
+    </section>}
+    {view !== "overview" && <section className="rv-section">
+      <div className="rv-sec-head"><AlertTriangle className="h-[14px] w-[14px] text-[var(--red)]" />利益冲突核查详情<span className="t-xs t-mute ml-auto font-normal">系统提示不能代替审批判断</span></div>
+      <div className="panel-body space-y-4">
       {!detail.checks.length && <p className="rounded-lg border border-[var(--amber-line)] bg-[var(--amber-bg)] p-3 text-sm">尚未运行利益冲突检索，当前没有可供核查的检索记录。</p>}
       {detail.checks.map((check, index) => <details key={check.id} open={index === 0} className={styles.check}>
         <summary className="cursor-pointer text-sm font-medium">{index === 0 ? "最近一次检索" : "历史检索"} · {dateText(check.checkedAt)} · 检索结果 {check.hits.length} 条</summary>
@@ -62,6 +71,7 @@ export function IntakeApprovalContent({ detail, view = "all" }: { detail: Detail
           {!!check.idMatchedClients.length && <div className="text-sm"><h4 className="font-medium">历史客户库证件匹配提示（需核对主体身份）</h4>{check.idMatchedClients.map((c, i) => <p key={i}>{c.name} · <IntakeReviewValue label="客户库匹配证件" value={c.idNumber || "未记录"} sensitive /></p>)}</div>}
         </div>
       </details>)}
+      </div>
     </section>}
   </div>;
 }

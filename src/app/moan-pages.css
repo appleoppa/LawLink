@@ -599,3 +599,28 @@
   .mo-login .brand-panel { display: none; }
   .mo-login .form-panel { padding: 40px 24px; min-height: 100vh; }
 }
+
+/* 07 审阅窗口 · 实现补充：Radix 弹窗内的滚动与窄屏堆叠 */
+.mo-approval .rv-body { overflow: hidden; }
+.mo-approval .rv-main { min-height: 0; }
+.mo-approval .rv-main [role="tabpanel"] { overflow-y: auto; padding-bottom: 18px; }
+.mo-approval .rv-main .tabs { flex-shrink: 0; height: auto; }
+.mo-approval .rv-side { min-height: 0; }
+.mo-approval .op-area { resize: vertical; outline: none; }
+.mo-approval .op-area:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(0,123,127,0.12); }
+.mo-approval .rv-side-foot .btn { width: 100%; }
+.mo-approval .arow .badge { flex-shrink: 0; }
+@media (max-width: 860px) {
+  .mo-approval .rv-body { display: block; overflow-y: auto; }
+  .mo-approval .rv-main { border-right: 0; }
+  .mo-approval .rv-main [role="tabpanel"] { overflow: visible; }
+  .mo-approval .rv-side { border-top: 1px solid var(--bd-hair); }
+  .mo-approval .rv-side-foot { position: sticky; bottom: 0; background: var(--bg-card); }
+  .mo-approval .rv-summary { gap: 10px 16px; }
+  .mo-approval .rv-alert { margin-left: 0; }
+}
+.mo-list-row { display: flex; align-items: center; gap: 14px; padding: 12px 18px 12px 22px; border-bottom: 1px solid var(--bd-hair); width: 100%; text-align: left; background: transparent; transition: background .12s; font-family: inherit; }
+.mo-list-row:last-child { border-bottom: none; }
+.mo-list-row:hover { background: var(--bg-hover); }
+.mo-list-row .rt { font-size: 13px; font-weight: 600; color: var(--t-primary); }
+.mo-list-row .rm { font-size: 11px; color: var(--t-muted); margin-top: 2px; }

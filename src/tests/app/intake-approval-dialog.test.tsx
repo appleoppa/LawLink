@@ -53,6 +53,10 @@ describe("立案审批分区审阅", () => {
     expect(onDecision).toHaveBeenCalledWith("revision");
     fireEvent.click(screen.getByRole("button", { name: "驳回" }));
     expect(onDecision).toHaveBeenCalledWith("reject");
+    // 墨案 07：通过前须勾选两项核对确认
+    expect(screen.getByRole("button", { name: "审批通过" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("checkbox", { name: /已核对申请资料/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /同意按申请登记/ }));
     fireEvent.click(screen.getByRole("button", { name: "审批通过" }));
     expect(onDecision).toHaveBeenCalledWith("approve");
     unmount();
