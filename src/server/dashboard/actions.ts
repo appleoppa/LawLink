@@ -4,7 +4,7 @@ import { customMatterFilter } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { matterFinanceVisibilityFilter, matterReadVisibilityFilter, intakeReadVisibilityFilter } from "@/lib/permissions";
-import { matterCategoryColor, matterCategoryLabel, matterCategoryShort } from "@/lib/enums";
+import { matterCategoryColor, matterCategoryLabel, matterCategoryShort, procedureTypeLabel } from "@/lib/enums";
 import { matterHref } from "@/lib/matters/route";
 
 // ============ Types ============
@@ -257,12 +257,21 @@ export async function getDashboardSchedule(): Promise<ScheduleItem[]> {
   const itemsWithSort: { item: ScheduleItem; ts: number }[] = [];
   const weekdays = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
   const DAY = 1000 * 60 * 60 * 24;
-  const daysFrom = (d: Date) => Math.ceil((d.getTime() - now.getTime()) / DAY);
-  const fmt = (d: Date) => ({
-    date: `${d.getMonth() + 1}月${d.getDate()}日`,
-    weekday: weekdays[d.getDay()],
-    time: d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false })
-  });
+  // 按北京时间的日历日计算（服务器时区可能为 UTC）：负数=已逾期
+  const shParts = (d: Date) => {
+    const p = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(d);
+    const g = (t: string) => p.find((x) => x.type === t)?.value ?? "";
+    return { y: Number(g("year")), m: Number(g("month")), day: Number(g("day")), wd: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(g("weekday")), hm: `${g("hour")}:${g("minute")}` };
+  };
+  const today = shParts(now);
+  const daysFrom = (d: Date) => {
+    const t = shParts(d);
+    return Math.round((Date.UTC(t.y, t.m - 1, t.day) - Date.UTC(today.y, today.m - 1, today.day)) / DAY);
+  };
+  const fmt = (d: Date) => {
+    const t = shParts(d);
+    return { date: `${t.m}月${t.day}日`, weekday: weekdays[t.wd] ?? "", time: t.hm };
+  };
   const clientNameOf = (matter: {
     primaryClient: { name: string } | null;
     clientLinks: { isPrimary: boolean; client: { name: string } }[];
@@ -286,7 +295,7 @@ export async function getDashboardSchedule(): Promise<ScheduleItem[]> {
         clientName: clientNameOf(matter),
         matterId: matter.id,
         matterCode: matter.internalCode,
-        procedure: h.procedure.customLabel ?? h.procedure.type,
+        procedure: h.procedure.customLabel ?? procedureTypeLabel[h.procedure.type] ?? h.procedure.type,
         daysUntil: daysFrom(d)
       }
     });
@@ -306,7 +315,7 @@ export async function getDashboardSchedule(): Promise<ScheduleItem[]> {
         clientName: clientNameOf(matter),
         matterId: matter.id,
         matterCode: matter.internalCode,
-        procedure: dl.procedure.customLabel ?? dl.procedure.type,
+        procedure: dl.procedure.customLabel ?? procedureTypeLabel[dl.procedure.type] ?? dl.procedure.type,
         daysUntil: daysFrom(d)
       }
     });
@@ -422,4 +431,96 @@ export async function getDashboardHeroData(): Promise<HeroData> {
     pendingSealCount: pendingSeals,
     focus
   };
+}
+
+// ============ 墨案 02：待我处理 / 逾期未回款 / 客户来源 ============
+
+export type WorkQueue = {
+  approvals: { id: string; action: string; title: string; requester: string; matter: string | null; waitDays: number; task: string | null }[];
+  approvalTotal: number;
+  tasks: { id: string; title: string; dueAt: Date | null; priority: number; matterTitle: string; matterCode: string; matterId: string; overdue: boolean }[];
+  taskTotal: number;
+};
+
+/** 待我处理：审批复用统一审批工作台口径；任务为指派给本人且未完成、所在案件本人可读 */
+export async function getDashboardWorkQueue(): Promise<WorkQueue> {
+  const session = await requireSession("personal");
+  const { listApprovalWorkspace } = await import("@/server/approval-permissions/inbox");
+  const approvalsPromise = listApprovalWorkspace({ tab: "pending" }).catch(() => null);
+  const visFilter = matterReadVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions);
+  const taskWhere = { assigneeId: session.user.id, completed: false, matter: { deletedAt: null, ...visFilter } };
+  const [ws, tasks, taskTotal] = await Promise.all([
+    approvalsPromise,
+    prisma.task.findMany({
+      where: taskWhere,
+      orderBy: [{ dueAt: { sort: "asc", nulls: "last" } }, { priority: "desc" }],
+      take: 5,
+      select: { id: true, title: true, dueAt: true, priority: true, matter: { select: { id: true, title: true, internalCode: true } } }
+    }),
+    prisma.task.count({ where: taskWhere })
+  ]);
+  const now = Date.now();
+  return {
+    approvals: (ws?.rows ?? []).slice(0, 5).map((r) => ({
+      id: r.id,
+      action: r.action,
+      title: r.title,
+      requester: r.requester,
+      matter: r.matter,
+      waitDays: Math.max(0, Math.floor((now - new Date(r.submittedAt).getTime()) / 86_400_000)),
+      task: r.task
+    })),
+    approvalTotal: ws?.counts.pending ?? 0,
+    tasks: tasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      dueAt: t.dueAt,
+      priority: t.priority,
+      matterTitle: t.matter.title,
+      matterCode: t.matter.internalCode,
+      matterId: t.matter.id,
+      overdue: Boolean(t.dueAt && t.dueAt.getTime() < now)
+    })),
+    taskTotal
+  };
+}
+
+/** 逾期未回款：应收（Receivable）到期日已过且未核销部分；按财务可见范围。无财务权限返回 null */
+export async function getDashboardOverdueReceivables(): Promise<{ amount: number; clientCount: number; oldestDays: number } | null> {
+  const session = await requireSession("personal");
+  const { hasCustomPermission } = await import("@/lib/roles/catalog");
+  if (!hasCustomPermission(session.user, "finance.read")) return null;
+  const rows = await prisma.receivable.findMany({
+    where: {
+      status: "OPEN",
+      dueDate: { lt: new Date() },
+      matter: { deletedAt: null, ...matterFinanceVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions) }
+    },
+    select: { amount: true, settledAmount: true, dueDate: true, matter: { select: { primaryClientId: true } } }
+  });
+  const open = rows.filter((r) => Number(r.amount) - Number(r.settledAmount) > 0);
+  const amount = open.reduce((s, r) => s + Number(r.amount) - Number(r.settledAmount), 0);
+  const clientCount = new Set(open.map((r) => r.matter.primaryClientId ?? "none")).size;
+  const oldest = open.reduce<number>((m, r) => Math.max(m, r.dueDate ? Math.floor((Date.now() - r.dueDate.getTime()) / 86_400_000) : 0), 0);
+  return { amount, clientCount, oldestDays: oldest };
+}
+
+/** 客户来源渠道分布（近 12 个月新建客户，按本人可见客户范围） */
+export async function getDashboardClientSources(): Promise<{ source: string; count: number }[]> {
+  const session = await requireSession("personal");
+  const { hasCustomPermission } = await import("@/lib/roles/catalog");
+  if (!hasCustomPermission(session.user, "clients.read")) return [];
+  const { clientVisibilityFilter } = await import("@/lib/permissions");
+  const since = new Date();
+  since.setMonth(since.getMonth() - 12);
+  const rows = await prisma.client.findMany({
+    where: { AND: [clientVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions)], deletedAt: null, createdAt: { gte: since } },
+    select: { source: true }
+  });
+  const map = new Map<string, number>();
+  for (const r of rows) {
+    const k = r.source?.trim() || "未记录";
+    map.set(k, (map.get(k) ?? 0) + 1);
+  }
+  return [...map.entries()].map(([source, count]) => ({ source, count })).sort((a, b) => b.count - a.count);
 }
