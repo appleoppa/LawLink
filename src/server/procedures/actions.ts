@@ -433,7 +433,13 @@ export async function addDeadline(input: DeadlineCreateInput) {
       category: data.category,
       dueAt: data.dueAt,
       basis: data.basis || null,
-      remindDays: data.remindDays
+      remindDays: data.remindDays,
+      // v1.x P0-8: 带来源规则的期限为"待确认"（律师核对起算事实后确认）；
+      // 人工录入的期限由录入者负责，直接视为已确认。
+      sourceRuleId: data.sourceRuleId || null,
+      startFact: data.startFact || null,
+      sourceDocumentId: data.sourceDocumentId || null,
+      confirmStatus: data.sourceRuleId ? "PENDING" : "CONFIRMED"
     }
   }));
 

@@ -41,6 +41,7 @@ import {
 } from "@/server/yuandian/enterprise";
 import { cn } from "@/lib/utils";
 import { readFormPath } from "@/lib/form-path";
+import { decryptIdNumber } from "@/lib/clients/id-number-crypto";
 
 type Props = {
   open: boolean;
@@ -51,6 +52,7 @@ type Props = {
 const emptyDefaults: ClientCreateInput = {
   name: "",
   type: "INDIVIDUAL",
+  idType: "ID_CARD",
   idNumber: "",
   address: "",
   legalRep: "",
@@ -96,7 +98,8 @@ export function ClientSheet({ open, onOpenChange, editingClient }: Props) {
       reset({
         name: editingClient.name,
         type: editingClient.type,
-        idNumber: editingClient.idNumber ?? "",
+        idType: (editingClient as any).idType ?? (editingClient.type === "INDIVIDUAL" ? "ID_CARD" : "USCC"),
+        idNumber: decryptIdNumber(editingClient.idNumber),
         address: editingClient.address ?? "",
         legalRep: (editingClient as any).legalRep ?? "",
         phone: editingClient.phone ?? "",
@@ -244,9 +247,15 @@ export function ClientSheet({ open, onOpenChange, editingClient }: Props) {
               <Field label="类型" required>
                 <Select
                   value={watchedType}
-                  onValueChange={(v) =>
-                    setValue("type", v as ClientCreateInput["type"], { shouldDirty: true })
-                  }
+                  onValueChange={(v) => {
+                    setValue("type", v as ClientCreateInput["type"], { shouldDirty: true });
+                    // 证件类型随主体类型联动默认值（可手动改选护照/其他）
+                    const nextType = v === "INDIVIDUAL" ? "ID_CARD" : "USCC";
+                    const current = watch<ClientCreateInput["idType"]>("idType");
+                    if (!current || current === "ID_CARD" || current === "USCC") {
+                      setValue("idType", nextType, { shouldDirty: true });
+                    }
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -255,6 +264,27 @@ export function ClientSheet({ open, onOpenChange, editingClient }: Props) {
                     <SelectItem value="INDIVIDUAL">自然人</SelectItem>
                     <SelectItem value="COMPANY">公司</SelectItem>
                     <SelectItem value="ORGANIZATION">其他组织</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+
+              <Field label="证件类型" required>
+                <Select
+                  value={watch<ClientCreateInput["idType"]>("idType") || (watchedType === "INDIVIDUAL" ? "ID_CARD" : "USCC")}
+                  onValueChange={(v) =>
+                    setValue("idType", v as NonNullable<ClientCreateInput["idType"]>, { shouldDirty: true })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(watchedType === "INDIVIDUAL"
+                      ? [["ID_CARD", "居民身份证"], ["PASSPORT", "护照"], ["OTHER", "其他证件"]]
+                      : [["USCC", "统一社会信用代码"], ["OTHER", "其他编号"]]
+                    ).map(([v, label]) => (
+                      <SelectItem key={v} value={v}>{label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </Field>

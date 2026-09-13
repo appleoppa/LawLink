@@ -61,6 +61,14 @@ const CATEGORY_OPTIONS: DocumentCategory[] = [
 ];
 // 需要标注来源方的类别（诉辩 / 证据）
 const SOURCE_CATEGORIES: DocumentCategory[] = ["PLEADING", "EVIDENCE"];
+const SOURCE_ORIGIN_OPTIONS: [string, string][] = [
+  ["CLIENT_PROVIDED", "当事人提供"],
+  ["COURT_SERVED", "法院送达"],
+  ["AI_EXTRACTED", "AI 识别"],
+  ["SELF_COLLECTED", "自行调取"],
+  ["TEAM_PRODUCED", "团队产出"]
+];
+export const SOURCE_ORIGIN_LABEL: Record<string, string> = Object.fromEntries(SOURCE_ORIGIN_OPTIONS);
 const COURT_PROCEDURE_SOURCE = "法院程序文件";
 
 type ProcedureParty = {
@@ -74,6 +82,7 @@ type DocItem = {
   id: string;
   name: string;
   category: DocumentCategory;
+  sourceOrigin?: string | null;
   mimeType: string | null;
   size: number | null;
   createdAt: Date;
@@ -173,6 +182,7 @@ export function ProcedureDocumentsSection({
   const [picked, setPicked] = useState<File | null>(null);
   const [category, setCategory] = useState<DocumentCategory>("PLEADING");
   const [sourceParty, setSourceParty] = useState<string>("");
+  const [sourceOrigin, setSourceOrigin] = useState<string>("");
   const [customName, setCustomName] = useState("");
   const [isPending, startTransition] = useTransition();
   // 当前分类筛选（全部 = null）
@@ -216,6 +226,7 @@ export function ProcedureDocumentsSection({
         fd.set("procedureId", procedureId);
         fd.set("file", picked);
         fd.set("category", category);
+        if (sourceOrigin) fd.set("sourceOrigin", sourceOrigin);
         if (SOURCE_CATEGORIES.includes(category) && sourceParty) {
           fd.set("sourceParty", sourceParty);
         }
@@ -333,7 +344,7 @@ export function ProcedureDocumentsSection({
                   <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
                     {formatDate(d.createdAt)}
                     {d.size ? ` · ${(d.size / 1024).toFixed(0)}KB` : ""}
-                    {d.sourceParty ? ` · ${d.sourceParty}` : ""}
+                    {d.sourceOrigin ? ` · ${SOURCE_ORIGIN_LABEL[d.sourceOrigin] ?? d.sourceOrigin}` : ""}{d.sourceParty ? ` · ${d.sourceParty}` : ""}
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
@@ -396,6 +407,25 @@ export function ProcedureDocumentsSection({
                     <SelectItem key={c} value={c}>
                       {categoryLabel[c]}
                     </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* v1.x 批次③: 材料来源（谁提供的）——墨案 04 页来源 chip */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">材料来源（可选）</Label>
+              <Select
+                value={sourceOrigin || "__none__"}
+                onValueChange={(v) => setSourceOrigin(v === "__none__" ? "" : v)}
+              >
+                <SelectTrigger className="h-10 bg-background">
+                  <SelectValue placeholder="选择材料来源" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">不标注</SelectItem>
+                  {SOURCE_ORIGIN_OPTIONS.map(([v, label]) => (
+                    <SelectItem key={v} value={v}>{label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

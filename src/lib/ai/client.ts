@@ -7,6 +7,7 @@
  * server-side only（直接读 SystemSetting）。
  */
 import { getAiSettings } from "./settings";
+import { withExternalCallLog } from "@/lib/external-call-log";
 
 export type ChatMessage =
   | { role: "system" | "user" | "assistant"; content: string }
@@ -24,6 +25,7 @@ export interface AiChatOptions {
   maxTokens?: number;
   temperature?: number;
   timeoutMs?: number;
+  logAction?: string; // 外部调用台账的业务动作名（如 review-document）
 }
 
 export interface AiChatResult {
@@ -77,12 +79,16 @@ export async function aiChat(input: AiChatOptions): Promise<AiChatResult> {
     temperature: input.temperature ?? 0.2
   };
 
-  const json = (await callOpenAiCompatible({
-    apiKey: s.apiKey,
-    baseUrl: s.baseUrl,
-    body,
-    timeoutMs: input.timeoutMs ?? 20_000
-  })) as {
+  // v1.x P1: 外部调用台账（成败/耗时；失败不改变原有异常行为）
+  const json = (await withExternalCallLog(
+    { service: "ai-chat", action: input.logAction },
+    () => callOpenAiCompatible({
+      apiKey: s.apiKey,
+      baseUrl: s.baseUrl,
+      body,
+      timeoutMs: input.timeoutMs ?? 20_000
+    })
+  )) as {
     choices?: { message?: { content?: string } }[];
   };
 

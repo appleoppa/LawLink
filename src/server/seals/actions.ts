@@ -1,6 +1,7 @@
 "use server";
 import { checkRoleMutation } from "@/lib/roles/service";
 import { approvalTransaction, approvalAudit, assertApprovalItem, approvalContextFor, requireApprovalRoute, canApproveItem, approvalRecipients } from "@/lib/approvals/service";
+import { selfConfirmEligible } from "@/lib/approvals/self-confirm";
 import { canReadDocument } from "@/lib/approvals/documents";
 
 import { revalidatePath } from "next/cache";
@@ -164,11 +165,20 @@ export async function createSealRequest(formData: FormData) {
   const category = data.matterId ? (await prisma.matter.findUniqueOrThrow({ where: { id: data.matterId }, select: { category: true } })).category : null;
   const purposeConfig = data.purposeConfigId ? await prisma.sealPurposeConfig.findUnique({ where: { id: data.purposeConfigId } }) : null;
   if (!purposeConfig) throw new Error("请选择管理员配置的用章事项");
+  // v1.x 4.3：主章命中自确认清单时跳过审批路由（法人章硬排除，永不自确认）；
+  // 附带的法定代表人子请求仍走完整审批。
+  const mainSealSelfConfirm = !alsoLegalRep && (await selfConfirmEligible(
+    { action: "SEAL_APPROVE", category, requesterId: session.user.id, sealType: data.sealType, purposeId: purposeConfig?.id ?? null },
+    prisma
+  ));
   for (const type of [data.sealType, ...(alsoLegalRep ? ["LEGAL_REP_SEAL" as const] : [])]) {
     const cfg = await prisma.sealTypeConfig.findUnique({ where: { type } });
     if (!cfg?.enabled) throw new Error("该印章已停用");
     if (purposeConfig && (!purposeConfig.active || !purposeConfig.allowedSealTypes.includes(type))) throw new Error("所选事项不允许使用此印章");
-    await requireApprovalRoute({ action: "SEAL_APPROVE", category, requesterId: session.user.id, sealType: type, purposeId: purposeConfig?.id });
+    const typeSelfConfirm = mainSealSelfConfirm && type === data.sealType;
+    if (!typeSelfConfirm) {
+      await requireApprovalRoute({ action: "SEAL_APPROVE", category, requesterId: session.user.id, sealType: type, purposeId: purposeConfig?.id });
+    }
   }
   if (data.parentSealRequestId) {
     const parent = await prisma.sealRequest.findUnique({ where: { id: data.parentSealRequestId }, select: { requestedById: true, status: true } });
@@ -313,10 +323,17 @@ export async function createSealRequest(formData: FormData) {
         requestNote: (data.requestNote || "").trim() || null,
         draftDocId: draftDoc.id,
         requestedById: session.user.id,
-        status: "PENDING",
+        status: mainSealSelfConfirm ? "APPROVED" : "PENDING",
         parentSealRequestId: data.parentSealRequestId ?? undefined
       }
     });
+    if (mainSealSelfConfirm) {
+      await approvalAudit(tx, session.user.id, "SEAL_SELF_CONFIRM", seal.id, {
+        sealType: data.sealType,
+        purpose: purposeConfig?.name ?? data.purpose,
+        note: "命中自确认清单，申请人自我确认即生效；盖章回填流程不变"
+      });
+    }
 
     let legalRepSealId: string | null = null;
     if (legalRepDocPrepare && legalRepCode) {

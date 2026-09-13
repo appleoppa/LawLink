@@ -1,6 +1,7 @@
 import { hasCustomPermission } from "@/lib/roles/catalog";
 import { getSession } from "@/lib/auth/session";
 import { DashboardGreeting } from "@/components/dashboard/dashboard-greeting";
+import { DashboardActionTiles } from "@/components/dashboard/action-tiles";
 import { KpiCards } from "@/components/dashboard/kpi-cards";
 import { RevenueChart } from "@/components/dashboard/revenue-chart";
 import { CategoryChart } from "@/components/dashboard/category-chart";
@@ -38,6 +39,15 @@ export default async function DashboardPage() {
           nearTermCount: hero.nearTermCount
         }}
         scheduleItems={scheduleItems}
+      />
+      {/* 墨案批次④：行动入口置顶（风险信号优先于概览） */}
+      <DashboardActionTiles
+        data={{
+          pendingSealCount: hero.pendingSealCount,
+          nearTermCount: hero.nearTermCount,
+          weekHearingCount: hero.weekHearingCount,
+          overdueDeadlineCount: hero.overdueDeadlineCount
+        }}
       />
       <KpiCards data={kpis.filter(k => k.key === "received" ? canReadFinance : k.key === "deadline" ? canReadSchedule : canReadMatters)} />
 

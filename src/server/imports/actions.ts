@@ -12,6 +12,8 @@ import { seedDefaultFolders } from "@/lib/default-folders";
 import { generateInternalCode, generateFirmCaseNo } from "@/server/matters/code-generator";
 import { generateClientCode } from "@/server/clients/code-generator";
 import { assertCauseAllowedForSelection } from "@/server/causes/validation";
+import { normalizeIdNumber, duplicateWhereInput, suggestIdType } from "@/lib/clients/identity";
+import { sealIdNumber, blindIdNumber } from "@/lib/clients/id-number-crypto";
 import {
   IMPORT_COLUMNS,
   validateRow,
@@ -184,11 +186,27 @@ async function createOneMatter(n: NormalizedRow, currentUserId: string) {
   const internalCode = await generateInternalCode(n.category);
   const firmCaseNo = await generateFirmCaseNo(n.category);
 
-  // find-or-create 客户（名称 + 证件号）
-  const existingClient = await prisma.client.findFirst({
-    where: { name: n.clientName, idNumber: n.clientIdNumber, deletedAt: null },
-    select: { id: true }
-  });
+  // v1.x P0-1: find-or-create 客户——先按证件精确（规范化后，含证件类型），
+  // 再按名称+证件号；两者皆无才新建并写入证件类型。批量导入不做交互式
+  // 查重（行级结果里列出"复用了哪个客户"），但规范化口径与建档入口一致。
+  const normalizedClientIdNumber = normalizeIdNumber(n.clientIdNumber);
+  const importIdType = suggestIdType(n.clientPartyType === "NATURAL_PERSON" ? "INDIVIDUAL" : "COMPANY");
+  let existingClient = normalizedClientIdNumber && importIdType
+    ? await prisma.client.findFirst({
+        where: duplicateWhereInput({ idType: importIdType, idNumber: normalizedClientIdNumber }),
+        select: { id: true }
+      })
+    : null;
+  if (!existingClient) {
+    existingClient = await prisma.client.findFirst({
+      where: {
+        name: n.clientName,
+        ...(normalizedClientIdNumber ? { idNumberBlind: blindIdNumber(normalizedClientIdNumber) } : {}),
+        deletedAt: null
+      },
+      select: { id: true }
+    });
+  }
   const clientCode = existingClient ? null : await generateClientCode();
 
   const title = buildMatterTitle(n.clientName, n.opposingName, n.causeText);
@@ -224,7 +242,8 @@ async function createOneMatter(n: NormalizedRow, currentUserId: string) {
           data: {
             name: n.clientName,
             type: n.clientType,
-            idNumber: n.clientIdNumber,
+            idType: normalizedClientIdNumber ? (importIdType ?? undefined) : undefined,
+            ...(normalizedClientIdNumber ? sealIdNumber(normalizedClientIdNumber) : {}),
             phone: n.clientPhone,
             internalCode: clientCode
           },

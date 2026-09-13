@@ -450,7 +450,8 @@ export function MatterDetailTabs({
               matter.claimAmount === null || matter.claimAmount === undefined
                 ? null
                 : Number(matter.claimAmount),
-            ourStanding: matter.ourStanding ?? null
+            ourStanding: matter.ourStanding ?? null,
+            teamAccessRestricted: (matter as { teamAccessRestricted?: boolean }).teamAccessRestricted ?? false
           }}
           currentProcedure={currentProcedure}
           parties={procedureParties}

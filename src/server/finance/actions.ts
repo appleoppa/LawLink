@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import { assertMatterWritable } from "@/lib/archive/guard";
+import { generateReceivableForBilling, generatePaymentForReceivedEntry } from "@/server/finance/allocation";
 import { serializeDecimals } from "@/lib/decimal";
 import {
   assertCanAccessMatterFinance,
@@ -41,16 +42,29 @@ export async function createBilling(input: BillingCreateInput) {
   const data = billingCreateSchema.parse(input);
   await assertMatterWritable(data.matterId, { allowFinanceRole: true });
 
-  const created = await roleMutation(session.user, "finance.write", async roleDb => roleDb.billing.create({
-    data: {
-      matterId: data.matterId,
-      title: data.title,
-      contractAmount: new Prisma.Decimal(data.contractAmount),
-      schedule: data.schedule || null,
-      status: data.status,
-      signedAt: data.signedAt
+  // v1.x §二：合同与应收同事务创建（签署即确认收费安排 → 应收立项）
+  const created = await prisma.$transaction(async tx => {
+    await checkRoleMutation(tx, session.user, "finance.write");
+    const billing = await tx.billing.create({
+      data: {
+        matterId: data.matterId,
+        title: data.title,
+        contractAmount: new Prisma.Decimal(data.contractAmount),
+        schedule: data.schedule || null,
+        status: data.status,
+        signedAt: data.signedAt
+      }
+    });
+    if (billing.signedAt) {
+      await generateReceivableForBilling(tx, {
+        matterId: data.matterId,
+        billingId: billing.id,
+        title: billing.title,
+        amount: billing.contractAmount
+      });
     }
-  }));
+    return billing;
+  });
 
   await audit({
     userId: session.user.id,
@@ -68,9 +82,15 @@ export async function deleteBilling(id: string) {
   const session = await requireSession("finance.write");
   const billing = await prisma.billing.findUnique({
     where: { id },
-    select: { matterId: true }
+    select: { matterId: true, signedAt: true, title: true }
   });
   if (!billing) return { ok: false };
+
+  // P0-6：已签署的合同（收费安排）是已确认记录，不得物理删除；
+  // 更正需求待 P1 核销/冲正机制，现阶段如需调整请联系管理员按审计流程处理。
+  if (billing.signedAt) {
+    throw new Error("该合同已签署，属于已确认记录，不可删除");
+  }
 
   if (session.user.role === "FINANCE" || (session.user.role === "CUSTOM" && scopeFor(session.user, "finance.write") === "ALL")) {
     await assertMatterWritable(billing.matterId, { allowFinanceRole: true });
@@ -118,6 +138,18 @@ export async function createFeeEntry(input: FeeEntryCreateInput) {
         recordedById: session.user.id
       }
     });
+
+
+    // v1.x §二：收款登记生成实收（核销分配在实收上进行）
+    if (data.type === "RECEIVED" && data.amount > 0) {
+      await generatePaymentForReceivedEntry(tx, {
+        matterId: data.matterId,
+        feeEntryId: entry.id,
+        amount: entry.amount,
+        occurredAt: data.occurredAt,
+        recordedById: session.user.id
+      });
+    }
 
     // 自动分成
     if (data.type === "RECEIVED" && data.amount > 0) {
@@ -181,9 +213,20 @@ export async function deleteFeeEntry(id: string) {
   }
   const entry = await prisma.feeEntry.findUnique({
     where: { id },
-    include: { commissionChildren: { select: { id: true } } }
+    include: { commissionChildren: { select: { id: true } }, billing: { select: { signedAt: true } } }
   });
   if (!entry) return { ok: false };
+
+  // P0-6：已确认的收付记录不得物理删除——
+  // 属于已签署合同的条目、或已登记发票号的收款，均属已对外/已确认口径，
+  // 更正需求待 P1 冲正机制，现阶段联系管理员按审计流程处理。
+  if (entry.billing?.signedAt) {
+    throw new Error("该记录关联已签署合同，属于已确认记录，不可删除");
+  }
+  if (entry.invoiceNo) {
+    throw new Error("该记录已登记发票号，属于已确认记录，不可删除");
+  }
+
   await assertMatterWritable(entry.matterId, { allowFinanceRole: true });
 
   // 删父条目时同时删除自动派生的分成

@@ -408,6 +408,11 @@ export function AddDeadlineDialog({
     const trigger = new Date(`${triggerDate}T00:00:00`);
     setValue("title", selectedRule.name, { shouldDirty: true });
     setValue("category", selectedRule.category, { shouldDirty: true });
+    // v1.x P0-8: 规则生成的期限带来源——提交后以"待确认"落库，律师核对起算事实后确认
+    setValue("sourceRuleId", selectedRule.id, { shouldDirty: true });
+    setValue("startFact", `${selectedRule.triggerLabel}（${formatLocalDate(trigger)}）`, {
+      shouldDirty: true
+    });
     // date input 注册了 valueAsDate，程序化赋值需要 yyyy-MM-dd 字符串才能正确
     // 回显；提交时 zod coerce.date() 会转回 Date
     setValue("dueAt", formatLocalDate(computedDue) as unknown as Date, {
@@ -430,8 +435,15 @@ export function AddDeadlineDialog({
 
   // 打开时把所处程序默认值同步为当前选中程序
   useEffect(() => {
-    if (open) setValue("procedureId", defaultProcedureId);
-  }, [open, defaultProcedureId, setValue]);
+    if (open) {
+      setValue("procedureId", defaultProcedureId);
+      // 手动重新打开时清空上次的规则来源（未选规则=人工录入=已确认）
+      if (!selectedRuleId) {
+        setValue("sourceRuleId", "", { shouldDirty: false });
+        setValue("startFact", "", { shouldDirty: false });
+      }
+    }
+  }, [open, defaultProcedureId, setValue, selectedRuleId]);
 
   function onSubmit(values: DeadlineCreateInput) {
     startTransition(async () => {

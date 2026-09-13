@@ -44,7 +44,19 @@ export function DashboardGreeting({
 
   return (
     <section className="grid grid-cols-1 gap-3 lg:grid-cols-[1.7fr_1fr]">
-      <div className="ll-hero-surface flex min-h-[150px] flex-col justify-between px-5 py-4">
+      {/* 墨案批次④（02 效果图）：问候卡白→淡青渐变 + 右上 teal 光斑 */}
+      <div
+        className="ll-hero-surface relative flex min-h-[150px] flex-col justify-between overflow-hidden px-5 py-4"
+        style={{ background: "linear-gradient(135deg, #FFFFFF 0%, #E9F2F1 100%)" }}
+      >
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(240px 180px at 88% 8%, rgba(0,166,166,0.20) 0%, rgba(0,166,166,0) 65%)"
+          }}
+        />
         <div className="relative z-[1]">
           <div className="mb-2 inline-flex items-center gap-2 text-[11.5px] text-muted-foreground">
             <span className="rounded-full bg-muted px-2 py-0.5 font-mono text-[10.5px] tabular">
@@ -79,16 +91,16 @@ export function DashboardGreeting({
           : "/schedule"}
         className="ll-surface group relative flex min-h-[150px] min-w-0 flex-col justify-between overflow-hidden p-4 transition-colors hover:border-input hover:bg-muted/35"
       >
-        <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-red-500/10 blur-sm" />
+        <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-[#B42318]/10 blur-sm" />
         <div className="relative z-[1]">
           <div className="flex items-center gap-2 text-[10.5px] font-semibold uppercase text-muted-foreground">
-            <span className="ll-dot bg-[#B91C1C] shadow-[0_0_0_3px_rgba(185,28,28,0.14)]" />
+            <span className="ll-dot bg-[#B42318] shadow-[0_0_0_3px_rgba(180,35,24,0.16)]" />
             今日焦点
           </div>
           {focusItem ? (
             <>
               <div className="mt-2 flex items-baseline gap-1">
-                <span className="font-mono text-[40px] font-semibold leading-none tabular text-[#B91C1C]">
+                <span className="font-mono text-[40px] font-semibold leading-none tabular text-[#B42318]">
                   {Math.max(focusItem.daysUntil, 0)}
                 </span>
                 <span className="text-[12px] text-muted-foreground">天</span>

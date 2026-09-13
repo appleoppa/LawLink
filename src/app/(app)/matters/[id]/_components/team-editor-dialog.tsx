@@ -75,6 +75,7 @@ type MatterMeta = {
   causeFreeText: string | null;
   claimAmount: number | null;
   ourStanding: LitigationStanding | null;
+  teamAccessRestricted?: boolean;
 };
 
 type ProcedureMeta = {
@@ -384,6 +385,7 @@ export function TeamEditorDialog({
   const [claimAmount, setClaimAmount] = useState<string>(
     matterMeta.claimAmount === null ? "" : String(matterMeta.claimAmount)
   );
+  const [teamAccessRestricted, setTeamAccessRestricted] = useState(!!matterMeta.teamAccessRestricted);
   const [ourStanding, setOurStanding] = useState<LitigationStanding | "">(
     matterMeta.ourStanding ?? ""
   );
@@ -611,7 +613,8 @@ export function TeamEditorDialog({
             causeId: causeId || "",
             causeFreeText: causeFreeText || "",
             claimAmount: parsedAmount,
-            ourStanding: ourStanding || null
+            ourStanding: ourStanding || null,
+            teamAccessRestricted
           });
         }
 
@@ -777,6 +780,21 @@ export function TeamEditorDialog({
                   </Select>
                 </div>
               </div>
+
+              <label className="flex cursor-pointer items-start gap-2 rounded-md border border-border bg-background px-3 py-2 text-xs">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={teamAccessRestricted}
+                  onChange={(e) => setTeamAccessRestricted(e.target.checked)}
+                />
+                <span>
+                  <span className="font-medium">受限事项</span>
+                  <span className="ml-1 text-muted-foreground">
+                    勾选后本案不进入律师团队汇总视图（团队负责人与额外查看人不再自动可见）；个人直接授权不受影响。
+                  </span>
+                </span>
+              </label>
             </section>
           )}
 

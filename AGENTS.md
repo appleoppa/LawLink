@@ -136,6 +136,16 @@ LawLink/
 - `src/lib/roles/` 存权限目录、解析和范围规则，`src/server/roles/` 存角色校验及事务管理，`src/app/(admin)/admin/roles/_components/` 存角色页面组件；文件用英文短横线，测试在 `src/tests/` 对应目录。
 - 本次方案和 Schema 修改、生成迁移 SQL 已获批准；执行数据库迁移仍需展示 SQL 后另行确认。create-only 不支持时允许仅对本次前后 Schema 使用 migrate diff 生成 SQL，禁止重置数据库或混入其他迁移。
 
+#### P0 底线补强批次决策（2026-09-13 批准，叶森授权按方案直接执行）
+
+- 依据 `docs/P0-IMPLEMENTATION-PLAN.md` 与 `docs/TARGET-MODEL-PLAN.md` 实施改进报告 v5 的 P0 八项。本批 Schema 变更与迁移 SQL（20260913052823_p0_baseline_batch）已获批准并执行；后续各批迁移继续走 create-only/diff 生成、展示 SQL 后执行的流程。
+- **客户主数据（P0-1）**：身份持续唯一策略——证件类型 + 规范化号码部分唯一索引（仅约束已填号码且未删除的行），存量行补录证件类型后纳入约束。建档、收案、批量导入三入口统一查重；匹配复用与存量合并分别验收；合并只调整当前主体关联，不改写历史身份快照，保留映射与合并依据。
+- **登录锁定（P0-3）**：连续 5 次失败锁 15 分钟，成功登录清零，锁定拒绝写审计。
+- **期限来源（P0-8）**：规则生成的期限以待确认状态落库；已确认/已调整期限不被规则重算静默覆盖；法定期限规则管理界面位于管理后台"提醒维护"页，内置规则不可删除。
+- **制度决策 4.1（团队历史访问，选项 A）**：维持团队汇总默认，新增案件级"受限事项"标记（`Matter.teamAccessRestricted`）——受限事项不进入团队汇总视图，限制优先于团队授权；个人直接授权不受影响。
+- **制度决策 4.2（证件采集）**：维持现行默认（实名账号登记证件并留存照片）；账号实名、身份核验、证件照片留存按目的分别评估的原则记入本文档，未来如引入受限协作账号按该原则另行设计。
+- **制度决策 4.3（低影响自确认，2026-09-13 已实施）**：管理后台「审批权限」页提供自确认清单（文书送审/用章申请[非法人章]/收案审批三项可配），命中清单的提交由申请人自我确认即完成原审批环节，审计动作标记 `*_SELF_CONFIRM`。归档、开票、盖章回填与法定代表人章（含 requiresLegalRep 章种）由服务端硬排除，任何配置不可自确认；附带法人章的用章申请整单不走自确认。收案审批清单可配，转化接线随收案专项启用。实现位于 `src/lib/approvals/self-confirm.ts` 与 `src/server/approval-permissions/self-confirm-actions.ts`。
+
 #### 个人身份与基本资料（2026-09-06 确认）
 
 - 本人可维护姓名、手机号和登录邮箱；邮箱变更校验当前密码、撤销旧会话。角色和权限不在个人资料中修改。
@@ -259,3 +269,13 @@ UI 改动还要：在浏览器里把"金线"（典型工作流）走一遍，不
 - 在独立发布副本升级现有依赖的兼容修复版本，验证后发布维护版；保留下一版在途功能。
 - 默认初始化只包含管理员和系统基础字典、模板、规则；不得创建案件、客户或财务演示记录。Document 表仅允许系统内置空白模板文件，业务材料必须为空；测试断言验证空白安装；本次不清空本地数据库、不删除用户测试数据或重写 Git 历史。
 - 依赖审计按生产与全量分别记录，零已知告警只代表当日审计结果，不等同整体安全保证。现有 CI 增加全量审计与空白业务表断言，沿用已获批准的 CI 维护范围。
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

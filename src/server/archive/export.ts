@@ -14,6 +14,7 @@
  */
 import PizZip from "pizzip";
 import { prisma } from "@/lib/prisma";
+import { decryptIdNumber } from "@/lib/clients/id-number-crypto";
 import { sha256 } from "@/lib/storage/crypto";
 import { parseArchiveSnapshot } from "@/lib/archive/snapshot";
 import { verifyArchivePolicySource, verifyArchiveSnapshotDocuments } from "./verification";
@@ -105,7 +106,7 @@ export async function buildArchiveZip(archiveId: string): Promise<ZipResult> {
             id: matter.primaryClient.id,
             name: matter.primaryClient.name,
             type: matter.primaryClient.type,
-            idNumber: matter.primaryClient.idNumber,
+            idNumber: decryptIdNumber(matter.primaryClient.idNumber) || null,
             phone: matter.primaryClient.phone,
             email: matter.primaryClient.email,
             address: matter.primaryClient.address

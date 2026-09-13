@@ -1,4 +1,5 @@
 "use client";
+import { SOURCE_ORIGIN_LABEL } from "./procedure-documents-section";
 
 import { useState, useRef, useTransition } from "react";
 import { toast } from "sonner";
@@ -16,7 +17,7 @@ import {
   FileImage,
   FileArchive,
   Sparkles
-} from "lucide-react";
+, FileUp } from "lucide-react";
 import type { DocumentCategory, Document } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,7 +39,7 @@ import {
   SheetDescription,
   SheetFooter
 } from "@/components/ui/sheet";
-import { uploadDocument, deleteDocument } from "@/server/documents/actions";
+import { uploadDocument, deleteDocument , uploadNewVersion } from "@/server/documents/actions";
 import { procedureTypeLabel } from "@/lib/enums";
 import { cn } from "@/lib/utils";
 import { DocumentReviewDialog } from "./document-review-dialog";
@@ -121,6 +122,19 @@ export function DocumentsPanel({
   const [activeCategory, setActiveCategory] = useState<DocumentCategory | "ALL">("ALL");
   const [isPending, startTransition] = useTransition();
   const [reviewDocId, setReviewDocId] = useState<string | null>(null);
+
+  // v1.x 版本链：新版本上传入口（refs 存隐藏 input）
+  const versionInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  function handleNewVersion(documentId: string, file: File) {
+    startTransition(async () => {
+      try {
+        const res = await uploadNewVersion({ documentId, file });
+        toast.success(`已上传新版本 v${res.version}`, { description: "旧版本保留，可在版本历史中追溯" });
+      } catch (err) {
+        toast.error("上传新版本失败", { description: err instanceof Error ? err.message : "" });
+      }
+    });
+  }
 
   const filtered =
     activeCategory === "ALL"
@@ -210,7 +224,15 @@ export function DocumentsPanel({
                 </div>
                 <div className="flex-1 overflow-hidden">
                   <div className="flex items-center gap-2">
-                    <span className="truncate text-sm font-medium">{d.name}</span>
+                    <span className="truncate text-sm font-medium" title={d.name}>{d.name}</span>
+                    {d.version > 1 && (
+                      <span
+                        className="inline-flex shrink-0 items-center rounded-md border border-border bg-muted/60 px-1 py-px font-mono text-[9.5px] font-medium tabular-nums text-muted-foreground"
+                        title={`当前 v${d.version} · 旧版本保留可溯`}
+                      >
+                        v{d.version}
+                      </span>
+                    )}
                     {d.encrypted && (
                       <span
                         className="inline-flex items-center gap-0.5 rounded-md border border-[#9B7BF7]/40 px-1 py-0.5 text-[9px] text-[#9B7BF7]"
@@ -229,6 +251,11 @@ export function DocumentsPanel({
                     >
                       {categoryLabel[d.category]}
                     </Badge>
+                    {d.sourceOrigin && (
+                      <span className="rounded-full border border-[#B7D8D6] bg-[#E4F1F0] px-1.5 py-px text-[9.5px] text-[#005054]">
+                        {SOURCE_ORIGIN_LABEL[d.sourceOrigin] ?? d.sourceOrigin}
+                      </span>
+                    )}
                     {d.procedure && (
                       <span>{d.procedure.customLabel ?? procedureTypeLabel[d.procedure.type as keyof typeof procedureTypeLabel] ?? "程序类型待核实"}</span>
                     )}
@@ -241,6 +268,26 @@ export function DocumentsPanel({
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
+                  <input
+                    ref={el => { versionInputRefs.current[d.id] = el; }}
+                    type="file"
+                    className="hidden"
+                    onChange={e => {
+                      const f = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!f) return;
+                      handleNewVersion(d.id, f);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => versionInputRefs.current[d.id]?.click()}
+                    disabled={isPending}
+                    className="rounded-md p-1.5 text-muted-foreground hover:bg-popover hover:text-primary"
+                    title="上传新版本（旧版本保留可溯）"
+                  >
+                    <FileUp className="h-3.5 w-3.5" />
+                  </button>
                   {canReviewByAi(d.mimeType) && (
                     <button
                       type="button"

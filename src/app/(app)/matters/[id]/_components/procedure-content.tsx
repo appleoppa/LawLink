@@ -46,6 +46,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { deadlineCategoryLabel } from "@/lib/enums";
+import { confirmDeadline, adjustDeadline } from "@/server/deadlines/confirm";
 import { cn, daysUntil } from "@/lib/utils";
 import { procedureTypeLabel } from "@/lib/enums";
 import {
@@ -73,6 +74,13 @@ type ProcedureWithChildren = MatterProcedure & {
 // 聚合后带程序标签的行类型
 type HearingRowItem = Hearing & { procLabel: string };
 type DeadlineRowItem = Deadline & { procLabel: string };
+
+function formatIsoDate(d: Date | string) {
+  const dt = new Date(d);
+  const m = String(dt.getMonth() + 1).padStart(2, "0");
+  const day = String(dt.getDate()).padStart(2, "0");
+  return `${dt.getFullYear()}-${m}-${day}`;
+}
 type MemoRowItem = ProcedureMemo & { procLabel: string };
 type ImportantCategory = "hearing" | "deadline" | "express" | "memo";
 type ImportantFilter = "all" | ImportantCategory;
@@ -190,6 +198,39 @@ function ImportantItemsCard({
     });
   }
 
+  // v1.x P0-8: 待确认期限的确认（起算事实与规则结果就此固定）
+  function handleConfirmDeadline(id: string) {
+    startTransition(async () => {
+      try {
+        await confirmDeadline({ id });
+        toast.success("期限已确认");
+      } catch (err) {
+        toast.error("确认失败", { description: err instanceof Error ? err.message : "" });
+      }
+    });
+  }
+
+  // v1.x P0-8: 人工调整到期日（写已调整 + 留痕；规则重算不再覆盖）
+  function handleAdjustDeadline(d: DeadlineRowItem) {
+    const dateStr = window.prompt("调整后的到期日（格式 2026-09-30）：", formatIsoDate(d.dueAt));
+    if (!dateStr) return;
+    const dueAt = new Date(`${dateStr}T00:00:00`);
+    if (Number.isNaN(dueAt.getTime())) {
+      toast.error("日期格式不正确");
+      return;
+    }
+    const reason = window.prompt("调整原因（必填，将记入审计）：", "");
+    if (!reason?.trim()) return;
+    startTransition(async () => {
+      try {
+        await adjustDeadline({ id: d.id, dueAt, reason: reason.trim() });
+        toast.success("期限已调整");
+      } catch (err) {
+        toast.error("调整失败", { description: err instanceof Error ? err.message : "" });
+      }
+    });
+  }
+
   function handleDeleteHearing(id: string) {
     if (!confirm("删除这条开庭记录？")) return;
     startTransition(async () => {
@@ -247,7 +288,7 @@ function ImportantItemsCard({
       <header className="flex shrink-0 flex-col gap-2 border-b border-border px-3 py-2">
         <div className="flex items-center justify-between gap-2">
           <span className="flex items-center gap-1.5 text-[13px] font-medium">
-            <AlertTriangle className="h-3.5 w-3.5 text-[#FBBF24]" />
+            <AlertTriangle className="h-3.5 w-3.5 text-[var(--amber)]" />
             重要事项
             <span className="ml-1 font-mono text-[11px] text-muted-foreground tabular">
               {total}
@@ -314,6 +355,16 @@ function ImportantItemsCard({
                     ? () => handleToggle(entry.item.id)
                     : undefined
                 }
+                onConfirm={
+                  entry.type === "deadline"
+                    ? () => handleConfirmDeadline(entry.item.id)
+                    : undefined
+                }
+                onAdjust={
+                  entry.type === "deadline"
+                    ? () => handleAdjustDeadline(entry.item)
+                    : undefined
+                }
                 onDelete={() => {
                   if (entry.type === "hearing") handleDeleteHearing(entry.item.id);
                   if (entry.type === "deadline") handleDeleteDeadline(entry.item.id);
@@ -332,6 +383,8 @@ function ImportantItemsCard({
                 multiProc={multiProc}
                 onToggle={() => handleToggle(d.id)}
                 onDelete={() => handleDeleteDeadline(d.id)}
+                onConfirm={() => handleConfirmDeadline(d.id)}
+                onAdjust={() => handleAdjustDeadline(d)}
                 pending={isPending}
                 canManage={canManage}
               />
@@ -434,6 +487,8 @@ function AllImportantRow({
   multiProc,
   onToggle,
   onDelete,
+  onConfirm,
+  onAdjust,
   pending,
   canManage
 }: {
@@ -441,6 +496,8 @@ function AllImportantRow({
   multiProc: boolean;
   onToggle?: () => void;
   onDelete: () => void;
+  onConfirm?: () => void;
+  onAdjust?: () => void;
   pending: boolean;
   canManage: boolean;
 }) {
@@ -461,6 +518,8 @@ function AllImportantRow({
         multiProc={multiProc}
         onToggle={onToggle ?? (() => {})}
         onDelete={onDelete}
+        onConfirm={onConfirm ?? (() => {})}
+        onAdjust={onAdjust ?? (() => {})}
         pending={pending}
         canManage={canManage}
       />
@@ -502,6 +561,8 @@ function DeadlineRow({
   multiProc,
   onToggle,
   onDelete,
+  onConfirm,
+  onAdjust,
   pending,
   canManage
 }: {
@@ -509,6 +570,8 @@ function DeadlineRow({
   multiProc: boolean;
   onToggle: () => void;
   onDelete: () => void;
+  onConfirm: () => void;
+  onAdjust: () => void;
   pending: boolean;
   canManage: boolean;
 }) {
@@ -550,8 +613,21 @@ function DeadlineRow({
           <Badge variant="outline" className="h-5 shrink-0 px-1.5 text-[9px]">
             {deadlineCategoryLabel[d.category]}
           </Badge>
+          {d.confirmStatus === "PENDING" && (
+            <Badge className="h-5 shrink-0 bg-amber-500/15 px-1.5 text-[9px] text-amber-600 hover:bg-amber-500/15">
+              待确认
+            </Badge>
+          )}
+          {d.confirmStatus === "ADJUSTED" && (
+            <Badge variant="outline" className="h-5 shrink-0 border-sky-500/40 px-1.5 text-[9px] text-sky-600">
+              已调整
+            </Badge>
+          )}
           {multiProc && <ProcTag label={d.procLabel} />}
         </div>
+        {d.startFact && (
+          <div className="mt-0.5 text-[11px] text-muted-foreground">起算：{d.startFact}</div>
+        )}
         {d.basis && (
           <div className="mt-0.5 text-[11px] text-muted-foreground">{d.basis}</div>
         )}
@@ -564,9 +640,9 @@ function DeadlineRow({
           ) : isOverdue ? (
             <span className="text-destructive">逾期 {-days}d</span>
           ) : days === 0 ? (
-            <span className="text-[#FBBF24]">今天</span>
+            <span className="text-[var(--amber)]">今天</span>
           ) : isWarn ? (
-            <span className="text-[#FBBF24]">{days}d</span>
+            <span className="text-[var(--amber)]">{days}d</span>
           ) : (
             <span>{days}d</span>
           )}
@@ -575,6 +651,31 @@ function DeadlineRow({
           {new Date(d.dueAt).toLocaleDateString("zh-CN")}
         </div>
       </div>
+
+      {canManage && !d.completed && (
+        <div className="flex shrink-0 items-center gap-1">
+          {d.confirmStatus === "PENDING" && (
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={pending}
+              className="rounded border border-amber-500/40 px-1.5 py-0.5 text-[10px] text-amber-600 hover:bg-amber-500/10"
+              title="核对起算事实后确认该期限"
+            >
+              确认
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onAdjust}
+            disabled={pending}
+            className="rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:bg-accent"
+            title="调整到期日（记录原因，规则重算不再覆盖）"
+          >
+            调整
+          </button>
+        </div>
+      )}
 
       {canManage && (
         <button

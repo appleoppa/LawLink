@@ -11,6 +11,7 @@ import {
   CircleOff,
   CircleDot,
   Loader2,
+  LockOpen,
   ShieldCheck,
   ShieldOff,
   Users as UsersIcon
@@ -48,6 +49,7 @@ import {
   updateUserRole,
   updateUserSystemRole,
   setUserActive,
+  unlockUserLogin,
   resetUserPassword
 } from "@/server/users/actions";
 import { ProfileBasicsForm } from "@/components/users/profile-basics-form";
@@ -81,6 +83,8 @@ type UserRow = {
   phone: string | null;
   active: boolean;
   lastLoginAt: Date | null;
+  lockedUntil?: Date | null;
+  failedLoginAttempts?: number;
   createdAt: Date;
   updatedAt: Date;
   approvalMemberships: { group: { id: string; name: string } }[];
@@ -197,6 +201,19 @@ function UserRow({
     });
   }
 
+  // v1.x P0-3: 解除登录锁定
+  function handleUnlock() {
+    if (!confirm(`解除 ${user.name} 的登录锁定？`)) return;
+    startTransition(async () => {
+      try {
+        await unlockUserLogin({ id: user.id });
+        toast.success("已解除锁定");
+      } catch (err) {
+        toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
+      }
+    });
+  }
+
   function handleToggleActive() {
     if (
       !confirm(user.active ? `禁用 ${user.name}？禁用后该用户无法登录。` : `重新激活 ${user.name}？`)
@@ -231,6 +248,9 @@ function UserRow({
       <td className="px-5 py-3">
         <div className="font-medium">{user.name}</div>
         <div className="font-mono text-xs text-muted-foreground">{user.email}</div>
+        {user.lockedUntil && new Date(user.lockedUntil) > new Date() && (
+          <div className="mt-0.5 text-xs text-amber-600">登录锁定至 {new Date(user.lockedUntil).toLocaleString("zh-CN")}</div>
+        )}
         <div className="mt-1 text-xs text-muted-foreground">审批权限组：{user.approvalMemberships.map(m => m.group.name).join("、") || "未分配"}</div>
       </td>
       <td className="px-5 py-3">
@@ -298,6 +318,11 @@ function UserRow({
                 {user.systemRole === "SUPER_ADMIN" ? <ShieldOff className="h-3.5 w-3.5" /> : <ShieldCheck className="h-3.5 w-3.5" />}
                 {user.systemRole === "SUPER_ADMIN" ? "撤销管理" : "授予管理"}
               </Button>
+              {user.lockedUntil && new Date(user.lockedUntil) > new Date() && (
+                <Button variant="ghost" size="sm" onClick={handleUnlock} disabled={isPending} className="h-7 gap-1 text-xs text-amber-600">
+                  <LockOpen className="h-3.5 w-3.5" />解锁
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="sm"

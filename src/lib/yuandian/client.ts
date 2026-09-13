@@ -5,6 +5,7 @@
  * 详见 https://open.chineselaw.com/llms-full.txt
  */
 import { getYuandianSettings, type ResolvedYuandianSettings } from "./settings";
+import { withExternalCallLog } from "@/lib/external-call-log";
 
 export class YuandianNotConfiguredError extends Error {
   constructor() {
@@ -110,7 +111,7 @@ export async function searchPtalCases(
     data?: { total?: number; lst?: PtalCase[] } | null;
   };
   try {
-    const res = await fetch(url, {
+    const res = await withExternalCallLog({ service: "yuandian" }, () => fetch(url, {
       method: "POST",
       headers: {
         "X-API-Key": s.apiKey,
@@ -119,7 +120,7 @@ export async function searchPtalCases(
       },
       body: JSON.stringify(body),
       signal: ctrl.signal
-    });
+    }));
     if (!res.ok) {
       throw new YuandianApiError(`HTTP ${res.status}`, res.status);
     }
@@ -229,7 +230,7 @@ export async function searchCasesByVector(
     extra?: { wenshu?: VectorCase[] };
   };
   try {
-    const res = await fetch(url, {
+    const res = await withExternalCallLog({ service: "yuandian" }, () => fetch(url, {
       method: "POST",
       headers: {
         "X-API-Key": s.apiKey,
@@ -238,7 +239,7 @@ export async function searchCasesByVector(
       },
       body: JSON.stringify(body),
       signal: ctrl.signal
-    });
+    }));
     if (!res.ok) throw new YuandianApiError(`HTTP ${res.status}`, res.status);
     json = await res.json();
   } finally {

@@ -28,6 +28,8 @@ import { scanDueReminders } from "./jobs/scan-due-reminders";
 import { scanSealBackfillReminders } from "./jobs/scan-seal-backfill-reminders";
 import { runDatabaseBackup, backupCronEnabled } from "./jobs/backup-database";
 import { audit } from "@/server/audit";
+import { processDueJobs } from "./worker";
+import { recoverStaleLeases } from "./queue";
 
 const TIMEZONE = "Asia/Shanghai";
 let started = false;
@@ -105,7 +107,8 @@ export function registerCronJobs() {
     { timezone: TIMEZONE }
   );
 
-  // v0.27: 每天 09:00 扫到期期限（T-3/T-1/T/T+1 四档），发 DEADLINE_REMINDER
+  // v0.27: 每天 09:00 扫到期期限与开庭，发 DEADLINE_REMINDER /
+  // HEARING_REMINDER（期限档位 = 固定档 ∪ 各期限 remindDays，开庭固定 T-3/T-1/T）
   cron.schedule(
     "0 9 * * *",
     () =>
@@ -143,7 +146,21 @@ export function registerCronJobs() {
     );
   }
 
+  // v1.x P1-1: 持久队列 worker——每 2 分钟处理到期任务（含失败退避重试）；
+  // 启动时先恢复宕机遗留的租约过期任务
+  void recoverStaleLeases().catch((err) => {
+    console.error("[queue] 启动恢复租约失败：", err);
+  });
+  cron.schedule(
+    "*/2 * * * *",
+    () =>
+      runWithFailureAudit("队列 worker", "QUEUE_WORKER_FAILED_CRON", () =>
+        processDueJobs(10)
+      ),
+    { timezone: TIMEZONE }
+  );
+
   console.log(
-    `[cron] 已注册 ${backupCronEnabled() ? 6 : 5} 个定时作业（周报推送 / 归档逾期扫描 / AuditLog 清理 / 到期提醒扫描 / 用章回填提醒扫描${backupCronEnabled() ? " / 数据库备份" : ""}），时区 Asia/Shanghai`
+    `[cron] 已注册 ${backupCronEnabled() ? 7 : 6} 个定时作业（周报推送 / 归档逾期扫描 / AuditLog 清理 / 到期提醒扫描 / 用章回填提醒扫描${backupCronEnabled() ? " / 数据库备份" : ""} / 队列 worker），时区 Asia/Shanghai`
   );
 }

@@ -54,7 +54,7 @@ export function CaseListHeader({
           : showIntakeDateColumn
             ? MATTER_ROW_GRID_WITH_INTAKE
             : MATTER_ROW_GRID,
-        "hidden border-b border-border bg-muted px-5 py-2 text-[10px] font-semibold uppercase text-muted-foreground lg:grid"
+        "hidden border-b border-border bg-[#FAFBFA] px-5 py-2.5 text-[10.5px] font-semibold tracking-[0.05em] text-[#98A3AD] lg:grid"
       )}
     >
       {showArchiveDateColumn ? (
@@ -127,6 +127,7 @@ export function MattersTable({
             latestHearingAt={m.latestHearingAt}
             firmCaseNo={m.firmCaseNo}
             showTitleMeta={false}
+            causeName={m.cause?.name ?? null}
             clientName={m.primaryClient?.name ?? null}
             detailColumnLabel="案号"
             procedureLabel={m.procedures[0]?.caseNumber ?? null}
@@ -144,12 +145,13 @@ export function MattersTable({
   );
 }
 
+// 墨案状态点（moan.css token 值；StatusChip 需拼 alpha，故用 hex 字面值）
 const MATTER_STATUS_DOT: Record<MatterRow["status"], string> = {
-  PENDING_ACCEPTANCE: "#9A6700",
-  IN_PROGRESS: "#1E40AF",
-  ON_HOLD: "#94a3b8",
-  CLOSED: "#15803D",
-  ARCHIVED: "#6B21A8"
+  PENDING_ACCEPTANCE: "#96650B",
+  IN_PROGRESS: "#1E56C8",
+  ON_HOLD: "#98A3AD",
+  CLOSED: "#1A7F45",
+  ARCHIVED: "#8A6B3E" // 墨案：归档=青铜金
 };
 
 // 通用卡片：供 MattersTable + IntakesTable 共用
@@ -165,6 +167,7 @@ export function CaseListCard({
   firmCaseNo = null,
   showTitleMeta = true,
   showTitleFirmCaseNo = true,
+  causeName = null,
   clientName = null,
   detailColumnLabel = "案号",
   procedureLabel = null,
@@ -189,6 +192,7 @@ export function CaseListCard({
   firmCaseNo?: string | null;
   showTitleMeta?: boolean;
   showTitleFirmCaseNo?: boolean;
+  causeName?: string | null;
   clientName?: string | null;
   detailColumnLabel?: string;
   procedureLabel?: string | null;
@@ -222,8 +226,15 @@ export function CaseListCard({
     </DataCell>
   );
 
+  // 墨案案卷脊：状态色竖条（PENDING=amber / IN_PROGRESS=blue / ON_HOLD=slate / CLOSED=green / ARCHIVED=bronze）
+  const spineColor =
+    status.label === "已归档" ? "#8A6B3E" : accent;
+
   return (
-    <li className={cn(inTable ? "border-t border-border first:border-t-0" : "rounded-lg border border-border bg-card")}>
+    <li
+      className={cn("ll-spine-row", inTable ? "border-t border-border first:border-t-0" : "rounded-lg border border-border bg-card")}
+      style={{ "--ll-spine": spineColor } as React.CSSProperties}
+    >
       <Link
         href={href}
         className={cn(
@@ -251,7 +262,7 @@ export function CaseListCard({
               <span
                 className={cn(
                   "ll-dot",
-                  latestHearingAt ? "bg-[#B91C1C] shadow-[0_0_0_3px_rgba(185,28,28,0.14)]" : "bg-primary"
+                  latestHearingAt ? "bg-[#B42318] shadow-[0_0_0_3px_rgba(180,35,24,0.16)]" : "bg-primary"
                 )}
               />
             </div>
@@ -271,9 +282,14 @@ export function CaseListCard({
                 {categoryShort}
               </span>
               <div className="min-w-0">
-                <span className="block min-w-0 truncate text-[13.5px] font-medium leading-5 text-foreground">
+                <span className="block min-w-0 truncate text-[13px] font-semibold leading-5 text-foreground">
                   {title || "（未命名）"}
                 </span>
+                {causeName ? (
+                  <span className="mt-0.5 block truncate text-[11px] leading-4 text-muted-foreground">
+                    {causeName}
+                  </span>
+                ) : null}
                 {showTitleMeta ? (
                   <span className="mt-0.5 block font-mono text-[11px] text-muted-foreground tabular">
                     {showTitleFirmCaseNo && firmCaseNo ? firmCaseNo : formatDate(intakeDate)}

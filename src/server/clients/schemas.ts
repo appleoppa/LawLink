@@ -9,6 +9,9 @@ export const cooperationStatusSchema = z.enum([
 ]);
 export const clientGenderSchema = z.enum(["MALE", "FEMALE"]);
 
+// v1.x P0-1: 主体证件类型（个人=身份证/护照，机构=统一社会信用代码）
+export const clientIdTypeSchema = z.enum(["ID_CARD", "USCC", "PASSPORT", "OTHER"]);
+
 export const contactInputSchema = z.object({
   name: z.string().min(1, "联系人姓名必填").max(40),
   title: z.string().max(40).optional().or(z.literal("")),
@@ -22,6 +25,7 @@ export const contactInputSchema = z.object({
 export const clientCreateSchema = z.object({
   name: z.string().min(1, "客户名称必填").max(120),
   type: clientTypeSchema,
+  idType: clientIdTypeSchema.optional().or(z.literal("")),
   idNumber: z.string().max(50).optional().or(z.literal("")),
   address: z.string().max(200).optional().or(z.literal("")),
   legalRep: z.string().max(40).optional().or(z.literal("")),

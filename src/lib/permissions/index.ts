@@ -62,7 +62,9 @@ function teamSubjectFilter(userId: string, teamId?: string): Prisma.UserWhereInp
 
 export function teamMatterFilter(userId: string, teamId?: string): Prisma.MatterWhereInput {
   const subject = teamSubjectFilter(userId, teamId);
-  return { OR: [{ owner: subject }, { registeredBy: subject }] };
+  // v1.x 制度决策 4.1（选项 A）：受限事项（teamAccessRestricted）不进入
+  // 团队汇总视图——限制优先于团队授权；个人直接授权（主办/成员）不受影响。
+  return { AND: [{ teamAccessRestricted: false }], OR: [{ owner: subject }, { registeredBy: subject }] };
 }
 
 export function teamIntakeFilter(userId: string, teamId?: string): Prisma.IntakeWhereInput {

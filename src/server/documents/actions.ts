@@ -3,6 +3,7 @@ import { roleMutation } from "@/lib/roles/service";
 
 import { notifyRoleApprovers } from "@/server/notifications/approval";
 import { approvalTransaction, approvalAudit, assertApprovalItem, approvalContextFor, requireApprovalRoute } from "@/lib/approvals/service";
+import { selfConfirmEligible } from "@/lib/approvals/self-confirm";
 
 
 import { revalidatePath } from "next/cache";
@@ -16,6 +17,7 @@ import { matterVisibilityFilter, matterAssociationFilter, isManager, assertCanAc
 import { storage } from "@/lib/storage";
 import { validateUploadedFile } from "@/lib/storage/file-validator";
 import { encryptBuffer, sha256 } from "@/lib/storage/crypto";
+import { extractDocumentTextLayer, ocrStatusFor } from "@/lib/documents/text-extraction";
 import { revalidateMatter } from "@/server/matters/route";
 import { assertDocumentNotInPendingArchive } from "@/server/archive/verification";
 
@@ -48,6 +50,12 @@ export async function uploadDocument(formData: FormData) {
   const archiveChecklistItemIdRaw = formData.get("archiveChecklistItemId");
   const stageIdRaw = formData.get("stageId");
   const sourcePartyRaw = formData.get("sourceParty");
+  const sourceOriginRaw = formData.get("sourceOrigin");
+  const SOURCE_ORIGINS = ["CLIENT_PROVIDED", "COURT_SERVED", "AI_EXTRACTED", "SELF_COLLECTED", "TEAM_PRODUCED"] as const;
+  const sourceOrigin =
+    typeof sourceOriginRaw === "string" && (SOURCE_ORIGINS as readonly string[]).includes(sourceOriginRaw)
+      ? (sourceOriginRaw as (typeof SOURCE_ORIGINS)[number])
+      : null;
   const file = formData.get("file");
 
   if (!(file instanceof File)) throw new Error("缺少文件");
@@ -158,6 +166,7 @@ export async function uploadDocument(formData: FormData) {
       folderId,
       name,
       category: parsedCategory,
+      sourceOrigin,
       sourceParty:
         typeof sourcePartyRaw === "string" && sourcePartyRaw.trim()
           ? sourcePartyRaw.trim()
@@ -183,6 +192,35 @@ export async function uploadDocument(formData: FormData) {
     targetId: created.id,
     detail: { matterId, intakeId, name, encrypted, size: file.size }
   });
+
+  // v1.x 版本链：新上传即族首（familyId 指向自身，后续新版本挂同一族）
+  await prisma.document.update({
+    where: { id: created.id },
+    data: { familyId: created.id }
+  }).catch(() => undefined);
+
+  // v1.x P0-2: 抽取文本层（docx / PDF 文本层 / 纯文本；扫描件标 SKIP，
+  // 失败标 FAILED——失败页不可隐去）。抽取基于未加密内存副本，不读回存储；
+  // 抽取失败不影响上传成功，但状态落库供维护与重试。
+  try {
+    const layer = await extractDocumentTextLayer(raw, file.type || null);
+    await prisma.document.update({
+      where: { id: created.id },
+      data: {
+        textContent: layer.text.slice(0, 500_000),
+        pageCount: layer.pageCount,
+        textSource: layer.source,
+        ocrStatus: "READY"
+      }
+    });
+  } catch (err) {
+    await prisma.document.update({
+      where: { id: created.id },
+      data: { ocrStatus: ocrStatusFor(err) }
+    }).catch(() => {
+      // 状态落库失败随上传返回值暴露（不静默），但不阻断已成功的上传
+    });
+  }
 
   // v0.43 项4：写入案件动态时间线（仅案件文档）
   if (matterId) {
@@ -317,7 +355,39 @@ export async function submitDocumentForReview(id: string) {
     await assertDocumentWritable(doc.matterId, { kind: "modify" });
   }
   if (doc.uploadedById !== session.user.id) throw new Error("仅上传人可提交此材料审核");
-  await requireApprovalRoute(await approvalContextFor("DOCUMENT_APPROVE", id));
+
+  // v1.x 4.3：自确认分支——命中清单的低影响文书送审由上传人自我确认，
+  // 不进审批队列、不通知审批人；审计动作区分（DOCUMENT_SELF_CONFIRM）。
+  const docContext = await approvalContextFor("DOCUMENT_APPROVE", id);
+  if (doc.matterId) {
+    const matterRow = await prisma.matter.findUnique({ where: { id: doc.matterId }, select: { category: true } });
+    if (matterRow) docContext.category = matterRow.category;
+  }
+  if (await selfConfirmEligible(docContext, prisma)) {
+    if (doc.status !== "DRAFT") throw new Error("只有草稿状态的材料才能提交审核");
+    await approvalTransaction(async db => {
+      await db.document.update({
+        where: { id, status: "DRAFT", updatedAt: doc.updatedAt },
+        data: {
+          status: "APPROVED",
+          reviewedById: session.user.id,
+          reviewedAt: new Date(),
+          approvedById: session.user.id,
+          approvedAt: new Date()
+        }
+      });
+      await approvalAudit(db, session.user.id, "DOCUMENT_SELF_CONFIRM", id, {
+        matterId: doc.matterId,
+        name: doc.name,
+        note: "命中自确认清单，申请人自我确认即生效"
+      });
+    });
+    if (doc.matterId) await revalidateMatter(doc.matterId);
+    revalidatePath("/approvals");
+    return { ok: true, selfConfirmed: true };
+  }
+
+  await requireApprovalRoute(docContext);
   if (doc.status !== "DRAFT") throw new Error("只有草稿状态的材料才能提交审核");
 
   await roleMutation(session.user, "documents.write", async roleDb => roleDb.document.update({
@@ -413,4 +483,99 @@ export async function fileDocument(id: string) {
   if (doc.matterId) await revalidateMatter(doc.matterId);
   revalidatePath("/approvals");
   return { ok: true };
+}
+
+
+/**
+ * v1.x 版本链闭合（P0-2 欠账）：为既有材料上传新版本。
+ * 新行继承归属（案件/收案/程序/环节/卷宗/分类），familyId 沿用族首，
+ * version+1、isLatest=true；旧版本置 isLatest=false 但永不删除（历史可溯）。
+ * 归档守卫沿用（归档案件不可更新版本）。
+ */
+export async function uploadNewVersion(input: {
+  documentId: string;
+  file: File;
+  category?: string;
+}): Promise<{ ok: true; id: string; version: number }> {
+  const session = await requireSession("documents.write");
+  const prior = await prisma.document.findUnique({ where: { id: input.documentId } });
+  if (!prior || prior.deletedAt) throw new Error("原材料不存在");
+  if (!prior.isLatest) throw new Error("只能基于最新版本更新");
+
+  if (prior.matterId) {
+    await assertCanAccessMatter(session.user.id, session.user.role, prior.matterId, session.user.rolePermissions);
+    await assertDocumentWritable(prior.matterId, { kind: "modify" });
+  }
+
+  const raw = Buffer.from(await input.file.arrayBuffer());
+  const hash = sha256(raw);
+  const encrypted = false; // 新版本默认与原文件一致策略由调用方后续可调；先随所配置
+  const enc = encrypted ? encryptBuffer(raw) : null;
+  const path = await storage.writeFile(prior.matterId ? `m_${prior.matterId}` : `i_${prior.intakeId}`, enc ? enc.ciphertext : raw);
+
+  const created = await prisma.$transaction(async tx => {
+    await tx.document.updateMany({
+      where: { familyId: prior.familyId ?? prior.id, isLatest: true },
+      data: { isLatest: false }
+    });
+    return tx.document.create({
+      data: {
+        matterId: prior.matterId,
+        intakeId: prior.intakeId,
+        procedureId: prior.procedureId,
+        stageId: prior.stageId,
+        folderId: prior.folderId,
+        name: input.file.name || prior.name,
+        category: (input.category as never) ?? prior.category,
+        sourceParty: prior.sourceParty,
+        sourceOrigin: prior.sourceOrigin,
+        path,
+        mimeType: input.file.type || prior.mimeType,
+        size: input.file.size,
+        sha256: hash,
+        encrypted,
+        algorithm: enc?.algorithm ?? null,
+        iv: enc ? enc.iv.toString("base64") : null,
+        authTag: enc ? enc.authTag.toString("base64") : null,
+        familyId: prior.familyId ?? prior.id,
+        version: prior.version + 1,
+        isLatest: true,
+        uploadedById: session.user.id
+      },
+      select: { id: true, version: true }
+    });
+  });
+
+  await audit({
+    userId: session.user.id,
+    action: "DOCUMENT_NEW_VERSION",
+    targetType: "Document",
+    targetId: created.id,
+    detail: { priorId: prior.id, familyId: prior.familyId ?? prior.id, version: created.version, sha256: hash }
+  });
+
+  // 新版本同样抽取文本层（沿用上传路径口径）
+  try {
+    const { extractDocumentTextLayer } = await import("@/lib/documents/text-extraction");
+    const layer = await extractDocumentTextLayer(raw, input.file.type || prior.mimeType);
+    await prisma.document.update({
+      where: { id: created.id },
+      data: {
+        textContent: layer.text.slice(0, 500_000),
+        pageCount: layer.pageCount,
+        textSource: layer.source,
+        ocrStatus: "READY"
+      }
+    });
+  } catch (err) {
+    const { ocrStatusFor } = await import("@/lib/documents/text-extraction");
+    await prisma.document.update({
+      where: { id: created.id },
+      data: { ocrStatus: ocrStatusFor(err) }
+    }).catch(() => undefined);
+  }
+
+  if (prior.matterId) await revalidateMatter(prior.matterId);
+  if (prior.intakeId) revalidatePath(`/intakes/${prior.intakeId}`);
+  return { ok: true, id: created.id, version: created.version };
 }

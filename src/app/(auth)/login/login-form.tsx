@@ -15,7 +15,8 @@ import { cn } from "@/lib/utils";
 
 const schema = z.object({
   email: z.string().email("请填写有效邮箱"),
-  password: z.string().min(1, "请填写密码")
+  password: z.string().min(1, "请填写密码"),
+  totpCode: z.string().optional()
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -40,6 +41,7 @@ export function LoginForm() {
     const res = await signIn("credentials", {
       email: values.email,
       password: values.password,
+      totpCode: values.totpCode || undefined,
       redirect: false
     });
     if (res?.ok) {
@@ -102,6 +104,19 @@ export function LoginForm() {
         {errors.password && (
           <p className="text-xs text-destructive">{errors.password.message}</p>
         )}
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="totpCode">动态验证码（如已开启）</Label>
+        <Input
+          id="totpCode"
+          inputMode="numeric"
+          maxLength={16}
+          placeholder="6 位动态码或恢复码，未开启可留空"
+          autoComplete="one-time-code"
+          className={cn(errors.totpCode && "border-destructive focus-visible:ring-destructive")}
+          {...register("totpCode")}
+        />
       </div>
 
       <Button

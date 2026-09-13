@@ -65,8 +65,8 @@ export function InfoPanel({
 }) {
   // 关联案件（双向合并去重）
   const relatedMatters = [
-    ...matter.linksFrom.map((l) => l.relatedMatter),
-    ...matter.linksTo.map((l) => l.matter)
+    ...matter.linksFrom.map((l) => ({ ...l.relatedMatter, relation: l.relation })),
+    ...matter.linksTo.map((l) => ({ ...l.matter, relation: l.relation }))
   ].filter((m, i, arr) => arr.findIndex((x) => x.id === m.id) === i);
 
   // v0.35: 按案件类别分叉展示（诉讼/仲裁 vs 非诉/专项 vs 顾问）

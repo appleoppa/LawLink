@@ -307,6 +307,35 @@ export function ReportsView({
       </section>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        {/* 客户来源渠道分布（P0-1 第三步） */}
+        <section className="rounded-lg border border-border bg-card p-4">
+          <h3 className="mb-3 text-sm font-medium">客户来源渠道 · 存量</h3>
+          {data.byClientSource.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">暂无客户数据</p>
+          ) : (
+            <ul className="space-y-2">
+              {data.byClientSource.slice(0, 8).map((s) => {
+                const max = data.byClientSource[0].count || 1;
+                const pct = (s.count / max) * 100;
+                return (
+                  <li key={s.source} className="flex items-center gap-3 text-xs">
+                    <span className="w-20 shrink-0 truncate text-foreground/80" title={s.source}>
+                      {s.source}
+                    </span>
+                    <div className="flex-1">
+                      <div className="h-4 rounded" style={{ width: `${pct}%`, minWidth: 8, backgroundColor: "#007B7F99" }} />
+                    </div>
+                    <span className="w-16 shrink-0 font-mono text-right text-foreground" title={`${s.count} 位客户 · 关联 ${s.intakeCount} 件案件`}>
+                      {s.count} / {s.intakeCount}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <p className="mt-2 text-[11px] text-muted-foreground">客户数 / 关联案件数 · 未记录来源的客户可在客户档案中补录</p>
+        </section>
+
         {/* 律师产出 */}
         <section className="rounded-lg border border-border bg-card p-4">
           <h3 className="mb-3 text-sm font-medium">律师产出 · 本期</h3>

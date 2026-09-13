@@ -90,7 +90,11 @@ export function SearchDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           const items = results[key];
           if (!items.length) return null;
           return (
-            <CommandGroup key={key} heading={label}>
+            <CommandGroup
+              key={key}
+              heading={`${label} · ${items.length}`}
+              className="[&_[cmdk-group-heading]]:text-[10.5px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.07em] [&_[cmdk-group-heading]]:text-muted-foreground/75"
+            >
               {items.map((item) => (
                 <CommandItem
                   key={item.id}
@@ -99,7 +103,7 @@ export function SearchDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                 >
                   <Icon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm">{item.title}</div>
+                    <div className="truncate text-[13px] font-medium">{item.title}</div>
                     {item.subtitle && (
                       <div className="truncate text-xs text-muted-foreground">{item.subtitle}</div>
                     )}
@@ -109,6 +113,16 @@ export function SearchDialog({ open, onOpenChange }: { open: boolean; onOpenChan
             </CommandGroup>
           );
         })}
+        {results && results.documentsFailedCount > 0 && (
+          <div className="border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
+            另有 {results.documentsFailedCount} 份材料识别失败未纳入全文检索——失败状态可在管理后台「文档文本层维护」查看并重试
+          </div>
+        )}
+        {results && hasResults && (
+          <div className="border-t border-border px-3 py-2 text-[10.5px] text-muted-foreground/70">
+            正文命中按对应材料的读取授权过滤；无权查看的材料不会出现在结果中
+          </div>
+        )}
       </CommandList>
     </CommandDialog>
   );

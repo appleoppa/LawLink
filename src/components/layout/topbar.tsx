@@ -79,17 +79,15 @@ export function Topbar({ onMobileMenuToggle, userAvatar }: { onMobileMenuToggle?
       <button
         onClick={() => setSearchOpen(true)}
         className={cn(
-          "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-border/70 bg-card/80 px-2.5 text-left sm:w-[300px] sm:flex-initial",
-          "text-[13px] text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground",
+          "flex h-[34px] min-w-0 flex-1 items-center gap-2 rounded-[9px] border border-transparent bg-[#E9EDEB] px-3 text-left sm:w-[320px] sm:flex-initial",
+          "text-[12.75px] text-muted-foreground transition-colors hover:bg-[#E2E7E4] hover:text-foreground",
           "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/35"
         )}
         aria-label="全局搜索 (Cmd+K)"
       >
         <Search className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
         <span className="flex-1 truncate">搜索案件、客户、材料...</span>
-        <kbd className="hidden h-4 items-center gap-0.5 rounded bg-muted/80 px-1.5 font-mono text-[10px] font-medium text-muted-foreground sm:inline-flex">
-          ⌘K
-        </kbd>
+        <span className="kbd ml-auto hidden sm:inline-flex">⌘K</span>
       </button>
 
       <div className="flex-1 hidden sm:block" />

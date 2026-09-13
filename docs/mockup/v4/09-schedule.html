@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>LawLink · 日程</title>
+<link rel="stylesheet" href="design-system.css" />
+<style>
+  .page-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 16px; }
+  .ph-title { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 4px; }
+  .ph-sub { font-size: 12.5px; color: var(--t-muted); }
+  .cal-grid { display: grid; grid-template-columns: 1fr 296px; gap: 14px; align-items: start; }
+  .cal-head { display: flex; align-items: center; gap: 12px; }
+  .cal-month { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+  .cal-nav { display: flex; gap: 4px; }
+  .cal-nav button { width: 28px; height: 28px; border-radius: 7px; border: 1px solid var(--bd-subtle); background: var(--bg-card); cursor: pointer; color: var(--t-secondary); display: flex; align-items: center; justify-content: center; }
+  .cal-nav button:hover { background: var(--bg-hover); }
+  .dow { display: grid; grid-template-columns: repeat(7, 1fr); border-bottom: 1px solid var(--bd-hair); background: #FAFBFA; }
+  .dow div { padding: 8px 10px; font-size: 11px; font-weight: 600; color: var(--t-muted); text-align: right; }
+  .dow div:first-child, .dow div:last-child { color: var(--t-faint); }
+  .cells { display: grid; grid-template-columns: repeat(7, 1fr); }
+  .cell { min-height: 108px; border-bottom: 1px solid var(--bd-hair); border-right: 1px solid var(--bd-hair); padding: 7px 8px; }
+  .cell:nth-child(7n) { border-right: none; }
+  .cell.out { background: #FAFBFA; }
+  .cell .d { font-size: 12px; font-weight: 600; color: var(--t-secondary); font-family: var(--font-mono); }
+  .cell.out .d { color: var(--t-faint); }
+  .cell.today { background: var(--teal-soft); box-shadow: inset 0 0 0 1.5px var(--teal); border-radius: 2px; }
+  .cell.today .d { color: var(--teal-deep); font-weight: 700; }
+  .ev { display: flex; align-items: center; gap: 5px; margin-top: 5px; font-size: 10.5px; padding: 2.5px 7px; border-radius: 5px; font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+  .ev .t { font-family: var(--font-mono); font-size: 9.5px; opacity: .75; flex-shrink: 0; }
+  .ev-court { background: var(--blue-bg); color: var(--blue); }
+  .ev-dead-red { background: var(--red-bg); color: var(--red); }
+  .ev-dead-amber { background: var(--amber-bg); color: var(--amber); }
+  .ev-meet { background: var(--slate-bg); color: var(--slate); }
+  .ev-task { background: var(--teal-soft); color: var(--teal-deep); }
+  .more { font-size: 10px; color: var(--t-faint); margin-top: 4px; cursor: pointer; }
+  .warn-row { display: flex; align-items: center; gap: 11px; padding: 10px 14px; border-bottom: 1px solid var(--bd-hair); }
+  .warn-row:last-child { border-bottom: none; }
+  .warn-count { font-family: var(--font-mono); font-size: 18px; font-weight: 650; width: 26px; text-align: right; }
+  .warn-label { font-size: 12.5px; font-weight: 550; flex: 1; }
+  .today-item { display: flex; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--bd-hair); cursor: pointer; }
+  .today-item:last-child { border-bottom: none; }
+  .today-item:hover { background: var(--bg-hover); }
+  .today-item .tt { font-size: 12.5px; font-weight: 550; }
+  .today-item .tm { font-size: 11px; color: var(--t-muted); margin-top: 2px; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3" y="2.6" width="2.7" height="10.8" rx="1.1" fill="#fff"/><rect x="8.4" y="2.6" width="2.7" height="10.8" rx="1.1" fill="#fff"/><rect x="3" y="6.8" width="8.1" height="2.4" rx="1.1" fill="#00A6A6"/></svg></div>
+      <div><div class="brand-name">立正律师事务所</div><div class="brand-sub">LawLink v4 效果图</div></div>
+    </div>
+    <nav class="nav">
+      <div class="nav-section-label">工作区</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12l9-9 9 9M5 10v10h14V10"/></svg>工作台</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>案件<span class="count">42</span></div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>收案<span class="count">5</span></div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>审批<span class="count alert">5</span></div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>冲突检索</div>
+      <div class="nav-item active"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg>日程</div>
+      <div class="nav-section-label">业务</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-6 7-6s7 2.5 7 6"/><circle cx="17" cy="9" r="2.5"/></svg>客户<span class="count">37</span></div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg>财务</div>
+      <div class="nav-section-label">知识</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/></svg>归档</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6" rx="0.5"/><rect x="12" y="7" width="3" height="10" rx="0.5"/><rect x="17" y="13" width="3" height="4" rx="0.5"/></svg>报表</div>
+    </nav>
+    <div class="nav-bottom">
+      <div class="user-card">
+        <div class="avatar av-teal">叶</div>
+        <div class="user-meta"><div class="user-name">叶森</div><div class="user-role">主任律师 · 超级管理员</div></div>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--t-faint)"><path d="M8 9l4-4 4 4M8 15l4 4 4-4"/></svg>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="searchbox">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        搜索案件、客户、材料正文…<span class="kbd">⌘K</span>
+      </div>
+      <div style="flex:1"></div>
+      <button class="btn btn-secondary btn-sm btn-icon" title="通知"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></button>
+      <button class="btn btn-primary btn-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>新建任务</button>
+      <div style="width:1px;height:22px;background:var(--bd-hair);margin:0 4px"></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:3px 10px 3px 4px;height:34px;border-radius:var(--r-full);border:1px solid var(--bd-hair);background:var(--bg-card);cursor:pointer">
+        <div class="avatar av-teal" style="width:26px;height:26px">叶</div><span style="font-size:12.5px;font-weight:550">叶森</span>
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--t-muted)"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <div class="page-head">
+        <div>
+          <h1 class="ph-title">日程</h1>
+          <div class="ph-sub">开庭、法定期限、会议与任务统一呈现 · 红色只用于逾期与阻断</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-secondary btn-sm">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 11a9 9 0 0 1 15.5-6.4L23 8M23 3v5h-5M20 13a9 9 0 0 1-15.5 6.4L1 16M1 21v-5h5"/></svg>
+            订阅日历
+          </button>
+          <div class="segmented">
+            <button class="seg">周</button>
+            <button class="seg active">月历</button>
+            <button class="seg">列表</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cal-grid">
+        <!-- 月历 -->
+        <div class="card" style="overflow:hidden">
+          <div class="panel-head">
+            <div class="cal-head">
+              <span class="cal-month">2026 年 6 月</span>
+              <div class="cal-nav">
+                <button><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg></button>
+                <button style="width:auto;padding:0 10px;font-size:12px">今天</button>
+                <button><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></button>
+              </div>
+            </div>
+            <div style="display:flex;gap:12px">
+              <span class="t-xs t-mute" style="display:flex;align-items:center;gap:5px"><span class="dot" style="width:8px;height:8px;background:var(--blue)"></span>开庭</span>
+              <span class="t-xs t-mute" style="display:flex;align-items:center;gap:5px"><span class="dot" style="width:8px;height:8px;background:var(--red)"></span>法定期限</span>
+              <span class="t-xs t-mute" style="display:flex;align-items:center;gap:5px"><span class="dot" style="width:8px;height:8px;background:var(--amber)"></span>所内提醒</span>
+              <span class="t-xs t-mute" style="display:flex;align-items:center;gap:5px"><span class="dot" style="width:8px;height:8px;background:var(--slate)"></span>会议</span>
+              <span class="t-xs t-mute" style="display:flex;align-items:center;gap:5px"><span class="dot dot-teal"></span>任务</span>
+            </div>
+          </div>
+          <div class="dow"><div>周一</div><div>周二</div><div>周三</div><div>周四</div><div>周五</div><div>周六</div><div>周日</div></div>
+          <div class="cells">
+            <!-- 第 1 周 6/1-6/7 -->
+            <div class="cell"><div class="d">1</div><div class="ev ev-meet"><span class="t">10:00</span>内部例会</div></div>
+            <div class="cell"><div class="d">2</div></div>
+            <div class="cell"><div class="d">3</div><div class="ev ev-task"><span class="t">—</span>恒信合同审查</div></div>
+            <div class="cell"><div class="d">4</div></div>
+            <div class="cell"><div class="d">5</div><div class="ev ev-meet"><span class="t">16:42</span>送达签收</div></div>
+            <div class="cell"><div class="d">6</div></div>
+            <div class="cell"><div class="d">7</div></div>
+            <!-- 第 2 周 6/8-6/14 -->
+            <div class="cell"><div class="d">8</div><div class="ev ev-meet"><span class="t">14:00</span>案件讨论会</div></div>
+            <div class="cell"><div class="d">9</div></div>
+            <div class="cell"><div class="d">10</div><div class="ev ev-task"><span class="t">—</span>证据目录定稿</div></div>
+            <div class="cell"><div class="d">11</div></div>
+            <div class="cell"><div class="d">12</div><div class="ev ev-task"><span class="t">—</span>诉讼方案 v2</div></div>
+            <div class="cell"><div class="d">13</div></div>
+            <div class="cell today"><div class="d">14</div><div class="more">今天 · 无日程</div></div>
+            <!-- 第 3 周 6/15-6/21 -->
+            <div class="cell"><div class="d">15</div><div class="ev ev-court"><span class="t">09:30</span>庭前会议</div></div>
+            <div class="cell"><div class="d">16</div><div class="ev ev-dead-amber"><span class="t">—</span>质证意见截止</div></div>
+            <div class="cell"><div class="d">17</div><div class="ev ev-dead-red"><span class="t">14:00</span>举证截止（法定）</div><div class="more">+1 隐藏</div></div>
+            <div class="cell"><div class="d">18</div></div>
+            <div class="cell"><div class="d">19</div><div class="ev ev-court"><span class="t">09:30</span>开庭·林某案</div><div class="ev ev-dead-amber"><span class="t">18:00</span>归档补交</div></div>
+            <div class="cell"><div class="d">20</div></div>
+            <div class="cell"><div class="d">21</div><div class="ev ev-dead-red"><span class="t">23:59</span>上诉期限</div></div>
+            <!-- 第 4 周 6/22-6/28 -->
+            <div class="cell"><div class="d">22</div></div>
+            <div class="cell"><div class="d">23</div><div class="ev ev-dead-amber"><span class="t">—</span>保全到期提醒</div></div>
+            <div class="cell"><div class="d">24</div></div>
+            <div class="cell"><div class="d">25</div><div class="ev ev-meet"><span class="t">15:00</span>合伙人会议</div></div>
+            <div class="cell"><div class="d">26</div><div class="ev ev-task"><span class="t">—</span>尽调报告初稿</div></div>
+            <div class="cell"><div class="d">27</div></div>
+            <div class="cell"><div class="d">28</div></div>
+            <!-- 第 5 周 6/29-7/5 -->
+            <div class="cell"><div class="d">29</div><div class="ev ev-court"><span class="t">09:00</span>开庭·明远案</div></div>
+            <div class="cell"><div class="d">30</div><div class="ev ev-dead-amber"><span class="t">—</span>顾问续约提醒</div></div>
+            <div class="cell out"><div class="d">7-1</div></div>
+            <div class="cell out"><div class="d">7-2</div></div>
+            <div class="cell out"><div class="d">7-3</div></div>
+            <div class="cell out"><div class="d">7-4</div></div>
+            <div class="cell out"><div class="d">7-5</div></div>
+          </div>
+        </div>
+
+        <!-- 侧栏 -->
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div class="card">
+            <div class="panel-head">
+              <div class="panel-title" style="font-size:13px">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+                今日 · 6月14日 周日
+              </div>
+            </div>
+            <div style="padding:8px 14px 12px">
+              <div class="empty" style="padding:16px 10px">
+                <div class="empty-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+                <div style="font-size:12.5px;color:var(--t-muted)">今天没有安排</div>
+                <div class="t-xs t-faint" style="margin-top:3px">明天 09:30 庭前会议（青石建设案）</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="panel-head">
+              <div class="panel-title" style="font-size:13px">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.7 3h16.96a2 2 0 0 0 1.71-3L13.29 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+                期限预警阶梯
+              </div>
+              <span class="t-xs t-mute">未来 30 天</span>
+            </div>
+            <div class="warn-row">
+              <span class="warn-count" style="color:var(--red)">1</span>
+              <div style="flex:1"><div class="warn-label">已逾期</div><div class="t-xs t-mute">答辩状提交 · 华辰贸易案</div></div>
+              <div class="ladder l-red"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div>
+            </div>
+            <div class="warn-row">
+              <span class="warn-count" style="color:var(--red)">1</span>
+              <div style="flex:1"><div class="warn-label">3 日内到期</div><div class="t-xs t-mute">举证截止 · 青石建设案</div></div>
+              <div class="ladder l-red"><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div>
+            </div>
+            <div class="warn-row">
+              <span class="warn-count" style="color:var(--amber)">3</span>
+              <div style="flex:1"><div class="warn-label">7 日内到期</div><div class="t-xs t-mute">开庭 ×1 · 归档补交 · 上诉期限</div></div>
+              <div class="ladder l-amber"><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div>
+            </div>
+            <div class="warn-row">
+              <span class="warn-count" style="color:var(--t-secondary)">5</span>
+              <div style="flex:1"><div class="warn-label">30 日内到期</div><div class="t-xs t-mute">含保全续保、顾问续约提醒</div></div>
+              <div class="ladder l-blue"><i class="on"></i><i class="on"></i><i></i><i></i></div>
+            </div>
+            <div class="panel-foot">
+              <span class="t-xs t-mute">预警档位由所内规则库统一配置（T-7 / T-3 / T-0 / T+1）</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="panel-head">
+              <div class="panel-title" style="font-size:13px">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg>
+                即将到来
+              </div>
+              <a class="t-sm t-mute" style="cursor:pointer">列表视图 →</a>
+            </div>
+            <div class="today-item">
+              <span class="mono t-sm t-mute" style="width:34px;padding-top:2px">明天</span>
+              <div><div class="tt">庭前会议 · 交换证据目录</div><div class="tm">09:30 · 青石建设案 · 第 5 会议室</div></div>
+            </div>
+            <div class="today-item">
+              <span class="mono t-sm" style="width:34px;padding-top:2px;color:var(--red)">6-17</span>
+              <div><div class="tt">举证截止（法定）</div><div class="tm">14:00 · 青石建设案 · 已延期一次</div></div>
+            </div>
+            <div class="today-item">
+              <span class="mono t-sm t-mute" style="width:34px;padding-top:2px">6-19</span>
+              <div><div class="tt">开庭 · 第一次庭审</div><div class="tm">09:30 · 林某案 · 第 3 法庭</div></div>
+            </div>
+            <div class="today-item">
+              <span class="mono t-sm t-mute" style="width:34px;padding-top:2px">6-23</span>
+              <div><div class="tt">保全到期提醒</div><div class="tm">华东置业银行账户 · 需评估续保</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</body>
+</html>

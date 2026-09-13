@@ -67,7 +67,11 @@ export const deadlineCreateSchema = z.object({
   category: deadlineCategorySchema.default("CUSTOM"),
   dueAt: z.coerce.date(),
   basis: z.string().max(200).optional().or(z.literal("")),
-  remindDays: z.coerce.number().int().min(0).max(60).default(3)
+  remindDays: z.coerce.number().int().min(0).max(60).default(3),
+  // v1.x P0-8: 期限来源（规则触发时由调用方带入；人工录入可空 = 已确认）
+  sourceRuleId: z.string().optional().or(z.literal("")),
+  startFact: z.string().max(200).optional().or(z.literal("")),
+  sourceDocumentId: z.string().optional().or(z.literal(""))
 });
 
 export const hearingCreateSchema = z.object({

@@ -25,7 +25,7 @@ export function AppShell({
     <div className="min-h-screen bg-background">
       <Sidebar firm={firm} />
       <MobileNav open={mobileNavOpen} onOpenChange={setMobileNavOpen} firm={firm} />
-      <div className="md:pl-[208px]">
+      <div className="md:pl-[228px]">
         <Topbar onMobileMenuToggle={() => setMobileNavOpen(true)} userAvatar={userAvatar ?? null} />
         {banner}
         <main className="mx-auto w-full max-w-[1440px] px-4 py-4 sm:px-5">{children}</main>

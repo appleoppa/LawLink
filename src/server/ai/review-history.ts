@@ -6,6 +6,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { assertCanAccessMatter } from "@/lib/permissions";
+import { assertCanReviewDocument } from "@/server/ai/document-access";
 import type {
   ReviewItem,
   ReviewSeverity
@@ -29,12 +30,11 @@ export async function listReviewHistory(input: {
 
   const doc = await prisma.document.findFirst({
     where: { id: input.documentId, deletedAt: null },
-    select: { id: true, matterId: true }
+    select: { id: true, matterId: true, intakeId: true }
   });
   if (!doc) return [];
-  if (doc.matterId) {
-    await assertCanAccessMatter(session.user.id, session.user.role, doc.matterId, session.user.rolePermissions);
-  }
+  // 与发起审查同口径的归属断言（防御性：当前审查记录仅案件材料会产生）
+  await assertCanReviewDocument(session, doc);
 
   const list = await prisma.reviewRecord.findMany({
     where: { documentId: doc.id },
