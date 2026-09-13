@@ -50,9 +50,9 @@ export type EvidenceItemRow = {
 const KIND_STYLE: Record<EvidenceKind, string> = {
   FACT: "border-[#B7D8D6] bg-[#E4F1F0] text-[#005054]",
   CLAIM: "border-[#1E56C8]/30 bg-[#1E56C8]/8 text-[#1E56C8]",
-  ANALYSIS: "border-violet-300 bg-violet-50 text-violet-700",
+  ANALYSIS: "border-[var(--violet-line)] bg-[var(--violet-bg)] text-[var(--violet)]",
   ISSUE: "border-[#B42318]/30 bg-[#B42318]/8 text-[#B42318]",
-  TODO_VERIFY: "border-[#96650B]/35 bg-[#96650B]/10 text-[#7A5209]"
+  TODO_VERIFY: "border-[#96650B]/35 bg-[#96650B]/10 text-[#7A5205]"
 };
 
 const KIND_KEYS = Object.keys(evidenceKindLabel) as EvidenceKind[];
@@ -125,8 +125,8 @@ export function EvidencePanel({
 
   return (
     <section className="ll-surface">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2">
-        <span className="flex items-center gap-1.5 text-[13px] font-medium">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--bd-hair)] px-4 py-3">
+        <span className="panel-title">
           <FileSearch className="h-3.5 w-3.5 text-primary" />
           证据链
           <span className="font-mono text-[11px] tabular text-muted-foreground">{items.length}</span>
@@ -183,7 +183,7 @@ export function EvidencePanel({
                       {item.sourcePage ? <span className="font-mono tabular"> 第 {item.sourcePage} 页</span> : null}
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 rounded-full border border-[#96650B]/35 bg-[#96650B]/10 px-1.5 py-px text-[#7A5209]" title="证据项保留，来源材料已被删除">
+                    <span className="inline-flex items-center gap-1 rounded-full border border-[#96650B]/35 bg-[#96650B]/10 px-1.5 py-px text-[#7A5205]" title="证据项保留，来源材料已被删除">
                       <Unlink className="h-3 w-3" />
                       来源已删除（引用保留）
                     </span>

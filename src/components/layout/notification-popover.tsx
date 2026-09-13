@@ -42,8 +42,8 @@ const typeLabels: Record<string, string> = {
 };
 
 const priorityColors: Record<string, string> = {
-  URGENT: "text-red-600",
-  HIGH: "text-orange-600",
+  URGENT: "text-[var(--red)]",
+  HIGH: "text-[var(--amber)]",
   NORMAL: "",
   LOW: "text-muted-foreground",
 };

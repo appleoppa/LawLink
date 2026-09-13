@@ -77,7 +77,7 @@ export function TotpCard({ enabled }: { enabled: boolean }) {
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
+    <div className="card p-4">
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm font-medium">

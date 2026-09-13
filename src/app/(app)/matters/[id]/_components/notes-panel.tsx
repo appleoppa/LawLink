@@ -40,12 +40,12 @@ import type { NotePayload } from "./matter-detail-tabs";
 import { cn } from "@/lib/utils";
 
 const channelMeta = {
-  PHONE: { icon: Phone, label: "电话", color: "#4ADE80" },
-  WECHAT: { icon: MessageCircle, label: "微信", color: "#4FD1C5" },
-  EMAIL: { icon: Mail, label: "邮件", color: "#5B8DEF" },
-  MEETING: { icon: Users, label: "面谈", color: "#9B7BF7" },
-  COURT: { icon: Gavel, label: "法院", color: "#FBBF24" },
-  OTHER: { icon: MessageSquare, label: "其他", color: "#9BA8C7" }
+  PHONE: { icon: Phone, label: "电话", color: "#1A7F45" },
+  WECHAT: { icon: MessageCircle, label: "微信", color: "#007B7F" },
+  EMAIL: { icon: Mail, label: "邮件", color: "#1E56C8" },
+  MEETING: { icon: Users, label: "面谈", color: "#6C3FC5" },
+  COURT: { icon: Gavel, label: "法院", color: "#96650B" },
+  OTHER: { icon: MessageSquare, label: "其他", color: "#98A3AD" }
 } as const;
 
 const formSchema = z.object({
@@ -110,7 +110,7 @@ export function NotesPanel({
             return (
               <li
                 key={n.id}
-                className="group rounded-xl border border-border bg-card p-4"
+                className="group card p-4"
               >
                 <div className="flex items-start gap-3">
                   <div

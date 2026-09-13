@@ -171,7 +171,7 @@ export function ContactsView({
           <h2 className="flex items-center gap-2 text-sm font-medium">
             外部联系人 ({externalContacts.length})
             {canReviewContacts && pendingCount > 0 && (
-              <span className="rounded-full border border-amber-300/70 bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+              <span className="rounded-full border border-[var(--amber-line)] bg-[var(--amber-bg)] px-2 py-0.5 text-[10px] font-medium text-[var(--amber)]">
                 待审核 {pendingCount}
               </span>
             )}
@@ -248,7 +248,7 @@ export function ContactsView({
                         {EXT_CATEGORY_LABEL[c.category]}
                       </span>
                       {c.status === "PENDING_REVIEW" && (
-                        <span className="rounded-full border border-amber-300/70 bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                        <span className="rounded-full border border-[var(--amber-line)] bg-[var(--amber-bg)] px-2 py-0.5 text-[10px] font-medium text-[var(--amber)]">
                           待审核
                         </span>
                       )}
@@ -285,7 +285,7 @@ export function ContactsView({
                             variant="ghost"
                             size="sm"
                             onClick={() => handleApprove(c)}
-                            className="h-7 gap-1 px-2 text-[11px] text-emerald-600 hover:text-emerald-700"
+                            className="h-7 gap-1 px-2 text-[11px] text-[var(--green)] hover:text-[var(--green)]"
                           >
                             <Check className="h-3 w-3" />
                             通过

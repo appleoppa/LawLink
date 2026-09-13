@@ -67,7 +67,7 @@ export function IntakesTable({
             const hitSeverities = it.conflictChecks.flatMap((c) => c.hits.map((h) => h.severity));
             const hasBlocking = hitSeverities.includes("BLOCKING");
             const pendingConclusion = it.conflictChecks.some((c) => c.conclusion === "PENDING");
-            const spine = hasBlocking ? "#B42318" : kind === "revision" ? "#B45309" : "#96650B";
+            const spine = hasBlocking ? "#B42318" : kind === "revision" ? "#96650B" : "#96650B";
             return (
               <tr key={it.id} className="transition-colors hover:bg-muted/50">
                 <td className="relative px-4 py-3 pl-[18px]">

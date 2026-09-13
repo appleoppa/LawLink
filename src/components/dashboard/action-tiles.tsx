@@ -59,7 +59,7 @@ export function DashboardActionTiles({ data }: { data: DashboardActionTilesData 
           <Link
             key={t.label}
             href={t.href}
-            className="group/tile flex items-center gap-3 rounded-xl border border-border bg-card p-3.5 transition-shadow hover:shadow-md"
+            className="group/tile flex items-center gap-3 card p-3.5 transition-shadow hover:shadow-md"
           >
             <span
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"

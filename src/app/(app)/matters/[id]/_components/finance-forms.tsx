@@ -276,8 +276,8 @@ export function AddFeeEntrySheet({
                 size="sm"
                 items={[
                   { value: "RECEIVABLE", label: "应收" },
-                  { value: "RECEIVED", label: "实收", accent: "#16a34a" },
-                  { value: "REFUND", label: "退款", accent: "#dc2626" },
+                  { value: "RECEIVED", label: "实收", accent: "#1A7F45" },
+                  { value: "REFUND", label: "退款", accent: "#B42318" },
                   { value: "COST", label: "成本" }
                 ]}
                 value={type}

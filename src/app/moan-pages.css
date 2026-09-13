@@ -590,3 +590,12 @@
 .mo-rules .ex-tag { flex-shrink: 0; }
 .mo-rules .ex-note { font-size: 11px; color: var(--t-muted); line-height: 1.7; background: var(--bg-sunken); border-radius: 9px; padding: 10px 12px; display: flex; gap: 8px; }
 .mo-rules .ex-note svg { width: 13px; height: 13px; flex-shrink: 0; margin-top: 2px; }
+
+/* 01 登录 · 实现补充：窄屏隐藏品牌面板；按钮禁用态 */
+.mo-login .fp-link { cursor: help; }
+.mo-login .btn-login:disabled { opacity: .7; cursor: progress; }
+@media (max-width: 960px) {
+  .mo-login .login { grid-template-columns: 1fr; }
+  .mo-login .brand-panel { display: none; }
+  .mo-login .form-panel { padding: 40px 24px; min-height: 100vh; }
+}

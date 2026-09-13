@@ -47,10 +47,10 @@ function TrendBadge({
     direction === "up" ? ArrowUp : direction === "down" ? ArrowDown : direction === "warn" ? AlertTriangle : Minus;
   const cls =
     direction === "up"
-      ? "text-emerald-600 bg-emerald-500/8 border-emerald-500/20"
+      ? "text-[var(--green)] bg-[var(--green-bg)] border-[var(--green-line)]"
       : direction === "warn"
-        ? "text-amber-600 bg-amber-500/8 border-amber-500/20"
-        : "text-red-600 bg-red-500/8 border-red-500/20";
+        ? "text-[var(--amber)] bg-[var(--amber-bg)] border-[var(--amber-line)]"
+        : "text-[var(--red)] bg-[var(--red-bg)] border-[var(--red-line)]";
   return (
     <span
       className={cn(

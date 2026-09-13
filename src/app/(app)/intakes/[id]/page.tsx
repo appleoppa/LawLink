@@ -151,7 +151,7 @@ export default async function IntakeDetailPage({ params }: PageProps) {
       </div>
 
       {/* 头部 */}
-      <header className="rounded-xl border border-border bg-card p-6">
+      <header className="card p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex-1">
             <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
@@ -249,14 +249,14 @@ export default async function IntakeDetailPage({ params }: PageProps) {
       />
 
       {/* 当事人 */}
-      <section className="rounded-xl border border-border bg-card p-6">
+      <section className="card p-6">
         <h2 className="mb-4 flex items-center gap-2 text-base font-semibold">
           <Users className="h-4 w-4 text-primary" />
           当事人
         </h2>
 
         <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-          <Column title="客户" color="#5B8DEF">
+          <Column title="客户" color="#1E56C8">
             {intake.client ? (
               <PartyCard
                 name={intake.client.name}
@@ -267,14 +267,14 @@ export default async function IntakeDetailPage({ params }: PageProps) {
               <Empty />
             )}
           </Column>
-          <Column title="相对方" color="#FB923C">
+          <Column title="相对方" color="#96650B">
             {opposing.length === 0 ? (
               <Empty />
             ) : (
               opposing.map((p) => <PartyCard key={p.id} name={p.name} sub={p.idNumber ?? undefined} />)
             )}
           </Column>
-          <Column title="第三人" color="#9B7BF7">
+          <Column title="第三人" color="#6C3FC5">
             {thirdParty.length === 0 ? (
               <Empty />
             ) : (

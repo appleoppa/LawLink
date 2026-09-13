@@ -35,7 +35,7 @@ export function WorkflowTogglesCard({
   }
 
   return (
-    <section className="rounded-xl border border-border bg-card p-6">
+    <section className="card p-6">
       <div className="mb-1 flex items-center gap-2">
         <SlidersHorizontal className="h-4 w-4 text-primary" strokeWidth={1.8} />
         <h2 className="text-base font-semibold">工作流开关</h2>

@@ -537,7 +537,7 @@ export function AddDeadlineDialog({
                           </a>
                         )}
                         {selectedRule.verifiedAt && (
-                          <span className="ml-1.5 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-700">
+                          <span className="ml-1.5 rounded bg-[var(--green-bg)] px-1.5 py-0.5 text-[10px] text-[var(--green)]">
                             已核验 {formatLocalDate(new Date(selectedRule.verifiedAt))}
                           </span>
                         )}

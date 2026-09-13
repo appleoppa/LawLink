@@ -32,15 +32,15 @@ export function ArchiveStatusBanner({ record, onReArchive }: Props) {
         "flex items-start gap-3 rounded-md border px-4 py-3",
         isRejected
           ? "border-destructive/50 bg-destructive/10"
-          : "border-[#9B7BF7]/50 bg-[#9B7BF7]/10"
+          : "border-[#6C3FC5]/50 bg-[#6C3FC5]/10"
       )}
     >
-      <div className={cn("mt-0.5", isRejected ? "text-destructive" : "text-[#9B7BF7]")}>
+      <div className={cn("mt-0.5", isRejected ? "text-destructive" : "text-[#6C3FC5]")}>
         {isRejected ? <XCircle className="h-4 w-4" /> : <Hourglass className="h-4 w-4" />}
       </div>
       <div className="flex-1 space-y-1">
         <div className="flex items-center gap-2">
-          <span className={cn("text-sm font-medium", isRejected ? "text-destructive" : "text-[#9B7BF7]")}>
+          <span className={cn("text-sm font-medium", isRejected ? "text-destructive" : "text-[#6C3FC5]")}>
             {isRejected ? "归档申请被驳回" : "归档申请审批中"}
           </span>
           <Badge
@@ -49,7 +49,7 @@ export function ArchiveStatusBanner({ record, onReArchive }: Props) {
               "text-[10px]",
               isRejected
                 ? "border-destructive/50 text-destructive"
-                : "border-[#9B7BF7]/50 text-[#9B7BF7]"
+                : "border-[#6C3FC5]/50 text-[#6C3FC5]"
             )}
           >
             {record.archiveNo}

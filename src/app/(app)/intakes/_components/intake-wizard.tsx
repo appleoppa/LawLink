@@ -293,10 +293,10 @@ export function IntakeWizard({
                   {dup && (dup.idNumberDuplicate || dup.nameDuplicates.length > 0) && (
                     <div className="mb-3 rounded-[10px] border border-[#EBD8AB] bg-[#FAF0DB] px-3.5 py-3">
                       <p className="flex items-center gap-1.5 text-[12.5px] font-semibold text-[#7A5205]"><ShieldAlert className="h-3.5 w-3.5" />查重命中：已存在相同或疑似主体</p>
-                      <p className="mt-1 text-[11.5px] leading-relaxed text-[#8A6420]">身份持续唯一：请关联既有档案；确为不同主体时继续新建，稍后可在客户档案中合并。</p>
+                      <p className="mt-1 text-[11.5px] leading-relaxed text-[#8A6B3E]">身份持续唯一：请关联既有档案；确为不同主体时继续新建，稍后可在客户档案中合并。</p>
                       <ul className="mt-2 space-y-1">
-                        {dup.idNumberDuplicate && <li key="exact" className="text-[11.5px] font-medium text-[#8A6420]">· {dup.idNumberDuplicate.name}（证件号一致）</li>}
-                        {dup.nameDuplicates.filter(d => d.id !== dup.idNumberDuplicate?.id).map(d => <li key={d.id} className="text-[11.5px] text-[#8A6420]">· {d.name}（同名疑似）</li>)}
+                        {dup.idNumberDuplicate && <li key="exact" className="text-[11.5px] font-medium text-[#8A6B3E]">· {dup.idNumberDuplicate.name}（证件号一致）</li>}
+                        {dup.nameDuplicates.filter(d => d.id !== dup.idNumberDuplicate?.id).map(d => <li key={d.id} className="text-[11.5px] text-[#8A6B3E]">· {d.name}（同名疑似）</li>)}
                       </ul>
                     </div>
                   )}
@@ -328,7 +328,7 @@ export function IntakeWizard({
                           <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold">{watch(`parties.${i}.name`) || "待填写主体"}</span>
                           <span className="badge b-white">{PARTY_ROLES.find(r => r.value === watch(`parties.${i}.role`))?.label}</span>
                           {partiesArray.fields.length > 1 && (
-                            <button type="button" onClick={() => partiesArray.remove(i)} className="rounded-md p-1 text-muted-foreground hover:bg-red-50 hover:text-red-600" aria-label="移除"><X className="h-3.5 w-3.5" /></button>
+                            <button type="button" onClick={() => partiesArray.remove(i)} className="rounded-md p-1 text-muted-foreground hover:bg-[var(--red-bg)] hover:text-[var(--red)]" aria-label="移除"><X className="h-3.5 w-3.5" /></button>
                           )}
                         </div>
                         <div className="grid grid-cols-1 gap-2.5 md:grid-cols-3">

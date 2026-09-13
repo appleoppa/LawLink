@@ -205,7 +205,7 @@ export function ClientCombobox({
                     }}
                     className="gap-2"
                   >
-                    <Building2 className="h-3.5 w-3.5 shrink-0 text-blue-600" />
+                    <Building2 className="h-3.5 w-3.5 shrink-0 text-[var(--blue)]" />
                     <span className="truncate">{c.name}</span>
                     {c.creditCode && (
                       <span className="ml-auto shrink-0 text-[10px] font-mono text-muted-foreground">

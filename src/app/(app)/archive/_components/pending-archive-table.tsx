@@ -113,7 +113,7 @@ export function PendingArchiveTable({ records }: { records: PendingRecord[] }) {
             <Button
               size="sm"
               onClick={() => setBatchAction("approve")}
-              className="bg-emerald-600 text-white hover:bg-emerald-700"
+              className="bg-[var(--green)] text-white hover:bg-[var(--green)]"
             >
               <Check className="mr-1 h-3.5 w-3.5" />
               批量通过
@@ -162,13 +162,13 @@ export function PendingArchiveTable({ records }: { records: PendingRecord[] }) {
                     aria-label={`选择 ${rec.archiveNo}`}
                   />
                 </td>
-                <td className="px-3 py-2.5 font-mono text-xs text-[#9B7BF7]">
+                <td className="px-3 py-2.5 font-mono text-xs text-[#6C3FC5]">
                   {rec.matter.firmCaseNo ?? "—"}
                 </td>
                 <td className="px-3 py-2.5">
                   <Link
                     href={matterHref(rec.matter)}
-                    className="hover:text-[#5B8DEF] transition-colors line-clamp-1"
+                    className="hover:text-[#1E56C8] transition-colors line-clamp-1"
                   >
                     <FileText className="h-3 w-3 inline mr-1 text-muted-foreground" />
                     {rec.matter.title}
@@ -197,7 +197,7 @@ export function PendingArchiveTable({ records }: { records: PendingRecord[] }) {
                   {rec.missingItems.length > 0 ? (
                     <Badge
                       variant="outline"
-                      className="border-amber-500/40 text-amber-500 text-[10px]"
+                      className="border-[var(--amber-line)] text-[var(--amber)] text-[10px]"
                     >
                       {rec.missingItems.length} 项
                     </Badge>
@@ -218,7 +218,7 @@ export function PendingArchiveTable({ records }: { records: PendingRecord[] }) {
                     <button
                       type="button"
                       onClick={() => setDialog({ type: "approve", record: rec })}
-                      className="inline-flex items-center gap-0.5 text-xs text-emerald-600 hover:text-emerald-500"
+                      className="inline-flex items-center gap-0.5 text-xs text-[var(--green)] hover:text-[var(--green)]"
                     >
                       <Check className="h-3 w-3" />
                       通过
@@ -323,7 +323,7 @@ function BatchApproveDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Check className="h-5 w-5 text-emerald-500" />
+            <Check className="h-5 w-5 text-[var(--green)]" />
             批量通过 {records.length} 条归档申请
           </DialogTitle>
           <DialogDescription>
@@ -332,7 +332,7 @@ function BatchApproveDialog({
         </DialogHeader>
         <div className="space-y-3">
           {withMissing.length > 0 && (
-            <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700">
+            <div className="flex items-start gap-2 rounded-md border border-[var(--amber-line)] bg-[var(--amber-bg)] px-3 py-2 text-xs text-[var(--amber)]">
               <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
               <span>
                 有 {withMissing.length} 条申请存在材料缺项（
@@ -368,7 +368,7 @@ function BatchApproveDialog({
               <Button
                 onClick={() => submit()}
                 disabled={isPending}
-                className="bg-emerald-600 text-white hover:bg-emerald-700"
+                className="bg-[var(--green)] text-white hover:bg-[var(--green)]"
               >
                 {isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
                 确认通过 {records.length} 条
@@ -383,7 +383,7 @@ function BatchApproveDialog({
                 <Button
                   onClick={() => submit(result.failed.map((f) => f.id))}
                   disabled={isPending}
-                  className="bg-emerald-600 text-white hover:bg-emerald-700"
+                  className="bg-[var(--green)] text-white hover:bg-[var(--green)]"
                 >
                   {isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
                   重试失败的 {result.failed.length} 条
@@ -407,9 +407,9 @@ function BatchResultPanel({
   return (
     <div className="space-y-3 text-xs">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <div className="rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-2">
-          <div className="text-[10px] text-emerald-700">成功</div>
-          <div className="mt-0.5 font-mono text-lg text-emerald-700">{result.succeeded.length}</div>
+        <div className="rounded border border-[var(--green-line)] bg-[var(--green-bg)] px-3 py-2">
+          <div className="text-[10px] text-[var(--green)]">成功</div>
+          <div className="mt-0.5 font-mono text-lg text-[var(--green)]">{result.succeeded.length}</div>
         </div>
         <div
           className={cn(
@@ -440,7 +440,7 @@ function BatchResultPanel({
               const rec = recordById.get(f.id);
               return (
                 <li key={f.id} className="px-2 py-1.5">
-                  <div className="font-mono text-[#9B7BF7]">{rec?.archiveNo ?? f.id}</div>
+                  <div className="font-mono text-[#6C3FC5]">{rec?.archiveNo ?? f.id}</div>
                   <div className="mt-0.5 text-destructive">{f.error}</div>
                 </li>
               );
@@ -513,7 +513,7 @@ function BatchRejectDialog({
                 <div className="text-muted-foreground mb-1">本次驳回：</div>
                 <div className="space-y-0.5 max-h-32 overflow-y-auto">
                   {records.map((r) => (
-                    <div key={r.id} className="font-mono text-[#9B7BF7]">
+                    <div key={r.id} className="font-mono text-[#6C3FC5]">
                       {r.archiveNo}
                       <span className="ml-2 text-muted-foreground">{r.matter.title}</span>
                     </div>
@@ -607,7 +607,7 @@ function ApproveDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Check className="h-5 w-5 text-emerald-500" />
+            <Check className="h-5 w-5 text-[var(--green)]" />
             通过归档申请
           </DialogTitle>
           <DialogDescription>
@@ -616,13 +616,13 @@ function ApproveDialog({
         </DialogHeader>
         <div className="space-y-3">
           <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs">
-            <div className="font-mono text-[#9B7BF7]">{record.archiveNo}</div>
+            <div className="font-mono text-[#6C3FC5]">{record.archiveNo}</div>
             <div className="text-muted-foreground mt-0.5">
               {record.matter.internalCode} · {record.matter.title}
             </div>
           </div>
           {record.missingItems.length > 0 && (
-            <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700">
+            <div className="flex items-start gap-2 rounded-md border border-[var(--amber-line)] bg-[var(--amber-bg)] px-3 py-2 text-xs text-[var(--amber)]">
               <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
               <span>
                 此申请有 {record.missingItems.length} 项材料缺失，请确认知悉后再通过。
@@ -646,7 +646,7 @@ function ApproveDialog({
           <Button
             onClick={submit}
             disabled={isPending}
-            className="bg-emerald-600 text-white hover:bg-emerald-700"
+            className="bg-[var(--green)] text-white hover:bg-[var(--green)]"
           >
             {isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
             确认通过
@@ -704,7 +704,7 @@ function RejectDialog({
         </DialogHeader>
         <div className="space-y-3">
           <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs">
-            <div className="font-mono text-[#9B7BF7]">{record.archiveNo}</div>
+            <div className="font-mono text-[#6C3FC5]">{record.archiveNo}</div>
             <div className="text-muted-foreground mt-0.5">
               {record.matter.internalCode} · {record.matter.title}
             </div>
@@ -751,11 +751,11 @@ function DetailDialog({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-[#9B7BF7]" />
+            <FileText className="h-5 w-5 text-[#6C3FC5]" />
             归档申请详情
           </DialogTitle>
           <DialogDescription>
-            <span className="font-mono text-[#9B7BF7]">{record.archiveNo}</span>
+            <span className="font-mono text-[#6C3FC5]">{record.archiveNo}</span>
             <span className="text-muted-foreground"> · 申请人 {record.archivedBy}</span>
           </DialogDescription>
         </DialogHeader>
@@ -793,11 +793,11 @@ function DetailDialog({
           )}
           <Section title="结案小结">{record.summary}</Section>
           {record.missingItems.length > 0 && (
-            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2">
-              <div className="text-xs font-medium text-amber-700 mb-1">
+            <div className="rounded-md border border-[var(--amber-line)] bg-[var(--amber-bg)] px-3 py-2">
+              <div className="text-xs font-medium text-[var(--amber)] mb-1">
                 缺项材料（{record.missingItems.length}）
               </div>
-              <div className="text-xs text-amber-700/80 break-all">
+              <div className="text-xs text-[var(--amber)] break-all">
                 {record.missingItems.join("、")}
               </div>
             </div>
@@ -806,7 +806,7 @@ function DetailDialog({
             <Link
               href={matterHref(record.matter)}
               target="_blank"
-              className="text-xs text-[#5B8DEF] hover:underline"
+              className="text-xs text-[#1E56C8] hover:underline"
             >
               → 打开案件详情查看完整材料与卷宗
             </Link>

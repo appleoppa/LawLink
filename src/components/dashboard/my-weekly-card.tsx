@@ -3,22 +3,22 @@ import type { LawyerWeeklyDigest } from "@/server/reports/weekly";
 
 export function MyWeeklyCard({ digest }: { digest: LawyerWeeklyDigest }) {
   const items = [
-    { label: "新收", value: digest.newIntake, color: "#5B8DEF", Icon: Briefcase },
-    { label: "已结", value: digest.closed, color: "#48BB78", Icon: CheckCircle2 },
-    { label: "已归档", value: digest.archived, color: "#9B7BF7", Icon: Archive },
+    { label: "新收", value: digest.newIntake, color: "#1E56C8", Icon: Briefcase },
+    { label: "已结", value: digest.closed, color: "#1A7F45", Icon: CheckCircle2 },
+    { label: "已归档", value: digest.archived, color: "#6C3FC5", Icon: Archive },
     {
       label: "收款（元）",
       value: digest.receivedAmount.toLocaleString("zh-CN", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
       }),
-      color: "#F5A742",
+      color: "#96650B",
       Icon: Wallet
     }
   ];
 
   return (
-    <section className="rounded-lg border border-border bg-card p-4">
+    <section className="card p-4">
       <header className="mb-3 flex items-baseline justify-between">
         <h3 className="text-sm font-medium">{digest.userName} · 本周摘要</h3>
         <span className="font-mono text-[10px] text-muted-foreground">{digest.period.label}</span>

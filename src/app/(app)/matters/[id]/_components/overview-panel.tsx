@@ -27,7 +27,7 @@ export function OverviewPanel({ matter }: { matter: MatterPayload }) {
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
       {/* 近期期限 */}
-      <section className="rounded-xl border border-border bg-card p-5 lg:col-span-2">
+      <section className="card p-5 lg:col-span-2">
         <h2 className="mb-4 flex items-center gap-2 text-base font-semibold">
           <Briefcase className="h-4 w-4 text-primary" />
           近期期限
@@ -77,7 +77,7 @@ export function OverviewPanel({ matter }: { matter: MatterPayload }) {
       </section>
 
       {/* 近期开庭 */}
-      <section className="rounded-xl border border-border bg-card p-5">
+      <section className="card p-5">
         <h2 className="mb-4 text-base font-semibold">近期开庭</h2>
         {upcomingHearings.length === 0 ? (
           <p className="py-6 text-center text-xs text-muted-foreground">暂无</p>
@@ -104,7 +104,7 @@ export function OverviewPanel({ matter }: { matter: MatterPayload }) {
       </section>
 
       {/* 团队 */}
-      <section className="rounded-xl border border-border bg-card p-5 lg:col-span-3">
+      <section className="card p-5 lg:col-span-3">
         <h2 className="mb-4 flex items-center gap-2 text-base font-semibold">
           <Users className="h-4 w-4 text-primary" />
           团队成员

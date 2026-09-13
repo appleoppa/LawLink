@@ -223,7 +223,7 @@ export function CaseSearchPanel({ matterId, matterCategory, defaultCauseName }: 
       </header>
 
       {/* 检索表单 */}
-      <div className="space-y-3 rounded-lg border border-border bg-card p-4">
+      <div className="space-y-3 card p-4">
         {mode === "vector" && (
           <div>
             <Label className="text-[11px]">案情描述（自然语言）</Label>
@@ -361,7 +361,7 @@ export function CaseSearchPanel({ matterId, matterCategory, defaultCauseName }: 
           </p>
           <ul className="space-y-2">
             {keywordResult.items.map((c) => (
-              <li key={c.id} className="rounded-lg border border-border bg-card p-3">
+              <li key={c.id} className="card p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 overflow-hidden">
                     <div className="text-sm font-medium leading-snug">{c.title}</div>
@@ -386,7 +386,7 @@ export function CaseSearchPanel({ matterId, matterCategory, defaultCauseName }: 
                   </div>
                   <div className="shrink-0 flex items-center gap-1.5">
                     {savedIds.has(c.id) ? (
-                      <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-700">
+                      <span className="inline-flex items-center gap-1 rounded-md border border-[var(--green-line)] bg-[var(--green-bg)] px-2 py-1 text-[11px] text-[var(--green)]">
                         <Check className="h-3 w-3" />
                         已存
                       </span>
@@ -436,12 +436,12 @@ export function CaseSearchPanel({ matterId, matterCategory, defaultCauseName }: 
           </p>
           <ul className="space-y-2">
             {vectorResult.items.map((c) => (
-              <li key={c.scid} className="rounded-lg border border-border bg-card p-3">
+              <li key={c.scid} className="card p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 overflow-hidden">
                     <div className="flex items-baseline gap-2">
                       <span className="text-sm font-medium leading-snug">{c.title}</span>
-                      <span className="shrink-0 rounded border border-violet-300 bg-violet-50 px-1 py-0.5 text-[10px] text-violet-700">
+                      <span className="shrink-0 rounded border border-[var(--violet-line)] bg-[var(--violet-bg)] px-1 py-0.5 text-[10px] text-[var(--violet)]">
                         相似度 {c.score.toFixed(2)}
                       </span>
                     </div>
@@ -470,7 +470,7 @@ export function CaseSearchPanel({ matterId, matterCategory, defaultCauseName }: 
                   </div>
                   <div className="shrink-0 flex items-center gap-1.5">
                     {savedIds.has(c.scid) ? (
-                      <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-700">
+                      <span className="inline-flex items-center gap-1 rounded-md border border-[var(--green-line)] bg-[var(--green-bg)] px-2 py-1 text-[11px] text-[var(--green)]">
                         <Check className="h-3 w-3" />
                         已存
                       </span>

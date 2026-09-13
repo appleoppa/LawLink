@@ -104,7 +104,7 @@ function ScheduleRow({ item }: { item: ScheduleItem }) {
       <span
         className={cn(
           "shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium tabular",
-          urgent ? "bg-red-500/12 text-red-600" : "bg-muted text-muted-foreground"
+          urgent ? "bg-[var(--red-bg)] text-[var(--red)]" : "bg-muted text-muted-foreground"
         )}
       >
         {countdown}

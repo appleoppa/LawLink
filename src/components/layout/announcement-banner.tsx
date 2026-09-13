@@ -27,7 +27,7 @@ export function AnnouncementBanner({ banners }: { banners: Banner[] }) {
   const current = visible[Math.min(idx, visible.length - 1)];
 
   return (
-    <div className="border-b border-amber-200 bg-amber-50 text-amber-900">
+    <div className="border-b border-[var(--amber-line)] bg-[var(--amber-bg)] text-[var(--amber)]">
       <div className="mx-auto flex max-w-[1440px] items-center gap-3 px-4 py-2 sm:px-6">
         <Megaphone className="h-4 w-4 shrink-0" strokeWidth={1.8} />
         <div className="min-w-0 flex-1">
@@ -38,8 +38,8 @@ export function AnnouncementBanner({ banners }: { banners: Banner[] }) {
             >
               {current.title}
             </Link>
-            <span className="hidden text-xs text-amber-800 sm:inline">·</span>
-            <span className="hidden truncate text-xs text-amber-800 sm:inline">
+            <span className="hidden text-xs text-[var(--amber)] sm:inline">·</span>
+            <span className="hidden truncate text-xs text-[var(--amber)] sm:inline">
               {current.content.length > 80
                 ? `${current.content.slice(0, 80)}…`
                 : current.content}
@@ -51,7 +51,7 @@ export function AnnouncementBanner({ banners }: { banners: Banner[] }) {
             <button
               type="button"
               onClick={() => setIdx((i) => (i - 1 + visible.length) % visible.length)}
-              className="rounded p-1 hover:bg-amber-100"
+              className="rounded p-1 hover:bg-[var(--amber-bg)]"
               aria-label="上一条"
             >
               <ChevronLeft className="h-3 w-3" />
@@ -62,7 +62,7 @@ export function AnnouncementBanner({ banners }: { banners: Banner[] }) {
             <button
               type="button"
               onClick={() => setIdx((i) => (i + 1) % visible.length)}
-              className="rounded p-1 hover:bg-amber-100"
+              className="rounded p-1 hover:bg-[var(--amber-bg)]"
               aria-label="下一条"
             >
               <ChevronRight className="h-3 w-3" />
@@ -72,7 +72,7 @@ export function AnnouncementBanner({ banners }: { banners: Banner[] }) {
         <button
           type="button"
           onClick={() => setDismissed((prev) => [...prev, current.id])}
-          className="rounded p-1 hover:bg-amber-100"
+          className="rounded p-1 hover:bg-[var(--amber-bg)]"
           aria-label="关闭"
         >
           <X className="h-3 w-3" />

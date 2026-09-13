@@ -77,7 +77,7 @@ export function BatchReviewButton({ matterId }: { matterId: string }) {
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
-              <Sparkles className="h-4 w-4 text-violet-500" />
+              <Sparkles className="h-4 w-4 text-[var(--violet)]" />
               AI 复检结果
             </DialogTitle>
             <DialogDescription>
@@ -89,7 +89,7 @@ export function BatchReviewButton({ matterId }: { matterId: string }) {
             <div className="space-y-3 text-xs">
               {result.reviewed.length > 0 && (
                 <section>
-                  <h4 className="mb-1.5 flex items-center gap-1 text-[11px] font-medium text-emerald-700">
+                  <h4 className="mb-1.5 flex items-center gap-1 text-[11px] font-medium text-[var(--green)]">
                     <Check className="h-3 w-3" />
                     已审查（{result.reviewed.length}）
                   </h4>
@@ -97,10 +97,10 @@ export function BatchReviewButton({ matterId }: { matterId: string }) {
                     {result.reviewed.map((r) => (
                       <li
                         key={r.documentId}
-                        className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1.5"
+                        className="rounded border border-[var(--green-line)] bg-[var(--green-bg)] px-2 py-1.5"
                       >
                         <span className="truncate">{r.documentName}</span>
-                        <span className="ml-2 font-mono text-[10px] text-emerald-700">
+                        <span className="ml-2 font-mono text-[10px] text-[var(--green)]">
                           {r.itemCount} 条问题
                         </span>
                       </li>
@@ -119,7 +119,7 @@ export function BatchReviewButton({ matterId }: { matterId: string }) {
                     {result.errors.map((r) => (
                       <li
                         key={r.documentId}
-                        className="rounded border border-rose-200 bg-rose-50 px-2 py-1.5 text-rose-700"
+                        className="rounded border border-[var(--red-line)] bg-[var(--red-bg)] px-2 py-1.5 text-[var(--red)]"
                       >
                         <div className="font-medium">{r.documentName}</div>
                         <div className="text-[10px]">{r.error}</div>

@@ -85,7 +85,7 @@ export function YuandianSettingsForm({
         <Scale className="h-4 w-4 text-primary" strokeWidth={1.8} />
         <h2 className="text-lg">元典案例库 API</h2>
         {initial.configured && (
-          <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-700">
+          <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-[var(--green-bg)] px-2 py-0.5 text-[10px] text-[var(--green)]">
             <CheckCircle2 className="h-3 w-3" /> 已配置
           </span>
         )}
@@ -173,7 +173,7 @@ export function YuandianSettingsForm({
           className={
             "mt-3 flex items-start gap-2 rounded-md border p-3 text-[12px] " +
             (testResult.ok
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800"
+              ? "border-[var(--green-line)] bg-[var(--green-bg)] text-[var(--green)]"
               : "border-destructive/30 bg-destructive/10 text-destructive")
           }
         >

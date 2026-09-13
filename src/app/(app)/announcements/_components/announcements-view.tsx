@@ -87,7 +87,7 @@ export function AnnouncementsView({
                 <header className="mb-1.5 flex items-start justify-between gap-3">
                   <div className="flex items-center gap-2">
                     {a.pinned && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[var(--amber-bg)] px-2 py-0.5 text-[10px] font-medium text-[var(--amber)]">
                         <Pin className="h-2.5 w-2.5" />置顶
                       </span>
                     )}

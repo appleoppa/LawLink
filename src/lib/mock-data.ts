@@ -153,10 +153,10 @@ export const revenueTrend = [
 ];
 
 export const categoryDistribution = [
-  { name: "民商事", value: 18, code: "CC", color: "#5B8DEF" },
-  { name: "非诉", value: 12, code: "NL", color: "#4FD1C5" },
-  { name: "顾问", value: 8, code: "GC", color: "#9B7BF7" },
-  { name: "刑事", value: 2, code: "CR", color: "#FB923C" },
-  { name: "行政", value: 1, code: "AD", color: "#FBBF24" },
+  { name: "民商事", value: 18, code: "CC", color: "#1E56C8" },
+  { name: "非诉", value: 12, code: "NL", color: "#007B7F" },
+  { name: "顾问", value: 8, code: "GC", color: "#6C3FC5" },
+  { name: "刑事", value: 2, code: "CR", color: "#96650B" },
+  { name: "行政", value: 1, code: "AD", color: "#96650B" },
   { name: "专项", value: 1, code: "SP", color: "#60A5FA" }
 ];

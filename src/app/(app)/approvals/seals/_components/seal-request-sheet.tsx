@@ -317,7 +317,7 @@ export function SealRequestSheet({
               size="sm"
               items={[
                 { value: "NORMAL", label: "普通" },
-                { value: "URGENT", label: "紧急", accent: "#DC2626" }
+                { value: "URGENT", label: "紧急", accent: "#B42318" }
               ]}
               value={urgency}
               onChange={(v) => setUrgency(v as "NORMAL" | "URGENT")}

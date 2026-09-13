@@ -78,7 +78,7 @@ type IdMatchedClient = { clientId: string; name: string; idNumber: string };
 // 墨案语义色（moan.css token 值；borderColor 需拼 alpha，故用 hex 字面值），与冲突检索页一致
 const severityStyle: Record<ConflictSeverity, { color: string; bg: string; label: string }> = {
   BLOCKING: { color: "#B42318", bg: "#FBECE9", label: "阻塞" },
-  HIGH: { color: "#B45309", bg: "#FBEDD8", label: "高" },
+  HIGH: { color: "#96650B", bg: "#FAF0DB", label: "高" },
   MEDIUM: { color: "#96650B", bg: "#FAF0DB", label: "中" },
   LOW: { color: "#1A7F45", bg: "#E7F3EA", label: "低" }
 };
@@ -292,8 +292,8 @@ export function ConflictDialog({
 
           {/* 客户库同名（非冲突，仅提示） */}
           {hasRun && sameName.length > 0 && (
-            <section className="rounded-md border border-[#5B8DEF]/30 bg-[#5B8DEF]/10 p-3">
-              <div className="flex items-center gap-2 text-xs text-[#5B8DEF]">
+            <section className="rounded-md border border-[#1E56C8]/30 bg-[#1E56C8]/10 p-3">
+              <div className="flex items-center gap-2 text-xs text-[#1E56C8]">
                 <Info className="h-3.5 w-3.5" />
                 客户库已有 {sameName.length} 个同名记录（仅提示，非冲突）
               </div>
@@ -315,8 +315,8 @@ export function ConflictDialog({
 
           {/* 身份证 / 信用代码精确匹配（强提示） */}
           {hasRun && idMatched.length > 0 && (
-            <section className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
-              <div className="flex items-center gap-2 text-xs text-amber-400">
+            <section className="rounded-md border border-[var(--amber-line)] bg-[var(--amber-bg)] p-3">
+              <div className="flex items-center gap-2 text-xs text-[var(--amber)]">
                 <AlertTriangle className="h-3.5 w-3.5" />
                 身份证 / 信用代码与客户库 {idMatched.length} 条记录精确匹配，请人工核对
               </div>
@@ -326,7 +326,7 @@ export function ConflictDialog({
                     key={c.clientId}
                     href={`/clients/${c.clientId}`}
                     onClick={() => onOpenChange(false)}
-                    className="inline-flex items-center gap-1 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-300 hover:bg-amber-500/15"
+                    className="inline-flex items-center gap-1 rounded border border-[var(--amber-line)] bg-[var(--amber-bg)] px-2 py-0.5 text-[11px] text-[var(--amber)] hover:bg-[var(--amber-bg)]"
                   >
                     {c.name}{" "}
                     <span className="font-mono opacity-60">{c.idNumber}</span>
@@ -345,9 +345,9 @@ export function ConflictDialog({
               </h3>
 
               {!results || results.length === 0 ? (
-                <div className="rounded-md border border-[#4ADE80]/30 bg-[#4ADE80]/10 p-3 text-sm">
+                <div className="rounded-md border border-[#1A7F45]/30 bg-[#1A7F45]/10 p-3 text-sm">
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-[#4ADE80]" />
+                    <CheckCircle2 className="h-4 w-4 text-[#1A7F45]" />
                     <span>未命中任何历史客户或案件</span>
                   </div>
                 </div>

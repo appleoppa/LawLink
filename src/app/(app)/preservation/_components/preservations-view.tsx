@@ -141,7 +141,7 @@ function KpiCard({ label, value, tone }: { label: string; value: string | number
   return (
     <div className="ll-surface p-3">
       <div className="text-[11px] text-muted-foreground">{label}</div>
-      <div className={cn("mt-1 text-lg font-semibold tabular", tone === "danger" && "text-destructive", tone === "warn" && "text-amber-500")}>{value}</div>
+      <div className={cn("mt-1 text-lg font-semibold tabular", tone === "danger" && "text-destructive", tone === "warn" && "text-[var(--amber)]")}>{value}</div>
     </div>
   );
 }
@@ -167,7 +167,7 @@ function CaseCard({ caseData: cs, expanded, onToggle, matters, users }: { caseDa
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium truncate">{cs.matter ? cs.matter.title : "未关联案件"}</span>
               <span className="shrink-0 rounded border px-1.5 py-0.5 text-[10px] text-primary border-primary/30 bg-primary/5">{PRES_TYPE_CN[cs.type]}</span>
-              {expiryInfo && <span className={cn("shrink-0 text-[10px] font-medium", expiryInfo.tone === "danger" ? "text-destructive" : expiryInfo.tone === "warn" ? "text-amber-500" : "text-muted-foreground")}>{expiryInfo.label}</span>}
+              {expiryInfo && <span className={cn("shrink-0 text-[10px] font-medium", expiryInfo.tone === "danger" ? "text-destructive" : expiryInfo.tone === "warn" ? "text-[var(--amber)]" : "text-muted-foreground")}>{expiryInfo.label}</span>}
             </div>
             <div className="mt-0.5 text-[11px] text-muted-foreground">
               {cs.court && <span>{cs.court}</span>}{cs.rulingNumber && <span> · {cs.rulingNumber}</span>}{" · "}{cs.targets.length} 个被保全人 · {allProps.length} 项财产
@@ -205,7 +205,7 @@ function CaseCard({ caseData: cs, expanded, onToggle, matters, users }: { caseDa
                         <span className="text-xs font-medium">{PROPERTY_TYPE_CN[prop.propertyType]}</span>
                         {prop.amount && <span className="text-[11px] text-muted-foreground">{formatCurrency(Number(prop.amount))}</span>}
                         {prop.propertyDetail && <span className="truncate text-[10px] text-muted-foreground">({prop.propertyDetail})</span>}
-                        <span className={cn("ml-auto shrink-0 text-[10px] font-medium", exp.tone === "danger" ? "text-destructive" : exp.tone === "warn" ? "text-amber-500" : "text-muted-foreground")}>{exp.label}</span>
+                        <span className={cn("ml-auto shrink-0 text-[10px] font-medium", exp.tone === "danger" ? "text-destructive" : exp.tone === "warn" ? "text-[var(--amber)]" : "text-muted-foreground")}>{exp.label}</span>
                         <span className="shrink-0 rounded border px-1.5 py-0 text-[9px]" style={{ borderColor: sc.border, color: sc.text, backgroundColor: sc.bg }}>{PRES_STATUS_CN[prop.status]}</span>
                         {(prop.status === "ACTIVE" || prop.status === "RENEWED") && (
                           <>

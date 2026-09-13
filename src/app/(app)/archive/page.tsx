@@ -57,13 +57,13 @@ export default async function ArchivePage() {
             <tbody className="divide-y divide-border/60">
               {items.map((rec) => (
                 <tr key={rec.id} className="hover:bg-muted/20 transition-colors">
-                  <td className="px-3 py-2.5 font-mono text-xs text-[#9B7BF7]">
+                  <td className="px-3 py-2.5 font-mono text-xs text-[#6C3FC5]">
                     {rec.matter.firmCaseNo ?? "—"}
                   </td>
                   <td className="px-3 py-2.5">
                     <Link
                       href={matterHref(rec.matter)}
-                      className="hover:text-[#5B8DEF] transition-colors line-clamp-1"
+                      className="hover:text-[#1E56C8] transition-colors line-clamp-1"
                     >
                       <FileText className="h-3 w-3 inline mr-1 text-muted-foreground" />
                       {rec.matter.title}
@@ -89,9 +89,9 @@ export default async function ArchivePage() {
                   <td className="px-3 py-2.5 text-xs">{rec.archivedBy}</td>
                   <td className="px-3 py-2.5">
                     {!rec.materialSnapshotVerified ? (
-                      <span className="text-xs text-amber-600">待核验</span>
+                      <span className="text-xs text-[var(--amber)]">待核验</span>
                     ) : rec.missingItems.length > 0 ? (
-                      <Badge variant="outline" className="border-amber-500/40 text-amber-400 text-[10px]">
+                      <Badge variant="outline" className="border-[var(--amber-line)] text-[var(--amber)] text-[10px]">
                         {rec.missingItems.length} 项
                       </Badge>
                     ) : (
@@ -99,7 +99,7 @@ export default async function ArchivePage() {
                     )}
                   </td>
                   <td className="px-3 py-2.5 text-xs">
-                    {rec.materialSnapshotVerified ? <span className="text-emerald-600">已固定</span> : <span className="text-amber-600">历史未固定</span>}
+                    {rec.materialSnapshotVerified ? <span className="text-[var(--green)]">已固定</span> : <span className="text-[var(--amber)]">历史未固定</span>}
                   </td>
                   <td className="px-3 py-2.5 text-xs">
                     {(canAuditAll || rec.archivedById === session.user.id) ? <Link className="text-primary underline" href={`/approvals?type=ARCHIVE_APPROVE&id=${rec.id}`}>查看</Link> : <span className="text-muted-foreground">—</span>}
@@ -107,7 +107,7 @@ export default async function ArchivePage() {
                   <td className="px-3 py-2.5">
                     {rec.materialSnapshotVerified ? <a
                       href={`/api/archive/${rec.matter.id}/export?archiveId=${rec.id}`}
-                      className="inline-flex items-center gap-1 text-xs text-[#5B8DEF] hover:text-[#5B8DEF]/80"
+                      className="inline-flex items-center gap-1 text-xs text-[#1E56C8] hover:text-[#1E56C8]/80"
                       title="导出归档 ZIP"
                     >
                       <Download className="h-3 w-3" />

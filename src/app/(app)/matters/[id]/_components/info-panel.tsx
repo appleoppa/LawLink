@@ -1,8 +1,8 @@
 "use client";
+import { FieldGrid, FieldItem } from "@/components/patterns/moan";
 
 import { useState } from "react";
 import { FileText, Pencil } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { litigationStandingLabel, matterCategoryKind } from "@/lib/enums";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import type { MatterPayload } from "./matter-detail-tabs";
@@ -104,107 +104,56 @@ export function InfoPanel({
     || (currentProcedure?.outcome ? PROCEDURE_OUTCOME_LABEL[currentProcedure.outcome] : "");
 
   return (
-    <section className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <span className="flex items-center gap-2">
-            <FileText className="h-4 w-4 text-primary" strokeWidth={1.8} />
-            <h3 className="text-[15px] font-medium">信息总览</h3>
-          </span>
-          {matter.firmCaseNo && (
-            <span className="truncate font-mono text-[11px] text-muted-foreground tabular">
-              {matter.firmCaseNo}
-            </span>
-          )}
+    <div className="card">
+      <div className="panel-head" style={{ borderBottom: "none", paddingBottom: 8 }}>
+        <div className="ws-head min-w-0 flex-1">
+          <div className="ic-wrap">
+            <FileText strokeWidth={1.8} />
+          </div>
+          <div className="min-w-0">
+            <h2>信息总览</h2>
+            <div className="desc truncate">
+              {currentProcedure ? `当前程序档案字段` : "案件档案字段"}
+              {matter.firmCaseNo ? ` · 所内编号 ${matter.firmCaseNo}` : ""} · 期限开庭、证据链、委托与自定义字段见下方
+            </div>
+          </div>
+          {canEdit ? (
+            <div className="acts">
+              <button type="button" onClick={onEdit} className="btn btn-secondary btn-sm">
+                <Pencil strokeWidth={1.8} />
+                编辑信息
+              </button>
+            </div>
+          ) : null}
         </div>
-        {canEdit && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onEdit}
-            className="h-7 gap-1.5 px-2 text-[11px]"
-          >
-            <Pencil className="h-3 w-3" strokeWidth={1.8} />
-            编辑
-          </Button>
-        )}
       </div>
-
-      <div className="overflow-hidden rounded-md border border-border">
-        <InfoRow>
-          <Pair label="收案时间">
-            <Mono>{matter.intakeDate ? formatDate(matter.intakeDate) : "—"}</Mono>
-          </Pair>
-          <Pair label="立案时间">
-            <Mono>{currentProcedure?.acceptedAt ? formatDate(currentProcedure.acceptedAt) : "—"}</Mono>
-          </Pair>
-        </InfoRow>
-        <InfoRow>
-          <Pair label="案由">{dash(causeText)}</Pair>
-          <Pair label="案号">
-            <Mono>{dash(currentProcedure?.caseNumber)}</Mono>
-          </Pair>
-        </InfoRow>
-        <InfoRow>
-          <Pair label="客户名称">{dash(clientName)}</Pair>
-          <Pair label="相对方">{dash(opposingNames)}</Pair>
-        </InfoRow>
-        <InfoRow>
-          <Pair label="我方地位">
-            {standing ? litigationStandingLabel[standing] ?? standing : "—"}
-          </Pair>
-          <Pair label={amountLabel}>
-            {kind !== "counsel" ? <Mono>{amountValue}</Mono> : amountValue}
-          </Pair>
-        </InfoRow>
-        <InfoRow>
-          <Pair label="是否反诉">{dash(counterclaimText)}</Pair>
-          <Pair label="律协备案">{barFilingText}</Pair>
-        </InfoRow>
-        <InfoRow>
-          <Pair label="管辖地">{dash(currentProcedure?.jurisdiction)}</Pair>
-          <Pair label="管辖机构">{dash(currentProcedure?.handlingAgency)}</Pair>
-        </InfoRow>
-        <InfoRow>
-          <Pair label={contactLabels.lead}>{personName(currentProcedure?.presidingJudge)}</Pair>
-          <Pair label="联系方式">
-            <ContactText value={currentProcedure?.presidingJudgeContact} />
-          </Pair>
-        </InfoRow>
-        <InfoRow>
-          <Pair label={contactLabels.assistant}>{personName(currentProcedure?.judgeAssistant)}</Pair>
-          <Pair label="联系方式">
-            <ContactText value={currentProcedure?.judgeAssistantContact} />
-          </Pair>
-        </InfoRow>
-        {currentProcedure?.panel?.trim() && (
-          <InfoRow>
-            <Pair label="合议庭">{currentProcedure.panel}</Pair>
-          </InfoRow>
-        )}
-        {requestContent && (
-          <InfoRow>
-            <Pair label={requestLabel}>
-              <ClampedText text={requestContent} />
-            </Pair>
-          </InfoRow>
-        )}
-        {outcomeText && (
-          <InfoRow>
-            <Pair label="裁判结果">{outcomeText}</Pair>
-          </InfoRow>
-        )}
-        <InfoRow>
-          <Pair label="关联案件">
-            <RelatedMattersField
-              matterId={matter.id}
-              related={relatedMatters}
-              canManage={canManageRelatedMatters}
-            />
-          </Pair>
-        </InfoRow>
+      <div className="panel-body" style={{ paddingTop: 4 }}>
+        <FieldGrid cols={2}>
+          <FieldItem label="收案时间" mono>{matter.intakeDate ? formatDate(matter.intakeDate) : "—"}</FieldItem>
+          <FieldItem label="立案时间" mono>{currentProcedure?.acceptedAt ? formatDate(currentProcedure.acceptedAt) : "—"}</FieldItem>
+          <FieldItem label="案由">{dash(causeText)}</FieldItem>
+          <FieldItem label="案号" mono>{dash(currentProcedure?.caseNumber)}</FieldItem>
+          <FieldItem label="客户名称">{dash(clientName)}</FieldItem>
+          <FieldItem label="相对方">{dash(opposingNames)}</FieldItem>
+          <FieldItem label="我方地位">{standing ? litigationStandingLabel[standing] ?? standing : "—"}</FieldItem>
+          <FieldItem label={amountLabel} mono={kind !== "counsel"}>{amountValue}</FieldItem>
+          <FieldItem label="是否反诉">{dash(counterclaimText)}</FieldItem>
+          <FieldItem label="律协备案">{barFilingText}</FieldItem>
+          <FieldItem label="管辖地">{dash(currentProcedure?.jurisdiction)}</FieldItem>
+          <FieldItem label="管辖机构">{dash(currentProcedure?.handlingAgency)}</FieldItem>
+          <FieldItem label={contactLabels.lead}>{personName(currentProcedure?.presidingJudge)}</FieldItem>
+          <FieldItem label="联系方式"><ContactText value={currentProcedure?.presidingJudgeContact} /></FieldItem>
+          <FieldItem label={contactLabels.assistant}>{personName(currentProcedure?.judgeAssistant)}</FieldItem>
+          <FieldItem label="联系方式"><ContactText value={currentProcedure?.judgeAssistantContact} /></FieldItem>
+          {currentProcedure?.panel?.trim() ? <FieldItem label="合议庭" wide>{currentProcedure.panel}</FieldItem> : null}
+          {requestContent ? <FieldItem label={requestLabel} wide><ClampedText text={requestContent} /></FieldItem> : null}
+          {outcomeText ? <FieldItem label="裁判结果" wide>{outcomeText}</FieldItem> : null}
+          <FieldItem label="关联案件" wide>
+            <RelatedMattersField matterId={matter.id} related={relatedMatters} canManage={canManageRelatedMatters} />
+          </FieldItem>
+        </FieldGrid>
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -232,10 +181,6 @@ function ClampedText({ text }: { text: string }) {
   );
 }
 
-/** 数字/案号/日期类取值统一等宽字体 */
-function Mono({ children }: { children: React.ReactNode }) {
-  return <span className="font-mono tabular">{children}</span>;
-}
 
 /** 人名为空时显示「未录入」 */
 function personName(name?: string | null): React.ReactNode {

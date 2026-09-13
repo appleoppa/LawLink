@@ -80,7 +80,7 @@ export function ExpressSettingsForm({ initial }: { initial: Initial }) {
           <div className="mb-2 flex items-center gap-2">
             <h3 className="text-[13px] font-medium">快递鸟（主，推荐）</h3>
             {initial.kdniao.configured && (
-              <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-700">
+              <span className="inline-flex items-center gap-1 rounded bg-[var(--green-bg)] px-1.5 py-0.5 text-[10px] text-[var(--green)]">
                 <CheckCircle2 className="h-3 w-3" />
                 已配置
               </span>
@@ -143,7 +143,7 @@ export function ExpressSettingsForm({ initial }: { initial: Initial }) {
           <div className="mb-2 flex items-center gap-2">
             <h3 className="text-[13px] font-medium">快递100（备用）</h3>
             {initial.kuaidi100.configured && (
-              <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-700">
+              <span className="inline-flex items-center gap-1 rounded bg-[var(--green-bg)] px-1.5 py-0.5 text-[10px] text-[var(--green)]">
                 <CheckCircle2 className="h-3 w-3" />
                 已配置
               </span>

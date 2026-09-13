@@ -214,7 +214,7 @@ function Count({ n, hot }: { n: number; hot?: boolean }) {
     <span
       className={cn(
         "ml-1 inline-flex items-center justify-center rounded-full px-1.5 font-mono text-[10px]",
-        hot ? "bg-amber-500/15 text-amber-700" : "bg-muted/60 text-muted-foreground"
+        hot ? "bg-[var(--amber-bg)] text-[var(--amber)]" : "bg-muted/60 text-muted-foreground"
       )}
     >
       {n}
@@ -419,7 +419,7 @@ function SmsCard({
                     {link.platform ?? `送达链接 ${i + 1}`}
                   </a>
                   {link.requiresLogin && (
-                    <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700">
+                    <span className="rounded bg-[var(--amber-bg)] px-1.5 py-0.5 text-[10px] text-[var(--amber)]">
                       需登录/校验
                     </span>
                   )}
@@ -608,10 +608,10 @@ function normalizeParsedJson(sms: SmsRow): ParsedJson {
 
 function AttachmentResultRow({ result }: { result: ParsedJson["attachmentResults"][number] }) {
   const meta = {
-    DOWNLOADED: { label: "已保存", color: "text-emerald-700", bg: "bg-emerald-500/10" },
-    ALREADY_DOWNLOADED: { label: "已存在", color: "text-emerald-700", bg: "bg-emerald-500/10" },
-    LOGIN_REQUIRED: { label: "待人工", color: "text-amber-700", bg: "bg-amber-500/10" },
-    SKIPPED_NO_MATTER: { label: "未关联", color: "text-amber-700", bg: "bg-amber-500/10" },
+    DOWNLOADED: { label: "已保存", color: "text-[var(--green)]", bg: "bg-[var(--green-bg)]" },
+    ALREADY_DOWNLOADED: { label: "已存在", color: "text-[var(--green)]", bg: "bg-[var(--green-bg)]" },
+    LOGIN_REQUIRED: { label: "待人工", color: "text-[var(--amber)]", bg: "bg-[var(--amber-bg)]" },
+    SKIPPED_NO_MATTER: { label: "未关联", color: "text-[var(--amber)]", bg: "bg-[var(--amber-bg)]" },
     NO_FILE_FOUND: { label: "未发现", color: "text-muted-foreground", bg: "bg-muted/50" },
     UNSUPPORTED_TYPE: { label: "不支持", color: "text-muted-foreground", bg: "bg-muted/50" },
     FAILED: { label: "失败", color: "text-destructive", bg: "bg-destructive/10" },
@@ -642,9 +642,9 @@ function AttachmentResultRow({ result }: { result: ParsedJson["attachmentResults
 
 function UrgencyBadge({ level }: { level: "HIGH" | "MEDIUM" | "LOW" }) {
   const meta = {
-    HIGH: { label: "紧急", color: "#DC2626", bg: "rgb(248 113 113 / 0.12)" },
-    MEDIUM: { label: "本周", color: "#D97706", bg: "rgb(252 211 77 / 0.15)" },
-    LOW: { label: "知悉", color: "#737373", bg: "rgb(229 229 229 / 0.5)" }
+    HIGH: { label: "紧急", color: "#B42318", bg: "rgb(248 113 113 / 0.12)" },
+    MEDIUM: { label: "本周", color: "#96650B", bg: "rgb(252 211 77 / 0.15)" },
+    LOW: { label: "知悉", color: "#68747F", bg: "rgb(229 229 229 / 0.5)" }
   }[level];
   return (
     <span

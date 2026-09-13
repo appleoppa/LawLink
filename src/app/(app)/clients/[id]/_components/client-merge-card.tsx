@@ -43,7 +43,7 @@ export function ClientMergeCard({ keepId, keepName }: { keepId: string; keepName
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
+    <div className="card p-4">
       {!open ? (
         <button
           onClick={() => setOpen(true)}

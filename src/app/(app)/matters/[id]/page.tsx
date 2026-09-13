@@ -13,7 +13,7 @@ import { matterHref } from "@/lib/matters/route";
 import { prisma } from "@/lib/prisma";
 import { nullableDecimalToNumber, serializeDecimals } from "@/lib/decimal";
 import { MatterDetailTabs } from "./_components/matter-detail-tabs";
-import type { MatterSignal } from "./_components/matter-signal-strip";
+import { listNotes } from "@/server/notes/actions";
 import { ReviewSummaryCard } from "./_components/review-summary-card";
 import { listEngagementsForMatter } from "@/server/engagements/actions";
 import { listEvidenceItems } from "@/server/evidence/actions";
@@ -163,9 +163,10 @@ export default async function MatterDetailPage({ params }: PageProps) {
   // v0.22: 本案 AI 审查总览（聚合 ReviewRecord）
   const reviewSummary = allowed("documents.read") ? await getMatterReviewSummary(matter.id) : null;
   // v1.x P2: 委托与证据链（详情页区块；read 已在页面入口校验）
-  const [engagements, evidenceItems] = await Promise.all([
+  const [engagements, evidenceItems, notes] = await Promise.all([
     listEngagementsForMatter(matter.id).catch(() => []),
-    listEvidenceItems(matter.id).catch(() => [])
+    listEvidenceItems(matter.id).catch(() => []),
+    allowed("schedule.read") ? listNotes(matter.id).catch(() => []) : Promise.resolve([])
   ]);
   const currentMatterMember = session?.user.id
     ? matter.members.find((member) => member.userId === session.user.id)
@@ -194,85 +195,10 @@ export default async function MatterDetailPage({ params }: PageProps) {
   }));
   const preservationCasesForClient = serializeDecimals(preservationCases);
 
-  // 墨案批次③：风险信号条（逾期/待确认期限、近 7 天开庭）
-  const now = new Date();
-  const signals: MatterSignal[] = [];
-  const allDeadlines = matter.procedures.flatMap((proc: { deadlines: { dueAt: Date; completed: boolean; confirmStatus?: string; title: string }[]; id: string }) =>
-    proc.deadlines.map((d) => ({ ...d, procedureId: proc.id }))
-  );
-  const overdue = allDeadlines.filter((d: { completed: boolean; dueAt: Date }) => !d.completed && d.dueAt < now);
-  const pendingConfirm = allDeadlines.filter((d: { confirmStatus?: string }) => d.confirmStatus === "PENDING");
-  if (overdue.length > 0) {
-    const earliest = [...overdue].sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime())[0];
-    const daysOver = Math.max(1, Math.ceil((now.getTime() - earliest.dueAt.getTime()) / 86_400_000));
-    signals.push({
-      kind: "overdue",
-      label: "最近逾期期限",
-      count: daysOver,
-      unit: "天前",
-      sub: `共 ${overdue.length} 项未完成 · ${earliest.title}`
-    });
-  }
-  if (pendingConfirm.length > 0) {
-    signals.push({
-      kind: "pending-confirm",
-      label: "规则期限待确认",
-      count: pendingConfirm.length,
-      unit: "项",
-      sub: "确认后不被规则重算覆盖"
-    });
-  }
-  const hearingsSoon = matter.procedures
-    .flatMap((proc: { hearings: { startsAt: Date }[] }) => proc.hearings)
-    .filter((h: { startsAt: Date }) => {
-      const diff = (h.startsAt.getTime() - now.getTime()) / 86_400_000;
-      return diff >= 0 && diff <= 7;
-    });
-  if (hearingsSoon.length > 0) {
-    const next = [...hearingsSoon].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime())[0];
-    const daysTo = Math.max(0, Math.ceil((next.startsAt.getTime() - now.getTime()) / 86_400_000));
-    signals.push({
-      kind: "hearing-soon",
-      label: "下次开庭",
-      count: daysTo,
-      unit: "天后",
-      sub: `近 7 天共 ${hearingsSoon.length} 次`
-    });
-  }
-
-  // 墨案 04 信号条第 3/4 卡：收费进度、本环节任务
-  if (finance.stats.contractAmount > 0) {
-    const percent = Math.min(
-      100,
-      Math.round((finance.stats.received / finance.stats.contractAmount) * 100)
-    );
-    signals.push({
-      kind: "finance",
-      label: "收费进度",
-      amount: `¥${finance.stats.received.toLocaleString("zh-CN")}`,
-      unit: `/ ¥${finance.stats.contractAmount.toLocaleString("zh-CN")}`,
-      progress: percent
-    });
-  }
-  const openTasks = matter.procedures
-    .flatMap((proc: { stages: { tasks: { completed: boolean }[] }[] }) =>
-      proc.stages.flatMap((st: { tasks: { completed: boolean }[] }) => st.tasks.map((t: { completed: boolean }) => t))
-    )
-    .filter((t: { completed: boolean }) => !t.completed).length;
-  if (openTasks > 0) {
-    signals.push({
-      kind: "tasks",
-      label: "本环节任务",
-      count: openTasks,
-      unit: "项待办",
-      sub: "逾期任务自动进入工作台「今日行动」"
-    });
-  }
-
   return (
-    <div className="space-y-3.5">
+    <>
       {/* 墨案 04 页面骨架由 MatterDetailTabs 统一承载：
-          卷宗头 → 信号条 → 程序链卡 → 三栏工作区 → 全宽附属区 */}
+          上下文头 → 信号条 → 程序链卡 → 三栏工作区（环节导航 / 工作区 / 辅助栏） */}
       <MatterDetailTabs
         matter={matter}
         finance={finance}
@@ -300,11 +226,11 @@ export default async function MatterDetailPage({ params }: PageProps) {
         preservationCases={preservationCasesForClient}
         engagements={engagements}
         evidenceItems={evidenceItems}
-        signals={signals}
+        notes={notes}
         reviewNode={
           reviewSummary ? <ReviewSummaryCard summary={reviewSummary} matterId={matter.id} /> : undefined
         }
       />
-    </div>
+    </>
   );
 }

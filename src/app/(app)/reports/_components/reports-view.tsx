@@ -247,7 +247,7 @@ export function ReportsView({
       )}
 
       {resolveError && (
-        <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700">
+        <div className="flex items-start gap-2 rounded-md border border-[var(--amber-line)] bg-[var(--amber-bg)] p-3 text-xs text-[var(--amber)]">
           <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>{resolveError}</span>
         </div>
@@ -255,14 +255,14 @@ export function ReportsView({
 
       {/* KPI */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Kpi icon={Briefcase} label="本期新收" value={data.kpis.newIntake} color="#5B8DEF" />
-        <Kpi icon={Wallet} label="在办中" value={data.kpis.inProgress} color="#F5A742" />
-        <Kpi icon={CheckCircle2} label="本期已结" value={data.kpis.closed} color="#48BB78" />
+        <Kpi icon={Briefcase} label="本期新收" value={data.kpis.newIntake} color="#1E56C8" />
+        <Kpi icon={Wallet} label="在办中" value={data.kpis.inProgress} color="#96650B" />
+        <Kpi icon={CheckCircle2} label="本期已结" value={data.kpis.closed} color="#1A7F45" />
         <Kpi
           icon={Archive}
           label="本期已归档"
           value={data.kpis.archived}
-          color="#9B7BF7"
+          color="#6C3FC5"
           hint={data.kpis.closed > 0 ? `归档率 ${Math.round(data.kpis.archiveRate * 100)}%` : ""}
         />
       </div>
@@ -391,13 +391,13 @@ export function ReportsView({
                       <td className="px-2 py-1.5 text-right font-mono">
                         {r.receivable.toLocaleString("zh-CN", { minimumFractionDigits: 2 })}
                       </td>
-                      <td className="px-2 py-1.5 text-right font-mono text-emerald-600">
+                      <td className="px-2 py-1.5 text-right font-mono text-[var(--green)]">
                         {r.received.toLocaleString("zh-CN", { minimumFractionDigits: 2 })}
                       </td>
                       <td
                         className={cn(
                           "px-2 py-1.5 text-right font-mono",
-                          r.balance > 0 ? "text-rose-600" : "text-muted-foreground"
+                          r.balance > 0 ? "text-[var(--red)]" : "text-muted-foreground"
                         )}
                       >
                         {r.balance.toLocaleString("zh-CN", { minimumFractionDigits: 2 })}
@@ -436,8 +436,8 @@ export function ReportsView({
                     <td className="px-2 py-1.5 text-right font-mono">{r.count}</td>
                     <td className="px-2 py-1.5 text-right font-mono">{r.avgDays}</td>
                     <td className="px-2 py-1.5 text-right font-mono">{r.medianDays}</td>
-                    <td className="px-2 py-1.5 text-right font-mono text-emerald-600">{r.minDays}</td>
-                    <td className="px-2 py-1.5 text-right font-mono text-rose-600">{r.maxDays}</td>
+                    <td className="px-2 py-1.5 text-right font-mono text-[var(--green)]">{r.minDays}</td>
+                    <td className="px-2 py-1.5 text-right font-mono text-[var(--red)]">{r.maxDays}</td>
                   </tr>
                 ))}
               </tbody>
@@ -481,11 +481,11 @@ export function ReportsView({
                       <td className="px-2 py-1.5 text-muted-foreground">{TYPE_CN[iss.type]}</td>
                       <td className="px-2 py-1.5 text-right font-mono">{iss.occurrences}</td>
                       <td className="px-2 py-1.5 text-right font-mono text-[10px]">
-                        <span className="text-rose-600">{iss.severityCounts.HIGH}</span>
+                        <span className="text-[var(--red)]">{iss.severityCounts.HIGH}</span>
                         <span className="mx-0.5 text-muted-foreground">/</span>
-                        <span className="text-amber-600">{iss.severityCounts.MEDIUM}</span>
+                        <span className="text-[var(--amber)]">{iss.severityCounts.MEDIUM}</span>
                         <span className="mx-0.5 text-muted-foreground">/</span>
-                        <span className="text-slate-500">{iss.severityCounts.LOW}</span>
+                        <span className="text-[var(--t-muted)]">{iss.severityCounts.LOW}</span>
                       </td>
                     </tr>
                   ))}
@@ -508,9 +508,9 @@ const TYPE_CN = {
 
 function SevTotalChip({ sev, n }: { sev: "HIGH" | "MEDIUM" | "LOW"; n: number }) {
   const meta = {
-    HIGH: { label: "高严重", cls: "border-rose-200 bg-rose-50 text-rose-700" },
-    MEDIUM: { label: "中严重", cls: "border-amber-200 bg-amber-50 text-amber-700" },
-    LOW: { label: "低严重", cls: "border-slate-200 bg-slate-50 text-slate-600" }
+    HIGH: { label: "高严重", cls: "border-[var(--red-line)] bg-[var(--red-bg)] text-[var(--red)]" },
+    MEDIUM: { label: "中严重", cls: "border-[var(--amber-line)] bg-[var(--amber-bg)] text-[var(--amber)]" },
+    LOW: { label: "低严重", cls: "border-[var(--bd-subtle)] bg-[var(--bg-hover)] text-[var(--t-muted)]" }
   }[sev];
   return (
     <div className={cn("rounded border px-3 py-2 text-xs", meta.cls)}>
@@ -534,7 +534,7 @@ function Kpi({
   hint?: string;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-3">
+    <div className="card p-3">
       <div className="flex items-center justify-between">
         <span className="text-[11px] text-muted-foreground">{label}</span>
         <span

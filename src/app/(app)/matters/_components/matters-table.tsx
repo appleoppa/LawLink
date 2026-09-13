@@ -261,7 +261,7 @@ export function CaseListCard({
 
   return (
     <li
-      className={cn("ll-spine-row", inTable ? "border-t border-border first:border-t-0" : "rounded-lg border border-border bg-card")}
+      className={cn("ll-spine-row", inTable ? "border-t border-border first:border-t-0" : "card")}
       style={{ "--ll-spine": spineColor } as React.CSSProperties}
     >
       <Link

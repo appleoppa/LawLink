@@ -84,7 +84,7 @@ export default async function AdminHomePage() {
 
   return (
     <div className="space-y-6">
-      <header className="rounded-xl border border-border bg-card p-5 shadow-[var(--shadow-low)]">
+      <header className="card p-5 shadow-[var(--shadow-low)]">
         <div className="flex items-start gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
             <ShieldCheck className="h-5 w-5" />
@@ -101,7 +101,7 @@ export default async function AdminHomePage() {
 
       <div className="grid gap-5 xl:grid-cols-2">
         {adminGroups.map((group) => (
-          <section key={group.title} className="rounded-xl border border-border bg-card p-4 shadow-[var(--shadow-low)]">
+          <section key={group.title} className="card p-4 shadow-[var(--shadow-low)]">
             <h2 className="text-[15px] font-semibold">{group.title}</h2>
             <p className="mt-1 text-[12px] leading-5 text-muted-foreground">{group.description}</p>
             <div className="mt-4 grid gap-2 sm:grid-cols-2">

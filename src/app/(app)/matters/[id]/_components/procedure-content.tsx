@@ -284,47 +284,36 @@ function ImportantItemsCard({
   }
 
   return (
-    <section className="flex max-h-[420px] min-h-[180px] flex-col rounded-lg border border-border bg-card">
-      <header className="flex shrink-0 flex-col gap-2 border-b border-border px-3 py-2">
-        <div className="flex items-center justify-between gap-2">
-          <span className="flex items-center gap-1.5 text-[13px] font-medium">
-            <AlertTriangle className="h-3.5 w-3.5 text-[var(--amber)]" />
-            重要事项
-            <span className="ml-1 font-mono text-[11px] text-muted-foreground tabular">
-              {total}
-            </span>
-          </span>
+    <section className="flex max-h-[460px] min-h-[160px] flex-col card">
+      <header className="panel-head shrink-0 flex-wrap">
+        <span className="panel-title">
+          <AlertTriangle className="ic" />
+          期限、开庭与备忘
+          <span className="mo-count">{total}</span>
+        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* 分类分段 */}
+          <div className="segmented" role="tablist">
+            {filters.map((f) => (
+              <button
+                key={f.value}
+                type="button"
+                role="tab"
+                aria-selected={filter === f.value}
+                onClick={() => setFilter(f.value)}
+                className={cn("seg", filter === f.value && "active")}
+              >
+                {f.label}
+                <span className="count">{f.count}</span>
+              </button>
+            ))}
+          </div>
           {canManage && (
-            <Button
-              size="sm"
-              onClick={openAddDialog}
-              className="h-6 gap-0.5 px-2 text-[11px]"
-            >
-              <Plus className="h-2.5 w-2.5" />
+            <button type="button" onClick={openAddDialog} className="btn btn-secondary btn-sm">
+              <Plus />
               添加
-            </Button>
-          )}
-        </div>
-        {/* 分类按钮组 */}
-        <div className="flex flex-wrap items-center gap-0.5 rounded-md border border-border bg-background p-0.5">
-          {filters.map((f) => (
-            <button
-              key={f.value}
-              type="button"
-              onClick={() => setFilter(f.value)}
-              className={cn(
-                "flex-1 rounded px-1.5 py-0.5 text-[11px] transition-colors",
-                filter === f.value
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {f.label}
-              <span className="ml-1 font-mono text-[10px] tabular opacity-75">
-                {f.count}
-              </span>
             </button>
-          ))}
+          )}
         </div>
       </header>
 
@@ -614,12 +603,12 @@ function DeadlineRow({
             {deadlineCategoryLabel[d.category]}
           </Badge>
           {d.confirmStatus === "PENDING" && (
-            <Badge className="h-5 shrink-0 bg-amber-500/15 px-1.5 text-[9px] text-amber-600 hover:bg-amber-500/15">
+            <Badge className="h-5 shrink-0 bg-[var(--amber-bg)] px-1.5 text-[9px] text-[var(--amber)] hover:bg-[var(--amber-bg)]">
               待确认
             </Badge>
           )}
           {d.confirmStatus === "ADJUSTED" && (
-            <Badge variant="outline" className="h-5 shrink-0 border-sky-500/40 px-1.5 text-[9px] text-sky-600">
+            <Badge variant="outline" className="h-5 shrink-0 border-[var(--blue-line)] px-1.5 text-[9px] text-[var(--blue)]">
               已调整
             </Badge>
           )}
@@ -659,7 +648,7 @@ function DeadlineRow({
               type="button"
               onClick={onConfirm}
               disabled={pending}
-              className="rounded border border-amber-500/40 px-1.5 py-0.5 text-[10px] text-amber-600 hover:bg-amber-500/10"
+              className="rounded border border-[var(--amber-line)] px-1.5 py-0.5 text-[10px] text-[var(--amber)] hover:bg-[var(--amber-bg)]"
               title="核对起算事实后确认该期限"
             >
               确认
@@ -761,8 +750,8 @@ function ExpressRow({
         className={cn(
           "flex h-6 w-6 shrink-0 items-center justify-center rounded-md",
           isOutbound
-            ? "bg-orange-500/10 text-orange-600"
-            : "bg-emerald-500/10 text-emerald-600"
+            ? "bg-[var(--amber-bg)] text-[var(--amber)]"
+            : "bg-[var(--green-bg)] text-[var(--green)]"
         )}
       >
         {isOutbound ? (
@@ -1206,7 +1195,7 @@ function ImportantItemDialog({
 
           <div className="flex-1 space-y-3 overflow-y-auto px-6 py-5">
             {procedureMissing && (
-              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700">
+              <div className="rounded-md border border-[var(--amber-line)] bg-[var(--amber-bg)] px-3 py-2 text-xs text-[var(--amber)]">
                 请先添加案件程序后，再录入开庭安排、重要时限或其他备忘。
               </div>
             )}

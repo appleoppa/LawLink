@@ -6,11 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2, AlertCircle, Eye, EyeOff } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Loader2, AlertCircle, Mail, LockKeyhole, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { checkLoginTotpEnforcement } from "@/server/auth/totp-actions";
 
@@ -28,6 +24,7 @@ export function LoginForm() {
   const callbackUrl = searchParams.get("callbackUrl") ?? "/";
   const [authError, setAuthError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [showTotp, setShowTotp] = useState(false);
 
   const {
     register,
@@ -60,89 +57,97 @@ export function LoginForm() {
       } catch {
         // 预检不可用时不影响通用错误提示
       }
-      setAuthError("邮箱或密码错误");
+      setAuthError(showTotp ? "邮箱、密码或两步验证码错误" : "邮箱或密码错误；如账号已开启两步验证，请勾选「使用两步验证码」后填写。");
     }
   }
 
   return (
-    <form method="post" onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
+    <form method="post" onSubmit={handleSubmit(onSubmit)} noValidate>
       {authError ? (
-        <Alert variant="destructive" className="border-destructive/40 bg-destructive/10">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{authError}</AlertDescription>
-        </Alert>
+        <div role="alert" className="mb-4 flex gap-2 rounded-[10px] border border-[var(--red-line)] bg-[var(--red-bg)] px-3 py-2.5 text-[12.5px] leading-relaxed text-[var(--red)]">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{authError}</span>
+        </div>
       ) : null}
 
-      <div className="space-y-1.5">
-        <Label htmlFor="email">邮箱</Label>
-        <Input
-          id="email"
-          type="email"
-          autoComplete="email"
-          placeholder="you@example.com"
-          aria-invalid={!!errors.email}
-          className={cn(errors.email && "border-destructive focus-visible:ring-destructive")}
-          {...register("email")}
-        />
-        {errors.email && (
-          <p className="text-xs text-destructive">{errors.email.message}</p>
-        )}
+      <div className="fp-field">
+        <label htmlFor="email" className="fp-label">邮箱</label>
+        <div className={cn("fp-input", errors.email && "!border-[var(--red)]")}>
+          <Mail aria-hidden />
+          <input
+            id="email"
+            type="email"
+            autoComplete="email"
+            placeholder="name@firm.cn"
+            aria-invalid={!!errors.email}
+            className="h-full min-w-0 flex-1 border-0 bg-transparent text-[13.5px] text-[var(--t-primary)] outline-none placeholder:text-[var(--t-faint)]"
+            {...register("email")}
+          />
+        </div>
+        {errors.email ? <p className="mt-1.5 text-[11.5px] text-[var(--red)]">{errors.email.message}</p> : null}
       </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="password">密码</Label>
-        <div className="relative">
-          <Input
+      <div className="fp-field">
+        <label htmlFor="password" className="fp-label">密码</label>
+        <div className={cn("fp-input", errors.password && "!border-[var(--red)]")}>
+          <LockKeyhole aria-hidden />
+          <input
             id="password"
             type={showPassword ? "text" : "password"}
             autoComplete="current-password"
             aria-invalid={!!errors.password}
-            className={cn(
-              "pr-10",
-              errors.password && "border-destructive focus-visible:ring-destructive"
-            )}
+            className="h-full min-w-0 flex-1 border-0 bg-transparent text-[13.5px] text-[var(--t-primary)] outline-none"
             {...register("password")}
           />
           <button
             type="button"
             onClick={() => setShowPassword((v) => !v)}
-            tabIndex={-1}
             aria-label={showPassword ? "隐藏密码" : "显示密码"}
-            className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+            className="ml-auto shrink-0 border-0 bg-transparent text-[12px] text-[var(--t-faint)] hover:text-[var(--t-secondary)]"
           >
-            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            {showPassword ? "隐藏" : "显示"}
           </button>
         </div>
-        {errors.password && (
-          <p className="text-xs text-destructive">{errors.password.message}</p>
-        )}
+        {errors.password ? <p className="mt-1.5 text-[11.5px] text-[var(--red)]">{errors.password.message}</p> : null}
       </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="totpCode">动态验证码（如已开启）</Label>
-        <Input
-          id="totpCode"
-          inputMode="numeric"
-          maxLength={16}
-          placeholder="6 位动态码或恢复码，未开启可留空"
-          autoComplete="one-time-code"
-          className={cn(errors.totpCode && "border-destructive focus-visible:ring-destructive")}
-          {...register("totpCode")}
-        />
+      {showTotp ? (
+        <div className="fp-field">
+          <label htmlFor="totpCode" className="fp-label">两步验证码</label>
+          <div className="fp-input">
+            <ShieldCheck aria-hidden />
+            <input
+              id="totpCode"
+              inputMode="numeric"
+              maxLength={16}
+              autoFocus
+              placeholder="6 位动态码或恢复码"
+              autoComplete="one-time-code"
+              className="h-full min-w-0 flex-1 border-0 bg-transparent font-mono text-[13.5px] tracking-[0.08em] text-[var(--t-primary)] outline-none placeholder:font-sans placeholder:tracking-normal placeholder:text-[var(--t-faint)]"
+              {...register("totpCode")}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      <div className="fp-row">
+        <button type="button" onClick={() => setShowTotp((v) => !v)} className="fp-check border-0 bg-transparent p-0 font-[inherit]" aria-expanded={showTotp}>
+          <span className={cn("fp-box", !showTotp && "!border !border-[var(--bd-strong)] !bg-card")}>
+            {showTotp ? (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" aria-hidden>
+                <path d="M4 12.5l5 5L20 7" />
+              </svg>
+            ) : null}
+          </span>
+          使用两步验证码
+        </button>
+        <span className="fp-link" title="本系统为自部署实例，密码由所内管理员在管理后台重置">忘记密码？请联系管理员</span>
       </div>
 
-      <Button
-        type="submit"
-        className="h-10 w-full gap-2 shadow-md"
-        disabled={isSubmitting}
-      >
-        {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-        {isSubmitting ? "登录中..." : "登录"}
-      </Button>
-
-      <p className="text-center text-xs text-muted-foreground">
-        忘记密码？联系系统管理员重置
-      </p>
+      <button type="submit" className="btn btn-primary btn-login" disabled={isSubmitting}>
+        {isSubmitting ? <Loader2 className="animate-spin" /> : null}
+        {isSubmitting ? "登录中…" : "登 录"}
+      </button>
     </form>
   );
 }

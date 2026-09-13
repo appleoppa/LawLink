@@ -158,11 +158,11 @@ type Props = {
 };
 
 const formControlClass =
-  "ll-form-control h-9 border-[#D3DAE6] bg-white text-[13px]";
+  "ll-form-control h-9 border-[#CFD7D3] bg-white text-[13px]";
 
 const formSectionClass =
-  "space-y-3 rounded-md border border-[#D9E0EA] bg-[#F4F7FB] p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
-const nestedPanelClass = "rounded-md border border-[#D9E0EA] bg-white";
+  "space-y-3 rounded-md border border-[#DDE3E0] bg-[#F4F6F5] p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
+const nestedPanelClass = "rounded-md border border-[#DDE3E0] bg-white";
 const formLabelClass = "text-[12px] font-medium text-muted-foreground";
 
 const PARTY_ROLE_LABEL: Record<PartyRole, string> = {
@@ -692,7 +692,7 @@ export function TeamEditorDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[86vh] w-[92vw] max-w-[720px] flex-col gap-0 overflow-hidden bg-[#EEF2F6] p-0">
+      <DialogContent className="flex max-h-[86vh] w-[92vw] max-w-[720px] flex-col gap-0 overflow-hidden bg-[#EEF1F0] p-0">
         <DialogHeader className="border-b border-border bg-card px-5 py-4">
           <DialogTitle>编辑案件信息</DialogTitle>
           <DialogDescription className="text-xs">
@@ -700,9 +700,9 @@ export function TeamEditorDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[calc(86vh-128px)] space-y-4 overflow-y-auto bg-[#EEF2F6] px-5 py-4">
+        <div className="max-h-[calc(86vh-128px)] space-y-4 overflow-y-auto bg-[#EEF1F0] px-5 py-4">
           {/* readonly 行 */}
-          <section className="grid grid-cols-2 gap-2 rounded-md border border-border bg-[#F4F7FB] px-3 py-2 text-xs shadow-[inset_0_1px_1px_rgba(15,23,42,0.03)]">
+          <section className="grid grid-cols-2 gap-2 rounded-md border border-border bg-[#F4F6F5] px-3 py-2 text-xs shadow-[inset_0_1px_1px_rgba(15,23,42,0.03)]">
             <div>
               <div className="text-[10px] text-muted-foreground">收案日</div>
               <div>{matterMeta.intakeDate ? formatDate(matterMeta.intakeDate) : "—"}</div>
@@ -941,7 +941,7 @@ export function TeamEditorDialog({
                     const draft = partyEdits[party.id] ?? partyToEditDraft(party);
                     const isOrg = draft.partyType !== "NATURAL_PERSON";
                     return (
-                      <div key={party.id} className="space-y-2 border-t border-[#E2E7EF] p-2.5 first:border-t-0">
+                      <div key={party.id} className="space-y-2 border-t border-[#DDE3E0] p-2.5 first:border-t-0">
                         <div className="flex min-w-0 items-center gap-2">
                           <span className="min-w-0 truncate text-xs font-medium" title={draft.name}>
                             {draft.name || "—"}
@@ -973,7 +973,7 @@ export function TeamEditorDialog({
                             </label>
                           ))}
                         </div>
-                        <div className="rounded-md border border-[#E2E7EF] bg-[#F6F8FB] p-2">
+                        <div className="rounded-md border border-[#DDE3E0] bg-[#F7F9F8] p-2">
                           <div className="mb-2 text-[11px] font-medium text-muted-foreground">
                             主体基础信息
                           </div>
@@ -1083,7 +1083,7 @@ export function TeamEditorDialog({
               {newProcedureParties.length > 0 && (
                 <div className={nestedPanelClass}>
                   {newProcedureParties.map((party) => (
-                    <div key={party.tempId} className="border-t border-[#E2E7EF] p-2 first:border-t-0">
+                    <div key={party.tempId} className="border-t border-[#DDE3E0] p-2 first:border-t-0">
                       <div className="mb-2 flex min-w-0 items-center gap-2">
                         <span className="min-w-0 truncate text-xs font-medium" title={party.name}>
                           {party.name}
@@ -1131,7 +1131,7 @@ export function TeamEditorDialog({
               )}
 
               {showNewPartyForm && (
-                <div className="rounded-md border border-dashed border-[#B8C5D6] bg-[#F6F8FB] p-2">
+                <div className="rounded-md border border-dashed border-[#B4BFB9] bg-[#F7F9F8] p-2">
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1.2fr)_120px_120px_minmax(0,1fr)_auto]">
                     <Input
                       list={`matter-editor-new-party-${currentProcedure.id}`}
@@ -1251,7 +1251,7 @@ export function TeamEditorDialog({
 
               <div className="space-y-1.5">
                 <Label className={formLabelClass}>助理（可多选）</Label>
-                <div className="grid grid-cols-1 gap-2 rounded-md border border-[#D9E0EA] bg-white p-2.5 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-2 rounded-md border border-[#DDE3E0] bg-white p-2.5 sm:grid-cols-2">
                   {userOptions
                     .filter((u) => u.id !== ownerId && !coLeads.includes(u.id) && (u.active !== false || assistants.includes(u.id)))
                     .map((u) => (

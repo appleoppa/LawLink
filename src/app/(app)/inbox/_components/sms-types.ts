@@ -50,15 +50,15 @@ export const SMS_TYPE_CN: Record<SmsType, string> = {
 };
 
 export const SMS_TYPE_ACCENT: Record<SmsType, string> = {
-  HEARING_NOTICE: "#dc2626",
+  HEARING_NOTICE: "#B42318",
   SERVICE_NOTICE: "#0ea5e9",
-  FEE_NOTICE: "#d97706",
+  FEE_NOTICE: "#96650B",
   MEDIATION: "#0891b2",
   ENFORCEMENT: "#7c2d12",
-  FILING_NOTICE: "#16a34a",
+  FILING_NOTICE: "#1A7F45",
   JUDGMENT_NOTICE: "#7c3aed",
   EVIDENCE_SUBMIT: "#0d9488",
-  OTHER: "#737373"
+  OTHER: "#68747F"
 };
 
 // 解析结果结构（与 lib/sms-parser.ts ParsedSms 对齐）

@@ -22,7 +22,7 @@ const groupConfig = [
   { key: "matters" as const, label: "案件", icon: FolderOpen, tone: "text-[#005054]" },
   { key: "clients" as const, label: "客户", icon: Users, tone: "text-[#1E56C8]" },
   { key: "intakes" as const, label: "收案", icon: Inbox, tone: "text-[#8A6B3E]" },
-  { key: "documents" as const, label: "材料", icon: FileText, tone: "text-violet-600" },
+  { key: "documents" as const, label: "材料", icon: FileText, tone: "text-[var(--violet)]" },
 ];
 
 export function SearchDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {

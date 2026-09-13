@@ -116,16 +116,16 @@ export function LateInterestCalc() {
       {result && (
         <>
           <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-            <ResultCard label="迟延天数" value={`${result.daysLate} 天`} accent="#737373" />
+            <ResultCard label="迟延天数" value={`${result.daysLate} 天`} accent="#68747F" />
             <ResultCard
               label="年利率"
               value={`${(result.yearlyRate * 100).toFixed(2)}%`}
-              accent="#D97706"
+              accent="#96650B"
             />
             <ResultCard
               label="加倍利息（推荐采用）"
               value={`¥${result.interest.toLocaleString()}`}
-              accent="#DC2626"
+              accent="#B42318"
             />
           </div>
           <div className="mt-3 rounded-md border border-border bg-muted/20 p-3 text-[12px]">

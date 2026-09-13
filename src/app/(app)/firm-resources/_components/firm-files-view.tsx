@@ -37,14 +37,14 @@ type FileEntry = {
 };
 
 const CATEGORY_META: Record<FirmFileCategory, { label: string; color: string }> = {
-  POLICY: { label: "制度", color: "#9B7BF7" },
-  GUIDE: { label: "指引", color: "#5B8DEF" },
-  TEMPLATE: { label: "参考模板", color: "#48BB78" },
-  REFERENCE: { label: "其他文件", color: "#F5A742" },
-  CONTRACT: { label: "合同", color: "#5B8DEF" },
-  LETTER: { label: "函件", color: "#48BB78" },
-  LICENSE: { label: "证照", color: "#F5A742" },
-  OTHER_FIRM: { label: "其他", color: "#9B7BF7" }
+  POLICY: { label: "制度", color: "#6C3FC5" },
+  GUIDE: { label: "指引", color: "#1E56C8" },
+  TEMPLATE: { label: "参考模板", color: "#1A7F45" },
+  REFERENCE: { label: "其他文件", color: "#96650B" },
+  CONTRACT: { label: "合同", color: "#1E56C8" },
+  LETTER: { label: "函件", color: "#1A7F45" },
+  LICENSE: { label: "证照", color: "#96650B" },
+  OTHER_FIRM: { label: "其他", color: "#6C3FC5" }
 };
 
 /** 律所文书页展示的分类 */
@@ -194,7 +194,7 @@ export function FirmFilesView({
         <div className="flex flex-wrap items-center gap-1.5">
           <CategoryChip
             label="全部"
-            color="#5B8DEF"
+            color="#1E56C8"
             count={files.length}
             active={!currentCategory}
             onClick={() => navigate({ category: undefined })}
@@ -273,7 +273,7 @@ export function FirmFilesView({
                 className={cn(
                   "group rounded-xl border bg-card p-3",
                   f.hasNewerVersion
-                    ? "border-amber-300 bg-amber-50/30"
+                    ? "border-[var(--amber-line)] bg-[var(--amber-bg)]"
                     : "border-border"
                 )}
               >
@@ -300,13 +300,13 @@ export function FirmFilesView({
                         {meta.label}
                       </span>
                       {f.hasNewerVersion && (
-                        <span className="shrink-0 rounded border border-amber-400 bg-amber-100 px-1 py-0.5 text-[9px] text-amber-700">
+                        <span className="shrink-0 rounded border border-[var(--amber-line)] bg-[var(--amber-bg)] px-1 py-0.5 text-[9px] text-[var(--amber)]">
                           旧版
                         </span>
                       )}
                       {f.supersedesCount > 0 && (
                         <span
-                          className="shrink-0 inline-flex items-center gap-0.5 rounded border border-violet-300 bg-violet-50 px-1 py-0.5 text-[9px] text-violet-700"
+                          className="shrink-0 inline-flex items-center gap-0.5 rounded border border-[var(--violet-line)] bg-[var(--violet-bg)] px-1 py-0.5 text-[9px] text-[var(--violet)]"
                           title={`已替代 ${f.supersedesCount} 个旧版`}
                         >
                           <History className="h-2.5 w-2.5" />v{f.supersedesCount + 1}

@@ -60,13 +60,13 @@ export function LastScanResultCard({
               </>
             ) : result.ok ? (
               <>
-                <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                <span className="text-emerald-700">发送成功，请到群里确认</span>
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[var(--green)]" />
+                <span className="text-[var(--green)]">发送成功，请到群里确认</span>
               </>
             ) : (
               <>
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-600" />
-                <span className="text-red-700">发送失败：{result.error ?? "未知错误"}</span>
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[var(--red)]" />
+                <span className="text-[var(--red)]">发送失败：{result.error ?? "未知错误"}</span>
               </>
             )}
           </div>

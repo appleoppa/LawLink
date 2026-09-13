@@ -28,27 +28,27 @@ type AuditItem = {
 };
 
 const actionColor: Record<string, string> = {
-  LOGIN: "#5B8DEF",
-  MATTER_CREATE: "#4ADE80",
-  MATTER_CLOSE: "#FBBF24",
-  MATTER_ARCHIVE: "#9B7BF7",
-  MATTER_DELETE: "#F87171",
-  CLIENT_CREATE: "#4ADE80",
-  CLIENT_DELETE: "#F87171",
-  CONFLICT_CHECK_RUN: "#FBBF24",
-  FEE_ENTRY_CREATE: "#4ADE80",
-  USER_CREATE: "#4ADE80",
-  USER_DEACTIVATE: "#F87171",
-  USER_PASSWORD_RESET: "#FB923C"
+  LOGIN: "#1E56C8",
+  MATTER_CREATE: "#1A7F45",
+  MATTER_CLOSE: "#96650B",
+  MATTER_ARCHIVE: "#6C3FC5",
+  MATTER_DELETE: "#B42318",
+  CLIENT_CREATE: "#1A7F45",
+  CLIENT_DELETE: "#B42318",
+  CONFLICT_CHECK_RUN: "#96650B",
+  FEE_ENTRY_CREATE: "#1A7F45",
+  USER_CREATE: "#1A7F45",
+  USER_DEACTIVATE: "#B42318",
+  USER_PASSWORD_RESET: "#96650B"
 };
 
 function colorFor(action: string) {
   if (actionColor[action]) return actionColor[action];
-  if (action.endsWith("_CREATE") || action.endsWith("_ADD")) return "#4ADE80";
-  if (action.endsWith("_DELETE") || action.endsWith("_DEACTIVATE")) return "#F87171";
-  if (action.endsWith("_UPDATE") || action.endsWith("_EDIT")) return "#FBBF24";
-  if (action.endsWith("_VIEW")) return "#9BA8C7";
-  return "#5B8DEF";
+  if (action.endsWith("_CREATE") || action.endsWith("_ADD")) return "#1A7F45";
+  if (action.endsWith("_DELETE") || action.endsWith("_DEACTIVATE")) return "#B42318";
+  if (action.endsWith("_UPDATE") || action.endsWith("_EDIT")) return "#96650B";
+  if (action.endsWith("_VIEW")) return "#98A3AD";
+  return "#1E56C8";
 }
 
 export function AuditView({
@@ -101,7 +101,7 @@ export function AuditView({
         </h2>
       </header>
 
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-3">
+      <div className="flex flex-wrap items-center gap-3 card p-3">
         <Select
           value={action}
           onValueChange={(v) => {

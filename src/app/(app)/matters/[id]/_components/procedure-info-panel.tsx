@@ -171,9 +171,9 @@ const PROCEDURE_OUTCOME_LABEL: Record<ProcedureOutcome, string> = {
 };
 
 const editorControlClass =
-  "ll-form-control h-9 border-[#D3DAE6] bg-white text-[13px]";
+  "ll-form-control h-9 border-[#CFD7D3] bg-white text-[13px]";
 const editorSectionClass =
-  "space-y-3 rounded-md border border-[#D9E0EA] bg-[#F4F7FB] p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
+  "space-y-3 rounded-md border border-[#DDE3E0] bg-[#F4F6F5] p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
 const editorLabelClass = "text-[12px] font-medium text-muted-foreground";
 
 function EditorSectionTitle({ children }: { children: React.ReactNode }) {
@@ -335,7 +335,7 @@ function PartyNameWithClientBadge({ party }: { party: Pick<PartyLite, "name" | "
 }
 
 function standingTone(standing: LitigationStanding | null) {
-  if (!standing) return "border-[#D5D7DC] bg-[#EDF0F4] text-[#475569]";
+  if (!standing) return "border-[#D5D7DC] bg-[#EEF1F0] text-[#475569]";
   if (
     [
       "PLAINTIFF",
@@ -363,7 +363,7 @@ function standingTone(standing: LitigationStanding | null) {
     return "border-[var(--amber-line)] bg-[var(--amber-bg)] text-[var(--amber)]";
   }
   if (standing === "THIRD_PARTY") {
-    return "border-[#D9C5F2] bg-[#F1E8F8] text-[#6B21A8]";
+    return "border-[#D9C5F2] bg-[#F1ECFA] text-[#6B21A8]";
   }
   return "border-[var(--green-line)] bg-[var(--green-bg)] text-[var(--green)]";
 }
@@ -403,7 +403,7 @@ export function ProcedureInfoPanel({
   const { judge } = roleLabels(p.type);
   const requestText = dash(requestContent);
   return (
-    <section className="rounded-lg border border-border bg-card">
+    <section className="card">
       <div className="overflow-hidden rounded-lg">
         <InfoRow>
           <Pair label="立案时间">{p.acceptedAt ? formatDate(p.acceptedAt) : "—"}</Pair>
@@ -502,9 +502,9 @@ export function ProcedurePartiesCard({
   ].filter((group) => group.rows.length > 0);
 
   return (
-    <section className="rounded-lg border border-border bg-card shadow-[var(--shadow-low)]">
-      <header className="flex items-center justify-between border-b border-border px-4 py-2">
-        <span className="flex items-center gap-1.5 text-[13px] font-medium">
+    <section className="card shadow-[var(--shadow-low)]">
+      <header className="flex items-center justify-between border-b border-[var(--bd-hair)] px-4 py-3">
+        <span className="panel-title">
           <Users className="h-3.5 w-3.5 text-primary" strokeWidth={1.8} />
           当事人
           <span className="ml-1 font-mono text-[11px] text-muted-foreground tabular">
@@ -929,11 +929,11 @@ function EditDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[86vh] w-[92vw] max-w-[720px] flex-col gap-0 overflow-hidden bg-[#EEF2F6] p-0">
+      <DialogContent className="flex max-h-[86vh] w-[92vw] max-w-[720px] flex-col gap-0 overflow-hidden bg-[#EEF1F0] p-0">
         <DialogHeader className="border-b border-border bg-card px-5 py-4">
           <DialogTitle>编辑{PROC_INFO_LABEL[proc.type] ?? "程序信息"}</DialogTitle>
         </DialogHeader>
-        <div className="max-h-[calc(86vh-116px)] space-y-4 overflow-y-auto bg-[#EEF2F6] px-5 py-4">
+        <div className="max-h-[calc(86vh-116px)] space-y-4 overflow-y-auto bg-[#EEF1F0] px-5 py-4">
           <section className={editorSectionClass}>
             <EditorSectionTitle>程序基础信息</EditorSectionTitle>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1035,12 +1035,12 @@ function EditDialog({
                 暂无案件当事人
               </div>
             ) : (
-              <div className="max-h-[440px] overflow-y-auto rounded-md border border-[#D9E0EA] bg-white">
+              <div className="max-h-[440px] overflow-y-auto rounded-md border border-[#DDE3E0] bg-white">
                 {parties.map((party) => {
                   const draft = partyEdits[party.id] ?? partyToEditDraft(party);
                   const isOrg = draft.partyType !== "NATURAL_PERSON";
                   return (
-                    <div key={party.id} className="space-y-2 border-t border-[#E2E7EF] p-2.5 first:border-t-0">
+                    <div key={party.id} className="space-y-2 border-t border-[#DDE3E0] p-2.5 first:border-t-0">
                       <div className="flex min-w-0 items-center gap-2">
                         <span className="min-w-0 truncate text-xs font-medium" title={draft.name}>
                           <PartyNameWithClientBadge party={{ name: draft.name, role: draft.role }} />
@@ -1067,7 +1067,7 @@ function EditDialog({
                           </label>
                         ))}
                       </div>
-                      <div className="rounded-md border border-[#E2E7EF] bg-[#F6F8FB] p-2">
+                      <div className="rounded-md border border-[#DDE3E0] bg-[#F7F9F8] p-2">
                         <div className="mb-2 text-[11px] font-medium text-muted-foreground">
                           主体基础信息
                         </div>
@@ -1166,9 +1166,9 @@ function EditDialog({
               </div>
             )}
             {newProcedureParties.length > 0 && (
-              <div className="rounded-md border border-[#D9E0EA] bg-white">
+              <div className="rounded-md border border-[#DDE3E0] bg-white">
                 {newProcedureParties.map((party) => (
-                  <div key={party.tempId} className="border-t border-[#E2E7EF] p-2 first:border-t-0">
+                  <div key={party.tempId} className="border-t border-[#DDE3E0] p-2 first:border-t-0">
                     <div className="mb-2 flex min-w-0 items-center gap-2">
                       <span className="min-w-0 truncate text-xs font-medium" title={party.name}>
                         <PartyNameWithClientBadge party={party} />
@@ -1215,7 +1215,7 @@ function EditDialog({
               </div>
             )}
             {showNewPartyForm && (
-              <div className="rounded-md border border-dashed border-[#B8C5D6] bg-[#F6F8FB] p-2">
+              <div className="rounded-md border border-dashed border-[#B4BFB9] bg-[#F7F9F8] p-2">
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1.2fr)_120px_120px_minmax(0,1fr)_auto]">
                   <Input
                     list={`new-procedure-party-${proc.id}`}

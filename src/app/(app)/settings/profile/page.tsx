@@ -18,7 +18,7 @@ export default async function ProfilePage() {
 
   return (
     <div className="space-y-5">
-      <section className="rounded-xl border border-border bg-card p-6">
+      <section className="card p-6">
         <h2 className="mb-4 text-base font-semibold">个人信息</h2>
         <div className="mb-5">
           <AvatarForm name={dbUser.name} initialAvatar={dbUser?.avatar ?? null} />
@@ -28,7 +28,7 @@ export default async function ProfilePage() {
         <div className="mt-6"><IdentityForm key={`identity-${dbUser.updatedAt.toISOString()}`} /></div>
       </section>
 
-      <section className="rounded-xl border border-border bg-card p-6">
+      <section className="card p-6">
         <h2 className="mb-4 text-base font-semibold">修改密码</h2>
         <ChangePasswordForm />
         <TotpCard enabled={dbUser.totpEnabled} />

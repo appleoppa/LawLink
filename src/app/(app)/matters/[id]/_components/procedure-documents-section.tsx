@@ -261,10 +261,10 @@ export function ProcedureDocumentsSection({
   }
 
   return (
-    <section className="rounded-lg border border-border bg-card">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2">
+    <section className="card">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--bd-hair)] px-4 py-3">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-          <span className="flex items-center gap-1.5 text-[13px] font-medium whitespace-nowrap">
+          <span className="panel-title whitespace-nowrap">
             案件材料
             <span className="ml-1 font-mono text-[11px] text-muted-foreground tabular">
               {documents.length}

@@ -17,7 +17,7 @@ function getGreeting(hour: number) {
 }
 
 const typeMeta = {
-  deadline: { icon: AlertTriangle, color: "text-amber-600", label: "期限" },
+  deadline: { icon: AlertTriangle, color: "text-[var(--amber)]", label: "期限" },
   hearing: { icon: Calendar, color: "text-primary", label: "开庭" }
 };
 

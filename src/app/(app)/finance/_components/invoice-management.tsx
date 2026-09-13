@@ -115,7 +115,7 @@ export function InvoiceManagementSection({
                         <span className="truncate">{r.matter.title}</span>
                       </Link>
                     ) : (
-                      <div className="mt-0.5 text-xs text-amber-600" title={r.noMatterReason ?? ""}>
+                      <div className="mt-0.5 text-xs text-[var(--amber)]" title={r.noMatterReason ?? ""}>
                         无关联案件{r.noMatterReason ? ` · ${r.noMatterReason}` : ""}
                       </div>
                     )}

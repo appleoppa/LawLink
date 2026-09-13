@@ -46,10 +46,10 @@ export function FinancePanel({
   ];
 
   return (
-    <section className="rounded-lg border border-border bg-card">
-      <header className={compact ? "border-b border-border px-3 py-2" : "border-b border-border px-4 py-2"}>
+    <section className="card">
+      <header className={compact ? "border-b border-border px-3 py-2" : "border-b border-[var(--bd-hair)] px-4 py-3"}>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="flex items-center gap-1.5 text-[13px] font-medium">
+          <span className="panel-title">
             <Wallet className="h-3.5 w-3.5 text-primary" />
             财务费用
           </span>
@@ -101,7 +101,7 @@ export function FinancePanel({
                   : "flex items-center gap-3 px-4 py-2 text-[12.5px]"
               }
             >
-              <span className="shrink-0 font-mono tabular text-[14px] font-medium text-emerald-600">
+              <span className="shrink-0 font-mono tabular text-[14px] font-medium text-[var(--green)]">
                 {formatCurrency(Number(e.amount))}
               </span>
               <span className="min-w-0 flex-1 truncate text-muted-foreground">
@@ -152,11 +152,11 @@ function StatCard({
 }) {
   const cls =
     tone === "emerald"
-      ? "text-emerald-600"
+      ? "text-[var(--green)]"
       : tone === "amber"
-        ? "text-amber-600"
+        ? "text-[var(--amber)]"
         : tone === "red"
-          ? "text-red-600"
+          ? "text-[var(--red)]"
           : "text-foreground";
   return (
     <div className={`bg-card px-3 text-center ${compact ? "py-2" : "py-2.5"} ${className ?? ""}`}>

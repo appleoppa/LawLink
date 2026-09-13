@@ -152,13 +152,13 @@ export const matterCategoryLabel: Record<MatterCategory, string> = {
 };
 
 export const matterCategoryColor: Record<MatterCategory, string> = {
-  CIVIL_COMMERCIAL: "#5B8DEF",
+  CIVIL_COMMERCIAL: "#1E56C8",
   LABOR_ARBITRATION: "#34D399",
   COMMERCIAL_ARBITRATION: "#38BDF8",
-  CRIMINAL: "#FB923C",
-  ADMINISTRATIVE: "#FBBF24",
-  NON_LITIGATION: "#4FD1C5",
-  LEGAL_COUNSEL: "#9B7BF7",
+  CRIMINAL: "#96650B",
+  ADMINISTRATIVE: "#96650B",
+  NON_LITIGATION: "#007B7F",
+  LEGAL_COUNSEL: "#6C3FC5",
   SPECIAL_PROJECT: "#60A5FA"
 };
 
@@ -279,10 +279,10 @@ export const invoiceRequestStatusLabel: Record<InvoiceRequestStatus, string> = {
 };
 
 export const invoiceRequestStatusColor: Record<InvoiceRequestStatus, string> = {
-  PENDING: "#FBBF24",
-  APPROVED: "#5B8DEF",
-  ISSUED: "#4ADE80",
-  REJECTED: "#F87171"
+  PENDING: "#96650B",
+  APPROVED: "#1E56C8",
+  ISSUED: "#1A7F45",
+  REJECTED: "#B42318"
 };
 
 /**

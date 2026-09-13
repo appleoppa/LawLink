@@ -63,10 +63,10 @@ export function ApprovalsPanel({
   }
 
   return (
-    <section className="rounded-lg border border-border bg-card">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2">
+    <section className="card">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--bd-hair)] px-4 py-3">
         <div className="flex items-center gap-3">
-          <span className="flex items-center gap-1.5 text-[13px] font-medium">
+          <span className="panel-title">
             <Stamp className="h-3.5 w-3.5 text-primary" />
             用印审批
             <span className="ml-1 font-mono text-[11px] text-muted-foreground tabular">
@@ -163,10 +163,10 @@ const SEAL_STATUS_LABEL: Record<string, string> = {
 function SealStatusBadge({ status }: { status: string }) {
   const tone =
     status === "APPROVED" || status === "STAMPED"
-      ? "text-emerald-700 bg-emerald-500/10 border-emerald-500/20"
+      ? "text-[var(--green)] bg-[var(--green-bg)] border-[var(--green-line)]"
       : status === "REJECTED" || status === "CANCELLED"
-        ? "text-red-700 bg-red-500/10 border-red-500/20"
-        : "text-amber-700 bg-amber-500/10 border-amber-500/20";
+        ? "text-[var(--red)] bg-[var(--red-bg)] border-[var(--red-line)]"
+        : "text-[var(--amber)] bg-[var(--amber-bg)] border-[var(--amber-line)]";
   return (
     <Badge variant="outline" className={cn("h-5 border px-1.5 text-[10px]", tone)}>
       {SEAL_STATUS_LABEL[status] ?? status}

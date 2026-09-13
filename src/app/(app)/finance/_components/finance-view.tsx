@@ -242,14 +242,14 @@ export function FinanceView({
             <span className="flex items-center gap-1.5">
               <span
                 className="h-0.5 w-3 rounded-full"
-                style={{ backgroundColor: "#5B8DEF", boxShadow: "0 0 8px #5B8DEF" }}
+                style={{ backgroundColor: "#1E56C8", boxShadow: "0 0 8px #1E56C8" }}
               />
               实收
             </span>
             <span className="flex items-center gap-1.5">
               <span
                 className="h-0.5 w-3 rounded-full"
-                style={{ backgroundColor: "#4FD1C5", boxShadow: "0 0 8px #4FD1C5" }}
+                style={{ backgroundColor: "#007B7F", boxShadow: "0 0 8px #007B7F" }}
               />
               应收
             </span>
@@ -260,12 +260,12 @@ export function FinanceView({
             <AreaChart data={monthly} margin={{ top: 10, right: 12, bottom: 0, left: 0 }}>
               <defs>
                 <linearGradient id="finance-received" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#5B8DEF" stopOpacity={0.35} />
-                  <stop offset="100%" stopColor="#5B8DEF" stopOpacity={0} />
+                  <stop offset="0%" stopColor="#1E56C8" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="#1E56C8" stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="finance-receivable" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#4FD1C5" stopOpacity={0.25} />
-                  <stop offset="100%" stopColor="#4FD1C5" stopOpacity={0} />
+                  <stop offset="0%" stopColor="#007B7F" stopOpacity={0.25} />
+                  <stop offset="100%" stopColor="#007B7F" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
@@ -295,7 +295,7 @@ export function FinanceView({
                 type="monotone"
                 dataKey="receivable"
                 name="应收"
-                stroke="#4FD1C5"
+                stroke="#007B7F"
                 strokeWidth={1.5}
                 fill="url(#finance-receivable)"
               />
@@ -303,7 +303,7 @@ export function FinanceView({
                 type="monotone"
                 dataKey="received"
                 name="实收"
-                stroke="#5B8DEF"
+                stroke="#1E56C8"
                 strokeWidth={2}
                 fill="url(#finance-received)"
               />

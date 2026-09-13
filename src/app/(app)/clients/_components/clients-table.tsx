@@ -23,7 +23,7 @@ function maskPhoneText(v: string | null | undefined): string {
 
 /** 墨案：合作状态 → 徽章 + 行脊线（teal=签约 / amber=洽谈 / slate=潜在 / bronze=终止） */
 const COOP_META: Record<ClientCooperationStatus, { badge: string; spine: string }> = {
-  POTENTIAL: { badge: "b-slate", spine: "#8296A1" },
+  POTENTIAL: { badge: "b-slate", spine: "#98A3AD" },
   NEGOTIATING: { badge: "b-amber", spine: "#96650B" },
   SIGNED: { badge: "b-teal", spine: "#007B7F" },
   TERMINATED: { badge: "b-bronze", spine: "#8A6B3E" }

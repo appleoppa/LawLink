@@ -50,7 +50,7 @@ function matterTone(status: string): { spine: string; badge: string } {
   if (status === "ARCHIVED") return { spine: "#8A6B3E", badge: "b-bronze" };
   if (status === "CLOSED") return { spine: "#1A7F45", badge: "b-green" };
   if (ACTIVE_MATTER_STATUSES.has(status)) return { spine: "#1E56C8", badge: "b-blue" };
-  return { spine: "#8296A1", badge: "b-slate" };
+  return { spine: "#98A3AD", badge: "b-slate" };
 }
 
 function firstChar(value: string) {

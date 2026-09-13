@@ -258,7 +258,7 @@ function Count({ n, hot }: { n: number; hot?: boolean }) {
     <span
       className={cn(
         "ml-1 inline-flex items-center justify-center rounded-full px-1.5 font-mono text-[10px]",
-        hot ? "bg-amber-500/15 text-amber-700" : "bg-muted/60 text-muted-foreground"
+        hot ? "bg-[var(--amber-bg)] text-[var(--amber)]" : "bg-muted/60 text-muted-foreground"
       )}
     >
       {n}

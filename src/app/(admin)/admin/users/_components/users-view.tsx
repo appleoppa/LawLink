@@ -127,7 +127,7 @@ export function UsersView({
       </header>
 
       <div className="flex gap-3"><Input aria-label="搜索账号" placeholder="按姓名、邮箱、角色或权限组搜索" value={query} onChange={e => setQuery(e.target.value)} /><select aria-label="账号状态" className="rounded-md border bg-background px-3 text-sm" value={status} onChange={e => setStatus(e.target.value)}><option value="all">全部状态</option><option value="active">已启用</option><option value="inactive">已停用</option></select><a className="shrink-0 text-sm text-primary self-center" href="/admin/roles">管理角色</a><a className="shrink-0 text-sm text-primary self-center" href="/admin/approval-permissions">管理审批权限</a></div>
-      <div className="overflow-x-auto rounded-xl border border-border bg-card">
+      <div className="overflow-x-auto card">
         <table className="w-full text-sm">
           <thead className="border-b border-border bg-popover">
             <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground">
@@ -277,7 +277,7 @@ function UserRow({
         <div className="font-medium">{user.name}</div>
         <div className="font-mono text-xs text-muted-foreground">{user.email}</div>
         {user.lockedUntil && new Date(user.lockedUntil) > new Date() && (
-          <div className="mt-0.5 text-xs text-amber-600">登录锁定至 {new Date(user.lockedUntil).toLocaleString("zh-CN")}</div>
+          <div className="mt-0.5 text-xs text-[var(--amber)]">登录锁定至 {new Date(user.lockedUntil).toLocaleString("zh-CN")}</div>
         )}
         <div className="mt-1 text-xs text-muted-foreground">审批权限组：{user.approvalMemberships.map(m => m.group.name).join("、") || "未分配"}</div>
       </td>
@@ -337,7 +337,7 @@ function UserRow({
             {user.totpEnabled ? "双步已绑定" : "双步未开启"}
           </Badge>
           {user.totpEnforced && (
-            <span className="rounded-full border border-[#96650B]/35 bg-[#96650B]/10 px-1.5 py-px text-[10px] text-[#7A5209]">
+            <span className="rounded-full border border-[#96650B]/35 bg-[#96650B]/10 px-1.5 py-px text-[10px] text-[#7A5205]">
               已强制要求
             </span>
           )}
@@ -373,7 +373,7 @@ function UserRow({
                 {user.systemRole === "SUPER_ADMIN" ? "撤销管理" : "授予管理"}
               </Button>
               {user.lockedUntil && new Date(user.lockedUntil) > new Date() && (
-                <Button variant="ghost" size="sm" onClick={handleUnlock} disabled={isPending} className="h-7 gap-1 text-xs text-amber-600">
+                <Button variant="ghost" size="sm" onClick={handleUnlock} disabled={isPending} className="h-7 gap-1 text-xs text-[var(--amber)]">
                   <LockOpen className="h-3.5 w-3.5" />解锁
                 </Button>
               )}
@@ -382,7 +382,7 @@ function UserRow({
                 size="sm"
                 onClick={handleToggleActive}
                 disabled={isPending}
-                className={`h-7 gap-1 text-xs ${user.active ? "text-destructive" : "text-[#4ADE80]"}`}
+                className={`h-7 gap-1 text-xs ${user.active ? "text-destructive" : "text-[#1A7F45]"}`}
               >
                 {user.active ? <><CircleOff className="h-3.5 w-3.5" />禁用</> : <><CircleDot className="h-3.5 w-3.5" />激活</>}
               </Button>

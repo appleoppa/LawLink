@@ -81,7 +81,7 @@ export function CustomFieldsView({ matterFields }: { matterFields: CustomFieldDe
         </Button>
       </header>
 
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="overflow-hidden card">
         <table className="w-full text-[13px]">
           <thead>
             <tr className="border-b border-border text-left text-[12px] text-muted-foreground">

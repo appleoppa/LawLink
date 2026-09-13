@@ -48,7 +48,7 @@ export function InvoiceSection({ matterId }: { matterId: string }) {
   }, [matterId]);
 
   return (
-    <section className="rounded-xl border border-border bg-card">
+    <section className="card">
       <header className="flex items-center justify-between border-b border-border px-5 py-3">
         <h3 className="flex items-center gap-2 text-sm font-semibold">
           <Receipt className="h-4 w-4 text-primary" />

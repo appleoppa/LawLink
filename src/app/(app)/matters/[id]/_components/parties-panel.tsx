@@ -9,9 +9,9 @@ import type { MatterPayload } from "./matter-detail-tabs";
 type PartyRow = MatterPayload["parties"][number];
 
 const ROLE_STYLE: Record<string, { label: string; cls: string }> = {
-  CLIENT: { label: "客户", cls: "bg-blue-500/10 text-blue-600 border-blue-500/20" },
-  OPPOSING_PARTY: { label: "相对方", cls: "bg-orange-500/10 text-orange-600 border-orange-500/20" },
-  THIRD_PARTY: { label: "第三人", cls: "bg-violet-500/10 text-violet-600 border-violet-500/20" }
+  CLIENT: { label: "客户", cls: "bg-[var(--blue-bg)] text-[var(--blue)] border-[var(--blue-line)]" },
+  OPPOSING_PARTY: { label: "相对方", cls: "bg-[var(--amber-bg)] text-[var(--amber)] border-[var(--amber-line)]" },
+  THIRD_PARTY: { label: "第三人", cls: "bg-[var(--violet-bg)] text-[var(--violet)] border-[var(--violet-line)]" }
 };
 
 export function PartiesPanel({ matter }: { matter: MatterPayload }) {
@@ -23,8 +23,8 @@ export function PartiesPanel({ matter }: { matter: MatterPayload }) {
   if (total === 0) return null;
 
   return (
-    <section className="rounded-lg border border-border bg-card">
-      <header className="flex items-center justify-between border-b border-border px-4 py-2">
+    <section className="card">
+      <header className="flex items-center justify-between border-b border-[var(--bd-hair)] px-4 py-3">
         <span className="text-[13px] font-medium">
           案件当事人
           <span className="ml-1 text-[11px] text-muted-foreground">({total})</span>
@@ -91,7 +91,7 @@ function ClientLinkRow({
         <span className="truncate text-[13px] font-medium">{name}</span>
         <span className="shrink-0 text-[11px] text-muted-foreground">· {typeLabel}</span>
         {primary && (
-          <span className="shrink-0 rounded-sm bg-blue-500/10 px-1 text-[9.5px] text-blue-600">主</span>
+          <span className="shrink-0 rounded-sm bg-[var(--blue-bg)] px-1 text-[9.5px] text-[var(--blue)]">主</span>
         )}
         <ChevronRight className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
       </Link>

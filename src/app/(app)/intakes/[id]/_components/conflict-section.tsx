@@ -80,10 +80,10 @@ type Props = {
 };
 
 const severityStyle: Record<ConflictSeverity, { color: string; bg: string; label: string }> = {
-  BLOCKING: { color: "#DC2626", bg: "rgba(220,38,38,0.10)", label: "阻塞" },
+  BLOCKING: { color: "#B42318", bg: "rgba(220,38,38,0.10)", label: "阻塞" },
   HIGH: { color: "#EA580C", bg: "rgba(234,88,12,0.10)", label: "高" },
-  MEDIUM: { color: "#D97706", bg: "rgba(217,119,6,0.10)", label: "中" },
-  LOW: { color: "#65A30D", bg: "rgba(101,163,13,0.10)", label: "低" }
+  MEDIUM: { color: "#96650B", bg: "rgba(217,119,6,0.10)", label: "中" },
+  LOW: { color: "#1A7F45", bg: "rgba(101,163,13,0.10)", label: "低" }
 };
 
 const partyRoleLabel: Record<PartyRole, string> = {
@@ -201,8 +201,8 @@ export function ConflictSection({
               className={cn(
                 "ml-1 text-[10px]",
                 latestCheck.conclusion === "SAME_SUBJECT" && "border-destructive/40 text-destructive",
-                latestCheck.conclusion === "DIFFERENT" && "border-[#65A30D]/40 text-[#65A30D]",
-                latestCheck.conclusion === "NEED_INFO" && "border-amber-500/40 text-amber-600"
+                latestCheck.conclusion === "DIFFERENT" && "border-[#1A7F45]/40 text-[#1A7F45]",
+                latestCheck.conclusion === "NEED_INFO" && "border-[var(--amber-line)] text-[var(--amber)]"
               )}
             >
               {conflictConclusionLabel[latestCheck.conclusion]}
@@ -251,7 +251,7 @@ export function ConflictSection({
                   <Link
                     key={c.clientId}
                     href={`/clients/${c.clientId}`}
-                    className="inline-flex items-center gap-1 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-700 hover:bg-amber-500/15"
+                    className="inline-flex items-center gap-1 rounded border border-[var(--amber-line)] bg-[var(--amber-bg)] px-2 py-0.5 text-[11px] text-[var(--amber)] hover:bg-[var(--amber-bg)]"
                   >
                     {c.name} <span className="font-mono opacity-60">{c.idNumber}</span>
                     <ExternalLink className="h-2.5 w-2.5" />
@@ -263,9 +263,9 @@ export function ConflictSection({
 
           {/* 冲突命中列表 */}
           {latestCheck.hits.length === 0 ? (
-            <div className="rounded-md border border-[#65A30D]/30 bg-[#65A30D]/10 p-3 text-sm">
+            <div className="rounded-md border border-[#1A7F45]/30 bg-[#1A7F45]/10 p-3 text-sm">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-[#65A30D]" />
+                <CheckCircle2 className="h-4 w-4 text-[#1A7F45]" />
                 <span className="text-foreground">未命中历史案件，系统已标记为可承接</span>
               </div>
             </div>
@@ -306,7 +306,7 @@ export function ConflictSection({
                   size="sm"
                   onClick={() => handleSetConclusion("DIFFERENT")}
                   disabled={isPending}
-                  className="border-[#65A30D]/40 text-[#65A30D] hover:bg-[#65A30D]/10"
+                  className="border-[#1A7F45]/40 text-[#1A7F45] hover:bg-[#1A7F45]/10"
                 >
                   可承接
                 </Button>
@@ -340,8 +340,8 @@ function InfoBar({
 }) {
   const colors =
     tone === "warn"
-      ? { border: "border-amber-500/30", bg: "bg-amber-500/10", text: "text-amber-700" }
-      : { border: "border-sky-500/25", bg: "bg-sky-500/10", text: "text-sky-700" };
+      ? { border: "border-[var(--amber-line)]", bg: "bg-[var(--amber-bg)]", text: "text-[var(--amber)]" }
+      : { border: "border-[var(--blue-line)]", bg: "bg-[var(--blue-bg)]", text: "text-[var(--blue)]" };
   return (
     <div className={cn("rounded-md border p-2.5 text-[12px]", colors.border, colors.bg)}>
       <div className={cn("flex items-center gap-1.5 font-medium", colors.text)}>

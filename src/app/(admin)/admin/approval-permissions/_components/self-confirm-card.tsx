@@ -39,7 +39,7 @@ export function SelfConfirmCard({ initialActions }: { initialActions: string[] }
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
+    <div className="card p-4">
       <div className="flex items-center gap-2 text-sm font-medium">
         <ShieldCheck className="h-4 w-4 text-primary" />
         自确认清单（低影响动作）

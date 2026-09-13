@@ -108,7 +108,7 @@ export function MatterImportView() {
               预览
               <span className="ml-2 text-[12px] font-normal text-muted-foreground">
                 共 {preview.total} 行 · 可导入{" "}
-                <span className="text-emerald-700">{preview.validCount}</span> · 有误{" "}
+                <span className="text-[var(--green)]">{preview.validCount}</span> · 有误{" "}
                 <span className={preview.total - preview.validCount > 0 ? "text-destructive" : ""}>
                   {preview.total - preview.validCount}
                 </span>
@@ -148,7 +148,7 @@ export function MatterImportView() {
                     <td className="px-2 py-1.5 font-mono text-muted-foreground">{r.rowNo}</td>
                     <td className="px-2 py-1.5">
                       {r.valid ? (
-                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                        <CheckCircle2 className="h-3.5 w-3.5 text-[var(--green)]" />
                       ) : (
                         <span
                           className="inline-flex items-center gap-1 text-destructive"
@@ -177,7 +177,7 @@ export function MatterImportView() {
         <section className="ll-surface rounded-lg border border-border p-5">
           <header className="mb-3 flex items-center justify-between">
             <h3 className="text-[14px] font-medium">
-              导入结果 · 成功 <span className="text-emerald-700">{result.succeeded.length}</span> · 失败{" "}
+              导入结果 · 成功 <span className="text-[var(--green)]">{result.succeeded.length}</span> · 失败{" "}
               <span className={result.failed.length > 0 ? "text-destructive" : ""}>{result.failed.length}</span>
             </h3>
             <Button variant="ghost" size="sm" onClick={reset}>
@@ -192,14 +192,14 @@ export function MatterImportView() {
                 {result.succeeded.map((s) => (
                   <li key={s.rowNo} className="space-y-0.5">
                     <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-600" />
+                      <CheckCircle2 className="h-3 w-3 shrink-0 text-[var(--green)]" />
                       <span className="font-mono text-muted-foreground">第{s.rowNo}行</span>
                       <span className="font-mono">{s.internalCode}</span>
                       {s.firmCaseNo && <span className="font-mono text-muted-foreground">{s.firmCaseNo}</span>}
                       <span className="truncate">{s.title}</span>
                     </div>
                     {s.causeDowngradeReason && (
-                      <div className="ml-5 flex items-start gap-1.5 text-[11px] text-amber-600">
+                      <div className="ml-5 flex items-start gap-1.5 text-[11px] text-[var(--amber)]">
                         <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
                         <span>
                           案由已降级为自由文本（{s.causeDowngradeReason}），案件已导入，请事后人工核对案由

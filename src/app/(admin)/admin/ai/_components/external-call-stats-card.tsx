@@ -14,7 +14,7 @@ const SERVICE_CN: Record<string, string> = {
 export function ExternalCallStatsCard({ stats }: { stats: ExternalCallStats }) {
   const failureRate = stats.totalCalls > 0 ? ((stats.totalFailures / stats.totalCalls) * 100).toFixed(1) : "0";
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
+    <div className="card p-4">
       <div className="text-sm font-medium">外部调用台账（近 30 天）</div>
       <p className="mt-1 text-[12px] text-muted-foreground">
         AI 与元典每次调用的成败与耗时汇总（不记录请求正文）。按次计费服务的消耗可据此估算。

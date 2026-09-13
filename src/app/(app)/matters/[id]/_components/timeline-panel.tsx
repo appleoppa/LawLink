@@ -18,16 +18,16 @@ const iconByType: Record<string, React.ComponentType<React.SVGProps<SVGSVGElemen
 };
 
 const colorByType: Record<string, string> = {
-  MATTER_CREATED: "#5B8DEF",
-  PROCEDURE_ADDED: "#4FD1C5",
-  HEARING_SCHEDULED: "#FBBF24",
-  FEE_RECEIVED: "#4ADE80",
-  DEADLINE_ADDED: "#F59E0B",
-  STAGE_ADDED: "#14B8A6",
-  STAGE_REMOVED: "#94A3B8",
-  TASK_ADDED: "#9B7BF7",
-  DOCUMENT_UPLOADED: "#5B8DEF",
-  TEAM_CHANGED: "#4FD1C5"
+  MATTER_CREATED: "#1E56C8",
+  PROCEDURE_ADDED: "#007B7F",
+  HEARING_SCHEDULED: "#96650B",
+  FEE_RECEIVED: "#1A7F45",
+  DEADLINE_ADDED: "#96650B",
+  STAGE_ADDED: "#007B7F",
+  STAGE_REMOVED: "#98A3AD",
+  TASK_ADDED: "#6C3FC5",
+  DOCUMENT_UPLOADED: "#1E56C8",
+  TEAM_CHANGED: "#007B7F"
 };
 
 export function TimelinePanel({ events }: { events: TimelineEvent[] }) {
@@ -44,7 +44,7 @@ export function TimelinePanel({ events }: { events: TimelineEvent[] }) {
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card p-6">
+    <div className="card p-6">
       <ul className="relative space-y-4">
         <span
           aria-hidden
@@ -52,7 +52,7 @@ export function TimelinePanel({ events }: { events: TimelineEvent[] }) {
         />
         {sorted.map((e) => {
           const Icon = iconByType[e.eventType] ?? Clock;
-          const color = colorByType[e.eventType] ?? "#5B8DEF";
+          const color = colorByType[e.eventType] ?? "#1E56C8";
           return (
             <li key={e.id} className="relative flex gap-3 pl-1">
               <div

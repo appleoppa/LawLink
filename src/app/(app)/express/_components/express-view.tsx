@@ -113,7 +113,7 @@ export function ExpressView({
       </div>
 
       {!configured && (
-        <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-[12px] text-amber-800">
+        <div className="flex items-start gap-2 rounded-md border border-[var(--amber-line)] bg-[var(--amber-bg)] p-3 text-[12px] text-[var(--amber)]">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <div>
             未配置任何快递接入。记录可创建但物流状态拉不到。
@@ -209,12 +209,12 @@ function Card({ e }: { e: Row }) {
       {/* 行 1：方向 + 公司 + 状态 */}
       <div className="flex flex-wrap items-center gap-2 text-[11px]">
         {e.direction === "OUTBOUND" ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/10 px-2 py-0.5 text-sky-700">
+          <span className="inline-flex items-center gap-1 rounded-full bg-[var(--blue-bg)] px-2 py-0.5 text-[var(--blue)]">
             <ArrowUpFromLine className="h-3 w-3" />
             寄出
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-emerald-700">
+          <span className="inline-flex items-center gap-1 rounded-full bg-[var(--green-bg)] px-2 py-0.5 text-[var(--green)]">
             <ArrowDownToLine className="h-3 w-3" />
             收到
           </span>
@@ -227,9 +227,9 @@ function Card({ e }: { e: Row }) {
             variant="outline"
             className={cn(
               "px-1.5 py-0 text-[10px] font-normal",
-              tone === "danger" && "border-red-500/40 bg-red-500/10 text-red-700",
-              tone === "ok" && "border-emerald-500/40 bg-emerald-500/10 text-emerald-700",
-              tone === "warn" && "border-amber-500/40 bg-amber-500/10 text-amber-700",
+              tone === "danger" && "border-[var(--red-line)] bg-[var(--red-bg)] text-[var(--red)]",
+              tone === "ok" && "border-[var(--green-line)] bg-[var(--green-bg)] text-[var(--green)]",
+              tone === "warn" && "border-[var(--amber-line)] bg-[var(--amber-bg)] text-[var(--amber)]",
               tone === "muted" && "border-border bg-muted/40 text-muted-foreground"
             )}
           >

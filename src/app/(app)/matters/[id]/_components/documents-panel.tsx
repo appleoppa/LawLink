@@ -73,12 +73,12 @@ const categoryLabel: Record<DocumentCategory, string> = {
 };
 
 const categoryColor: Record<DocumentCategory, string> = {
-  EVIDENCE: "#5B8DEF",
-  PLEADING: "#4FD1C5",
-  PROCEDURE: "#9B7BF7",
-  JUDGMENT: "#FBBF24",
-  CONTRACT: "#4ADE80",
-  OTHER: "#9BA8C7"
+  EVIDENCE: "#1E56C8",
+  PLEADING: "#007B7F",
+  PROCEDURE: "#6C3FC5",
+  JUDGMENT: "#96650B",
+  CONTRACT: "#1A7F45",
+  OTHER: "#98A3AD"
 };
 
 function iconFor(mimeType: string | null) {
@@ -182,7 +182,7 @@ export function DocumentsPanel({
       <div className="flex flex-wrap gap-1.5">
         <CategoryChip
           label="全部"
-          color="#5B8DEF"
+          color="#1E56C8"
           count={documents.length}
           active={activeCategory === "ALL"}
           onClick={() => setActiveCategory("ALL")}
@@ -214,7 +214,7 @@ export function DocumentsPanel({
             return (
               <li
                 key={d.id}
-                className="group flex items-start gap-3 rounded-xl border border-border bg-card p-3"
+                className="group flex items-start gap-3 card p-3"
               >
                 <div
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border"
@@ -235,7 +235,7 @@ export function DocumentsPanel({
                     )}
                     {d.encrypted && (
                       <span
-                        className="inline-flex items-center gap-0.5 rounded-md border border-[#9B7BF7]/40 px-1 py-0.5 text-[9px] text-[#9B7BF7]"
+                        className="inline-flex items-center gap-0.5 rounded-md border border-[#6C3FC5]/40 px-1 py-0.5 text-[9px] text-[#6C3FC5]"
                         title="AES-256-GCM 加密存储"
                       >
                         <Lock className="h-2.5 w-2.5" />
@@ -292,7 +292,7 @@ export function DocumentsPanel({
                     <button
                       type="button"
                       onClick={() => setReviewDocId(d.id)}
-                      className="rounded-md p-1.5 text-muted-foreground hover:bg-popover hover:text-violet-600"
+                      className="rounded-md p-1.5 text-muted-foreground hover:bg-popover hover:text-[var(--violet)]"
                       title="AI 审查"
                     >
                       <Sparkles className="h-3.5 w-3.5" />
@@ -563,7 +563,7 @@ function UploadSheet({
               </SelectContent>
             </Select>
             {isArchived && (
-              <p className="text-[11px] text-[#9B7BF7]">
+              <p className="text-[11px] text-[#6C3FC5]">
                 案件已归档，仅允许补传到「结案」或「归档」卷宗
               </p>
             )}
@@ -590,7 +590,7 @@ function UploadSheet({
           <div className="flex items-start justify-between gap-3 rounded-md border border-border bg-background p-3">
             <div className="flex-1">
               <div className="flex items-center gap-1.5 text-sm">
-                <Lock className="h-3.5 w-3.5 text-[#9B7BF7]" />
+                <Lock className="h-3.5 w-3.5 text-[#6C3FC5]" />
                 加密存储
               </div>
               <p className="mt-0.5 text-[11px] text-muted-foreground">
