@@ -30,11 +30,11 @@ export function IntakesTable({
 }) {
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-2 rounded-md border border-border bg-card py-20 text-center">
-        <div className="text-base text-muted-foreground">
+      <div className="empty">
+        <div className="mo-empty-title">
           {kind === "revision" ? "暂无待补正收案" : "暂无待审批收案"}
         </div>
-        <div className="text-xs text-muted-foreground/70">
+        <div className="mo-empty-desc">
           {kind === "revision"
             ? "在 待审批 中拒绝的收案，可补正材料后重新提交，会出现在这里"
             : (
@@ -48,15 +48,15 @@ export function IntakesTable({
   }
 
   return (
-    <div className="ll-surface overflow-hidden">
-      <table className="table">
+    <div className="mo-scroll-x">
+      <table className="mo-table" style={{ minWidth: 900 }}>
         <thead>
           <tr>
-            <th style={{ width: "30%" }}>收案 / 当事人</th>
+            <th style={{ width: "30%", paddingLeft: 20 }}>收案 / 当事人</th>
             <th style={{ width: "12%" }}>类别</th>
             <th style={{ width: "13%" }}>委托方</th>
             <th style={{ width: "11%" }}>收案时间</th>
-            <th style={{ width: "12%" }}>标的额</th>
+            <th style={{ width: "12%" }} className="num">标的额</th>
             <th style={{ width: "22%" }}>冲突核查</th>
             <th style={{ width: "10%" }}>状态</th>
           </tr>
@@ -67,12 +67,11 @@ export function IntakesTable({
             const hitSeverities = it.conflictChecks.flatMap((c) => c.hits.map((h) => h.severity));
             const hasBlocking = hitSeverities.includes("BLOCKING");
             const pendingConclusion = it.conflictChecks.some((c) => c.conclusion === "PENDING");
-            const spine = hasBlocking ? "#B42318" : kind === "revision" ? "#96650B" : "#96650B";
+            const spine = hasBlocking ? "red" : "amber";
             return (
-              <tr key={it.id} className="transition-colors hover:bg-muted/50">
-                <td className="relative px-4 py-3 pl-[18px]">
-                  <span aria-hidden className="absolute left-0 top-[10px] bottom-[10px] w-[3px] rounded-r-[2px]" style={{ background: spine }} />
-                  <a href={`/intakes/${it.id}`} className="block min-w-0 no-underline">
+              <tr key={it.id} data-spine={spine} className="is-link" onClick={() => { window.location.href = `/intakes/${it.id}`; }}>
+                <td style={{ paddingLeft: 20 }}>
+                  <a href={`/intakes/${it.id}`} className="block min-w-0 no-underline" onClick={(e) => e.stopPropagation()}>
                     <span className="block truncate text-[13px] font-semibold leading-5 text-foreground">{it.title}</span>
                     {it.parties.length > 0 ? (
                       <span className="mt-0.5 block truncate text-[11px] leading-4 text-muted-foreground">
@@ -86,19 +85,19 @@ export function IntakesTable({
                     ) : null}
                   </a>
                 </td>
-                <td className="px-4 py-3">
+                <td>
                   <span className="badge b-white">{matterCategoryShort[it.category as keyof typeof matterCategoryShort]}</span>
                 </td>
-                <td className="max-w-[9rem] truncate px-4 py-3 text-[12.5px] text-foreground/85">
+                <td className="max-w-[9rem] truncate">
                   {it.client?.name ?? it.parties[0]?.name ?? "—"}
                 </td>
-                <td className="px-4 py-3 font-mono text-[12px] text-muted-foreground tabular">
+                <td className="font-mono text-[12px] text-[var(--t-secondary)]">
                   {new Date(it.receivedAt).toLocaleDateString("zh-CN")}
                 </td>
-                <td className="td-num money px-4 py-3">
+                <td className="num font-mono">
                   {it.claimAmount != null ? it.claimAmount.toLocaleString("zh-CN", { maximumFractionDigits: 0 }) : "—"}
                 </td>
-                <td className="px-4 py-3">
+                <td>
                   {it.conflictChecks.length === 0 ? (
                     <span className="text-[12px] text-muted-foreground/55">未发起</span>
                   ) : (
@@ -118,8 +117,8 @@ export function IntakesTable({
                     </span>
                   )}
                 </td>
-                <td className="px-4 py-3">
-                  <span className={`badge ${hasBlocking ? "b-red" : kind === "revision" ? "b-orange" : "b-amber"}`}>
+                <td>
+                  <span className={`badge ${hasBlocking ? "b-red" : "b-amber"}`}>
                     <span className="bdot" />
                     {statusLabel}
                   </span>

@@ -171,13 +171,13 @@ export async function listMatters(input: Partial<MatterListQuery> = {}) {
             // 墨案 03：程序·阶段进度与最近期限（取最近一条未完成期限）
             stages: {
               orderBy: { order: "asc" },
-              select: { id: true, name: true, order: true, completedAt: true }
+              select: { id: true, name: true, order: true, completedAt: true, status: true }
             },
             deadlines: {
               where: { completed: false },
               orderBy: { dueAt: "asc" },
               take: 1,
-              select: { title: true, dueAt: true }
+              select: { title: true, dueAt: true, category: true }
             }
           }
         },
@@ -193,6 +193,12 @@ export async function listMatters(input: Partial<MatterListQuery> = {}) {
           where: { status: "PENDING_REVIEW" },
           take: 1,
           select: { id: true }
+        },
+        // 墨案 03 列表「主办 / 协办」列：只取协办姓名用于展示
+        members: {
+          where: { role: "CO_LEAD" },
+          take: 2,
+          select: { user: { select: { id: true, name: true } } }
         },
         _count: { select: { procedures: true } }
       }
