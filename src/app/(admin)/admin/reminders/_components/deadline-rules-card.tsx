@@ -6,7 +6,7 @@
  */
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Scale } from "lucide-react";
 import {
   createDeadlineRule, updateDeadlineRule, toggleDeadlineRule, deleteDeadlineRule
 } from "@/server/deadline-rules/admin-actions";
@@ -73,65 +73,111 @@ export function DeadlineRulesCard({ rules }: { rules: AdminDeadlineRule[] }) {
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <div className="text-sm font-medium">法定期限规则库</div>
-          <div className="mt-0.5 text-[12px] text-muted-foreground">
-            内置规则只能编辑与启停（法条依据为核心价值）；自定义规则可删除。规则调整后，已生成的期限不回溯，重算只生成待复核结果。
-          </div>
-        </div>
-        <button onClick={openCreate} className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-[13px] hover:bg-accent">
+    <section className="ll-surface">
+      <header className="ll-panel-head flex-wrap">
+        <h2 className="ll-panel-title">
+          <Scale className="h-4 w-4 text-primary" />
+          法定期限规则库
+          <span className="font-mono text-xs text-muted-foreground tabular">
+            {rules.filter(r => r.enabled).length}/{rules.length}
+          </span>
+        </h2>
+        <button onClick={openCreate} className="btn btn-primary btn-sm">
           <Plus className="h-3.5 w-3.5" /> 新增规则
         </button>
+      </header>
+
+      <div className="hidden grid-cols-[minmax(220px,1.4fr)_92px_minmax(160px,1fr)_84px_128px_128px_64px] gap-3 border-b border-border/60 px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 lg:grid">
+        <div>规则</div>
+        <div>类别</div>
+        <div>起算事件</div>
+        <div>期限</div>
+        <div>提醒档</div>
+        <div>法条核验</div>
+        <div className="text-right">操作</div>
       </div>
 
-      <div className="mt-3 divide-y divide-border rounded-lg border border-border">
-        {rules.length === 0 && <div className="p-3 text-[13px] text-muted-foreground">暂无规则</div>}
+      {rules.length === 0 && <div className="px-4 py-6 text-center text-[13px] text-muted-foreground">暂无规则</div>}
+      <div className="divide-y divide-border/60">
         {rules.map(rule => (
-          <div key={rule.id} className="flex items-center gap-3 p-3">
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[13.5px] font-medium">{rule.name}</span>
-                <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{CATEGORY_CN[rule.category] ?? rule.category}</span>
-                {!rule.enabled && <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">已停用</span>}
-                {rule.isBuiltIn ? <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] text-primary">内置</span> : null}
-              </div>
-              <div className="mt-0.5 truncate text-[12px] text-muted-foreground">
-                {rule.triggerLabel}起 {rule.periodValue} {UNIT_CN[rule.periodUnit]} · {rule.legalBasis}
-                {rule.verifiedAt ? " · 已核验" : ""}
+          <div
+            key={rule.id}
+            className={`grid grid-cols-1 items-center gap-2 px-4 py-2.5 lg:grid-cols-[minmax(220px,1.4fr)_92px_minmax(160px,1fr)_84px_128px_128px_64px] lg:gap-3 ${rule.enabled ? "" : "opacity-55"}`}
+          >
+            <div className="min-w-0">
+              <div className="truncate text-[12.75px] font-semibold">{rule.name}</div>
+              <div className="mt-0.5 truncate font-mono text-[10.5px] text-muted-foreground/80">
+                {rule.code}
+                {rule.isBuiltIn ? " · 内置" : " · 自定义"}
               </div>
             </div>
-            <label className="flex cursor-pointer items-center gap-1 text-[12px] text-muted-foreground">
-              <input
-                type="checkbox" checked={rule.enabled} disabled={pending}
-                onChange={e => startTransition(async () => {
-                  try { await toggleDeadlineRule({ id: rule.id, enabled: e.target.checked }); router.refresh(); }
-                  catch (err) { setError(err instanceof Error ? err.message : "操作失败"); }
-                })}
-              />
-              启用
-            </label>
-            <button onClick={() => openEdit(rule)} className="rounded p-1 hover:bg-accent" title="编辑">
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
-            {!rule.isBuiltIn && (
-              <button
-                onClick={() => {
-                  if (!confirm(`确定删除规则「${rule.name}」？`)) return;
-                  startTransition(async () => {
-                    try { await deleteDeadlineRule({ id: rule.id }); router.refresh(); }
-                    catch (err) { setError(err instanceof Error ? err.message : "删除失败"); }
-                  });
-                }}
-                className="rounded p-1 text-destructive hover:bg-destructive/10" title="删除"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
+            <div>
+              <span className="badge b-white">{CATEGORY_CN[rule.category] ?? rule.category}</span>
+            </div>
+            <div className="truncate text-xs text-muted-foreground" title={rule.triggerLabel}>
+              {rule.triggerLabel}
+            </div>
+            <div className="num-md">
+              {rule.periodValue}
+              <span className="ml-0.5 font-sans text-[11px] text-muted-foreground">{UNIT_CN[rule.periodUnit]}</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-1">
+              {rule.remindDays > 0 && (
+                <span className="rounded-full border border-[#B7D8D6] bg-[#E4F1F0] px-1.5 py-px font-mono text-[10px] text-[#005054]">
+                  T-{rule.remindDays}
+                </span>
+              )}
+              <span className="rounded-full px-1.5 py-px font-mono text-[10px]" style={{ background: "rgba(180,35,24,0.08)", color: "#B42318" }}>
+                T+1
+              </span>
+            </div>
+            <div className="min-w-0 text-[11px]" title={rule.legalBasis + (rule.legalBasisUrl ? ` · ${rule.legalBasisUrl}` : "")}>
+              {rule.verifiedAt ? (
+                <span className="badge b-green">
+                  <span className="bdot" aria-hidden />
+                  已核验
+                </span>
+              ) : (
+                <span className="text-muted-foreground/70">未核验</span>
+              )}
+              <div className="mt-0.5 truncate text-[10.5px] text-muted-foreground/75">{rule.legalBasis}</div>
+            </div>
+            <div className="flex items-center justify-end gap-1">
+              <label className="flex cursor-pointer items-center gap-1 text-[11px] text-muted-foreground" title={rule.enabled ? "点击停用" : "点击启用"}>
+                <input
+                  type="checkbox" checked={rule.enabled} disabled={pending}
+                  onChange={e => startTransition(async () => {
+                    try { await toggleDeadlineRule({ id: rule.id, enabled: e.target.checked }); router.refresh(); }
+                    catch (err) { setError(err instanceof Error ? err.message : "操作失败"); }
+                  })}
+                />
+                {rule.enabled ? "启用" : "停用"}
+              </label>
+              <button onClick={() => openEdit(rule)} className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground" title="编辑">
+                <Pencil className="h-3.5 w-3.5" />
               </button>
-            )}
+              {!rule.isBuiltIn && (
+                <button
+                  onClick={() => {
+                    if (!confirm(`确定删除规则「${rule.name}」？`)) return;
+                    startTransition(async () => {
+                      try { await deleteDeadlineRule({ id: rule.id }); router.refresh(); }
+                      catch (err) { setError(err instanceof Error ? err.message : "删除失败"); }
+                    });
+                  }}
+                  className="rounded p-1 text-destructive hover:bg-destructive/10" title="删除"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>
+
+      <footer className="ll-panel-foot text-[11px] leading-relaxed text-muted-foreground">
+        内置规则只能编辑与启停（法条依据为核心价值）；自定义规则可删除。规则调整后已生成的期限不回溯，重算只生成待复核结果。提醒扫描另含固定四档：T-3 / T-1 / T-0 / T+1（逾期首日，红档）。
+      </footer>
 
       {editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setEditing(null)}>
@@ -204,7 +250,7 @@ export function DeadlineRulesCard({ rules }: { rules: AdminDeadlineRule[] }) {
         </div>
       )}
 
-      {!editing && error && <div className="mt-2 text-[12.5px] text-destructive">{error}</div>}
-    </div>
+      {!editing && error && <div className="mt-2 px-4 pb-2 text-[12.5px] text-destructive">{error}</div>}
+    </section>
   );
 }

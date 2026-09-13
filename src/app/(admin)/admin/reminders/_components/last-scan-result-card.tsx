@@ -21,11 +21,14 @@ export function LastScanResultCard({
   result: ReminderWebhookLastResult | null;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
-      <div className="flex items-center gap-2">
-        <Activity className="h-4 w-4 text-primary" strokeWidth={1.8} />
-        <div className="text-sm font-medium">最近扫描与推送状态</div>
-      </div>
+    <section className="ll-surface">
+      <header className="ll-panel-head">
+        <h3 className="ll-panel-title">
+          <Activity className="h-4 w-4 text-primary" strokeWidth={1.8} />
+          最近扫描与推送状态
+        </h3>
+      </header>
+      <div className="px-4 pb-4">
       {!result ? (
         <p className="mt-2 text-[12px] leading-5 text-muted-foreground">
           尚无扫描记录。自动扫描在生产环境每天 09:00 运行（本地开发不触发），
@@ -74,5 +77,6 @@ export function LastScanResultCard({
         </div>
       )}
     </div>
+    </section>
   );
 }

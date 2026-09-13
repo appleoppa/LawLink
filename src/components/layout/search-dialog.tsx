@@ -19,10 +19,10 @@ import {
 } from "lucide-react";
 
 const groupConfig = [
-  { key: "matters" as const, label: "案件", icon: FolderOpen },
-  { key: "clients" as const, label: "客户", icon: Users },
-  { key: "intakes" as const, label: "收案", icon: Inbox },
-  { key: "documents" as const, label: "材料", icon: FileText },
+  { key: "matters" as const, label: "案件", icon: FolderOpen, tone: "text-[#005054]" },
+  { key: "clients" as const, label: "客户", icon: Users, tone: "text-[#1E56C8]" },
+  { key: "intakes" as const, label: "收案", icon: Inbox, tone: "text-[#8A6B3E]" },
+  { key: "documents" as const, label: "材料", icon: FileText, tone: "text-violet-600" },
 ];
 
 export function SearchDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
@@ -86,7 +86,7 @@ export function SearchDialog({ open, onOpenChange }: { open: boolean; onOpenChan
         {query && !loading && !hasResults && (
           <CommandEmpty>未找到相关结果</CommandEmpty>
         )}
-        {results && groupConfig.map(({ key, label, icon: Icon }) => {
+        {results && groupConfig.map(({ key, label, icon: Icon, tone }) => {
           const items = results[key];
           if (!items.length) return null;
           return (
@@ -101,13 +101,16 @@ export function SearchDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                   value={`${item.title} ${item.subtitle ?? ""}`}
                   onSelect={() => handleSelect(item.href)}
                 >
-                  <Icon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                  <Icon className={`mr-2 h-4 w-4 shrink-0 ${tone}`} strokeWidth={1.8} />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[13px] font-medium">{item.title}</div>
                     {item.subtitle && (
                       <div className="truncate text-xs text-muted-foreground">{item.subtitle}</div>
                     )}
                   </div>
+                  <span className="ml-2 shrink-0 rounded-full bg-muted px-1.5 py-px font-mono text-[10px] text-muted-foreground">
+                    {label}
+                  </span>
                 </CommandItem>
               ))}
             </CommandGroup>
