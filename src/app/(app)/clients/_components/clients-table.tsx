@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { Building2, User, Briefcase, Pencil, Phone, Mail } from "lucide-react";
 import type { Client, ClientCooperationStatus, ClientType, Contact } from "@prisma/client";
+import { Button } from "@/components/ui/button";
+import { clientTypeLabel, cooperationStatusLabel } from "@/lib/enums";
 
 /** P1 §三：证件号展示打码（client 端纯字符串处理；密文形态直接遮蔽） */
 function maskClientRef(v: string | null | undefined): string {
@@ -12,21 +14,24 @@ function maskClientRef(v: string | null | undefined): string {
   return v;
 }
 
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { clientTypeLabel, cooperationStatusLabel } from "@/lib/enums";
+/** 安全底线：电话默认打码，不在列表露出全号 */
+function maskPhoneText(v: string | null | undefined): string {
+  if (!v) return "";
+  if (/^\d{11}$/.test(v)) return `${v.slice(0, 3)}****${v.slice(7)}`;
+  return v.length > 4 ? `${v.slice(0, 2)}****${v.slice(-2)}` : v;
+}
 
-/** 墨案徽章（moan.css）：合作状态 → 语义色（teal=签约 / slate=潜在 / amber=洽谈 / bronze=终止） */
-const COOP_BADGE: Record<ClientCooperationStatus, string> = {
-  POTENTIAL: "b-slate",
-  NEGOTIATING: "b-amber",
-  SIGNED: "b-teal",
-  TERMINATED: "b-bronze"
+/** 墨案：合作状态 → 徽章 + 行脊线（teal=签约 / amber=洽谈 / slate=潜在 / bronze=终止） */
+const COOP_META: Record<ClientCooperationStatus, { badge: string; spine: string }> = {
+  POTENTIAL: { badge: "b-slate", spine: "#8296A1" },
+  NEGOTIATING: { badge: "b-amber", spine: "#96650B" },
+  SIGNED: { badge: "b-teal", spine: "#007B7F" },
+  TERMINATED: { badge: "b-bronze", spine: "#8A6B3E" }
 };
 
 function CoopBadge({ status }: { status: ClientCooperationStatus }) {
   return (
-    <span className={`badge ${COOP_BADGE[status]}`}>
+    <span className={`badge ${COOP_META[status].badge}`}>
       <span className="bdot" aria-hidden />
       {cooperationStatusLabel[status]}
     </span>
@@ -38,12 +43,16 @@ type ClientRow = Client & {
   _count: { matters: number; intakes: number };
 };
 
-const TypeIcon = ({ type }: { type: ClientType }) => {
-  const cls = "h-3.5 w-3.5";
-  if (type === "INDIVIDUAL") return <User className={cls} />;
-  if (type === "COMPANY") return <Building2 className={cls} />;
-  return <Briefcase className={cls} />;
-};
+function TypeBadge({ type }: { type: ClientType }) {
+  const cls = "h-3.5 w-3.5 shrink-0";
+  const Icon = type === "INDIVIDUAL" ? User : type === "COMPANY" ? Building2 : Briefcase;
+  return (
+    <span className="badge b-white !gap-1">
+      <Icon className={cls} strokeWidth={1.8} />
+      {clientTypeLabel[type]}
+    </span>
+  );
+}
 
 export function ClientsTable({
   items,
@@ -65,32 +74,30 @@ export function ClientsTable({
 
   return (
     <>
-      {/* 桌面端表格 */}
+      {/* 桌面端表格（墨案 03/10 语言：脊线在首格内嵌 span，避免 tr 伪元素错列） */}
       <div className="ll-surface hidden overflow-x-auto md:block">
         <table className="w-full text-[13px]">
           <thead>
-            <tr className="border-b border-border bg-muted text-left text-[10px] font-semibold uppercase text-muted-foreground">
+            <tr className="border-b border-[#E8ECEA] bg-[#FAFBFA] text-left text-[11px] font-medium text-muted-foreground">
               <th className="px-5 py-2.5">客户</th>
               <th className="px-4 py-2.5">类型</th>
               <th className="px-4 py-2.5">合作状态</th>
               <th className="px-4 py-2.5">联系方式</th>
               <th className="px-4 py-2.5">主要联系人</th>
-              <th className="px-4 py-2.5">案件</th>
-              <th className="px-4 py-2.5">标签</th>
-              <th className="w-20 px-5 py-2.5 text-right">操作</th>
+              <th className="px-4 py-2.5 text-right">案件</th>
+              <th className="w-16 px-5 py-2.5 text-right">操作</th>
             </tr>
           </thead>
           <tbody>
             {items.map((c) => {
               const primary = c.contacts[0];
+              const spine = COOP_META[c.cooperationStatus].spine;
               return (
-                <tr
-                  key={c.id}
-                  className="group border-t border-border transition-colors hover:bg-muted"
-                >
-                  <td className="px-5 py-2.5">
+                <tr key={c.id} className="group border-t border-[#E8ECEA] transition-colors hover:bg-[#F7FAF9]">
+                  <td className="relative px-5 py-3">
+                    <span className="absolute left-0 top-[11px] bottom-[11px] w-[3px] rounded-r" style={{ background: spine }} aria-hidden />
                     <Link href={`/clients/${c.id}`} className="block">
-                      <div className="text-[13px] font-semibold leading-snug text-foreground transition-colors group-hover:text-primary">
+                      <div className="text-[13px] font-semibold leading-snug transition-colors group-hover:text-[#005054]">
                         {c.name}
                       </div>
                       {c.idNumber && (
@@ -105,38 +112,35 @@ export function ClientsTable({
                       )}
                     </Link>
                   </td>
-                  <td className="px-4 py-2.5">
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2 py-0.5 text-[11px]">
-                      <TypeIcon type={c.type} />
-                      {clientTypeLabel[c.type]}
-                    </span>
+                  <td className="px-4 py-3">
+                    <TypeBadge type={c.type} />
                   </td>
-                  <td className="px-4 py-2.5">
+                  <td className="px-4 py-3">
                     <CoopBadge status={c.cooperationStatus} />
                   </td>
-                  <td className="px-4 py-2.5 text-muted-foreground">
+                  <td className="px-4 py-3 text-muted-foreground">
                     <div className="flex flex-col gap-0.5">
                       {c.phone && (
                         <span className="flex items-center gap-1.5 text-xs">
                           <Phone className="h-3 w-3" strokeWidth={1.8} />
-                          <span className="font-mono tabular">{c.phone}</span>
+                          <span className="font-mono tabular">{maskPhoneText(c.phone)}</span>
                         </span>
                       )}
                       {c.email && (
                         <span className="flex items-center gap-1.5 text-xs">
                           <Mail className="h-3 w-3" strokeWidth={1.8} />
-                          {c.email}
+                          <span className="truncate">{c.email}</span>
                         </span>
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-2.5">
+                  <td className="px-4 py-3">
                     {primary ? (
                       <div>
-                        <div className="text-[0.875rem] text-foreground/90">{primary.name}</div>
+                        <div className="text-[13px] text-foreground/90">{primary.name}</div>
                         {primary.phone && (
-                          <div className="font-mono text-[10.5px] text-muted-foreground">
-                            {primary.phone}
+                          <div className="font-mono text-[10.5px] text-muted-foreground tabular">
+                            {maskPhoneText(primary.phone)}
                           </div>
                         )}
                       </div>
@@ -144,28 +148,15 @@ export function ClientsTable({
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-2.5">
-                    <span className="ll-stat text-base">{c._count.matters}</span>
+                  <td className="px-4 py-3 text-right">
+                    <span className="font-mono text-[15px] font-semibold tabular">{c._count.matters}</span>
                     {c._count.intakes > 0 && (
-                      <span className="ml-2 font-mono text-[10.5px] text-muted-foreground tabular">
-                        +{c._count.intakes} 收案
+                      <span className="ml-1.5 font-mono text-[10.5px] text-muted-foreground tabular">
+                        +{c._count.intakes}收
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-2.5">
-                    <div className="flex flex-wrap gap-1">
-                      {c.tags.slice(0, 3).map((t) => (
-                        <Badge
-                          key={t}
-                          variant="secondary"
-                          className="text-[10px] font-normal"
-                        >
-                          {t}
-                        </Badge>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-5 py-2.5 text-right">
+                  <td className="px-5 py-3 text-right">
                     <Button
                       variant="ghost"
                       size="sm"
@@ -187,19 +178,18 @@ export function ClientsTable({
       <div className="space-y-2 md:hidden">
         {items.map((c) => {
           const primary = c.contacts[0];
+          const spine = COOP_META[c.cooperationStatus].spine;
           return (
-            <div key={c.id} className="ll-surface p-3">
+            <div key={c.id} className="ll-surface relative overflow-hidden p-3 pl-4">
+              <span className="absolute left-0 top-[11px] bottom-[11px] w-[3px] rounded-r" style={{ background: spine }} aria-hidden />
               <div className="flex items-start justify-between gap-2">
                 <Link href={`/clients/${c.id}`} className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[13px] font-semibold text-foreground">{c.name}</span>
-                    <span className="inline-flex items-center gap-1 rounded-sm border border-border px-1.5 py-0.5 text-[10px]">
-                      <TypeIcon type={c.type} />
-                      {clientTypeLabel[c.type]}
-                    </span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[13px] font-semibold">{c.name}</span>
+                    <TypeBadge type={c.type} />
                   </div>
                   {c.idNumber && (
-                    <div className="mt-0.5 truncate font-mono text-[10.5px] text-muted-foreground">
+                    <div className="mt-0.5 truncate font-mono text-[10.5px] text-muted-foreground tabular">
                       {maskClientRef(c.idNumber)}
                     </div>
                   )}
@@ -223,22 +213,13 @@ export function ClientsTable({
                 <CoopBadge status={c.cooperationStatus} />
                 {primary && <span>{primary.name}</span>}
                 {c.phone && (
-                  <span className="flex items-center gap-1 font-mono">
+                  <span className="flex items-center gap-1 font-mono tabular">
                     <Phone className="h-3 w-3" strokeWidth={1.8} />
-                    {c.phone}
+                    {maskPhoneText(c.phone)}
                   </span>
                 )}
-                <span className="ll-stat">{c._count.matters} 个案件</span>
+                <span className="font-mono tabular">{c._count.matters} 个案件</span>
               </div>
-              {c.tags.length > 0 && (
-                <div className="mt-1.5 flex flex-wrap gap-1">
-                  {c.tags.slice(0, 3).map((t) => (
-                    <Badge key={t} variant="secondary" className="text-[10px] font-normal">
-                      {t}
-                    </Badge>
-                  ))}
-                </div>
-              )}
             </div>
           );
         })}

@@ -2,8 +2,6 @@ import { hasCustomPermission } from "@/lib/roles/catalog";
 import { hasMatterBusinessAccess } from "@/lib/permissions";
 import { TeamMatterOverview } from "./_components/team-matter-overview";
 import { notFound, redirect } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { getMatterById } from "@/server/matters/actions";
 import { getMatterFinance } from "@/server/finance/actions";
 import { listActiveColleagues } from "@/server/users/actions";
@@ -15,7 +13,7 @@ import { matterHref } from "@/lib/matters/route";
 import { prisma } from "@/lib/prisma";
 import { nullableDecimalToNumber, serializeDecimals } from "@/lib/decimal";
 import { MatterDetailTabs } from "./_components/matter-detail-tabs";
-import { MatterSignalStrip, type MatterSignal } from "./_components/matter-signal-strip";
+import type { MatterSignal } from "./_components/matter-signal-strip";
 import { ReviewSummaryCard } from "./_components/review-summary-card";
 import { listEngagementsForMatter } from "@/server/engagements/actions";
 import { listEvidenceItems } from "@/server/evidence/actions";
@@ -242,19 +240,39 @@ export default async function MatterDetailPage({ params }: PageProps) {
     });
   }
 
+  // 墨案 04 信号条第 3/4 卡：收费进度、本环节任务
+  if (finance.stats.contractAmount > 0) {
+    const percent = Math.min(
+      100,
+      Math.round((finance.stats.received / finance.stats.contractAmount) * 100)
+    );
+    signals.push({
+      kind: "finance",
+      label: "收费进度",
+      amount: `¥${finance.stats.received.toLocaleString("zh-CN")}`,
+      unit: `/ ¥${finance.stats.contractAmount.toLocaleString("zh-CN")}`,
+      progress: percent
+    });
+  }
+  const openTasks = matter.procedures
+    .flatMap((proc: { stages: { tasks: { completed: boolean }[] }[] }) =>
+      proc.stages.flatMap((st: { tasks: { completed: boolean }[] }) => st.tasks.map((t: { completed: boolean }) => t))
+    )
+    .filter((t: { completed: boolean }) => !t.completed).length;
+  if (openTasks > 0) {
+    signals.push({
+      kind: "tasks",
+      label: "本环节任务",
+      count: openTasks,
+      unit: "项待办",
+      sub: "逾期任务自动进入工作台「今日行动」"
+    });
+  }
+
   return (
-    <div className="space-y-4">
-      <MatterSignalStrip signals={signals} />
-      <Link
-        href="/matters"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" />
-        返回案件列表
-      </Link>
-
-      {reviewSummary && <ReviewSummaryCard summary={reviewSummary} matterId={matter.id} />}
-
+    <div className="space-y-3.5">
+      {/* 墨案 04 页面骨架由 MatterDetailTabs 统一承载：
+          卷宗头 → 信号条 → 程序链卡 → 三栏工作区 → 全宽附属区 */}
       <MatterDetailTabs
         matter={matter}
         finance={finance}
@@ -282,6 +300,10 @@ export default async function MatterDetailPage({ params }: PageProps) {
         preservationCases={preservationCasesForClient}
         engagements={engagements}
         evidenceItems={evidenceItems}
+        signals={signals}
+        reviewNode={
+          reviewSummary ? <ReviewSummaryCard summary={reviewSummary} matterId={matter.id} /> : undefined
+        }
       />
     </div>
   );

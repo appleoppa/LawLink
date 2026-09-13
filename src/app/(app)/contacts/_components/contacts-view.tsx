@@ -143,7 +143,7 @@ export function ContactsView({
         </header>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {colleagues.map((u) => (
-            <div key={u.id} className="flex items-start gap-3 rounded-md border border-border bg-card p-3">
+            <div key={u.id} className="flex items-start gap-3 ll-surface p-3">
               <Avatar className="h-10 w-10 border border-border bg-primary/10">
                 {u.avatar ? <AvatarImage src={u.avatar} alt={u.name} /> : null}
                 <AvatarFallback className="bg-primary/10 text-sm font-semibold text-primary">
@@ -239,7 +239,7 @@ export function ContactsView({
               return (
                 <li
                   key={c.id}
-                  className="flex items-start gap-3 rounded-md border border-border bg-card p-3"
+                  className="flex items-start gap-3 ll-surface p-3"
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">

@@ -132,28 +132,26 @@ export function ReportsView({
 
   return (
     <div className="space-y-5">
-      <header className="flex flex-wrap items-end justify-between gap-3">
+      <header className="ll-page-head">
         <div>
-          <h1 className="flex items-center gap-2 text-xl">
-            <BarChart3 className="h-5 w-5 text-primary" strokeWidth={1.8} />
+          <h1 className="ll-page-title flex items-center gap-2">
+            <BarChart3 className="h-[22px] w-[22px] text-primary" strokeWidth={1.8} />
             律所报表
           </h1>
-          <p className="mt-0.5 text-[12px] text-muted-foreground">
+          <p className="ll-page-sub">
             统计期：<span className="text-foreground">{periodLabel}</span>
           </p>
         </div>
         <div className="flex items-center gap-2 ll-no-print">
-          <div className="flex rounded-md border border-border bg-card p-0.5">
+          <div className="ll-segmented">
             {(["month", "quarter", "year", "lastYear"] as const).map((k) => (
               <button
                 key={k}
                 type="button"
                 onClick={() => switchPreset(k)}
                 className={cn(
-                  "rounded px-2.5 py-1 text-[11px] transition-colors",
-                  periodKey === k
-                    ? "bg-primary/15 text-primary"
-                    : "text-muted-foreground hover:text-foreground"
+                  "ll-seg shrink-0",
+                  periodKey === k ? "ll-seg-active text-primary" : "text-muted-foreground hover:text-foreground"
                 )}
                 title={presetLabels[k]}
               >
@@ -164,10 +162,8 @@ export function ReportsView({
               type="button"
               onClick={() => setCustomOpen((v) => !v)}
               className={cn(
-                "rounded px-2.5 py-1 text-[11px] transition-colors",
-                periodKey === "custom"
-                  ? "bg-primary/15 text-primary"
-                  : "text-muted-foreground hover:text-foreground"
+                "ll-seg shrink-0",
+                periodKey === "custom" ? "ll-seg-active text-primary" : "text-muted-foreground hover:text-foreground"
               )}
             >
               自定义
@@ -223,7 +219,7 @@ export function ReportsView({
       </header>
 
       {customOpen && (
-        <div className="ll-no-print flex flex-wrap items-end gap-2 rounded-md border border-border bg-card p-3 text-xs">
+        <div className="ll-no-print ll-surface flex flex-wrap items-end gap-2 p-3 text-xs">
           <div>
             <label className="text-muted-foreground">起始（含）</label>
             <Input
@@ -272,7 +268,7 @@ export function ReportsView({
       </div>
 
       {/* 类别分布 */}
-      <section className="rounded-lg border border-border bg-card p-5">
+      <section className="ll-surface p-5">
         <h3 className="mb-3 text-sm font-medium">本期新收 · 类别分布</h3>
         {data.byCategory.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">本期暂无新收案件</p>
@@ -308,7 +304,7 @@ export function ReportsView({
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {/* 客户来源渠道分布（P0-1 第三步） */}
-        <section className="rounded-lg border border-border bg-card p-4">
+        <section className="ll-surface p-4">
           <h3 className="mb-3 text-sm font-medium">客户来源渠道 · 存量</h3>
           {data.byClientSource.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">暂无客户数据</p>
@@ -337,7 +333,7 @@ export function ReportsView({
         </section>
 
         {/* 律师产出 */}
-        <section className="rounded-lg border border-border bg-card p-4">
+        <section className="ll-surface p-4">
           <h3 className="mb-3 text-sm font-medium">律师产出 · 本期</h3>
           {data.byLawyer.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">本期无产出数据</p>
@@ -373,7 +369,7 @@ export function ReportsView({
         </section>
 
         {/* 客户应收 */}
-        <section className="rounded-lg border border-border bg-card p-4">
+        <section className="ll-surface p-4">
           <h3 className="mb-3 text-sm font-medium">客户应收 · 本期</h3>
           {data.byClientReceivable.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">本期无应收数据</p>
@@ -416,7 +412,7 @@ export function ReportsView({
       </div>
 
       {/* 办案周期分析 */}
-      <section className="rounded-lg border border-border bg-card p-5">
+      <section className="ll-surface p-5">
         <h3 className="mb-3 text-sm font-medium">办案周期 · 本期已结案件（收案 → 结案）</h3>
         {cycle.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">本期无已结案件</p>
@@ -451,7 +447,7 @@ export function ReportsView({
       </section>
 
       {/* AI 审查 top issues */}
-      <section className="rounded-lg border border-border bg-card p-5">
+      <section className="ll-surface p-5">
         <h3 className="mb-3 flex items-center gap-2 text-sm font-medium">
           AI 审查 · 本期高频问题
           <span className="text-[10px] font-normal text-muted-foreground">

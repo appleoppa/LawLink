@@ -5,7 +5,7 @@ import { hasCustomPermission, type PermissionKey } from "@/lib/roles/catalog";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { primaryNav, secondaryNav, type NavItem } from "./nav-config";
+import { primaryNav, businessNav, knowledgeNav, secondaryNav, type NavItem } from "./nav-config";
 
 /** v0.42 项1: 侧栏品牌（可在设置 → 律所信息配置） */
 export type FirmBrand = {
@@ -27,7 +27,7 @@ export function Sidebar({ firm }: { firm: FirmBrand }) {
 export function NavContent({ firm }: { firm: FirmBrand }) {
   const pathname = usePathname();
   const { data: session } = useSession();
-  const keys: Record<string, PermissionKey> = { "/matters": "matters.read", "/clients": "clients.read", "/finance": "finance.read", "/archive": "archive.read", "/reports": "reports.read", "/inbox": "matters.read" };
+  const keys: Record<string, PermissionKey> = { "/matters": "matters.read", "/intakes": "matters.read", "/clients": "clients.read", "/finance": "finance.read", "/archive": "archive.read", "/reports": "reports.read", "/inbox": "matters.read" };
   const visible = (item: NavItem) => !keys[item.href] || Boolean(session?.user && hasCustomPermission(session.user, keys[item.href]));
 
   return (
@@ -35,7 +35,7 @@ export function NavContent({ firm }: { firm: FirmBrand }) {
       <Link
         href="/"
         className="brand flex h-14 items-center gap-2.5 px-4 no-underline transition-colors hover:bg-muted/50"
-        aria-label="返回工作台"
+        aria-label="返回概览"
       >
         {firm.logoDataUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -70,16 +70,31 @@ export function NavContent({ firm }: { firm: FirmBrand }) {
             <NavLink key={item.href} item={item} active={isActive(pathname, item.href)} />
           ))}
         </div>
-      </nav>
-
-      <div className="border-t border-border px-2 py-2">
-        <div className="nav-section-label">资料</div>
+        <div className="nav-section-label">
+          业务
+        </div>
+        <div className="space-y-0.5">
+          {businessNav.filter(visible).map((item) => (
+            <NavLink key={item.href} item={item} active={isActive(pathname, item.href)} />
+          ))}
+        </div>
+        <div className="nav-section-label">
+          知识
+        </div>
+        <div className="space-y-0.5">
+          {knowledgeNav.filter(visible).map((item) => (
+            <NavLink key={item.href} item={item} active={isActive(pathname, item.href)} />
+          ))}
+        </div>
+        <div className="nav-section-label">
+          资料
+        </div>
         <div className="space-y-0.5">
           {secondaryNav.filter(visible).map((item) => (
             <NavLink key={item.href} item={item} active={isActive(pathname, item.href)} />
           ))}
         </div>
-      </div>
+      </nav>
     </>
   );
 }

@@ -95,7 +95,7 @@ export function InboxView({
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl">收件箱</h1>
+          <h1 className="ll-page-title">法院短信</h1>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
             粘贴 12368 / 法院短信 → 自动解析 → 一键生成开庭 / 期限
           </p>

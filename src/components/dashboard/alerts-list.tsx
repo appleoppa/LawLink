@@ -6,7 +6,7 @@ import { matterVisibilityFilter } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { matterHref } from "@/lib/matters/route";
 
-type AlertItem = {
+export type AlertItem = {
   id: string;
   source: "preservation" | "sms" | "approval";
   title: string;
@@ -24,7 +24,7 @@ function classifyByDays(days: number): AlertItem["tone"] {
   return "ok";
 }
 
-async function loadAlerts(userId: string | null, role: string | null): Promise<AlertItem[]> {
+export async function loadAlerts(userId: string | null, role: string | null): Promise<AlertItem[]> {
   const now = new Date();
   const in30 = new Date();
   in30.setDate(in30.getDate() + 30);

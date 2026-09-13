@@ -7,19 +7,15 @@ import {
   Building2,
   User,
   Briefcase,
-  Wallet,
-  Coins,
-  Clock,
-  FileText,
   Phone,
   Mail,
-  MapPin
+  Plus,
+  ScanSearch
 } from "lucide-react";
 import { getClientById, getClientFinanceSummary } from "@/server/clients/actions";
 import { isManager } from "@/lib/permissions";
 import { maskIdNumber } from "@/lib/clients/id-number-crypto";
 import { ClientMergeCard } from "./_components/client-merge-card";
-import { Badge } from "@/components/ui/badge";
 import {
   clientTypeLabel,
   cooperationStatusLabel,
@@ -36,7 +32,7 @@ const billingStatusLabel: Record<string, string> = {
   ACTIVE: "生效中",
   CLOSED: "已结"
 };
-const yuan = (n: number) => `¥${n.toLocaleString()}`;
+const yuan = (n: number) => `¥${n.toLocaleString("zh-CN")}`;
 const dash = <span className="text-muted-foreground/50">—</span>;
 
 /** 墨案徽章（moan.css）：合作状态 → 语义色，与客户列表保持一致 */
@@ -49,6 +45,14 @@ const COOP_BADGE: Record<string, string> = {
 
 const ACTIVE_MATTER_STATUSES = new Set(["PENDING_ACCEPTANCE", "IN_PROGRESS", "ON_HOLD"]);
 
+/** 墨案 03：列表脊线与状态徽章按案件状态着色（蓝在办 / 绿结案 / 金归档） */
+function matterTone(status: string): { spine: string; badge: string } {
+  if (status === "ARCHIVED") return { spine: "#8A6B3E", badge: "b-bronze" };
+  if (status === "CLOSED") return { spine: "#1A7F45", badge: "b-green" };
+  if (ACTIVE_MATTER_STATUSES.has(status)) return { spine: "#1E56C8", badge: "b-blue" };
+  return { spine: "#8296A1", badge: "b-slate" };
+}
+
 function firstChar(value: string) {
   return value.trim().slice(0, 1) || "客";
 }
@@ -56,6 +60,13 @@ function firstChar(value: string) {
 function dateText(date: Date | string | null | undefined) {
   if (!date) return "—";
   return new Date(date).toLocaleDateString("zh-CN");
+}
+
+/** 电话默认打码（PII 底线：日志与展示均不出全号） */
+function maskPhone(phone: string | null | undefined) {
+  if (!phone) return null;
+  if (/^\d{11}$/.test(phone)) return `${phone.slice(0, 3)}****${phone.slice(7)}`;
+  return phone.length > 4 ? `${phone.slice(0, 2)}****${phone.slice(-2)}` : phone;
 }
 
 export default async function ClientDetailPage({ params }: { params: { id: string } }) {
@@ -67,10 +78,10 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
 
   const isIndividual = client.type === "INDIVIDUAL";
   const TypeIcon = isIndividual ? User : client.type === "COMPANY" ? Building2 : Briefcase;
-  // 企业客户：主要联系人（contacts 已按 isPrimary desc 排序）
   const primaryContact = client.contacts[0] ?? null;
+  const canWrite = hasCustomPermission(session.user, "clients.write");
 
-  // 按案件分组合同，关联案件与签约合同合并展示（左案件 / 右合同）
+  // 按案件分组合同（关联案件行的合同副行）
   const billingsByMatter = new Map<string, typeof finance.billings>();
   for (const b of finance.billings) {
     const arr = billingsByMatter.get(b.matter.id) ?? [];
@@ -78,9 +89,7 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
     billingsByMatter.set(b.matter.id, arr);
   }
 
-  const activeMatterCount = client.matters.filter((matter) =>
-    ACTIVE_MATTER_STATUSES.has(matter.status)
-  ).length;
+  const activeMatterCount = client.matters.filter((m) => ACTIVE_MATTER_STATUSES.has(m.status)).length;
   const paidRate =
     finance.receivable > 0
       ? Math.min(100, Math.round((finance.received / finance.receivable) * 100))
@@ -89,147 +98,221 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
         : 0;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3.5">
       <Link
         href="/clients"
-        className="inline-flex items-center gap-1 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
+        className="inline-flex items-center gap-1 text-[12px] text-muted-foreground transition-colors hover:text-foreground"
       >
-        <ArrowLeft className="h-3.5 w-3.5" />
+        <ArrowLeft className="h-3 w-3" />
         返回客户列表
       </Link>
 
-      <section className="ll-hero-surface px-5 py-5">
-        <div className="relative z-[1] flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex min-w-0 gap-4">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-primary text-2xl font-semibold text-primary-foreground shadow-[0_12px_30px_rgba(0,123,127,0.18)]">
-              {firstChar(client.name)}
-            </div>
-            <div className="min-w-0">
-              <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                <Badge variant="outline" className="gap-1.5 rounded-full bg-card text-[11px]">
-                  <TypeIcon className="h-3.5 w-3.5 text-primary" />
-                  {clientTypeLabel[client.type]}
-                </Badge>
-                <span
-                  className={`badge ${COOP_BADGE[client.cooperationStatus] ?? "b-white"}`}
-                >
-                  <span className="bdot" aria-hidden />
-                  {cooperationStatusLabel[client.cooperationStatus]}
-                </span>
-                {client.tags.slice(0, 3).map((tag) => (
-                  <Badge key={tag} variant="secondary" className="rounded-full text-[11px]">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
-              <h1 className="truncate text-[24px] font-semibold leading-tight" title={client.name}>
-                {client.name}
-              </h1>
-              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                <span className="font-mono">{client.internalCode || "暂无客户编号"}</span>
-                <span>首次合作 {dateText(client.createdAt)}</span>
-                {primaryContact ? <span>主要联系人：{primaryContact.name}</span> : null}
-              </div>
-            </div>
-          </div>
-          {hasCustomPermission(session.user, "clients.write") && <ClientEditButton client={client} />}
-        </div>
-
-        <div className="relative z-[1] mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <HeroStat label="累计委托" value={canReadFinance ? `${finance.matterCount} 件` : "未授权"} icon={<Briefcase className="h-3.5 w-3.5" />} />
-          <HeroStat label="办理中" value={`${activeMatterCount} 件`} icon={<Clock className="h-3.5 w-3.5" />} accent />
-          <HeroStat label="累计实收" value={canReadFinance ? yuan(finance.received) : "未授权"} icon={<Coins className="h-3.5 w-3.5" />} />
-          <HeroStat label="待收" value={canReadFinance ? yuan(finance.pending) : "未授权"} icon={<Wallet className="h-3.5 w-3.5" />} tone="warn" />
-        </div>
-      </section>
-
-      {(isManager(session.user.role) || (session.user.role === "CUSTOM" && hasCustomPermission(session.user, "clients.write"))) && (
+      {/* P0 合并提示（效果图 10 merge-banner：疑似重复档案置顶提示） */}
+      {(isManager(session.user.role) || (session.user.role === "CUSTOM" && canWrite)) && (
         <ClientMergeCard keepId={client.id} keepName={client.name} />
       )}
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="space-y-4">
+      {/* 客户 Hero（效果图 10 client-hero：logo + 徽章 + meta + 右侧四统计 + 操作行） */}
+      <section className="ll-surface px-5 pb-4 pt-5">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
+          <div className="flex min-w-0 flex-1 gap-4">
+            <div
+              className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-[13px] text-[20px] font-bold text-white"
+              style={{
+                background: "linear-gradient(150deg, #16324F, #10233A 60%, #0C1927)",
+                boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.08), 0 1px 2px rgba(12,25,39,0.10)"
+              }}
+            >
+              {firstChar(client.name)}
+            </div>
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-[20px] font-bold tracking-[-0.015em]" title={client.name}>
+                {client.name}
+              </h1>
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                <span className="badge b-white">{clientTypeLabel[client.type]}</span>
+                <span className={`badge ${COOP_BADGE[client.cooperationStatus] ?? "b-white"}`}>
+                  <span className="bdot" aria-hidden />
+                  {cooperationStatusLabel[client.cooperationStatus]}
+                </span>
+                {activeMatterCount > 0 && (
+                  <span className="badge b-blue">
+                    <span className="bdot" aria-hidden />
+                    在办 {activeMatterCount} 件
+                  </span>
+                )}
+                {client.source && <span className="badge b-white">来源：{client.source}</span>}
+                {client.tags.slice(0, 3).map((tag) => (
+                  <span key={tag} className="badge b-white">{tag}</span>
+                ))}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 border-t border-[#E8ECEA] pt-3 text-[12px]">
+                <span className="flex items-baseline gap-1.5">
+                  <span className="text-[11px] text-muted-foreground">{isIndividual ? "证件号" : "信用代码"}</span>
+                  <span className="font-mono font-medium">{maskIdNumber(client.idNumber) || dash}</span>
+                </span>
+                {!isIndividual && (
+                  <span className="flex items-baseline gap-1.5">
+                    <span className="text-[11px] text-muted-foreground">法定代表人</span>
+                    <span className="font-semibold">{client.legalRep || dash}</span>
+                  </span>
+                )}
+                <span className="flex items-baseline gap-1.5">
+                  <span className="text-[11px] text-muted-foreground">建档</span>
+                  <span className="font-mono font-medium">{dateText(client.createdAt)}</span>
+                </span>
+                {client.address && (
+                  <span className="flex items-baseline gap-1.5">
+                    <span className="text-[11px] text-muted-foreground">{isIndividual ? "住所地" : "注册地"}</span>
+                    <span className="max-w-[220px] truncate font-semibold" title={client.address}>{client.address}</span>
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 右侧四统计（效果图 10 ch-stats：竖分隔、右对齐等宽数字） */}
+          <div className="flex flex-wrap shrink-0 xl:ml-auto xl:pl-2">
+            <ChStat n={canReadFinance ? String(finance.matterCount) : "—"} l="累计案件" />
+            <ChStat n={`${activeMatterCount}`} l="办理中" fg="#005054" />
+            <ChStat n={canReadFinance ? yuan(finance.received) : "—"} l="累计实收" />
+            <ChStat n={canReadFinance ? yuan(finance.pending) : "—"} l="待收" fg="#96650B" />
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <Link href="/intakes" className="btn btn-primary btn-sm">
+            <Plus className="h-3.5 w-3.5" strokeWidth={2.2} />
+            为此客户新建收案
+          </Link>
+          {canWrite && (
+            <span className="btn btn-secondary btn-sm inline-flex">
+              <ClientEditButton client={client} />
+            </span>
+          )}
+          <Link href="/conflicts" className="btn btn-secondary btn-sm">
+            <ScanSearch className="h-3.5 w-3.5" strokeWidth={1.8} />
+            冲突检索
+          </Link>
+          <div className="flex-1" />
+          <span className="self-center text-[11px] text-[#98A3AD]">资料修改与审计同事务留痕</span>
+        </div>
+      </section>
+
+      <div className="grid grid-cols-1 items-start gap-3.5 xl:grid-cols-[minmax(0,1fr)_296px]">
+        {/* 左列：关联案件 + 联系人 + 工商/个人信息 */}
+        <div className="min-w-0 space-y-3.5">
           <section className="ll-surface overflow-hidden">
             <header className="ll-panel-head">
               <h2 className="ll-panel-title">
-                <Briefcase className="h-4 w-4 text-primary" />
+                <Briefcase className="h-4 w-4 text-muted-foreground" strokeWidth={1.8} />
                 关联案件
-                <span className="font-mono text-xs text-muted-foreground tabular">
-                  {client.matters.length}
-                </span>
+                <span className="badge b-white ml-0.5">{client.matters.length}</span>
               </h2>
-              <span className="text-xs text-muted-foreground">
-                合同合计 <span className="font-mono text-foreground">{yuan(finance.contractTotal)}</span>
-              </span>
+              <Link href={`/matters?search=${encodeURIComponent(client.name)}`} className="text-[11.5px] text-muted-foreground transition-colors hover:text-foreground">
+                按客户筛选案件列表 →
+              </Link>
             </header>
 
             {client.matters.length === 0 ? (
               <p className="py-10 text-center text-xs text-muted-foreground">暂无关联案件</p>
             ) : (
-              <ul className="divide-y divide-border px-4">
-                {client.matters.map((m) => {
-                  const bs = billingsByMatter.get(m.id) ?? [];
-                  return (
-                    <li
-                      key={m.id}
-                      className="grid gap-3 py-3 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start"
-                    >
-                      <Link href={matterHref(m)} className="group min-w-0">
-                        <div className="truncate text-[13.5px] font-medium transition-colors group-hover:text-primary">
+              client.matters.map((m) => {
+                const tone = matterTone(m.status);
+                const bs = billingsByMatter.get(m.id) ?? [];
+                const contractSum = bs.reduce((n, b) => n + b.contractAmount, 0);
+                return (
+                  <div key={m.id} className="relative border-b border-[#E8ECEA] py-2.5 pl-[22px] pr-4 transition-colors last:border-b-0 hover:bg-[#F7FAF9]">
+                    <span className="absolute left-0 top-[9px] bottom-[9px] w-[3px] rounded-r" style={{ background: tone.spine }} aria-hidden />
+                    <Link href={matterHref(m)} className="group flex min-w-0 items-center gap-3">
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[12.75px] font-semibold transition-colors group-hover:text-[#005054]">
                           {m.title}
-                        </div>
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        </span>
+                        <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
                           <span className="font-mono">{m.internalCode}</span>
-                          <span>·</span>
-                          <span>{matterCategoryLabel[m.category]}</span>
-                          <Badge variant="outline" className="rounded-full text-[10px]">
-                            {matterStatusLabel[m.status]}
-                          </Badge>
-                          <span>更新 {dateText(m.updatedAt)}</span>
-                        </div>
-                      </Link>
+                          {" · "}
+                          {matterCategoryLabel[m.category]}
+                          {" · "}
+                          {bs.length > 0
+                            ? bs.map((b) => `${b.title}（${billingStatusLabel[b.status] ?? b.status} ${yuan(b.contractAmount)}）`).join(" · ")
+                            : `更新 ${dateText(m.updatedAt)}`}
+                        </span>
+                      </span>
+                      <span className={`badge ${tone.badge} shrink-0`}>
+                        <span className="bdot" aria-hidden />
+                        {matterStatusLabel[m.status]}
+                      </span>
+                      {contractSum > 0 && (
+                        <span className="shrink-0 font-mono text-[12.5px] font-semibold tabular">{yuan(contractSum)}</span>
+                      )}
+                    </Link>
+                  </div>
+                );
+              })
+            )}
+            <footer className="border-t border-[#E8ECEA] px-4 py-2.5 text-[11px] text-muted-foreground">
+              案件正文按各自权限访问；此处仅汇总本客户的关联与合同信息。
+            </footer>
+          </section>
 
-                      <div className="min-w-0">
-                        {bs.length === 0 ? (
-                          <span className="text-xs text-muted-foreground/60">暂无合同</span>
-                        ) : (
-                          <ul className="space-y-1.5">
-                            {bs.map((b) => (
-                              <li
-                                key={b.id}
-                                className="flex items-center justify-between gap-2 rounded-sm border border-border bg-background px-2.5 py-1.5"
-                              >
-                                <span className="min-w-0 flex-1 truncate text-xs" title={b.title}>
-                                  <FileText className="mr-1 inline h-3 w-3 text-muted-foreground" />
-                                  {b.title}
-                                  {b.signedAt && (
-                                    <span className="ml-1.5 text-muted-foreground/70">
-                                      {dateText(b.signedAt)}
-                                    </span>
-                                  )}
-                                </span>
-                                <span className="flex shrink-0 items-center gap-2">
-                                  <span className="font-mono text-xs">{yuan(b.contractAmount)}</span>
-                                  <Badge variant="outline" className="rounded-full text-[10px]">
-                                    {billingStatusLabel[b.status] ?? b.status}
-                                  </Badge>
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+          {/* 联系人（效果图 10 contact：头像 + 主要联系人徽章 + 打码联系方式） */}
+          <section className="ll-surface overflow-hidden">
+            <header className="ll-panel-head">
+              <h2 className="ll-panel-title">
+                <Phone className="h-4 w-4 text-muted-foreground" strokeWidth={1.8} />
+                联系人
+                <span className="badge b-white ml-0.5">{client.contacts.length}</span>
+              </h2>
+              {canWrite && (
+                <span className="text-[11px] text-muted-foreground">编辑资料中维护联系人</span>
+              )}
+            </header>
+            {client.contacts.length === 0 ? (
+              <p className="px-4 py-8 text-center text-xs text-muted-foreground">暂无联系人</p>
+            ) : (
+              client.contacts.map((contact) => (
+                <div key={contact.id} className="flex items-center gap-2.5 border-b border-[#E8ECEA] px-4 py-3 last:border-b-0">
+                  <span
+                    className={cn(
+                      "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[12px] font-semibold",
+                      contact.isPrimary ? "bg-[#E4F1F0] text-[#005054]" : "bg-[#EDF1EF] text-[#5B6B75]"
+                    )}
+                  >
+                    {firstChar(contact.name)}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="truncate text-[12.5px] font-semibold">{contact.name}</span>
+                      {contact.isPrimary && <span className="badge b-teal !text-[10px]">主要联系人</span>}
+                      {contact.title && <span className="badge b-white !text-[10px]">{contact.title}</span>}
+                    </div>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+                      {contact.phone && (
+                        <span className="flex items-center gap-1">
+                          <Phone className="h-3 w-3" strokeWidth={1.8} />
+                          <span className="font-mono">{maskPhone(contact.phone)}</span>
+                        </span>
+                      )}
+                      {contact.email && (
+                        <span className="flex items-center gap-1">
+                          <Mail className="h-3 w-3" strokeWidth={1.8} />
+                          <span className="truncate">{contact.email}</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <span className="shrink-0 text-[10.5px] text-[#98A3AD]">号码默认打码</span>
+                </div>
+              ))
             )}
           </section>
 
+          {/* 工商 / 个人信息 */}
           <section className="ll-surface p-4">
             <header className="mb-3 flex items-center justify-between">
               <h2 className="ll-panel-title">
-                <TypeIcon className="h-4 w-4 text-primary" />
+                <TypeIcon className="h-4 w-4 text-muted-foreground" strokeWidth={1.8} />
                 {isIndividual ? "个人信息" : "工商信息"}
               </h2>
             </header>
@@ -242,7 +325,7 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
               {isIndividual ? (
                 <>
                   <L>身份证号</L>
-                  <V mono title={'证件号（已加密存储，展示打码）'}>{maskIdNumber(client.idNumber) || dash}</V>
+                  <V mono title="证件号（已加密存储，展示打码）">{maskIdNumber(client.idNumber) || dash}</V>
                   <L>性别</L>
                   <V>{client.gender ? genderLabel[client.gender] : dash}</V>
                   <L>所属行业</L>
@@ -253,7 +336,7 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
               ) : (
                 <>
                   <L>信用代码</L>
-                  <V mono title={'信用代码（已加密存储，展示打码）'}>{maskIdNumber(client.idNumber) || dash}</V>
+                  <V mono title="信用代码（已加密存储，展示打码）">{maskIdNumber(client.idNumber) || dash}</V>
                   <L>法定代表人</L>
                   <V title={client.legalRep ?? undefined}>{client.legalRep || dash}</V>
                   <L>所属行业</L>
@@ -265,7 +348,7 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
 
               <L>联系电话</L>
               <V mono title={primaryContact?.phone ?? client.phone ?? undefined}>
-                {primaryContact?.phone || client.phone || dash}
+                {maskPhone(primaryContact?.phone ?? client.phone) || dash}
               </V>
               <L>邮箱</L>
               <V title={client.email ?? undefined}>{client.email || dash}</V>
@@ -273,20 +356,6 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
               <L>住所地</L>
               <V wide title={client.address ?? undefined}>{client.address || dash}</V>
 
-              {client.tags.length > 0 && (
-                <>
-                  <L>标签</L>
-                  <V wide nowrap={false}>
-                    <span className="flex flex-wrap gap-1">
-                      {client.tags.map((t) => (
-                        <Badge key={t} variant="outline" className="rounded-full text-[10px]">
-                          {t}
-                        </Badge>
-                      ))}
-                    </span>
-                  </V>
-                </>
-              )}
               {client.notes && (
                 <>
                   <L>备注</L>
@@ -299,99 +368,47 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
           </section>
         </div>
 
-        <aside className="space-y-4 xl:sticky xl:top-16">
+        {/* 右栏：财务往来 + 客户概况 */}
+        <aside className="min-w-0 space-y-3.5 xl:sticky xl:top-16">
           <section className="ll-surface overflow-hidden">
             <header className="ll-panel-head">
-              <h2 className="ll-panel-title">
-                <Phone className="h-4 w-4 text-primary" />
-                联系人
-              </h2>
-              <span className="font-mono text-xs text-muted-foreground tabular">
-                {client.contacts.length}
-              </span>
+              <h2 className="ll-panel-title text-[13px]">财务往来</h2>
+              <span className="text-[10.5px] text-muted-foreground">累计</span>
             </header>
-            {client.contacts.length === 0 ? (
-              <p className="px-4 py-8 text-center text-xs text-muted-foreground">暂无联系人</p>
-            ) : (
-              <ul className="divide-y divide-border px-4">
-                {client.contacts.map((contact) => (
-                  <li key={contact.id} className="flex gap-3 py-3">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-primary/10 text-xs font-semibold text-primary">
-                      {firstChar(contact.name)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate text-[13px] font-medium">{contact.name}</span>
-                        {contact.isPrimary ? (
-                          <Badge variant="outline" className="rounded-full text-[10px]">
-                            主要
-                          </Badge>
-                        ) : null}
-                      </div>
-                      {contact.title ? (
-                        <div className="mt-0.5 text-[11px] text-muted-foreground">
-                          {contact.title}
-                        </div>
-                      ) : null}
-                      <div className="mt-1 space-y-0.5 text-[11px] text-muted-foreground">
-                        {contact.phone ? (
-                          <div className="flex items-center gap-1.5">
-                            <Phone className="h-3 w-3" strokeWidth={1.8} />
-                            <span className="font-mono">{contact.phone}</span>
-                          </div>
-                        ) : null}
-                        {contact.email ? (
-                          <div className="flex items-center gap-1.5">
-                            <Mail className="h-3 w-3" strokeWidth={1.8} />
-                            <span className="truncate">{contact.email}</span>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <section className="ll-surface p-4">
-            <header className="mb-3 flex items-center justify-between">
-              <h2 className="ll-panel-title">
-                <Wallet className="h-4 w-4 text-primary" />
-                财务汇总
-              </h2>
-              <span className="font-mono text-xs text-muted-foreground">{paidRate}%</span>
-            </header>
-            <div className="space-y-2">
-              <SummaryField label="累计合同" value={canReadFinance ? yuan(finance.contractTotal) : "未授权"} />
-              <SummaryField label="累计应收" value={canReadFinance ? yuan(finance.receivable) : "未授权"} />
-              <SummaryField label="累计实收" value={canReadFinance ? yuan(finance.received) : "未授权"} accent="green" />
-              <SummaryField label="待收" value={canReadFinance ? yuan(finance.pending) : "未授权"} accent="warn" />
-            </div>
-            <div className="mt-4">
-              <div className="mb-1.5 flex items-center justify-between text-[11px] text-muted-foreground">
-                <span>收款率</span>
-                <span className="font-mono">{paidRate}%</span>
+            <div className="px-4 pb-4 pt-2.5">
+              <div className="flex items-baseline justify-between py-1">
+                <span className="text-[12px] text-muted-foreground">累计合同</span>
+                <span className="font-mono text-[14px] font-semibold tabular">{canReadFinance ? yuan(finance.contractTotal) : "未授权"}</span>
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full bg-primary"
-                  style={{ width: `${paidRate}%` }}
-                />
+              <div className="flex items-baseline justify-between py-1">
+                <span className="text-[12px] text-muted-foreground">累计实收</span>
+                <span className="font-mono text-[14px] font-semibold tabular text-[#1A7F45]">{canReadFinance ? yuan(finance.received) : "—"}</span>
+              </div>
+              <div className="flex items-baseline justify-between py-1">
+                <span className="text-[12px] text-muted-foreground">待收</span>
+                <span className="font-mono text-[14px] font-semibold tabular text-[#96650B]">{canReadFinance ? yuan(finance.pending) : "—"}</span>
+              </div>
+              <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-[#EDF1EF]">
+                <div className="h-full rounded-full bg-[#007B7F]" style={{ width: `${paidRate}%` }} />
+              </div>
+              <div className="mt-1.5 flex items-center justify-between text-[11px] text-muted-foreground">
+                <span>已确认回款</span>
+                <span className="font-mono tabular">
+                  {canReadFinance ? `${yuan(finance.received)} · ${paidRate}%` : "—"}
+                </span>
               </div>
             </div>
           </section>
 
-          <section className="ll-surface p-4">
-            <h2 className="ll-panel-title mb-3">
-              <MapPin className="h-4 w-4 text-primary" />
-              客户概况
-            </h2>
-            <div className="space-y-2 text-[12px]">
+          <section className="ll-surface overflow-hidden">
+            <header className="ll-panel-head">
+              <h2 className="ll-panel-title text-[13px]">客户概况</h2>
+            </header>
+            <div className="px-4 pb-3 pt-1">
               <SummaryField label="合作状态" value={cooperationStatusLabel[client.cooperationStatus]} />
               <SummaryField label="客户类型" value={clientTypeLabel[client.type]} />
-              <SummaryField label="首次合作" value={dateText(client.createdAt)} />
-              <SummaryField label="最近更新" value={dateText(client.updatedAt)} />
+              <SummaryField label="建档" value={dateText(client.createdAt)} mono />
+              <SummaryField label="最近更新" value={dateText(client.updatedAt)} mono />
             </div>
           </section>
         </aside>
@@ -400,34 +417,14 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
   );
 }
 
-function HeroStat({
-  icon,
-  label,
-  value,
-  accent,
-  tone
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  accent?: boolean;
-  tone?: "warn";
-}) {
+/** Hero 右侧统计格（效果图 10 ch-stat：竖分隔、等宽右对齐） */
+function ChStat({ n, l, fg }: { n: string; l: string; fg?: string }) {
   return (
-    <div
-      className={cn(
-        "rounded-xl border bg-card/80 px-3.5 py-2.5 shadow-[var(--shadow-inset)]",
-        accent && "border-primary/30 bg-primary/[0.04]",
-        tone === "warn" && "border-[var(--amber-line)] bg-[var(--amber-bg)]"
-      )}
-    >
-      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-        <span className={cn(accent && "text-primary", tone === "warn" && "text-[var(--amber)]")}>
-          {icon}
-        </span>
-        {label}
+    <div className="border-l border-[#E8ECEA] px-[22px] py-1 text-right first:border-l-0 first:pl-0">
+      <div className="font-mono text-[19px] font-bold leading-none tabular" style={fg ? { color: fg } : undefined}>
+        {n}
       </div>
-      <div className="ll-stat mt-1.5 text-[19px] font-semibold leading-none text-foreground">{value}</div>
+      <div className="mt-1.5 text-[11px] text-muted-foreground">{l}</div>
     </div>
   );
 }
@@ -435,20 +432,23 @@ function HeroStat({
 function SummaryField({
   label,
   value,
-  accent
+  accent,
+  mono
 }: {
   label: string;
   value: React.ReactNode;
   accent?: "green" | "warn";
+  mono?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-border/70 py-1.5 last:border-b-0">
-      <span className="text-muted-foreground">{label}</span>
+    <div className="flex items-center justify-between gap-3 border-b border-[#E8ECEA]/80 py-2 last:border-b-0">
+      <span className="text-[12px] text-muted-foreground">{label}</span>
       <span
         className={cn(
-          "min-w-0 truncate text-right font-mono text-foreground",
-          accent === "green" && "text-[var(--green)]",
-          accent === "warn" && "text-[var(--amber)]"
+          "min-w-0 truncate text-right text-[12.5px] font-medium",
+          mono && "font-mono tabular",
+          accent === "green" && "text-[#1A7F45]",
+          accent === "warn" && "text-[#96650B]"
         )}
       >
         {value}

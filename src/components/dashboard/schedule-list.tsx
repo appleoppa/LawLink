@@ -7,8 +7,16 @@ import type { ScheduleItem } from "@/server/dashboard/actions";
 import { matterHref } from "@/lib/matters/route";
 
 const typeMeta = {
-  deadline: { icon: AlertTriangle, color: "text-amber-600", label: "期限" },
-  hearing: { icon: Calendar, color: "text-primary", label: "开庭" }
+  deadline: {
+    icon: AlertTriangle,
+    chip: "bg-[#FAF0DB] text-[#96650B]",
+    label: "期限"
+  },
+  hearing: {
+    icon: Calendar,
+    chip: "bg-[#E9EEFA] text-[#1E56C8]",
+    label: "开庭"
+  }
 };
 
 export function ScheduleList({ data }: { data: ScheduleItem[] }) {
@@ -78,7 +86,14 @@ function ScheduleRow({ item }: { item: ScheduleItem }) {
       <span className="font-mono text-[11px] tracking-wide text-muted-foreground tabular">
         {item.time ?? "--:--"}
       </span>
-      <Icon className={cn("h-3 w-3 shrink-0", meta.color)} strokeWidth={1.8} />
+      <span
+        className={cn(
+          "flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md",
+          meta.chip
+        )}
+      >
+        <Icon className="h-3 w-3" strokeWidth={2} />
+      </span>
       <div className="flex-1 overflow-hidden">
         <div className="truncate text-[13px] font-medium">{item.title}</div>
         <div className="mt-0.5 truncate text-[11px] text-muted-foreground">

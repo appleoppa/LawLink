@@ -16,7 +16,8 @@ import {
   CommandList
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
-import type { ClientOption } from "@/app/(app)/matters/_components/matters-view";
+import type { ClientType } from "@prisma/client";
+export type ClientOption = { id: string; name: string; type: ClientType };
 import { searchEnterpriseCandidates, type EnterpriseSearchItem } from "@/server/yuandian/enterprise";
 
 type YuandianCandidate = EnterpriseSearchItem;

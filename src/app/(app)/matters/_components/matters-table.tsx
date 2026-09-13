@@ -5,7 +5,8 @@ import type { Matter, PartyRole, LitigationStanding } from "@prisma/client";
 import {
   matterCategoryColor,
   matterCategoryShort,
-  matterStatusLabel
+  matterStatusLabel,
+  procedureTypeLabel as PROC_TYPE_LABEL
 } from "@/lib/enums";
 import { formatCurrency, cn } from "@/lib/utils";
 import { matterHref } from "@/lib/matters/route";
@@ -14,7 +15,11 @@ export type MatterRow = Omit<Matter, "claimAmount"> & {
   primaryClient: { id: string; name: string } | null;
   owner: { id: string; name: string } | null;
   cause: { id: string; name: string } | null;
-  procedures: { id: string; type: string; caseNumber: string | null; status: string }[];
+  procedures: {
+    id: string; type: string; caseNumber: string | null; status: string;
+    stages?: { id: string; name: string; order: number; completedAt: Date | null }[];
+    deadlines?: { title: string; dueAt: Date }[];
+  }[];
   parties: { id: string; name: string; role: PartyRole; standing: LitigationStanding | null }[];
   archiveRecords?: { id: string }[];
   _count: { procedures: number };
@@ -36,7 +41,6 @@ const MATTER_ROW_GRID_WITH_ARCHIVE =
 
 export function CaseListHeader({
   metaColumn = "hearing",
-  detailColumnLabel: _detailColumnLabel = "案号",
   showIntakeDateColumn = false,
   showArchiveDateColumn = false
 }: {
@@ -111,6 +115,12 @@ export function MattersTable({
         </div>
       </div>
     );
+  }
+
+  // 墨案 03 效果图：默认（办理中/全部）视图用效果图原始 DOM 渲染（table + spine td）
+  const isMockupView = !showIntakeDateColumn && !showArchiveDateColumn && metaColumn === "hearing";
+  if (isMockupView) {
+    return <MockupMattersTable items={items} />;
   }
 
   return (
@@ -451,5 +461,163 @@ function StatusChip({ label, dot }: { label: string; dot: string }) {
       <span className="h-1.5 w-1.5 rounded-full" style={{ background: dot }} />
       {label}
     </span>
+  );
+}
+
+/* ============ 墨案 03 效果图：列表 DOM 原样移植（真 table + 案卷脊 + 阶段进度 + 期限胶囊） ============ */
+const MOCKUP_STATUS_BADGE: Record<MatterRow["status"], string> = {
+  PENDING_ACCEPTANCE: "b-amber",
+  IN_PROGRESS: "b-blue",
+  ON_HOLD: "b-slate",
+  CLOSED: "b-green",
+  ARCHIVED: "b-bronze"
+};
+
+export function MockupMattersTable({ items }: { items: MatterRow[] }) {
+  if (items.length === 0) {
+    return (
+      <div className="ll-surface flex flex-col items-center gap-2 py-20 text-center">
+        <div className="text-base text-muted-foreground">没有匹配的案件</div>
+        <div className="text-xs text-muted-foreground/70">
+          点击右上角 <span className="text-foreground/80">新建收案</span> 开始
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="ll-surface overflow-hidden">
+      <table className="table mtable">
+        <thead>
+          <tr>
+            <th style={{ width: "26%" }}>案件 / 案由</th>
+            <th style={{ width: "13%" }}>委托方</th>
+            <th style={{ width: "15%" }}>案号</th>
+            <th style={{ width: "12%" }}>程序 · 阶段</th>
+            <th style={{ width: "10%" }}>主办 / 协办</th>
+            <th style={{ width: "9%" }} className="th-num">标的额</th>
+            <th style={{ width: "9%" }}>最近期限</th>
+            <th style={{ width: "6%" }}>状态</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((m) => (
+            <MockupMatterRow key={m.id} m={m} />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function MockupMatterRow({ m }: { m: MatterRow }) {
+  const now = Date.now();
+  const day = 86_400_000;
+  const proc = m.procedures[0] ?? null;
+  const stages = [...(proc?.stages ?? [])].sort((a, b) => a.order - b.order);
+  const doneCount = stages.filter((s) => s.completedAt).length;
+  const currentStage = stages.find((s) => !s.completedAt) ?? null;
+  const nearest = (m.procedures.flatMap((p) => p.deadlines ?? []).sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime())[0]) ?? null;
+  const days = nearest ? Math.ceil((nearest.dueAt.getTime() - now) / day) : null;
+  const overdue = days != null && days < 0;
+  const soon = days != null && days >= 0 && days <= 7;
+
+  const procLabel = proc ? (PROC_TYPE_LABEL[proc.type as keyof typeof PROC_TYPE_LABEL] ?? proc.type) : null;
+  const stageLabel = proc
+    ? currentStage
+      ? currentStage.name
+      : stages.length > 0
+        ? "全部环节完成"
+        : "—"
+    : "—";
+  // 阶段进度条（效果图 stage-track：teal 实心=已完成占比）
+  const segTotal = 5;
+  const segDone = stages.length > 0 ? Math.max(doneCount > 0 ? 1 : 0, Math.round((doneCount / stages.length) * segTotal)) : 0;
+
+  const spineColor =
+    m.status === "ARCHIVED" ? "#8A6B3E"
+    : m.status === "PENDING_ACCEPTANCE" ? "#96650B"
+    : m.status === "CLOSED" ? "#1A7F45"
+    : m.status === "ON_HOLD" ? "#98A3AD"
+    : "#1E56C8";
+
+  return (
+    <tr className="group transition-colors hover:bg-muted/50">
+      <td className="relative px-4 py-3 pl-[18px]">
+        {/* 案卷脊（td 内绝对定位，规避 tr 伪元素错位） */}
+        <span aria-hidden className="absolute left-0 top-[10px] bottom-[10px] w-[3px] rounded-r-[2px]" style={{ background: spineColor }} />
+        <Link href={matterHref(m)} className="block min-w-0 no-underline">
+          <span className="block truncate text-[13px] font-semibold leading-5 text-foreground">{m.title || "（未命名）"}</span>
+          <span className="mt-0.5 block truncate text-[11px] leading-4 text-muted-foreground">
+            {m.cause?.name ?? m.causeFreeText ?? "—"}
+          </span>
+          <span className="mt-0.5 block font-mono text-[11px] leading-4 text-muted-foreground/70 tabular">{m.internalCode}</span>
+        </Link>
+      </td>
+      <td className="max-w-[10rem] truncate px-4 py-3 text-[12.5px] text-foreground/85">{m.primaryClient?.name ?? "未关联客户"}</td>
+      <td className="px-4 py-3">
+        <span className="block truncate font-mono text-[12px] text-muted-foreground tabular">{proc?.caseNumber ?? "—"}</span>
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex flex-col gap-1.5">
+          <span className="whitespace-nowrap text-[12px] text-foreground/80">
+            {procLabel ? `${procLabel} · ${stageLabel}` : "—"}
+          </span>
+          {stages.length > 0 ? (
+            <div className="stage-track" aria-hidden>
+              {Array.from({ length: segTotal }, (_, i) => (
+                <i key={i} className={i < segDone ? "done" : undefined} />
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        {m.owner ? (
+          <span className="flex items-center gap-1.5">
+            <span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-accent text-[9.5px] font-semibold text-primary">
+              {m.owner.name.charAt(0)}
+            </span>
+            <span className="truncate text-[12.5px] text-foreground/85">{m.owner.name}</span>
+          </span>
+        ) : (
+          <span className="text-[12px] text-muted-foreground/55">—</span>
+        )}
+      </td>
+      <td className="td-num money px-4 py-3">
+        {m.claimAmount != null ? formatCurrency(m.claimAmount, { compact: true }) : "—"}
+      </td>
+      <td className="px-4 py-3">
+        {days == null ? (
+          <span className="text-[12px] text-muted-foreground/55">—</span>
+        ) : (
+          <div className="flex items-center gap-2">
+            <div className={`ladder ${overdue ? "l-red" : soon ? "l-amber" : "l-blue"}`} aria-hidden>
+              {Array.from({ length: 4 }, (_, i) => (
+                <i key={i} className={i < (overdue ? 4 : soon ? 3 : 2) ? "on" : undefined} />
+              ))}
+            </div>
+            <span
+              className="whitespace-nowrap rounded-full px-2 py-0.5 font-mono text-[11px] font-semibold tabular"
+              style={
+                overdue
+                  ? { color: "#B42318", background: "#FBECE9" }
+                  : soon
+                    ? { color: "#96650B", background: "#FAF0DB" }
+                    : { color: "#68747F", background: "#E9EDEB" }
+              }
+              title={nearest.title}
+            >
+              {overdue ? `逾期 ${Math.abs(days)} 天` : days === 0 ? "今天" : `${days} 天`}
+            </span>
+          </div>
+        )}
+      </td>
+      <td className="px-4 py-3">
+        <span className={`badge ${MOCKUP_STATUS_BADGE[m.status]}`}>
+          <span className="bdot" />
+          {(m.archiveRecords?.length ?? 0) > 0 ? "归档中" : matterStatusLabel[m.status]}
+        </span>
+      </td>
+    </tr>
   );
 }

@@ -50,6 +50,54 @@ function emptyToNull<T extends Record<string, unknown>>(obj: T): T {
   return out as T;
 }
 
+
+/** 墨案 03 效果图：分段导航计数（与列表同口径的可见性/范围过滤；不含搜索词） */
+export async function getMatterTabCounts(input: {
+  scope?: string; teamId?: string; ownerId?: string; category?: string;
+} = {}) {
+  const session = await requireSession("matters.read");
+  const parts: Prisma.MatterWhereInput[] = [
+    matterReadVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions),
+    { deletedAt: null }
+  ];
+  if (input.scope === "mine") parts.push(matterAssociationFilter(session.user.id));
+  if (input.scope === "team" || input.teamId) parts.push(teamMatterFilter(session.user.id, input.teamId));
+  if (input.ownerId) parts.push({ ownerId: input.ownerId });
+  if (input.category && input.category !== "ALL") {
+    parts.push({ category: input.category as Prisma.MatterWhereInput["category"] });
+  }
+
+  const groups = await prisma.matter.groupBy({
+    by: ["status"],
+    where: { AND: parts },
+    _count: { _all: true }
+  });
+  const c = Object.fromEntries(groups.map((g) => [g.status, g._count._all])) as Record<string, number>;
+  const all = (c.IN_PROGRESS ?? 0) + (c.ON_HOLD ?? 0) + (c.CLOSED ?? 0) + (c.ARCHIVED ?? 0);
+
+  const { listIntakes } = await import("@/server/intakes/actions");
+  type IntakeQuery = Parameters<typeof listIntakes>[0];
+  const scopeInput = {
+    scope: input.scope as NonNullable<IntakeQuery>["scope"],
+    teamId: input.teamId,
+    ownerId: input.ownerId,
+    category: input.category as NonNullable<IntakeQuery>["category"]
+  };
+  const [intakePending, intakeRevision] = await Promise.all([
+    listIntakes({ ...scopeInput, statusIn: ["INTAKE", "PENDING_CONFIRMATION"] as NonNullable<IntakeQuery>["statusIn"], page: 1, pageSize: 1 }),
+    listIntakes({ ...scopeInput, statusIn: ["NEEDS_REVISION"] as NonNullable<IntakeQuery>["statusIn"], page: 1, pageSize: 1 })
+  ]);
+
+  return {
+    all,
+    // active = statusNotIn [CLOSED, ARCHIVED]（含收案审批中的 Matter，与列表页口径一致）
+    active: all + (c.PENDING_ACCEPTANCE ?? 0),
+    archived: c.ARCHIVED ?? 0,
+    intake: intakePending.total,
+    revision: intakeRevision.total
+  };
+}
+
 export async function listMatters(input: Partial<MatterListQuery> = {}) {
   const session = await requireSession("matters.read");
   const query = matterListQuerySchema.parse(input);
@@ -119,6 +167,17 @@ export async function listMatters(input: Partial<MatterListQuery> = {}) {
               orderBy: { startsAt: "desc" },
               take: 1,
               select: { startsAt: true }
+            },
+            // 墨案 03：程序·阶段进度与最近期限（取最近一条未完成期限）
+            stages: {
+              orderBy: { order: "asc" },
+              select: { id: true, name: true, order: true, completedAt: true }
+            },
+            deadlines: {
+              where: { completed: false },
+              orderBy: { dueAt: "asc" },
+              take: 1,
+              select: { title: true, dueAt: true }
             }
           }
         },

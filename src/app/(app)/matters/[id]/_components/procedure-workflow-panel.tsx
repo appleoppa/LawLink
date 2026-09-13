@@ -653,7 +653,8 @@ export function ProcedureWorkflowPanel({
   templates,
   users,
   canManage,
-  matterInfoNode
+  matterInfoNode,
+  railSlot
 }: {
   matter: WorkflowMatter;
   procedure: WorkflowProcedure | null;
@@ -664,6 +665,8 @@ export function ProcedureWorkflowPanel({
   users: UserOption[];
   canManage: boolean;
   matterInfoNode?: React.ReactNode;
+  /** 墨案 04：页面级三栏（环节导航 | 环节工作区 | 辅助栏）的右栏内容，由案件页注入 */
+  railSlot?: React.ReactNode;
 }) {
   const router = useRouter();
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -709,7 +712,7 @@ export function ProcedureWorkflowPanel({
 
   if (!procedure) {
     return (
-      <section className="overflow-hidden rounded-lg border border-border bg-card shadow-[var(--shadow-low)]">
+      <section className="ll-surface overflow-hidden">
         <header className="border-b border-border px-4 py-3">
           <div className="flex items-center gap-2">
             <ListChecks className="h-4 w-4 text-primary" strokeWidth={1.8} />
@@ -730,30 +733,34 @@ export function ProcedureWorkflowPanel({
   }
 
   return (
-    <section className="overflow-hidden rounded-lg border border-border bg-card shadow-[var(--shadow-low)]">
-      <div className="grid grid-cols-1 md:grid-cols-[168px_minmax(0,1fr)]">
-        <nav className="border-b border-border bg-muted/35 p-1.5 md:border-b-0 md:border-r">
-          <div className="mb-1.5 flex items-center justify-between gap-2 px-1 text-[10.5px] text-muted-foreground">
+    <div className="grid grid-cols-1 gap-3.5 xl:grid-cols-[196px_minmax(0,1fr)_272px] xl:items-start">
+      {/* 墨案 04 stage-nav：独立卡片 + 吸顶 */}
+      <div className="xl:sticky xl:top-16 xl:self-start">
+        <nav
+          className="rounded-xl border border-[#E8ECEA] bg-card p-2 shadow-[0_1px_2px_rgba(12,25,39,0.05),inset_0_1px_0_rgba(255,255,255,0.9)]"
+          aria-label="办案环节导航"
+        >
+          <div className="mb-1.5 flex items-center justify-between gap-2 px-1.5 py-1 text-[10.5px] text-muted-foreground">
             <span>环节进度</span>
             <span className="font-mono tabular">
               {doneCount}/{stages.length}
             </span>
           </div>
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             {workflowItems.map((stage) => (
               <button
                 key={stage.key}
                 type="button"
                 onClick={() => setSelectedKey(stage.key)}
                 className={cn(
-                  "flex w-full items-center gap-1.5 rounded-md px-2 py-2 text-left text-[12.5px] transition-colors",
+                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12.5px] transition-colors",
                   selectedItem?.key === stage.key
-                    ? "bg-background text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.06)]"
-                    : "text-muted-foreground hover:bg-background/70 hover:text-foreground"
+                    ? "border border-[#DDE3E0] bg-card font-semibold text-foreground shadow-[0_1px_3px_rgba(12,25,39,0.08)]"
+                    : "border border-transparent text-muted-foreground hover:bg-[#F2F5F4] hover:text-foreground"
                 )}
               >
                 {stage.kind === "matter_info" ? (
-                  <FileText className="h-4 w-4 shrink-0 text-primary" strokeWidth={1.8} />
+                  <FileText className="h-[15px] w-[15px] shrink-0 text-muted-foreground" strokeWidth={1.8} />
                 ) : (
                   <StageStatusIcon status={stage.status} />
                 )}
@@ -776,56 +783,58 @@ export function ProcedureWorkflowPanel({
               </button>
             ))}
           </div>
-          <div className="mt-1.5 border-t border-border/70 pt-1.5">
-            <button
-              type="button"
-              onClick={() => setStageCreateOpen(true)}
-              className="flex w-full items-center gap-1.5 rounded-md px-2 py-2 text-left text-[12.5px] text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground"
-            >
-              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-primary/30 bg-primary/10 text-primary">
-                <Plus className="h-2.5 w-2.5" />
-              </span>
-              <span className="min-w-0 flex-1 truncate">添加环节</span>
-            </button>
-          </div>
         </nav>
-
-        <div className="min-w-0 p-4">
-          {selectedItem?.kind === "matter_info" ? (
-            matterInfoNode
-          ) : selectedItem?.kind === "preservation" ? (
-            <PreservationWorkflowContent
-              matter={matter}
-              procedure={procedure}
-              stage={selectedItem}
-              cases={preservationCases}
-              documents={documents}
-              users={users}
-              canManage={canManage}
-              onOpenTemplate={() => setTemplateOpen(true)}
-              onAddTask={() => setTaskStage(selectedItem)}
-              onRemoveStage={
-                canManage && selectedItem.removable ? () => handleRemoveStage(selectedItem) : undefined
-              }
-            />
-          ) : selectedItem ? (
-            <NormalStageContent
-              matterId={matter.id}
-              stage={selectedItem}
-              procedure={procedure}
-              documents={documents}
-              onOpenTemplate={() => setTemplateOpen(true)}
-              onAddTask={() => setTaskStage(selectedItem)}
-              onRemoveStage={
-                canManage && selectedItem.removable ? () => handleRemoveStage(selectedItem) : undefined
-              }
-              canManage={canManage}
-            />
-          ) : (
-            <p className="py-8 text-center text-xs text-muted-foreground">暂无工作环节</p>
-          )}
-        </div>
+        <button
+          type="button"
+          onClick={() => setStageCreateOpen(true)}
+          className="btn btn-secondary btn-sm mt-2.5 w-full justify-center"
+        >
+          <Plus className="h-3.5 w-3.5" strokeWidth={2.2} />
+          添加环节
+        </button>
       </div>
+
+      {/* 墨案 04 ws：环节工作区（单卡承载当前环节全部内容） */}
+      <div className="ll-surface min-w-0 p-4">
+        {selectedItem?.kind === "matter_info" ? (
+          matterInfoNode
+        ) : selectedItem?.kind === "preservation" ? (
+          <PreservationWorkflowContent
+            matter={matter}
+            procedure={procedure}
+            stage={selectedItem}
+            cases={preservationCases}
+            documents={documents}
+            users={users}
+            canManage={canManage}
+            onOpenTemplate={() => setTemplateOpen(true)}
+            onAddTask={() => setTaskStage(selectedItem)}
+            onRemoveStage={
+              canManage && selectedItem.removable ? () => handleRemoveStage(selectedItem) : undefined
+            }
+          />
+        ) : selectedItem ? (
+          <NormalStageContent
+            matterId={matter.id}
+            stage={selectedItem}
+            procedure={procedure}
+            documents={documents}
+            onOpenTemplate={() => setTemplateOpen(true)}
+            onAddTask={() => setTaskStage(selectedItem)}
+            onRemoveStage={
+              canManage && selectedItem.removable ? () => handleRemoveStage(selectedItem) : undefined
+            }
+            canManage={canManage}
+          />
+        ) : (
+          <p className="py-8 text-center text-xs text-muted-foreground">暂无工作环节</p>
+        )}
+      </div>
+
+      {/* 墨案 04 rail：辅助栏（团队 / 当事人 / 财务速览 / 最近审批） */}
+      {railSlot && (
+        <aside className="min-w-0 space-y-3.5 xl:sticky xl:top-16 xl:self-start">{railSlot}</aside>
+      )}
 
       <TemplatePickerDialog
         open={templateOpen}
@@ -854,7 +863,7 @@ export function ProcedureWorkflowPanel({
         selectedItem={selectedItem}
         onCreated={(stageId) => setSelectedKey(`stage-${stageId}`)}
       />
-    </section>
+    </div>
   );
 }
 
@@ -893,12 +902,37 @@ function NormalStageContent({
     .map((d) => daysUntil(d.dueAt))
     .sort((a, b) => a - b)[0];
 
+  const openTasks = stage.tasks.filter((t) => !t.completed).length;
+  const stageStatusLabel: Record<string, string> = {
+    done: "已完成",
+    active: "进行中",
+    risk: "临期风险",
+    todo: "待处理",
+    not_applicable: "不适用"
+  };
+
   return (
     <div className="space-y-3.5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+      {/* 墨案 04 ws-head：图标砖 + 环节名 + 状态说明 + 右侧操作 */}
+      <div className="flex flex-wrap items-center gap-2.5">
+        <span
+          className={cn(
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px]",
+            stage.status === "risk"
+              ? "bg-[#FBF1DC] text-[#96650B]"
+              : "bg-[#E4F1F0] text-[#005054]"
+          )}
+        >
           <StageStatusIcon status={stage.status} large />
-          <h3 className="text-[15px] font-medium">{stage.name}</h3>
+        </span>
+        <div className="min-w-0">
+          <h3 className="text-[15px] font-bold leading-tight tracking-[-0.01em]">{stage.name}</h3>
+          <div className="mt-0.5 text-[11px] text-muted-foreground">
+            {stageStatusLabel[stage.status] ?? stage.status} · 任务 {stage.tasks.length} 项
+            {openTasks > 0 ? `（未完成 ${openTasks}）` : ""}
+          </div>
+        </div>
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
           {nearestDue !== undefined && nearestDue <= 30 ? (
             <Badge
               variant="outline"
@@ -914,17 +948,17 @@ function NormalStageContent({
           ) : (
             <StageStatusBadge status={stage.status} />
           )}
+          {onRemoveStage && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onRemoveStage}
+              className="h-7 px-2 text-[11px] text-muted-foreground"
+            >
+              移除环节
+            </Button>
+          )}
         </div>
-        {onRemoveStage && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onRemoveStage}
-            className="h-7 px-2 text-[11px] text-muted-foreground"
-          >
-            移除
-          </Button>
-        )}
       </div>
 
       <section className="rounded-md border border-border bg-background/60 p-3">

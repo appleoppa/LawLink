@@ -139,7 +139,7 @@ export function PreservationsView({
 
 function KpiCard({ label, value, tone }: { label: string; value: string | number; tone?: "warn" | "danger" }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-3">
+    <div className="ll-surface p-3">
       <div className="text-[11px] text-muted-foreground">{label}</div>
       <div className={cn("mt-1 text-lg font-semibold tabular", tone === "danger" && "text-destructive", tone === "warn" && "text-amber-500")}>{value}</div>
     </div>
@@ -158,7 +158,7 @@ function CaseCard({ caseData: cs, expanded, onToggle, matters, users }: { caseDa
   const expiryInfo = worstExpiry !== null ? classifyExpiry(worstExpiry) : null;
 
   return (
-    <div className="rounded-xl border border-border bg-card">
+    <div className="ll-surface">
       <div className="flex items-center gap-3 px-4 py-3">
         <button type="button" onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-3 text-left">
           {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}

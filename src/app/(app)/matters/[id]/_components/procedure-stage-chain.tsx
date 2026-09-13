@@ -22,9 +22,12 @@ function mmdd(d: Date | null) {
 }
 
 export function ProcedureStageChain({
-  procedure
+  procedure,
+  bare = false
 }: {
   procedure: { id: string; stages: StageLike[] } | null;
+  /** bare：只输出链体，嵌入「程序链」卡片（墨案 04 chain-card）共用卡头 */
+  bare?: boolean;
 }) {
   if (!procedure) return null;
   const stages = [...procedure.stages]
@@ -38,6 +41,18 @@ export function ProcedureStageChain({
   const hasOverdue = (s: StageLike) =>
     s.tasks.some((t) => t.dueAt && !t.completed && t.dueAt.getTime() < now);
 
+  if (bare) {
+    return (
+      <div className="overflow-x-auto" aria-label="环节链">
+        <ChainNodes
+          stages={stages}
+          firstOpenIdx={firstOpenIdx}
+          hasOverdue={hasOverdue}
+        />
+      </div>
+    );
+  }
+
   return (
     <section className="ll-surface overflow-hidden" aria-label="环节链">
       <div className="flex items-center gap-2 px-5 pb-1 pt-3">
@@ -49,34 +64,52 @@ export function ProcedureStageChain({
         </span>
       </div>
       <div className="overflow-x-auto px-5 pb-3.5 pt-1">
-        <div className="chain min-w-fit">
-          {stages.map((s, i) => {
-            const done = firstOpenIdx >= 0 && i < firstOpenIdx;
-            const current = i === firstOpenIdx;
-            const risk = current && hasOverdue(s);
-            return (
-              <div key={s.id} className="contents">
-                {i > 0 && <div className={cn("chain-line", done && "done")} />}
-                <div
-                  className={cn(
-                    "chain-node",
-                    done && "done",
-                    current && (risk ? "risk" : "current")
-                  )}
-                >
-                  <div className="chain-dot">
-                    {done ? "✓" : current ? (risk ? "!" : "●") : i + 1}
-                  </div>
-                  <div className="chain-label" title={s.name}>
-                    {s.name}
-                  </div>
-                  <div className="chain-date">{done ? mmdd(s.completedAt) : current ? mmdd(s.startedAt) : "—"}</div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <ChainNodes
+          stages={stages}
+          firstOpenIdx={firstOpenIdx}
+          hasOverdue={hasOverdue}
+        />
       </div>
     </section>
+  );
+}
+
+function ChainNodes({
+  stages,
+  firstOpenIdx,
+  hasOverdue
+}: {
+  stages: StageLike[];
+  firstOpenIdx: number;
+  hasOverdue: (s: StageLike) => boolean;
+}) {
+  return (
+    <div className="chain min-w-fit">
+      {stages.map((s, i) => {
+        const done = firstOpenIdx >= 0 && i < firstOpenIdx;
+        const current = i === firstOpenIdx;
+        const risk = current && hasOverdue(s);
+        return (
+          <div key={s.id} className="contents">
+            {i > 0 && <div className={cn("chain-line", done && "done")} />}
+            <div
+              className={cn(
+                "chain-node",
+                done && "done",
+                current && (risk ? "risk" : "current")
+              )}
+            >
+              <div className="chain-dot">
+                {done ? "✓" : current ? (risk ? "!" : "●") : i + 1}
+              </div>
+              <div className="chain-label" title={s.name}>
+                {s.name}
+              </div>
+              <div className="chain-date">{done ? mmdd(s.completedAt) : current ? mmdd(s.startedAt) : "—"}</div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }

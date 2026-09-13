@@ -9,7 +9,7 @@ export default async function SettingsLayout({
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
+        <h1 className="flex items-center gap-2 ll-page-title tracking-tight">
           <Settings className="h-5 w-5 text-primary" />
           个人设置
         </h1>
@@ -17,7 +17,7 @@ export default async function SettingsLayout({
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
         <nav className="lg:col-span-1">
-          <ul className="space-y-0.5 rounded-xl border border-border bg-card p-2">
+          <ul className="space-y-0.5 ll-surface p-2">
             <SettingsNavLink
               href="/settings/profile"
               icon={<KeyRound className="h-3.5 w-3.5" />}

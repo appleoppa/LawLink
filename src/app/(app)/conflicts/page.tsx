@@ -1,5 +1,5 @@
-import { ConflictsView } from "./_components/conflicts-view";
+import { ConflictsViewV4 } from "./_components/conflicts-view-v4";
 
 export default function ConflictsPage() {
-  return <ConflictsView />;
+  return <ConflictsViewV4 />;
 }

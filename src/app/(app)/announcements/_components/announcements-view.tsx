@@ -83,7 +83,7 @@ export function AnnouncementsView({
             const canEdit = isManager || a.author.id === currentUserId;
             const expired = a.expiresAt && new Date(a.expiresAt) < new Date();
             return (
-              <li key={a.id} className="rounded-lg border border-border bg-card p-4">
+              <li key={a.id} className="ll-surface p-4">
                 <header className="mb-1.5 flex items-start justify-between gap-3">
                   <div className="flex items-center gap-2">
                     {a.pinned && (

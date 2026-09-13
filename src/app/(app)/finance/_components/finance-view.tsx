@@ -27,7 +27,6 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
 
 const feeTypeLabel = {
@@ -38,12 +37,13 @@ const feeTypeLabel = {
   COMMISSION: "分成"
 } as const;
 
+/* 墨案 08：流水类型色（绿=实收终态 / 琥珀=应收待回 / 红=冲正更正记录 / 石板=支出 / 紫=分成） */
 const feeTypeColor: Record<keyof typeof feeTypeLabel, string> = {
-  RECEIVABLE: "#FBBF24",
-  RECEIVED: "#4ADE80",
-  REFUND: "#F87171",
-  COST: "#FB923C",
-  COMMISSION: "#9B7BF7"
+  RECEIVABLE: "#96650B",
+  RECEIVED: "#1A7F45",
+  REFUND: "#B42318",
+  COST: "#4A5560",
+  COMMISSION: "#6C3FC5"
 };
 
 type Entry = {
@@ -186,25 +186,34 @@ export function FinanceView({
           label="本月实收"
           value={stats.monthlyReceived}
           icon={<Coins className="h-3.5 w-3.5" />}
-          color="#4ADE80"
+          color="#1A7F45"
         />
         <StatCard
-          label="本月应收"
-          value={stats.monthlyReceivable}
+          label="本月待回款"
+          value={Math.max(0, stats.monthlyReceivable - stats.monthlyReceived)}
           icon={<TrendingUp className="h-3.5 w-3.5" />}
-          color="#FBBF24"
+          color={stats.monthlyReceivable > stats.monthlyReceived ? "#B42318" : "#96650B"}
+          accent={stats.monthlyReceivable > stats.monthlyReceived}
         />
         <StatCard
           label="本月已开票"
           value={stats.monthlyIssued}
           icon={<FileText className="h-3.5 w-3.5" />}
-          color="#5B8DEF"
+          color="#1E56C8"
+        />
+        <StatCard
+          label="本月回款率"
+          value={stats.monthlyReceivable > 0 ? Math.round((stats.monthlyReceived / stats.monthlyReceivable) * 100) : 0}
+          icon={<Receipt className="h-3.5 w-3.5" />}
+          color="#007B7F"
+          suffix="%"
+          progress={stats.monthlyReceivable > 0 ? (stats.monthlyReceived / stats.monthlyReceivable) * 100 : 0}
         />
         <StatCard
           label="本年实收"
           value={stats.yearlyReceived}
           icon={<Receipt className="h-3.5 w-3.5" />}
-          color="#5B8DEF"
+          color="#1E56C8"
         />
         {/* v1.0: 分成降级——从未产生分成时不展示个人分成卡 */}
         {(stats.personalMonthly > 0 || stats.personalYearly > 0) && (
@@ -213,13 +222,13 @@ export function FinanceView({
               label="我的本月分成"
               value={stats.personalMonthly}
               icon={<Percent className="h-3.5 w-3.5" />}
-              color="#9B7BF7"
+              color="#6C3FC5"
             />
             <StatCard
               label="我的本年分成"
               value={stats.personalYearly}
               icon={<Percent className="h-3.5 w-3.5" />}
-              color="#9B7BF7"
+              color="#6C3FC5"
             />
           </>
         )}
@@ -330,49 +339,72 @@ export function FinanceView({
         {filtered.length === 0 ? (
           <p className="py-12 text-center text-xs text-muted-foreground">没有匹配的记录</p>
         ) : (
-          <ul className="max-h-[640px] divide-y divide-border overflow-y-auto">
-            {filtered.map((e) => {
-              const color = feeTypeColor[e.type];
-              return (
-                <li key={e.id} className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-muted">
-                  <span
-                    className="inline-flex h-6 min-w-12 items-center justify-center rounded-md border px-2 text-[10px] font-medium"
-                    style={{ borderColor: `${color}50`, color }}
-                  >
-                    {feeTypeLabel[e.type]}
-                  </span>
-                  <div className="flex-1 overflow-hidden">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm tabular text-foreground">
+          /* 墨案 08 效果图：收付流水 = 真实表格（表头 + 案卷脊行 + 等宽金额） */
+          <div className="overflow-x-auto">
+            <table className="table max-h-[640px]">
+              <thead>
+                <tr>
+                  <th style={{ width: "9%" }}>日期</th>
+                  <th style={{ width: "26%" }}>案件 / 事项</th>
+                  <th style={{ width: "9%" }}>类型</th>
+                  <th style={{ width: "12%" }} className="th-num">金额</th>
+                  <th style={{ width: "14%" }}>归属 / 分成</th>
+                  <th style={{ width: "12%" }}>备注</th>
+                  <th style={{ width: "10%" }}>经手</th>
+                  <th style={{ width: "8%" }}>状态</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((e) => {
+                  const color = feeTypeColor[e.type];
+                  const isReceived = e.type === "RECEIVED";
+                  const isRefund = e.type === "REFUND";
+                  return (
+                    <tr key={e.id} className="group">
+                      <td className="relative px-4 py-2.5 pl-[18px] font-mono text-[12px] text-muted-foreground tabular">
+                        <span aria-hidden className="absolute left-0 top-[9px] bottom-[9px] w-[3px] rounded-r-[2px]" style={{ background: color }} />
+                        {new Date(e.occurredAt).toLocaleDateString("zh-CN")}
+                      </td>
+                      <td className="max-w-[16rem] px-4 py-2.5">
+                        <Link href={matterHref(e.matter)} className="block min-w-0 no-underline hover:text-primary">
+                          <span className="block truncate text-[12.75px] font-medium text-foreground">{e.matter.title}</span>
+                          <span className="block truncate font-mono text-[11px] text-muted-foreground tabular">{e.matter.internalCode}</span>
+                        </Link>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <span
+                          className="inline-flex h-5 items-center rounded-full border px-2 text-[10.5px] font-medium"
+                          style={{ borderColor: `${color}50`, background: `${color}12`, color }}
+                        >
+                          {feeTypeLabel[e.type]}
+                        </span>
+                        {isRefund && (
+                          <span className="badge b-red mt-1" style={{ height: 18, fontSize: 10 }}>冲正</span>
+                        )}
+                      </td>
+                      <td className="td-num money px-4 py-2.5 font-semibold" style={{ color: isReceived ? "#1A7F45" : isRefund ? "#B42318" : undefined }}>
+                        {isReceived ? "+" : isRefund ? "−" : ""}
                         {formatCurrency(e.amount)}
-                      </span>
-                      {e.beneficiaryUser && (
-                        <Badge variant="secondary" className="text-[10px]">
-                          → {e.beneficiaryUser.name}
-                        </Badge>
-                      )}
-                    </div>
-                    <Link
-                      href={matterHref(e.matter)}
-                      className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-primary"
-                    >
-                      <span className="font-mono">{e.matter.internalCode}</span>
-                      <span>·</span>
-                      <span className="truncate">{e.matter.title}</span>
-                    </Link>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-mono text-xs text-muted-foreground tabular">
-                      {new Date(e.occurredAt).toLocaleDateString("zh-CN")}
-                    </div>
-                    <div className="text-[11px] text-muted-foreground">
-                      录入：{e.recordedBy.name}
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+                      </td>
+                      <td className="max-w-[10rem] truncate px-4 py-2.5 text-[12px] text-muted-foreground">
+                        {e.beneficiaryUser ? `→ ${e.beneficiaryUser.name}` : "所内"}
+                      </td>
+                      <td className="max-w-[10rem] truncate px-4 py-2.5 text-[11.5px] text-muted-foreground">
+                        {e.note || "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-[12px] text-muted-foreground">{e.recordedBy.name}</td>
+                      <td className="px-4 py-2.5">
+                        <span className={`badge ${isReceived ? "b-green" : isRefund ? "b-red" : "b-slate"}`}>
+                          <span className="bdot" />
+                          {isRefund ? "已冲正" : "已确认"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
         </>
@@ -410,22 +442,39 @@ function StatCard({
   label,
   value,
   icon,
-  color
+  color,
+  accent,
+  progress,
+  suffix
 }: {
   label: string;
   value: number;
   icon: React.ReactNode;
   color: string;
+  /** 墨案 08：风险强调卡（红描边 + 浅红渐变底） */
+  accent?: boolean;
+  /** 0-100 进度条（回款率类指标） */
+  progress?: number;
+  /** 非金额后缀（如 %） */
+  suffix?: string;
 }) {
   return (
-    <div className="ll-surface relative overflow-hidden px-4 py-3.5">
+    <div
+      className="ll-surface relative overflow-hidden px-4 py-3.5"
+      style={accent ? { borderColor: "#F0C6BF", background: "linear-gradient(180deg, #FFFFFF 55%, #FBECE9 165%)" } : undefined}
+    >
       <div className="flex items-center gap-1.5">
         <span style={{ color }}>{icon}</span>
         <span className="text-[11px] text-muted-foreground">{label}</span>
       </div>
-      <div className="ll-stat mt-3 text-[22px] leading-none text-foreground">
-        {formatCurrency(value, { compact: true })}
+      <div className="ll-stat mt-3 text-[22px] leading-none" style={{ color: accent ? "#B42318" : undefined }}>
+        {suffix ? `${value}%` : formatCurrency(value, { compact: true })}
       </div>
+      {typeof progress === "number" && (
+        <div className="mt-3 h-[5px] overflow-hidden rounded-full bg-muted">
+          <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.max(0, progress))}%`, background: color }} />
+        </div>
+      )}
     </div>
   );
 }

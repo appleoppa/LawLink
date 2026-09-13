@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getApprovalCreateOptions } from "@/server/approval-permissions/create-options";
-import { IntakeSheet } from "@/app/(app)/intakes/_components/intake-sheet";
+import { IntakeWizard } from "@/app/(app)/intakes/_components/intake-wizard";
 import { InvoiceCreateDialog } from "@/app/(app)/finance/_components/invoice-create-dialog";
 import { SealRequestSheet } from "./seals/_components/seal-request-sheet";
 
@@ -36,7 +36,7 @@ export function ApprovalCreateMenu() {
       <div className="space-y-2 rounded-lg bg-muted/40 p-4 text-sm"><p>文书审核须先选定具体材料，归档申请须先完成案件归档检查。</p><p className="text-muted-foreground">在案件内选择材料送审或发起归档后，审批与后续记录均在此工作台处理。</p><Button variant="link" className="px-0" asChild><Link href="/matters">选择案件与材料</Link></Button></div>
     </DialogContent></Dialog>
     {options && <>
-      <IntakeSheet open={kind === "intake"} onOpenChange={o => { if (!o) setKind(null); }} clientOptions={options.clients} colleagues={options.colleagues} onSubmitted={id => router.push(approvalHref("INTAKE_APPROVE", id) + "&tab=mine")} />
+      <IntakeWizard open={kind === "intake"} onOpenChange={o => { if (!o) setKind(null); }} clientOptions={options.clients} colleagues={options.colleagues} onSubmitted={id => router.push(approvalHref("INTAKE_APPROVE", id) + "&tab=mine")} />
       <InvoiceCreateDialog open={kind === "invoice"} onOpenChange={o => { if (!o) setKind(null); }} canCreateUnlinkedInvoice={options.canCreateUnlinkedInvoice} onSubmitted={id => router.push(approvalHref("INVOICE_APPROVE", id) + "&tab=mine")} />
       <SealRequestSheet open={kind === "seal"} onOpenChange={o => { if (!o) setKind(null); }} configs={options.configs} matters={options.matters} preset={isNewSeal ? { draftDocId: params.get("draftDocId") ?? undefined, matterId: params.get("matterId") ?? undefined, documentTitle: params.get("documentTitle") ?? undefined } : null} onSubmitted={id => router.push(approvalHref("SEAL_APPROVE", id) + "&tab=mine")} />
     </>}

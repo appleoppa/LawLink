@@ -3,16 +3,15 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import {
-  Calendar,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
-  Clock,
   Gavel,
   AlertTriangle,
   List,
   Plus,
-  Grid3X3
+  Grid3X3,
+  CheckCircle2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -30,14 +29,35 @@ import { CalendarSubscriptionDialog } from "./calendar-subscription-dialog";
 import { AddTaskDialog } from "./add-task-dialog";
 import { matterHref } from "@/lib/matters/route";
 
-const typeMeta = {
-  hearing: { icon: Gavel, label: "开庭", color: "#5B8DEF" },
-  deadline: { icon: AlertTriangle, label: "期限", color: "#FBBF24" },
-  task: { icon: ClipboardList, label: "事项", color: "#4FD1C5" }
+/* 墨案 09：事件配色——开庭蓝、法定期限红、临期琥珀、任务 teal；红只属于逾期/法定 */
+const TYPE_META = {
+  hearing: { icon: Gavel, label: "开庭", color: "#1E56C8" },
+  deadline: { icon: AlertTriangle, label: "期限", color: "#96650B" },
+  task: { icon: ClipboardList, label: "事项", color: "#007B7F" }
 } as const;
 
+/** 期限紧迫度：逾期或 3 日内 → 红；其余临期 → 琥珀 */
+function deadlineTone(item: ScheduleItem): "red" | "amber" {
+  const days = daysUntil(new Date(item.occurredAt));
+  return days <= 3 ? "red" : "amber";
+}
+
+const EV_TONE = {
+  "hearing:": { bg: "#EAF0FE", fg: "#1E56C8" },
+  "deadline:red": { bg: "#FBECE9", fg: "#B42318" },
+  "deadline:amber": { bg: "#FBF1DC", fg: "#96650B" },
+  "task:": { bg: "#E4F1F0", fg: "#005054" }
+} as const;
+
+function evTone(item: ScheduleItem) {
+  if (item.type === "deadline") return EV_TONE[`deadline:${deadlineTone(item)}`];
+  return item.type === "hearing" ? EV_TONE["hearing:"] : EV_TONE["task:"];
+}
+
+const typeMeta = TYPE_META;
+
 const WEEKDAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"];
-const VISIBLE_ITEMS_PER_DAY = 4;
+const VISIBLE_ITEMS_PER_DAY = 3;
 
 export function ScheduleView({
   items,
@@ -64,52 +84,27 @@ export function ScheduleView({
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const weekEnd = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
 
   function openAddDialog(date?: Date | null) {
     setAddDate(date ?? today);
     setAddOpen(true);
   }
 
-  const stats = useMemo(() => {
-    const todayCount = itemsWithDate.filter(
-      (it) => it.dateKey === dateKey(today)
-    ).length;
-    const weekCount = itemsWithDate.filter((it) => {
-      const d = new Date(it.occurredAt);
-      return d >= today && d < weekEnd;
-    }).length;
-    const hearingCount = items.filter((it) => it.type === "hearing").length;
-    const deadlineCount = items.filter((it) => it.type === "deadline").length;
-    return { todayCount, weekCount, hearingCount, deadlineCount };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemsWithDate]);
-
   return (
     <div className="space-y-4">
       <header className="ll-page-head">
         <div>
           <h1 className="ll-page-title">日程</h1>
-          <p className="ll-page-sub">未来 90 天的开庭、期限与待办事项</p>
+          <p className="ll-page-sub">开庭、法定期限、会议与任务统一呈现 · 红色只用于逾期与阻断</p>
         </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2">
             <CalendarSubscriptionDialog />
-            <Button size="sm" onClick={() => openAddDialog()} className="h-8 gap-1.5">
+            <Button size="sm" variant="secondary" onClick={() => openAddDialog()} className="btn btn-secondary btn-sm h-8 gap-1.5">
               <Plus className="h-3.5 w-3.5" strokeWidth={1.8} />
               添加日程
             </Button>
-            <div
-              className="ll-segmented"
-            >
-              <button
-                type="button"
-                onClick={() => setView("list")}
-                className={cn("ll-seg", view === "list" && "ll-seg-active text-primary")}
-              >
-                <List className="h-3.5 w-3.5" strokeWidth={1.8} />
-                列表
-              </button>
+            <div className="ll-segmented">
               <button
                 type="button"
                 onClick={() => setView("calendar")}
@@ -118,17 +113,17 @@ export function ScheduleView({
                 <Grid3X3 className="h-3.5 w-3.5" strokeWidth={1.8} />
                 月历
               </button>
+              <button
+                type="button"
+                onClick={() => setView("list")}
+                className={cn("ll-seg", view === "list" && "ll-seg-active text-primary")}
+              >
+                <List className="h-3.5 w-3.5" strokeWidth={1.8} />
+                列表
+              </button>
             </div>
           </div>
       </header>
-
-      {/* KPI */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="今日" value={stats.todayCount} color="hsl(var(--primary))" icon={<Clock className="h-3.5 w-3.5" />} />
-        <Stat label="本周" value={stats.weekCount} color="#4FD1C5" icon={<Calendar className="h-3.5 w-3.5" />} />
-        <Stat label="开庭" value={stats.hearingCount} color="hsl(var(--primary))" icon={<Gavel className="h-3.5 w-3.5" />} />
-        <Stat label="期限" value={stats.deadlineCount} color="#EA580C" icon={<AlertTriangle className="h-3.5 w-3.5" />} />
-      </div>
 
       {view === "list" ? (
         <ListView items={itemsWithDate} today={today} />
@@ -139,6 +134,7 @@ export function ScheduleView({
           onOffsetChange={setMonthOffset}
           onSelectItem={setDetailItem}
           onAddDay={openAddDialog}
+          onSwitchToList={() => setView("list")}
         />
       )}
       <ScheduleItemDialog item={detailItem} onOpenChange={(open) => !open && setDetailItem(null)} />
@@ -270,9 +266,9 @@ function CalendarCellItem({
   item: ScheduleItem;
   onSelect: (item: ScheduleItem) => void;
 }) {
-  const meta = typeMeta[item.type];
-  const color = meta.color;
+  const tone = evTone(item);
   const subject = displaySubject(item);
+  const hasTime = new Date(item.occurredAt).getHours() !== 0 || new Date(item.occurredAt).getMinutes() !== 0;
 
   return (
     <button
@@ -281,26 +277,18 @@ function CalendarCellItem({
         event.stopPropagation();
         onSelect(item);
       }}
-      title={`${meta.label}：${formatTime(item.occurredAt)} ${item.title} · ${subject}`}
+      title={`${typeMeta[item.type].label}：${hasTime ? formatTime(item.occurredAt) + " " : ""}${item.title} · ${subject}`}
+      /* 墨案 09：月历事件 = 彩色胶囊（时间等宽 + 标题，单行截断） */
       className={cn(
-        "flex min-w-0 items-center gap-1 rounded-sm border px-1 py-0.5 text-left text-[10px] leading-4 transition-colors hover:border-current",
+        "flex w-full min-w-0 items-center gap-[5px] rounded-[5px] px-[7px] py-[2.5px] text-left text-[10.5px] font-medium leading-4 transition-colors hover:brightness-95",
         item.completed && "line-through opacity-50"
       )}
-      style={{ backgroundColor: `${color}16`, borderColor: `${color}45` }}
+      style={{ backgroundColor: tone.bg, color: tone.fg }}
     >
-      <span
-        className="shrink-0 rounded-[3px] px-1 text-[9px] font-medium"
-        style={{ backgroundColor: `${color}22`, color }}
-      >
-        {meta.label}
+      <span className="shrink-0 font-mono text-[9.5px] tabular opacity-75">
+        {hasTime ? formatTime(item.occurredAt) : "—"}
       </span>
-      <span className="shrink-0 font-mono text-[9.5px] tabular" style={{ color }}>
-        {formatTime(item.occurredAt)}
-      </span>
-      <span className="min-w-0 flex-1 truncate text-foreground/85">
-        {item.title}
-        {subject ? <span className="text-muted-foreground"> · {subject}</span> : null}
-      </span>
+      <span className="min-w-0 flex-1 truncate">{item.title}</span>
     </button>
   );
 }
@@ -310,32 +298,41 @@ function CalendarView({
   monthOffset,
   onOffsetChange,
   onSelectItem,
-  onAddDay
+  onAddDay,
+  onSwitchToList
 }: {
   items: (ScheduleItem & { dateKey: string })[];
   monthOffset: number;
   onOffsetChange: (n: number) => void;
   onSelectItem: (item: ScheduleItem) => void;
   onAddDay: (date: Date) => void;
+  onSwitchToList: () => void;
 }) {
   const now = new Date();
   const cursor = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
 
-  // 一个月有多少天
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  // 当月第一天是周几（周一=1 ... 周日=7，转化为 0-6 让"周一在最左"）
   const firstWeekday = ((new Date(year, month, 1).getDay() + 6) % 7); // 0=周一
 
-  const cells: { date: Date | null; key: string | null }[] = [];
-  for (let i = 0; i < firstWeekday; i++) cells.push({ date: null, key: null });
+  // 墨案 09：跨月补日——首行用上月尾巴、末行用下月开头，非空格
+  type Cell = { date: Date; key: string; out: boolean };
+  const cells: Cell[] = [];
+  const prevMonthDays = new Date(year, month, 0).getDate();
+  for (let i = firstWeekday - 1; i >= 0; i--) {
+    const d = new Date(year, month - 1, prevMonthDays - i);
+    cells.push({ date: d, key: dateKey(d), out: true });
+  }
   for (let day = 1; day <= daysInMonth; day++) {
     const d = new Date(year, month, day);
-    cells.push({ date: d, key: dateKey(d) });
+    cells.push({ date: d, key: dateKey(d), out: false });
   }
-  // 补齐到 6 行 = 42 格
-  while (cells.length < 42) cells.push({ date: null, key: null });
+  let nextDay = 1;
+  while (cells.length < 42) {
+    const d = new Date(year, month + 1, nextDay++);
+    cells.push({ date: d, key: dateKey(d), out: true });
+  }
 
   // 按 key 聚合 items
   const itemsByKey = useMemo(() => {
@@ -354,143 +351,175 @@ function CalendarView({
   const todayItems = [...(itemsByKey.get(todayKey) ?? [])].sort(
     (a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime()
   );
-  const upcomingDeadlines = items
-    .filter((item) => item.type === "deadline" && new Date(item.occurredAt) >= today)
+  // 即将到来：全类型混排（mockup 即将到来卡）
+  const upcoming = items
+    .filter((item) => new Date(item.occurredAt) >= today)
     .sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime())
-    .slice(0, 6);
+    .slice(0, 5);
 
   return (
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
-      <section className="ll-surface p-4">
-        <header className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onOffsetChange(monthOffset - 1)}
-              className="h-7 w-7 p-0"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="text-base font-semibold tabular">
+    <div className="grid grid-cols-1 items-start gap-3.5 xl:grid-cols-[minmax(0,1fr)_296px]">
+      <section className="ll-surface overflow-hidden">
+        {/* 卡头：月份导航 + 图例（效果图 09 cal-head） */}
+        <div className="flex flex-wrap items-center gap-3 border-b border-[#E8ECEA] px-5 py-3">
+          <div className="flex items-center gap-3">
+            <span className="text-[16px] font-bold tracking-[-0.01em]">
               {year} 年 {month + 1} 月
             </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onOffsetChange(monthOffset + 1)}
-              className="h-7 w-7 p-0"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+            <div className="flex gap-1">
+              <button type="button" onClick={() => onOffsetChange(monthOffset - 1)}
+                className="flex h-7 w-7 items-center justify-center rounded-[7px] border border-[#E8ECEA] bg-card text-muted-foreground transition-colors hover:bg-[#F2F5F4] hover:text-foreground"
+                aria-label="上一月">
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </button>
+              <button type="button" onClick={() => onOffsetChange(0)}
+                className="h-7 rounded-[7px] border border-[#E8ECEA] bg-card px-2.5 text-[12px] text-muted-foreground transition-colors hover:bg-[#F2F5F4] hover:text-foreground">
+                今天
+              </button>
+              <button type="button" onClick={() => onOffsetChange(monthOffset + 1)}
+                className="flex h-7 w-7 items-center justify-center rounded-[7px] border border-[#E8ECEA] bg-card text-muted-foreground transition-colors hover:bg-[#F2F5F4] hover:text-foreground"
+                aria-label="下一月">
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
-          {monthOffset !== 0 && (
-            <Button variant="outline" size="sm" onClick={() => onOffsetChange(0)} className="h-7 text-xs">
-              回到本月
-            </Button>
-          )}
-        </header>
+          <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#1E56C8]" />开庭</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#B42318]" />法定期限</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#96650B]" />临期提醒</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#007B7F]" />任务</span>
+          </div>
+        </div>
 
-      <div className="grid grid-cols-7 gap-1.5">
-        {WEEKDAY_LABELS.map((w) => (
-          <div
-            key={w}
-            className="py-1.5 text-center text-[10px] uppercase tracking-wider text-muted-foreground"
-          >
-            {w}
-          </div>
-        ))}
-        {cells.map((cell, idx) => {
-          if (!cell.date || !cell.key) {
+        {/* 星期表头（右对齐细线，周末弱化） */}
+        <div className="grid grid-cols-7 border-b border-[#E8ECEA] bg-[#FAFBFA]">
+          {WEEKDAY_LABELS.map((w, i) => (
+            <div key={w} className={cn("px-2.5 py-2 text-right text-[11px] font-semibold", i === 0 || i === 6 ? "text-[#98A3AD]" : "text-muted-foreground")}>
+              周{w}
+            </div>
+          ))}
+        </div>
+
+        {/* 日期格：扁平细线网格（无卡片间距） */}
+        <div className="grid grid-cols-7">
+          {cells.map((cell, idx) => {
+            const dayItems = itemsByKey.get(cell.key) ?? [];
+            const visibleItems = dayItems.slice(0, VISIBLE_ITEMS_PER_DAY);
+            const isToday = cell.key === todayKey;
             return (
               <div
                 key={idx}
-                className="min-h-[8rem] rounded-md border border-transparent sm:min-h-[9rem]"
-              />
-            );
-          }
-          const dayItems = itemsByKey.get(cell.key) ?? [];
-          const visibleItems = dayItems.slice(0, VISIBLE_ITEMS_PER_DAY);
-          const isToday = cell.key === todayKey;
-
-          return (
-            <div
-              key={idx}
-              className={cn(
-                "group flex min-h-[8rem] flex-col rounded-md border p-1.5 text-left transition-colors sm:min-h-[9rem]",
-                "border-border bg-card hover:border-input hover:bg-muted/35",
-                isToday && "border-primary/40"
-              )}
-            >
-              <div className="flex items-center justify-between gap-1">
-                <span
-                  className={cn(
-                    "font-mono text-xs tabular",
-                    isToday ? "font-semibold text-primary" : "text-foreground/80"
-                  )}
-                >
-                  {cell.date.getDate()}
-                </span>
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onAddDay(cell.date!);
-                  }}
-                  className="h-5 w-5 rounded-sm p-0 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-primary group-hover:opacity-100 group-focus-within:opacity-100"
-                  aria-label={`添加 ${month + 1} 月 ${cell.date.getDate()} 日的日程`}
-                  title="添加日程"
-                >
-                  <Plus className="mx-auto h-3 w-3" />
-                </button>
-              </div>
-              <div className="mt-1 flex min-h-0 flex-1 flex-col gap-1 overflow-hidden">
-                {visibleItems.map((it) => (
-                  <CalendarCellItem key={it.id} item={it} onSelect={onSelectItem} />
-                ))}
-                {dayItems.length > VISIBLE_ITEMS_PER_DAY && (
-                  <span className="px-1 text-[10px] font-medium text-muted-foreground">
-                    +{dayItems.length - VISIBLE_ITEMS_PER_DAY}
-                  </span>
+                className={cn(
+                  "group relative min-h-[108px] border-b border-[#E8ECEA] border-r border-[#E8ECEA] p-[7px_8px] transition-colors",
+                  (idx + 1) % 7 === 0 && "border-r-0",
+                  cell.out && "bg-[#FAFBFA]",
+                  !cell.out && "hover:bg-[#F7FAF9]",
+                  isToday && "bg-[#EFF6F5]"
                 )}
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <span
+                    className={cn(
+                      "font-mono text-[12px] font-semibold tabular",
+                      cell.out ? "text-[#B3BDC2]" : isToday ? "text-[#005054]" : "text-foreground/80"
+                    )}
+                  >
+                    {cell.out ? `${cell.date.getMonth() + 1}-${cell.date.getDate()}` : cell.date.getDate()}
+                  </span>
+                  {!cell.out && (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onAddDay(cell.date);
+                      }}
+                      className="flex h-[18px] w-[18px] items-center justify-center rounded text-[#98A3AD] opacity-0 transition-opacity hover:bg-[#E9EDEB] hover:text-[#005054] group-hover:opacity-100 group-focus-within:opacity-100"
+                      aria-label={`添加 ${cell.date.getMonth() + 1} 月 ${cell.date.getDate()} 日的日程`}
+                      title="添加日程"
+                    >
+                      <Plus className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+                <div className="mt-0.5 flex min-h-0 flex-col">
+                  {visibleItems.map((it) => (
+                    <CalendarCellItem key={it.id} item={it} onSelect={onSelectItem} />
+                  ))}
+                  {dayItems.length > VISIBLE_ITEMS_PER_DAY && (
+                    <span className="mt-1 px-1 text-[10px] text-[#98A3AD]">
+                      +{dayItems.length - VISIBLE_ITEMS_PER_DAY} 隐藏
+                    </span>
+                  )}
+                  {isToday && dayItems.length === 0 && (
+                    <span className="mt-1 text-[10px] text-[#98A3AD]">今天 · 无日程</span>
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
       </section>
       <ScheduleSideRail
+        items={items}
         todayItems={todayItems}
-        upcomingDeadlines={upcomingDeadlines}
+        upcoming={upcoming}
         onSelectItem={onSelectItem}
+        onSwitchToList={onSwitchToList}
       />
     </div>
   );
 }
 
 function ScheduleSideRail({
+  items,
   todayItems,
-  upcomingDeadlines,
-  onSelectItem
+  upcoming,
+  onSelectItem,
+  onSwitchToList
 }: {
+  items: (ScheduleItem & { dateKey: string })[];
   todayItems: (ScheduleItem & { dateKey: string })[];
-  upcomingDeadlines: (ScheduleItem & { dateKey: string })[];
+  upcoming: (ScheduleItem & { dateKey: string })[];
   onSelectItem: (item: ScheduleItem) => void;
+  onSwitchToList: () => void;
 }) {
+  // 墨案 09 效果图：期限预警阶梯（四级分桶，红只属于逾期档）
+  const nowMs = Date.now();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const openDeadlines = items.filter((it) => it.type === "deadline" && !it.completed);
+  const ladderBuckets = [
+    { label: "已逾期", days: (t: number) => t < 0, ladder: "l-red", on: 4, color: "#B42318" },
+    { label: "3 日内到期", days: (t: number) => t >= 0 && t <= 3, ladder: "l-red", on: 3, color: "#B42318" },
+    { label: "7 日内到期", days: (t: number) => t > 3 && t <= 7, ladder: "l-amber", on: 3, color: "#96650B" },
+    { label: "30 日内到期", days: (t: number) => t > 7 && t <= 30, ladder: "l-blue", on: 2, color: "#1E56C8" }
+  ].map((b) => ({
+    ...b,
+    list: openDeadlines.filter((it) => b.days(Math.floor((it.occurredAt.getTime() - nowMs) / dayMs)))
+  }));
+  const ladderTotal = ladderBuckets.reduce((n, b) => n + b.list.length, 0);
+  const todayTitle = new Date().toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "long" });
+  const tomorrow = new Date(nowMs + dayMs);
+  const tomorrowFirst = items
+    .filter((it) => new Date(it.occurredAt).toDateString() === tomorrow.toDateString())
+    .sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime())[0];
+
   return (
-    <aside className="space-y-4 xl:sticky xl:top-16">
+    <aside className="min-w-0 space-y-3.5 xl:sticky xl:top-16">
+      {/* 今日卡（效果图 09：空态也要有气质） */}
       <section className="ll-surface overflow-hidden">
         <header className="ll-panel-head">
-          <h3 className="ll-panel-title">
-            <span className="h-2 w-2 rounded-full bg-primary" />
-            今天
-          </h3>
-          <span className="font-mono text-xs text-muted-foreground tabular">
-            {todayItems.length} 项
-          </span>
+          <h3 className="ll-panel-title text-[13px]">今日 · {todayTitle}</h3>
         </header>
         {todayItems.length === 0 ? (
-          <p className="px-4 py-8 text-center text-xs text-muted-foreground">今天没有日程</p>
+          <div className="flex flex-col items-center gap-1 px-4 py-6 text-center">
+            <CheckCircle2 className="h-6 w-6 text-[#98A3AD]" strokeWidth={1.8} />
+            <p className="text-[12.5px] text-muted-foreground">今天没有安排</p>
+            {tomorrowFirst && (
+              <p className="text-[11px] text-[#98A3AD]">
+                明天 {formatTime(tomorrowFirst.occurredAt)} {tomorrowFirst.title}
+              </p>
+            )}
+          </div>
         ) : (
           <ul className="divide-y divide-border px-4">
             {todayItems.map((item) => (
@@ -502,19 +531,55 @@ function ScheduleSideRail({
 
       <section className="ll-surface overflow-hidden">
         <header className="ll-panel-head">
-          <h3 className="ll-panel-title">
-            <span className="h-2 w-2 rounded-full bg-red-500" />
-            即将到期
+          <h3 className="ll-panel-title text-[13px]">
+            <AlertTriangle className="h-3.5 w-3.5 text-[#96650B]" strokeWidth={1.8} />
+            期限预警阶梯
           </h3>
-          <span className="font-mono text-xs text-muted-foreground tabular">
-            {upcomingDeadlines.length} 项
-          </span>
+          <span className="text-[10.5px] text-muted-foreground">未来 30 天 · {ladderTotal} 项</span>
         </header>
-        {upcomingDeadlines.length === 0 ? (
-          <p className="px-4 py-8 text-center text-xs text-muted-foreground">暂无近期到期事项</p>
+        <div className="divide-y divide-border">
+          {ladderBuckets.map((b) => (
+            <button
+              key={b.label}
+              type="button"
+              disabled={b.list.length === 0}
+              onClick={() => b.list[0] && onSelectItem(b.list[0])}
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-muted/60 disabled:cursor-default disabled:opacity-60"
+            >
+              <span
+                className="w-6 shrink-0 text-right font-mono text-lg font-semibold tabular"
+                style={{ color: b.list.length > 0 ? b.color : "var(--t-faint)" }}
+              >
+                {b.list.length}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[12.5px] font-medium">{b.label}</span>
+                <span className="block truncate text-[11px] text-muted-foreground">
+                  {b.list[0] ? `${b.list[0].title} · ${formatMonthDay(b.list[0].occurredAt)}` : "—"}
+                </span>
+              </span>
+              <span className={`ladder ${b.ladder}`} aria-hidden>
+                {Array.from({ length: 4 }, (_, i) => (
+                  <i key={i} className={i < b.on ? "on" : undefined} />
+                ))}
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="ll-surface overflow-hidden">
+        <header className="ll-panel-head">
+          <h3 className="ll-panel-title text-[13px]">即将到来</h3>
+          <button type="button" onClick={onSwitchToList} className="text-[11.5px] text-muted-foreground transition-colors hover:text-foreground">
+            列表视图 →
+          </button>
+        </header>
+        {upcoming.length === 0 ? (
+          <p className="px-4 py-8 text-center text-xs text-muted-foreground">暂无即将到来的日程</p>
         ) : (
           <ul className="divide-y divide-border px-4">
-            {upcomingDeadlines.map((item) => (
+            {upcoming.map((item) => (
               <ScheduleSideItem key={item.id} item={item} onSelectItem={onSelectItem} showDate />
             ))}
           </ul>
@@ -661,30 +726,6 @@ function DetailLine({ label, value }: { label: string; value: React.ReactNode })
     <div className="grid grid-cols-[4.5rem_1fr] gap-3 text-sm">
       <span className="text-[11px] text-muted-foreground">{label}</span>
       <span className="min-w-0 text-foreground">{value}</span>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  color,
-  icon
-}: {
-  label: string;
-  value: number;
-  color: string;
-  icon: React.ReactNode;
-}) {
-  return (
-    <div className="ll-surface px-4 py-3.5">
-      <div className="flex items-center gap-1.5">
-        <span style={{ color }}>{icon}</span>
-        <span className="text-[11px] text-muted-foreground">{label}</span>
-      </div>
-      <div className="ll-stat mt-3 text-[24px] leading-none text-foreground">
-        {value}
-      </div>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
   FolderOpen,
+  FolderInput,
   Users,
   Wallet,
   Calendar,
@@ -9,7 +10,8 @@ import {
   Inbox,
   Archive,
   Settings,
-  BarChart3
+  BarChart3,
+  ScanSearch
 } from "lucide-react";
 
 export type NavItem = {
@@ -20,25 +22,28 @@ export type NavItem = {
   tone?: "courtSms";
 };
 
-// v0.4: 一级菜单收紧 —— 收案合并到案件、利益冲突进顶栏、材料只在案件详情
-// v0.8.1: 用章统一收口到"审批"（未来可扩文书内审等其他审批类型）
-// v0.9.3: 加"快递"
-// v0.37: 快递/工具/服务中心 移入顶栏「应用」菜单，不再占侧边
-// v0.45: 暂时隐藏"保全"一级入口，代码与路由保留以便恢复
-// v0.47: 恢复"法院短信"到左下角辅助导航，放在归档上方并用独立强调色
+// 墨案 02 效果图侧栏信息架构：工作区 / 业务 / 知识 三段 + 底部资料
+// v0.4 曾把收案并入案件、冲突检索移顶栏；按效果图恢复一级入口（顶栏冲突入口保留）
 export const primaryNav: NavItem[] = [
-  { label: "工作台", href: "/", icon: LayoutDashboard },
+  { label: "概览", href: "/", icon: LayoutDashboard },
   { label: "案件", href: "/matters", icon: FolderOpen },
+  { label: "收案", href: "/intakes", icon: FolderInput },
+  { label: "审批", href: "/approvals", icon: ClipboardCheck },
+  { label: "冲突检索", href: "/conflicts", icon: ScanSearch },
+  { label: "日程", href: "/schedule", icon: Calendar }
+];
+
+export const businessNav: NavItem[] = [
   { label: "客户", href: "/clients", icon: Users },
-  { label: "财务", href: "/finance", icon: Wallet },
-  { label: "日程", href: "/schedule", icon: Calendar },
-  { label: "审批", href: "/approvals", icon: ClipboardCheck }
+  { label: "财务", href: "/finance", icon: Wallet }
+];
+
+export const knowledgeNav: NavItem[] = [
+  { label: "归档", href: "/archive", icon: Archive },
+  { label: "报表", href: "/reports", icon: BarChart3 }
 ];
 
 export const secondaryNav: NavItem[] = [
   { label: "法院短信", href: "/inbox", icon: Inbox, tone: "courtSms" },
-  { label: "归档", href: "/archive", icon: Archive },
-  { label: "报表", href: "/reports", icon: BarChart3 },
-  // v0.43: 「审计」入口移除（审计日志在 设置 → 审计日志）
   { label: "个人设置", href: "/settings", icon: Settings }
 ];

@@ -171,7 +171,7 @@ export function EngagementPanel({
   }
 
   return (
-    <section className="rounded-lg border border-border bg-card">
+    <section className="ll-surface">
       <header className="flex items-center justify-between border-b border-border px-4 py-2">
         <span className="flex items-center gap-1.5 text-[13px] font-medium">
           <Handshake className="h-3.5 w-3.5 text-primary" />

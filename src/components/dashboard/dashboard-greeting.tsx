@@ -28,7 +28,13 @@ export function DashboardGreeting({
   scheduleItems
 }: {
   name: string;
-  summary: { todayDeadlineCount: number; weekHearingCount: number; nearTermCount: number };
+  summary: {
+    todayDeadlineCount: number;
+    weekHearingCount: number;
+    nearTermCount: number;
+    overdueDeadlineCount?: number;
+    pendingApprovalCount?: number;
+  };
   scheduleItems: ScheduleItem[];
 }) {
   const router = useRouter();
@@ -63,13 +69,20 @@ export function DashboardGreeting({
               {dateLabel.replace(/\//g, " / ")}
             </span>
           </div>
-          <h1 className="text-[22px] font-semibold leading-tight">
+          <h1 className="text-[26px] font-bold leading-tight tracking-[-0.02em]">
             {greeting}
             {name && <span className="text-primary">，{name}</span>}
           </h1>
           <p className="mt-1.5 max-w-xl text-[13px] leading-relaxed text-muted-foreground">
-            今天有 <Num>{summary.todayDeadlineCount}</Num> 件事需处理；本周开庭{" "}
-            <Num>{summary.weekHearingCount}</Num> 场；近期期限 <Num>{summary.nearTermCount}</Num> 项。
+            今天有 <Num>{summary.todayDeadlineCount}</Num> 件事需要处理；本周开庭{" "}
+            <Num>{summary.weekHearingCount}</Num> 场
+            {(summary.overdueDeadlineCount ?? 0) > 0 ? (
+              <>
+                ，<span className="font-mono text-[1.05rem] font-semibold tabular text-[#B42318]">{summary.overdueDeadlineCount}</span>
+                <span className="text-[#B42318]"> 项期限已逾期</span>
+              </>
+            ) : null}
+            ，待你审批的申请有 <Num>{summary.pendingApprovalCount ?? 0}</Num> 件。
           </p>
         </div>
 
@@ -100,32 +113,40 @@ export function DashboardGreeting({
         <div className="relative z-[1]">
           <div className="flex items-center gap-2 text-[10.5px] font-semibold uppercase text-muted-foreground">
             <span className="ll-dot bg-[#B42318] shadow-[0_0_0_3px_rgba(180,35,24,0.16)]" />
-            今日焦点
+            今日焦点 · 全案最近期限
           </div>
           {focusItem ? (
             <>
               <div className="mt-2 flex items-baseline gap-1">
-                <span className="font-mono text-[40px] font-semibold leading-none tabular text-[#B42318]">
+                <span className="font-mono text-[44px] font-semibold leading-none tabular text-[#B42318]" style={{ letterSpacing: "-0.035em" }}>
                   {Math.max(focusItem.daysUntil, 0)}
                 </span>
                 <span className="text-[12px] text-muted-foreground">天</span>
               </div>
-              <div className="text-[11.5px] text-muted-foreground">
-                距 {focusItem.title}
+              <div className="mt-1.5 text-[11.5px] text-muted-foreground">
+                距 <b className="font-medium text-foreground">{focusItem.title}</b>
+                {focusItem.date ? <span className="font-mono"> · {focusItem.date} {focusItem.time ?? ""}</span> : null}
               </div>
+              <div
+                className="mt-1.5 truncate text-[14.5px] font-bold text-foreground"
+                style={{ fontFamily: '"Songti SC", "STSong", "Noto Serif SC", serif' }}
+                title={focusItem.matter}
+              >
+                {focusItem.matter}
+              </div>
+              {focusItem.matterCode ? (
+                <div className="mt-0.5 font-mono text-[10.5px] tracking-wide text-muted-foreground tabular">
+                  {focusItem.matterCode}
+                </div>
+              ) : null}
             </>
           ) : (
             <div className="mt-8 text-sm text-muted-foreground">暂无近期期限</div>
           )}
         </div>
-        <div className="relative z-[1] min-w-0">
-          <div className="truncate text-[13px] font-medium text-foreground">
-            {focusItem?.matter ?? "日程看板"}
-          </div>
-          <div className="mt-1 flex items-center gap-1 text-[10.5px] text-muted-foreground">
-            <span className="font-mono tabular">{focusItem?.date ?? "未来 30 天"}</span>
-            <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
-          </div>
+        <div className="relative z-[1] flex items-center gap-1 text-[11.5px] font-medium text-primary">
+          前往{focusItem?.matterId ? "案件" : "日程"}
+          <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
         </div>
       </Link>
 

@@ -1,9 +1,9 @@
 import { listReadableTeams } from "@/server/teams/actions";
-import { listMatters } from "@/server/matters/actions";
+import { listMatters, getMatterTabCounts } from "@/server/matters/actions";
 import { listIntakes } from "@/server/intakes/actions";
 import { listClients } from "@/server/clients/actions";
 import { listActiveColleagues } from "@/server/users/actions";
-import { MattersView } from "./_components/matters-view";
+import { MattersViewV4 } from "./_components/matters-view-v4";
 import type { MatterCategory } from "@prisma/client";
 
 export type MattersTab = "intake" | "active" | "archived" | "revision" | "all";
@@ -106,6 +106,10 @@ export default async function MattersPage({ searchParams }: Props) {
     listReadableTeams()
   ]);
 
+  const tabCounts = await getMatterTabCounts({
+    scope: params.scope, teamId: params.teamId, ownerId: params.ownerId, category: params.category
+  });
+
   if (tab === "intake" || tab === "revision") {
     // 待审批 / 待补正：从 Intake 表筛
     const intakeSortBy = sortBy === "claimAmount" ? "claimAmount" : "intakeDate";
@@ -125,7 +129,7 @@ export default async function MattersPage({ searchParams }: Props) {
       pageSize: MATTERS_PAGE_SIZE
     });
     return (
-      <MattersView
+      <MattersViewV4
         tab={tab}
         intakeData={{
           items: intakes.items.map((i) => ({
@@ -163,6 +167,7 @@ export default async function MattersPage({ searchParams }: Props) {
           sortDir
         }}
         autoOpenIntake={params.new === "1"}
+        tabCounts={tabCounts}
       />
     );
   }
@@ -201,8 +206,9 @@ export default async function MattersPage({ searchParams }: Props) {
   });
 
   return (
-    <MattersView
+    <MattersViewV4
       tab={tab}
+      tabCounts={tabCounts}
       matterData={{
         items: matters.items.map((m) => ({
           ...m,

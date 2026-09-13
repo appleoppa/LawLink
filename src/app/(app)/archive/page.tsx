@@ -19,29 +19,26 @@ export default async function ArchivePage() {
 
   return (
     <div className="px-6 py-6 space-y-5">
-      <header className="flex items-end justify-between">
+      <header className="ll-page-head">
         <div>
-          <h1 className="text-xl font-medium flex items-center gap-2">
-            <Lock className="h-5 w-5 text-[#9B7BF7]" />
+          <h1 className="ll-page-title flex items-center gap-2">
+            <Lock className="h-[22px] w-[22px]" style={{ color: "var(--bronze)" }} strokeWidth={1.8} />
             归档管理
           </h1>
-          <p className="text-xs text-muted-foreground mt-1">
-            已归档案件按归档日期降序排列。点击进入案件详情可查看卷宗封皮与目录，或导出归档包。
+          <p className="ll-page-sub">
+            已归档 <span className="font-mono tabular text-foreground">{items.length}</span> 件 · 按归档日期降序 · 点击进入案件可查看卷宗封皮与目录
           </p>
         </div>
-        <span className="text-xs text-muted-foreground">
-          已归档 {items.length} 件
-        </span>
       </header>
 
       {items.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border/60 py-16 text-center text-sm text-muted-foreground">
+        <div className="ll-surface border-dashed py-16 text-center text-sm text-muted-foreground">
           暂无已归档案件。在案件详情顶部&ldquo;状态 → 归档&rdquo;完成归档流程后，会出现在这里。
         </div>
       ) : (
-        <div className="rounded-lg border border-border/60 overflow-hidden">
+        <div className="ll-surface overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-muted/30 text-xs text-muted-foreground">
+            <thead className="bg-[#FAFBFA] text-[10.5px] font-semibold tracking-[0.05em] text-[#98A3AD]">
               <tr>
                 <th className="px-3 py-2 text-left font-normal w-32">所内案号</th>
                 <th className="px-3 py-2 text-left font-normal">案件</th>

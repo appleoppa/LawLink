@@ -5,7 +5,7 @@ import {
   getPersonalRevenue
 } from "@/server/finance/actions";
 import { listInvoiceRequests, getInvoiceStats } from "@/server/invoices/actions";
-import { FinanceView } from "./_components/finance-view";
+import { FinanceViewV4 } from "./_components/finance-view-v4";
 
 export default async function FinancePage() {
   const session = await getSession();
@@ -35,7 +35,7 @@ export default async function FinancePage() {
     .reduce((acc, e) => acc + Number(e.amount), 0);
 
   return (
-    <FinanceView
+    <FinanceViewV4
       entries={entries.map((entry) => ({
         ...entry,
         amount: Number(entry.amount)

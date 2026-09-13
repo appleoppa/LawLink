@@ -494,3 +494,87 @@ svg { display: block; }
 
 /* 图例色块 */
 .legend-line { width: 16px; height: 2.5px; border-radius: 2px; }
+
+/* ============ 工作台 02 效果图页面布局（自 docs/mockup/v4/02-dashboard.html 移植） ============ */
+.hero { display: grid; grid-template-columns: 1.7fr 1fr; gap: 14px; margin-bottom: 14px; }
+.hero-greet {
+  position: relative; overflow: hidden;
+  background: linear-gradient(135deg, #FFFFFF 0%, #F4F8F7 78%, #EBF2F1 100%);
+  border: 1px solid var(--bd-hair); border-radius: var(--r-lg);
+  padding: 22px 24px 20px; box-shadow: var(--sh-card), var(--sh-inset);
+}
+.hero-greet::after {
+  content: ""; position: absolute; top: -80px; right: -60px; width: 260px; height: 260px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(0,123,127,0.10), transparent 65%); pointer-events: none;
+}
+.greet-date { display: inline-flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--t-muted); margin-bottom: 10px; }
+.greet-date .pill-date { font-family: var(--font-mono); font-size: 10.5px; padding: 2px 8px; background: var(--bg-sunken); border-radius: var(--r-full); }
+.greet-title { font-size: 26px; font-weight: 750; letter-spacing: -0.025em; line-height: 1.2; margin: 0 0 7px; }
+.greet-title .name { color: var(--teal-deep); }
+.greet-sub { color: var(--t-secondary); font-size: 13px; margin: 0 0 16px; max-width: 480px; }
+.greet-sub .num, .greet-sub .num-warn { font-family: var(--font-mono); font-weight: 600; font-size: 14px; letter-spacing: -0.02em; }
+.greet-sub .num { color: var(--teal-deep); }
+.greet-sub .num-warn { color: var(--red); }
+.greet-actions { display: flex; gap: 8px; flex-wrap: wrap; position: relative; z-index: 1; }
+.hero-focus {
+  position: relative; overflow: hidden; background: var(--bg-card);
+  border: 1px solid var(--bd-hair); border-radius: var(--r-lg); padding: 18px 20px;
+  box-shadow: var(--sh-card), var(--sh-inset); display: flex; flex-direction: column;
+}
+.hero-focus::after {
+  content: ""; position: absolute; top: -40px; right: -40px; width: 150px; height: 150px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(180,35,24,0.07), transparent 70%); pointer-events: none;
+}
+.focus-label { display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 650; letter-spacing: 0.07em; color: var(--t-muted); }
+.focus-countdown { display: flex; align-items: baseline; gap: 6px; margin: 10px 0 10px; }
+.focus-days { font-family: var(--font-mono); font-size: 44px; font-weight: 650; letter-spacing: -0.035em; line-height: 1; color: var(--red); }
+.focus-unit { font-size: 12px; color: var(--t-muted); }
+.focus-tag { font-size: 12px; color: var(--t-secondary); margin-bottom: 3px; }
+.focus-tag b { color: var(--t-primary); font-weight: 600; }
+.focus-matter { font-family: var(--font-serif); font-size: 14.5px; font-weight: 700; color: var(--t-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.focus-code { font-family: var(--font-mono); font-size: 10.5px; color: var(--t-muted); margin-top: 4px; letter-spacing: 0.02em; }
+.focus-link { margin-top: auto; padding-top: 12px; font-size: 12px; font-weight: 550; color: var(--teal-deep); }
+
+.action-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
+.action-tile { display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer; }
+.action-tile:hover { box-shadow: var(--sh-hover); }
+.action-ic { width: 34px; height: 34px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.action-ic svg { width: 17px; height: 17px; }
+.ai-red { background: var(--red-bg); color: var(--red); }
+.ai-amber { background: var(--amber-bg); color: var(--amber); }
+.ai-blue { background: var(--blue-bg); color: var(--blue); }
+.ai-bronze { background: var(--bronze-bg); color: var(--bronze); }
+.action-num { font-family: var(--font-mono); font-size: 20px; font-weight: 650; letter-spacing: -0.02em; line-height: 1; }
+.action-label { font-size: 11.5px; color: var(--t-muted); margin-top: 3px; }
+.action-arrow { margin-left: auto; color: var(--t-faint); }
+
+.dash-main-grid { display: grid; grid-template-columns: 1.45fr 1fr; gap: 14px; margin-bottom: 14px; }
+.sched-day-head { display: flex; align-items: center; gap: 8px; padding: 11px 16px 7px; }
+.sched-day { font-size: 12.5px; font-weight: 650; }
+.sched-week { font-size: 11px; color: var(--t-muted); }
+.sched-rule2 { flex: 1; height: 1px; background: var(--bd-hair); }
+.sched-item { display: flex; align-items: center; gap: 10px; padding: 7.5px 16px; cursor: pointer; transition: background .12s; text-decoration: none; color: inherit; }
+.sched-item:hover { background: var(--bg-hover); }
+.sched-time { font-family: var(--font-mono); font-size: 11px; color: var(--t-muted); width: 38px; flex-shrink: 0; }
+.sched-ic { width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.sched-ic svg { width: 12px; height: 12px; }
+.si-court { background: var(--blue-bg); color: var(--blue); }
+.si-dead { background: var(--amber-bg); color: var(--amber); }
+.sched-title { font-size: 12.75px; font-weight: 550; }
+.sched-meta { font-size: 11px; color: var(--t-muted); margin-top: 1px; }
+.cd { font-size: 10.5px; font-weight: 600; padding: 1px 7px; border-radius: var(--r-full); font-variant-numeric: tabular-nums; flex-shrink: 0; margin-left: auto; }
+.cd-urgent { color: var(--red); background: var(--red-bg); }
+.cd-soon { color: var(--amber); background: var(--amber-bg); }
+.cd-normal { color: var(--t-muted); background: var(--bg-sunken); }
+.todo-item { display: flex; gap: 11px; padding: 10px 16px; border-bottom: 1px solid var(--bd-hair); cursor: pointer; transition: background .12s; text-decoration: none; color: inherit; }
+.todo-item:last-child { border-bottom: none; }
+.todo-item:hover { background: var(--bg-hover); }
+.todo-title { font-size: 12.75px; font-weight: 550; }
+.todo-meta { font-size: 11px; color: var(--t-muted); margin-top: 2px; display: flex; gap: 6px; align-items: center; }
+.todo-meta .code { font-family: var(--font-mono); }
+.todo-type { margin-left: auto; flex-shrink: 0; }
+.chart-grid { display: grid; grid-template-columns: 1.55fr 1fr; gap: 14px; }
+@media (max-width: 1024px) {
+  .hero, .dash-main-grid, .chart-grid { grid-template-columns: 1fr; }
+  .action-grid { grid-template-columns: repeat(2, 1fr); }
+}
