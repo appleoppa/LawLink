@@ -28,6 +28,7 @@ import { getArchivePolicy } from "./policy";
 import { createArchiveDocumentSnapshots, verifyArchivePolicySource, verifyArchiveSnapshotDocuments } from "./verification";
 import { matterHref } from "@/lib/matters/route";
 import { revalidateMatter } from "@/server/matters/route";
+import { recordTimelineEvent } from "@/server/timeline/record";
 
 /**
  * v0.9.4 归档：完整流程
@@ -254,15 +255,13 @@ export async function archiveMatter(input: ArchiveSubmitInput) {
           reviewedAt: null
         }
       });
-      await tx.timelineEvent.create({
-        data: {
+      await recordTimelineEvent(tx, {
           matterId: matter.id,
           eventType: "MATTER_ARCHIVE_REQUESTED",
           title: `归档申请已提交（${archiveNo}，待审批）`,
           content: `结案方式：${CLOSED_REASON_CN[data.closedReason]}。送审材料 ${documents.length} 份；${missingItems.length ? `必交缺项 ${missingItems.length} 项。` : "必交项均已关联材料。"}${data.summary}`,
           occurredAt: now
-        }
-      });
+        });
       return record;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
@@ -351,15 +350,13 @@ export async function approveArchiveRecord(input: ArchiveApproveInput) {
       where: { id: record.matterId },
       data: { status: "ARCHIVED", archivedAt: now, closedAt: record.completedAt }
     });
-    await tx.timelineEvent.create({
-      data: {
+    await recordTimelineEvent(tx, {
         matterId: record.matterId,
         eventType: "MATTER_ARCHIVED",
         title: `案件已归档（${record.archiveNo}）`,
         content: data.note?.trim() ? `审批意见：${data.note.trim()}` : "审批人已逐项核验并通过",
         occurredAt: now
-      }
-    });
+      });
   });
 
   // v0.18: 通知申请人

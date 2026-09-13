@@ -380,3 +380,25 @@ function readPath(obj: unknown, path: string): unknown {
   }
   return cur;
 }
+
+/**
+ * 从 docx 模板提取 {{变量}} 清单（含页眉页脚；#开头的循环段标签计入）。
+ * 先剥除 XML 标签再匹配，规避 Word 把占位符拆进多个 run 导致的漏检；
+ * 极端拆分仍可能漏，上传表单允许手工补充变量兜底。
+ */
+export function extractDocxVariables(buffer: Buffer): string[] {
+  const zip = new PizZip(buffer);
+  const found = new Set<string>();
+  const re = /\{\{\s*[#^]\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*\}\}|\{\{\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*\}\}/g;
+  for (const name of Object.keys(zip.files)) {
+    if (!/^word\/(document|header\d*|footer\d*)\.xml$/.test(name)) continue;
+    const entry = zip.file(name);
+    if (!entry) continue;
+    const text = entry.asText().replace(/<[^>]+>/g, "");
+    for (const m of text.matchAll(re)) {
+      const tag = m[1] ?? m[2];
+      if (tag) found.add(tag);
+    }
+  }
+  return [...found].sort();
+}

@@ -20,6 +20,7 @@ import { encryptBuffer, sha256 } from "@/lib/storage/crypto";
 import { extractDocumentTextLayer, ocrStatusFor } from "@/lib/documents/text-extraction";
 import { revalidateMatter } from "@/server/matters/route";
 import { assertDocumentNotInPendingArchive } from "@/server/archive/verification";
+import { recordTimelineEvent } from "@/server/timeline/record";
 
 const documentCategorySchema = z.enum([
   "EVIDENCE",
@@ -224,16 +225,14 @@ export async function uploadDocument(formData: FormData) {
 
   // v0.43 项4：写入案件动态时间线（仅案件文档）
   if (matterId) {
-    await roleMutation(session.user, "documents.write", async roleDb => roleDb.timelineEvent.create({
-      data: {
+    await roleMutation(session.user, "documents.write", async roleDb => recordTimelineEvent(roleDb, {
         matterId,
         eventType: "DOCUMENT_UPLOADED",
         title: `上传材料：${name.trim()}`,
         occurredAt: new Date(),
         refType: "Document",
         refId: created.id
-      }
-    }));
+      }));
   }
 
   if (matterId) await revalidateMatter(matterId);

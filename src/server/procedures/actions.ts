@@ -27,6 +27,7 @@ import {
   type HearingCreateInput
 } from "./schemas";
 import { revalidateMatter } from "@/server/matters/route";
+import { recordTimelineEvent } from "@/server/timeline/record";
 
 function emptyToNull<T extends Record<string, unknown>>(obj: T): T {
   const out: Record<string, unknown> = {};
@@ -70,16 +71,14 @@ export async function addProcedure(input: ProcedureCreateInput) {
     }
   }));
 
-  await roleMutation(session.user, "schedule.write", async roleDb => roleDb.timelineEvent.create({
-    data: {
+  await roleMutation(session.user, "schedule.write", async roleDb => recordTimelineEvent(roleDb, {
       matterId: data.matterId,
       eventType: "PROCEDURE_ADDED",
       title: `新增程序：${created.customLabel ?? created.type}`,
       occurredAt: new Date(),
       refType: "MatterProcedure",
       refId: created.id
-    }
-  }));
+    }));
 
   await audit({
     userId: session.user.id,
@@ -248,16 +247,14 @@ async function materializeProcedureStage(
   });
 
   if (result.created || result.revived) {
-    await roleMutation(session.user, "schedule.write", async roleDb => roleDb.timelineEvent.create({
-      data: {
+    await roleMutation(session.user, "schedule.write", async roleDb => recordTimelineEvent(roleDb, {
         matterId: procedure.matterId,
         eventType: "STAGE_ADDED",
         title: result.revived ? `恢复环节：${result.stage.name}` : `新增环节：${result.stage.name}`,
         occurredAt: new Date(),
         refType: "MatterStage",
         refId: result.stage.id
-      }
-    }));
+      }));
 
     await audit({
       userId: session.user.id,
@@ -351,16 +348,14 @@ export async function removeProcedureStage(input: ProcedureStageRemoveInput) {
         where: { id: stage.id },
         data: { status: "HIDDEN" }
       });
-      await tx.timelineEvent.create({
-        data: {
+      await recordTimelineEvent(tx, {
           matterId: stage.procedure.matterId,
           eventType: "STAGE_REMOVED",
           title: `隐藏环节：${stage.name}（数据保留）`,
           occurredAt: new Date(),
           refType: "MatterStage",
           refId: stage.id
-        }
-      });
+        });
     });
 
     await audit({
@@ -388,16 +383,14 @@ export async function removeProcedureStage(input: ProcedureStageRemoveInput) {
       where: { procedureId: stage.procedureId, order: { gt: stage.order } },
       data: { order: { decrement: 1 } }
     });
-    await tx.timelineEvent.create({
-      data: {
+    await recordTimelineEvent(tx, {
         matterId: stage.procedure.matterId,
         eventType: "STAGE_REMOVED",
         title: `移除环节：${stage.name}`,
         occurredAt: new Date(),
         refType: "MatterStage",
         refId: stage.id
-      }
-    });
+      });
   });
 
   await audit({
@@ -457,16 +450,14 @@ export async function addDeadline(input: DeadlineCreateInput) {
       detail: { matterId: procedure.matterId, procedureId: data.procedureId }
     });
     // v0.43 项4：写入案件动态时间线
-    await roleMutation(session.user, "schedule.write", async roleDb => roleDb.timelineEvent.create({
-      data: {
+    await roleMutation(session.user, "schedule.write", async roleDb => recordTimelineEvent(roleDb, {
         matterId: procedure.matterId,
         eventType: "DEADLINE_ADDED",
         title: `新增期限：${data.title}`,
         occurredAt: new Date(),
         refType: "Deadline",
         refId: created.id
-      }
-    }));
+      }));
     await revalidateMatter(procedure.matterId);
   }
 
@@ -558,16 +549,14 @@ export async function addHearing(input: HearingCreateInput) {
   });
 
   if (procedure) {
-    await roleMutation(session.user, "schedule.write", async roleDb => roleDb.timelineEvent.create({
-      data: {
+    await roleMutation(session.user, "schedule.write", async roleDb => recordTimelineEvent(roleDb, {
         matterId: procedure.matterId,
         eventType: "HEARING_SCHEDULED",
         title: `开庭：${data.title}`,
         occurredAt: data.startsAt,
         refType: "Hearing",
         refId: created.id
-      }
-    }));
+      }));
 
     await audit({
       userId: session.user.id,

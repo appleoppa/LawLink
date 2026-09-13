@@ -18,7 +18,8 @@ import {
   Package,
   ScrollText,
   ShieldCheck,
-  Users
+  Users,
+  FileText,
 } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -52,6 +53,7 @@ const navigation: Array<{ label: string; items: AdminNavItem[] }> = [
       { href: "/admin/approval-permissions", label: "审批权限", icon: ShieldCheck, adminOnly: true },
       { href: "/admin/archive-policy", label: "归档制度", icon: BookOpenCheck, adminOnly: true },
       { href: "/admin/templates", label: "阶段模板", icon: Layers, adminOnly: true },
+      { href: "/admin/document-templates", label: "文书模板", icon: FileText, adminOnly: true },
       { href: "/admin/custom-fields", label: "自定义字段", icon: ListChecks, adminOnly: true }
     ]
   },

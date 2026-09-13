@@ -13,6 +13,19 @@ export interface MatterSignal {
   href?: string;
 }
 
+/** 风险阶梯：四级紧迫度小条（红=逾期全亮 / 琥珀=临期 3 档 / 蓝=关注 2 档；审批非期限不带阶梯） */
+function SignalLadder({ kind }: { kind: MatterSignal["kind"] }) {
+  if (kind === "approval") return null;
+  const ladder = { overdue: ["l-red", 4], "pending-confirm": ["l-amber", 3], "hearing-soon": ["l-blue", 2] }[kind] as const;
+  return (
+    <span className={`ladder ${ladder[0]}`} aria-hidden>
+      {Array.from({ length: 4 }, (_, i) => (
+        <i key={i} className={i < ladder[1] ? "on" : undefined} />
+      ))}
+    </span>
+  );
+}
+
 export function MatterSignalStrip({ signals }: { signals: MatterSignal[] }) {
   if (signals.length === 0) {
     return (
@@ -41,6 +54,7 @@ export function MatterSignalStrip({ signals }: { signals: MatterSignal[] }) {
           >
             <Icon className="h-3.5 w-3.5" />
             {s.label}
+            <SignalLadder kind={s.kind} />
           </span>
         );
         return s.href ? (

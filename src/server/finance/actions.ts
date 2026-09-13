@@ -34,6 +34,7 @@ import {
 } from "./invoice-matter-search";
 import { revalidateMatter } from "@/server/matters/route";
 import { allocateCommissions } from "./commissions";
+import { recordTimelineEvent } from "@/server/timeline/record";
 
 // ============ Billing ============
 
@@ -178,15 +179,13 @@ export async function createFeeEntry(input: FeeEntryCreateInput) {
 
     // 实收事件入时间线
     if (data.type === "RECEIVED") {
-      await tx.timelineEvent.create({
-        data: {
+      await recordTimelineEvent(tx, {
           matterId: data.matterId,
           eventType: "FEE_RECEIVED",
           title: `实收 ¥${data.amount.toLocaleString("zh-CN")}`,
           content: data.note ?? undefined,
           occurredAt: data.occurredAt
-        }
-      });
+        });
     }
 
     return entry;

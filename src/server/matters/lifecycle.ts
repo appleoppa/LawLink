@@ -9,6 +9,7 @@ import { audit } from "@/server/audit";
 import { assertMatterWritable } from "@/lib/archive/guard";
 import { assertCanLeadMatter } from "@/lib/permissions";
 import { revalidateMatter } from "@/server/matters/route";
+import { recordTimelineEvent } from "@/server/timeline/record";
 
 const closeMatterSchema = z.object({
   id: z.string().cuid(),
@@ -42,15 +43,13 @@ export async function closeMatter(input: CloseMatterInput) {
         closedAt: new Date()
       }
     });
-    await tx.timelineEvent.create({
-      data: {
+    await recordTimelineEvent(tx, {
         matterId: data.id,
         eventType: "MATTER_CLOSED",
         title: "案件已结案",
         content: data.summary,
         occurredAt: new Date()
-      }
-    });
+      });
   });
 
   await audit({
@@ -94,14 +93,12 @@ export async function reopenMatter(id: string) {
         closedAt: null
       }
     });
-    await tx.timelineEvent.create({
-      data: {
+    await recordTimelineEvent(tx, {
         matterId: id,
         eventType: "MATTER_REOPENED",
         title: "案件已重新开放",
         occurredAt: new Date()
-      }
-    });
+      });
   });
 
   await audit({
@@ -131,15 +128,13 @@ export async function holdMatter(input: HoldMatterInput) {
       where: { id: data.id },
       data: { status: "ON_HOLD" }
     });
-    await tx.timelineEvent.create({
-      data: {
+    await recordTimelineEvent(tx, {
         matterId: data.id,
         eventType: "MATTER_ON_HOLD",
         title: "案件已暂停",
         content: data.reason || undefined,
         occurredAt: new Date()
-      }
-    });
+      });
   });
 
   await audit({
@@ -185,15 +180,13 @@ export async function completeMatterService(input: CompleteMatterServiceInput) {
       where: { id: data.id },
       data: { serviceStatus: "SERVICE_COMPLETED" }
     });
-    await tx.timelineEvent.create({
-      data: {
+    await recordTimelineEvent(tx, {
         matterId: data.id,
         eventType: "MATTER_SERVICE_COMPLETED",
         title: "律师服务已完成",
         content: data.note || undefined,
         occurredAt: new Date()
-      }
-    });
+      });
   });
 
   await audit({
@@ -228,14 +221,12 @@ export async function activateMatterService(id: string) {
       where: { id },
       data: { serviceStatus: "SERVICE_ACTIVE" }
     });
-    await tx.timelineEvent.create({
-      data: {
+    await recordTimelineEvent(tx, {
         matterId: id,
         eventType: "MATTER_SERVICE_ACTIVATED",
         title: "服务已恢复进行中",
         occurredAt: new Date()
-      }
-    });
+      });
   });
 
   await audit({

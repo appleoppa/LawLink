@@ -23,6 +23,7 @@ import {
   smsIdSchema
 } from "./schemas";
 import { revalidateMatter } from "@/server/matters/route";
+import { recordTimelineEvent } from "@/server/timeline/record";
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 解析并保存（支持批量）
@@ -577,16 +578,14 @@ export async function backfillCaseNumberFromSms(
   }));
 
   const matchedMatterId = sms.matchedMatterId;
-  await roleMutation(session.user, "matters.write", async roleDb => roleDb.timelineEvent.create({
-    data: {
+  await roleMutation(session.user, "matters.write", async roleDb => recordTimelineEvent(roleDb, {
       matterId: matchedMatterId,
       eventType: "PROCEDURE_UPDATED",
       title: `案号回填：${data.caseNumber}（来自法院短信）`,
       occurredAt: new Date(),
       refType: "MatterProcedure",
       refId: procedure.id
-    }
-  }));
+    }));
 
   await audit({
     userId: session.user.id,

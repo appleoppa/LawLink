@@ -14,6 +14,7 @@ import { generateClientCode } from "@/server/clients/code-generator";
 import { assertCauseAllowedForSelection } from "@/server/causes/validation";
 import { normalizeIdNumber, duplicateWhereInput, suggestIdType } from "@/lib/clients/identity";
 import { sealIdNumber, blindIdNumber } from "@/lib/clients/id-number-crypto";
+import { recordTimelineEvent } from "@/server/timeline/record";
 import {
   IMPORT_COLUMNS,
   validateRow,
@@ -289,14 +290,12 @@ async function createOneMatter(n: NormalizedRow, currentUserId: string) {
       select: { id: true, internalCode: true, firmCaseNo: true, title: true }
     });
 
-    await tx.timelineEvent.create({
-      data: {
+    await recordTimelineEvent(tx, {
         matterId: matter.id,
         eventType: "MATTER_CREATED",
         title: "案件已创建（批量导入）",
         occurredAt: new Date()
-      }
-    });
+      });
 
     await seedDefaultFolders(tx, matter.id, n.category);
     return matter;

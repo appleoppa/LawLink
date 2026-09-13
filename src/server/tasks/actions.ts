@@ -9,6 +9,7 @@ import { createNotification } from "@/server/notifications/create";
 import { assertMatterWritable } from "@/lib/archive/guard";
 import { assertCanAssociateMatter } from "@/lib/permissions";
 import { matterHrefById, revalidateMatter } from "@/server/matters/route";
+import { recordTimelineEvent } from "@/server/timeline/record";
 
 const taskCreateSchema = z.object({
   matterId: z.string().cuid(),
@@ -64,16 +65,14 @@ export async function createTask(input: TaskCreateInput) {
   });
 
   // v0.43 项4：写入案件动态时间线
-  await roleMutation(session.user, "schedule.write", async roleDb => roleDb.timelineEvent.create({
-    data: {
+  await roleMutation(session.user, "schedule.write", async roleDb => recordTimelineEvent(roleDb, {
       matterId: data.matterId,
       eventType: "TASK_ADDED",
       title: `新增事项：${created.title}`,
       occurredAt: new Date(),
       refType: "Task",
       refId: created.id
-    }
-  }));
+    }));
 
   // 通知被指派人（非创建者本人时）
   if (data.assigneeId && data.assigneeId !== session.user.id) {

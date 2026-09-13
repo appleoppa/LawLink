@@ -40,6 +40,7 @@ import {
   type MatterUpdateBasicInput
 } from "./schemas";
 import { revalidateMatter } from "@/server/matters/route";
+import { recordTimelineEvent } from "@/server/timeline/record";
 
 function emptyToNull<T extends Record<string, unknown>>(obj: T): T {
   const out: Record<string, unknown> = {};
@@ -803,14 +804,12 @@ export async function createMatter(input: MatterCreateInput) {
     });
 
     // TimelineEvent: 案件创建
-    await tx.timelineEvent.create({
-      data: {
+    await recordTimelineEvent(tx, {
         matterId: matter.id,
         eventType: "MATTER_CREATED",
         title: "案件已创建",
         occurredAt: new Date()
-      }
-    });
+      });
 
     // v0.8: 默认卷宗
     await seedDefaultFolders(tx, matter.id, data.category);
@@ -901,16 +900,14 @@ export async function updateMatterTeam(input: {
   });
 
   // v0.43 项4：写入案件动态时间线
-  await roleMutation(session.user, "matters.write", async roleDb => roleDb.timelineEvent.create({
-    data: {
+  await roleMutation(session.user, "matters.write", async roleDb => recordTimelineEvent(roleDb, {
       matterId: input.matterId,
       eventType: "TEAM_CHANGED",
       title: "更新办案团队",
       occurredAt: new Date(),
       refType: "Matter",
       refId: input.matterId
-    }
-  }));
+    }));
 
   await revalidateMatter(input.matterId);
   return { ok: true };

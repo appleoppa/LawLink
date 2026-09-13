@@ -30,6 +30,7 @@ import {
 import { seedDefaultFolders } from "@/lib/default-folders";
 import { notifyRoleApprovers } from "@/server/notifications/approval";
 import { assertCauseAllowedForSelection } from "@/server/causes/validation";
+import { recordTimelineEvent } from "@/server/timeline/record";
 
 function emptyToNull<T extends Record<string, unknown>>(obj: T): T {
   const out: Record<string, unknown> = {};
@@ -806,14 +807,12 @@ export async function convertIntakeToMatter(intakeId: string, note?: string) {
       data: { status: "CONVERTED" }
     });
 
-    await tx.timelineEvent.create({
-      data: {
+    await recordTimelineEvent(tx, {
         matterId: m.id,
         eventType: "MATTER_CREATED",
         title: `案件已创建（来自 Intake）`,
         occurredAt: new Date()
-      }
-    });
+      });
 
     // v0.8: 默认卷宗
     await seedDefaultFolders(tx, m.id, intake.category);

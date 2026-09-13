@@ -11,6 +11,7 @@ import { ensureExt } from "@/lib/storage/mime-ext";
 import { normalizeUploadedFilename } from "@/lib/filename";
 import { audit } from "@/server/audit";
 import { assertDocumentWritable } from "@/lib/archive/guard";
+import { recordTimelineEvent } from "@/server/timeline/record";
 import type {
   ParsedSms,
   SmsAttachmentResult,
@@ -466,16 +467,14 @@ async function saveAttachmentDocument({
     select: { id: true, name: true, mimeType: true, size: true }
   });
 
-  await prisma.timelineEvent.create({
-    data: {
+  await recordTimelineEvent(prisma, {
       matterId: ctx.matterId,
       eventType: "DOCUMENT_UPLOADED",
       title: `提取法院短信附件：${filename}`,
       occurredAt: new Date(),
       refType: "Document",
       refId: doc.id
-    }
-  });
+    });
 
   await audit({
     userId: ctx.userId,

@@ -5,12 +5,12 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireSession, requireSystemAdmin } from "@/lib/auth/session";
-import { audit } from "@/server/audit";
+import { audit, auditTx } from "@/server/audit";
 import { storage } from "@/lib/storage";
 import { assertMatterWritable } from "@/lib/archive/guard";
 import { assertCanLeadMatter } from "@/lib/permissions";
 import { decryptBuffer, encryptBuffer, sha256 } from "@/lib/storage/crypto";
-import { buildContext, renderDocxBuffer, detectMissing } from "@/lib/template-engine";
+import { buildContext, renderDocxBuffer, detectMissing, extractDocxVariables } from "@/lib/template-engine";
 import { suggestFolderByTemplateCategory } from "@/lib/default-folders";
 import {
   templateListFilterSchema,
@@ -193,4 +193,110 @@ export async function renderTemplate(input: z.infer<typeof templateRenderSchema>
 
   await revalidateMatter(data.matterId);
   return { ok: true, documentId: doc.id, fileName, missing };
+}
+
+/* ---------- v1.x 收尾：律师自定义文书模板上传（v5 §4.4 挂账清偿） ---------- */
+
+const uploadTemplateSchema = z.object({
+  name: z.string().min(1, "模板名称必填").max(80),
+  category: z.enum([
+    "INTAKE", "RETAINER", "LITIGATION", "HEARING",
+    "WORK_PRODUCT", "ARCHIVE", "CLOSING", "BLANK"
+  ]),
+  description: z.string().max(300).optional().or(z.literal("")),
+  applicableCategories: z.array(z.enum([
+    "CIVIL_COMMERCIAL", "LABOR_ARBITRATION", "COMMERCIAL_ARBITRATION", "CRIMINAL",
+    "ADMINISTRATIVE", "NON_LITIGATION", "LEGAL_COUNSEL", "SPECIAL_PROJECT"
+  ])).default([]),
+  extraVariables: z.array(z.string().regex(/^[A-Za-z_$][\w$.]*$/, "变量须为点分路径，如 client.name")).default([])
+});
+
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const MAX_TEMPLATE_SIZE = 10 * 1024 * 1024;
+
+/**
+ * 上传自定义 docx 模板。文件加密落 storage，元数据与 blob Document 同事务创建；
+ * 变量清单自动提取（页眉页脚一并扫描），手工补充变量兜底拆分 run 漏检。
+ */
+export async function uploadDocumentTemplate(formData: FormData) {
+  const session = await requireSystemAdmin();
+  const data = uploadTemplateSchema.parse({
+    name: formData.get("name"),
+    category: formData.get("category"),
+    description: formData.get("description") || undefined,
+    applicableCategories: String(formData.get("applicableCategories") ?? "").split(",").map(s => s.trim()).filter(Boolean),
+    extraVariables: String(formData.get("extraVariables") ?? "").split(/[，,]/).map(s => s.trim()).filter(Boolean)
+  });
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) throw new Error("请选择 docx 模板文件");
+  if (file.size > MAX_TEMPLATE_SIZE) throw new Error("模板文件不得超过 10MB");
+  const isDocx = file.type === DOCX_MIME || file.name.toLowerCase().endsWith(".docx");
+  if (!isDocx) throw new Error("仅支持 .docx 模板文件");
+  const buffer = Buffer.from(await file.arrayBuffer());
+  if (buffer.subarray(0, 2).toString("latin1") !== "PK") throw new Error("文件不是有效的 docx（ZIP 头缺失）");
+
+  const variables = [...new Set([...extractDocxVariables(buffer), ...data.extraVariables])].sort();
+
+  const enc = encryptBuffer(buffer);
+  const created = await prisma.$transaction(async tx => {
+    const path = await storage.writeFile("templates", enc.ciphertext);
+    const tmpl = await tx.documentTemplate.create({
+      data: {
+        name: data.name,
+        category: data.category,
+        description: data.description || null,
+        applicableCategories: data.applicableCategories,
+        variables,
+        isBuiltIn: false,
+        createdBy: { connect: { id: session.user.id } },
+        docxBlob: {
+          create: {
+            name: file.name,
+            mimeType: DOCX_MIME,
+            size: file.size ?? buffer.length,
+            path,
+            encrypted: true,
+            iv: enc.iv.toString("base64"),
+            authTag: enc.authTag.toString("base64"),
+            uploadedById: session.user.id,
+            sourceOrigin: "TEAM_PRODUCED" as const
+          }
+        }
+      },
+      select: { id: true }
+    });
+    await auditTx(tx, {
+      userId: session.user.id,
+      action: "TEMPLATE_UPLOAD",
+      targetType: "DocumentTemplate",
+      targetId: tmpl.id,
+      detail: {
+        name: data.name,
+        category: data.category,
+        fileName: file.name,
+        fileSize: file.size,
+        extractedVariableCount: variables.length
+      }
+    });
+    return tmpl;
+  });
+
+  revalidatePath("/admin/document-templates");
+  return { ok: true as const, id: created.id, variableCount: variables.length };
+}
+
+/** 管理后台列表（含停用；带创建人与文件信息） */
+export async function listTemplatesForAdmin() {
+  await requireSystemAdmin();
+  return prisma.documentTemplate.findMany({
+    orderBy: [{ isBuiltIn: "asc" }, { category: "asc" }, { updatedAt: "desc" }],
+    select: {
+      id: true, name: true, category: true, description: true,
+      applicableCategories: true, variables: true, isBuiltIn: true, enabled: true,
+      updatedAt: true,
+      createdBy: { select: { name: true } },
+      docxBlob: { select: { name: true, size: true } }
+    }
+  });
 }
