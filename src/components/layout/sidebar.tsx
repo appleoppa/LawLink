@@ -1,161 +1,231 @@
 "use client";
-import { useSession } from "next-auth/react";
-import { hasCustomPermission, type PermissionKey } from "@/lib/roles/catalog";
 
+/**
+ * 墨案侧栏（docs/mockup/v4 02–10 页 .sidebar）：
+ * 品牌（律所名 + LawLink）/ 工作区·业务·知识·资料 四段导航（带计数）/ 底部用户卡。
+ * 计数经 getNavCounts 按当前账号权限异步获取，失败不显示；路由切换后刷新。
+ */
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSession, signOut } from "next-auth/react";
+import { ChevronsUpDown, LogOut, ShieldCheck, User, Settings as SettingsIcon, LayoutGrid } from "lucide-react";
+import { hasCustomPermission, roleDisplayName, type PermissionKey } from "@/lib/roles/catalog";
+import { canEnterAdminWorkspace } from "@/lib/auth/system-role";
+import { getNavCounts, type NavCounts } from "@/server/layout/nav-counts";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { primaryNav, businessNav, knowledgeNav, secondaryNav, type NavItem } from "./nav-config";
+import { primaryNav, businessNav, knowledgeNav, resourceNav, APP_ITEMS, type NavItem } from "./nav-config";
 
-/** v0.42 项1: 侧栏品牌（可在设置 → 律所信息配置） */
+/** v0.42 项1: 侧栏品牌（可在管理后台 → 律所信息配置） */
 export type FirmBrand = {
   name: string;
   subtitle: string;
   logoDataUrl: string | null;
 };
 
+const PERMISSION_BY_HREF: Record<string, PermissionKey> = {
+  "/matters": "matters.read",
+  "/intakes": "matters.read",
+  "/clients": "clients.read",
+  "/finance": "finance.read",
+  "/archive": "archive.read",
+  "/reports": "reports.read",
+  "/inbox": "matters.read"
+};
+
 /** 桌面侧边栏（md 以上显示） */
-export function Sidebar({ firm }: { firm: FirmBrand }) {
+export function Sidebar({ firm, onOpenTools }: { firm: FirmBrand; onOpenTools?: () => void }) {
   return (
-    <aside className="fixed left-0 top-0 z-30 hidden h-screen w-[228px] flex-col border-r border-border bg-card md:flex">
-      <NavContent firm={firm} />
+    <aside className="sidebar fixed left-0 top-0 z-30 hidden w-[228px] md:flex">
+      <NavContent firm={firm} onOpenTools={onOpenTools} />
     </aside>
   );
 }
 
-/** 导航内容 — 桌面侧边栏和移动 Sheet 共用 */
-export function NavContent({ firm }: { firm: FirmBrand }) {
-  const pathname = usePathname();
-  const { data: session } = useSession();
-  const keys: Record<string, PermissionKey> = { "/matters": "matters.read", "/intakes": "matters.read", "/clients": "clients.read", "/finance": "finance.read", "/archive": "archive.read", "/reports": "reports.read", "/inbox": "matters.read" };
-  const visible = (item: NavItem) => !keys[item.href] || Boolean(session?.user && hasCustomPermission(session.user, keys[item.href]));
-
+export function BrandMark({ logoDataUrl, name, size = 30 }: { logoDataUrl?: string | null; name: string; size?: number }) {
+  if (logoDataUrl) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={logoDataUrl} alt={name} className="shrink-0 rounded-lg object-contain" style={{ width: size, height: size }} />;
+  }
   return (
-    <>
-      <Link
-        href="/"
-        className="brand flex h-14 items-center gap-2.5 px-4 no-underline transition-colors hover:bg-muted/50"
-        aria-label="返回概览"
-      >
-        {firm.logoDataUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={firm.logoDataUrl}
-            alt={firm.name}
-            className="h-[30px] w-[30px] shrink-0 rounded-lg object-contain"
-          />
-        ) : (
-          // 品牌兜底用正式标志（docs/BRAND.md：双立柱 + teal 连接件），不用天平等传统符号
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src="/brand/lawlink-mark.svg"
-            alt={firm.name}
-            className="h-[30px] w-[30px] shrink-0 rounded-lg"
-          />
-        )}
-        <div className="flex min-w-0 flex-col leading-tight">
-          <span className="truncate text-[13px] font-semibold text-foreground">{firm.name}</span>
-          {firm.subtitle ? (
-            <span className="truncate text-[10px] text-muted-foreground">{firm.subtitle}</span>
-          ) : null}
-        </div>
-      </Link>
-
-      <nav className="flex-1 overflow-y-auto px-2 py-1">
-        <div className="nav-section-label">
-          工作区
-        </div>
-        <div className="space-y-0.5">
-          {primaryNav.filter(visible).map((item) => (
-            <NavLink key={item.href} item={item} active={isActive(pathname, item.href)} />
-          ))}
-        </div>
-        <div className="nav-section-label">
-          业务
-        </div>
-        <div className="space-y-0.5">
-          {businessNav.filter(visible).map((item) => (
-            <NavLink key={item.href} item={item} active={isActive(pathname, item.href)} />
-          ))}
-        </div>
-        <div className="nav-section-label">
-          知识
-        </div>
-        <div className="space-y-0.5">
-          {knowledgeNav.filter(visible).map((item) => (
-            <NavLink key={item.href} item={item} active={isActive(pathname, item.href)} />
-          ))}
-        </div>
-        <div className="nav-section-label">
-          资料
-        </div>
-        <div className="space-y-0.5">
-          {secondaryNav.filter(visible).map((item) => (
-            <NavLink key={item.href} item={item} active={isActive(pathname, item.href)} />
-          ))}
-        </div>
-      </nav>
-    </>
+    <span className="brand-mark" style={{ width: size, height: size }} aria-hidden>
+      <svg width={size * 0.53} height={size * 0.53} viewBox="0 0 16 16" fill="none">
+        <rect x="3" y="2.6" width="2.7" height="10.8" rx="1.1" fill="#fff" />
+        <rect x="8.4" y="2.6" width="2.7" height="10.8" rx="1.1" fill="#fff" />
+        <rect x="3" y="6.8" width="8.1" height="2.4" rx="1.1" fill="#00A6A6" />
+      </svg>
+    </span>
   );
 }
 
-function NavLink({
-  item,
-  active,
-  onClick
-}: {
-  item: NavItem;
-  active: boolean;
-  onClick?: (e: React.MouseEvent) => void;
-}) {
-  const Icon = item.icon;
-  const isCourtSms = item.tone === "courtSms";
+/** 导航内容 — 桌面侧边栏和移动 Sheet 共用 */
+export function NavContent({ firm, onOpenTools }: { firm: FirmBrand; onOpenTools?: () => void }) {
+  const pathname = usePathname();
+  const { data: session } = useSession();
+  const user = session?.user;
+  const [counts, setCounts] = useState<NavCounts | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    getNavCounts()
+      .then((c) => alive && setCounts(c))
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [user, pathname]);
+
+  const visible = (item: NavItem) => !PERMISSION_BY_HREF[item.href] || Boolean(user && hasCustomPermission(user, PERMISSION_BY_HREF[item.href]));
+  const countOf = (item: NavItem): { n: number; alert?: boolean } | null => {
+    if (!counts || !item.countKey) return null;
+    const n = counts[item.countKey];
+    if (n === null || n === undefined || n === 0) return null;
+    return { n, alert: item.countKey === "approvals" };
+  };
+
+  const displayName = user?.name ?? "";
+  const roleLabel = user?.role ? roleDisplayName(user) : "";
+  const systemLabel = user?.systemRole === "SUPER_ADMIN" ? "超级管理员" : "";
+
+  const section = (label: string, items: NavItem[]) => {
+    const list = items.filter(visible);
+    if (list.length === 0) return null;
+    return (
+      <>
+        <div className="nav-section-label">{label}</div>
+        {list.map((item) => (
+          <NavLink key={item.href} item={item} active={isActive(pathname, item.href)} count={countOf(item)} />
+        ))}
+      </>
+    );
+  };
+
   return (
-    <Link
-      href={item.href}
-      onClick={onClick}
-      className={cn(
-        "group relative flex h-8 items-center gap-2.5 rounded-[7px] px-2.5 text-[12.75px] transition-[background-color,color] [transition-duration:140ms]",
-        isCourtSms
-          ? active
-            ? "bg-sky-500/12 text-sky-700 font-medium ring-1 ring-sky-500/20"
-            : "text-sky-700/90 hover:bg-sky-500/10 hover:text-sky-800"
-          : active
-            ? "bg-[#E4F1F0] font-medium text-[#005054]"
-            : "text-[#414E5A] hover:bg-muted hover:text-foreground"
-      )}
-    >
-      <Icon
-        className={cn(
-          "h-[15px] w-[15px] shrink-0",
-          isCourtSms
-            ? active
-              ? "text-sky-700"
-              : "text-sky-700/80 group-hover:text-sky-800"
-            : active
-              ? "text-primary"
-              : "text-muted-foreground/70 group-hover:text-foreground"
-        )}
-        strokeWidth={active ? 2 : 1.6}
-      />
-      <span className="flex-1 truncate">{item.label}</span>
-      {item.badge ? (
-        <span
-          className={cn(
-            "ml-auto min-w-5 rounded-full px-1.5 py-0 text-center font-mono text-[10.5px] leading-[18px] tabular",
-            active
-              ? "bg-[rgba(0,123,127,0.14)] text-[#005054]"
-              : "bg-[#E9EDEB] text-muted-foreground"
-          )}
-        >
-          {item.badge}
-        </span>
-      ) : null}
+    <div className="flex h-full w-full flex-col">
+      <Link href="/" className="brand no-underline hover:bg-[var(--bg-hover)]" aria-label="返回工作台">
+        <BrandMark logoDataUrl={firm.logoDataUrl} name={firm.name} />
+        <div className="min-w-0">
+          <div className="brand-name truncate text-[var(--t-primary)]">{firm.name}</div>
+          <div className="brand-sub truncate">{firm.subtitle || "LawLink 案件管理"}</div>
+        </div>
+      </Link>
+
+      <nav className="nav overflow-y-auto">
+        {section("工作区", primaryNav)}
+        {section("业务", businessNav)}
+        {section("知识", knowledgeNav)}
+        <div className="nav-section-label">资料</div>
+        {resourceNav.filter(visible).map((item) => (
+          <NavLink key={item.href} item={item} active={isActive(pathname, item.href)} count={null} />
+        ))}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" className={cn("nav-item w-full border-0 bg-transparent text-left font-[inherit]", APP_ITEMS.some((a) => a.href && pathname.startsWith(a.href)) && "active")}>
+              <LayoutGrid className="ic" strokeWidth={1.8} />
+              更多应用
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="right" align="start" className="w-44">
+            {APP_ITEMS.map((it) => {
+              const Icon = it.icon;
+              if (it.kind === "tools") {
+                return (
+                  <DropdownMenuItem key={it.label} onSelect={() => onOpenTools?.()} className="cursor-pointer">
+                    <Icon className="text-[var(--t-muted)]" strokeWidth={1.8} />
+                    {it.label}
+                  </DropdownMenuItem>
+                );
+              }
+              return (
+                <DropdownMenuItem key={it.label} asChild>
+                  {it.kind === "external" ? (
+                    <a href={it.href} target="_blank" rel="noreferrer" className="cursor-pointer">
+                      <Icon className="text-[var(--t-muted)]" strokeWidth={1.8} />
+                      {it.label}
+                    </a>
+                  ) : (
+                    <Link href={it.href!} className="cursor-pointer">
+                      <Icon className="text-[var(--t-muted)]" strokeWidth={1.8} />
+                      {it.label}
+                    </Link>
+                  )}
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </nav>
+
+      <div className="nav-bottom">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" className="user-card w-full border-0 bg-transparent text-left font-[inherit]">
+              <span className="avatar av-teal">{displayName.charAt(0) || "?"}</span>
+              <span className="user-meta">
+                <span className="user-name block truncate text-[var(--t-primary)]">{displayName || "…"}</span>
+                <span className="user-role block truncate">{[roleLabel, systemLabel].filter(Boolean).join(" · ")}</span>
+              </span>
+              <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-[var(--t-faint)]" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="start" className="w-52">
+            <DropdownMenuLabel className="text-xs font-normal text-[var(--t-muted)]">
+              {displayName ? `${displayName} · ${roleLabel}` : "加载中…"}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/settings/profile" className="cursor-pointer">
+                <User />
+                个人信息
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/settings" className="cursor-pointer">
+                <SettingsIcon />
+                个人设置
+              </Link>
+            </DropdownMenuItem>
+            {canEnterAdminWorkspace(user) ? (
+              <DropdownMenuItem asChild>
+                <Link href="/admin" className="cursor-pointer">
+                  <ShieldCheck />
+                  管理后台
+                </Link>
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => signOut({ callbackUrl: "/login" })} className="cursor-pointer text-[var(--red)] focus:text-[var(--red)]">
+              <LogOut />
+              退出登录
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
+  );
+}
+
+function NavLink({ item, active, count }: { item: NavItem; active: boolean; count: { n: number; alert?: boolean } | null }) {
+  const Icon = item.icon;
+  return (
+    <Link href={item.href} className={cn("nav-item no-underline", active && "active")} aria-current={active ? "page" : undefined}>
+      <Icon className="ic" strokeWidth={1.8} />
+      <span className="truncate">{item.label}</span>
+      {count ? <span className={cn("count", count.alert && !active && "alert")}>{count.n > 99 ? "99+" : count.n}</span> : null}
     </Link>
   );
 }
 
 function isActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
-  return pathname.startsWith(href);
+  return pathname === href || pathname.startsWith(`${href}/`);
 }

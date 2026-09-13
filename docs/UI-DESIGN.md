@@ -39,6 +39,15 @@ v3.4 的全部交互纪律继续有效：Apple 式克制、动效 token（140–
 
 UI 改动后照旧执行：`npm run lint / typecheck / prisma:validate / build`，并打开本地站点核对 `/login` 与核心工作流页面；涉及表格行样式时须核对表头与数据逐列对齐。
 
+### 五、按效果图全面重建（2026-09-13 起）
+
+016eac5 检查点只把 token 与少数页面移植到墨案，原子组件与多数页面仍是 v3 视觉。自 2026-09-13 起按 `docs/UI-V4-REBUILD-PLAN.md` 全面重建：
+
+- **效果图即验收基准**：有效果图的页面以 `output/mockup-v4/*.png` 在 1440 宽并排比对，布局、层级、组件形态须与效果图一致，而非"在旧页面上换色"。
+- **原子层统一墨案**：`src/components/ui/` 的 Button/Badge/Input/Select/Tabs/Table/Card/Dialog/Sheet 等直接使用墨案 token（`moan.css` 变量），不再保留 v3 硬编码色值；shadcn hsl 变量同步映射为墨案色值。
+- **patterns 统一母版**：页面骨架与签名母版集中在 `src/components/patterns/`（清单见重建方案），页面不得再各自手写同类结构。
+- 效果图未覆盖的页面按 DataIndex（03/08 号）、MatterWorkspace（04 号）、TransactionForm（05 号）、宽幅审阅（07 号）四种范式补全。
+
 ---
 
 ## v3.4 当前规范（执行版）

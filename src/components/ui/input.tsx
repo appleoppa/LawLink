@@ -30,7 +30,7 @@ const FileInput = React.forwardRef<HTMLInputElement, React.ComponentProps<"input
 
     return (
       <span className={cn(
-        "ll-form-control relative flex h-9 w-full min-w-0 items-center gap-3 rounded-sm border border-input px-3 py-2 text-[13px] ring-offset-background focus-within:outline focus-within:outline-2 focus-within:outline-ring",
+        "ll-form-control relative flex h-[34px] w-full min-w-0 items-center gap-3 rounded-[8px] border border-input px-[11px] py-1.5 text-[13px] ring-offset-background focus-within:border-[var(--teal)] focus-within:shadow-[0_0_0_3px_rgba(0,123,127,0.12)]",
         disabled && "cursor-not-allowed opacity-50",
         className
       )}>
@@ -66,7 +66,7 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
       <input
         type={type}
         className={cn(
-          "ll-form-control flex h-9 w-full rounded-sm border border-input px-3 py-2 text-[13px] ring-offset-background file:border-0 file:bg-transparent file:text-[13px] file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
+          "ll-form-control flex h-[34px] w-full rounded-[8px] border border-input px-[11px] py-1.5 text-[13px] ring-offset-background file:border-0 file:bg-transparent file:text-[13px] file:font-medium file:text-foreground placeholder:text-[var(--t-faint)] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
           className
         )}
         ref={ref}

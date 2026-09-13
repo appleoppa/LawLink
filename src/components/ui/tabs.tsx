@@ -14,7 +14,7 @@ const TabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      "inline-flex h-9 items-center gap-0 border-b border-border",
+      "inline-flex items-center gap-0.5 border-b border-[var(--bd-hair)]",
       className
     )}
     {...props}
@@ -29,9 +29,7 @@ const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      "relative inline-flex items-center justify-center whitespace-nowrap px-4 py-2 text-sm text-muted-foreground transition-[color,transform] [transition-duration:var(--motion-press)] [transition-timing-function:var(--ease-out)] hover:text-foreground active:scale-[0.98] motion-reduce:transform-none motion-reduce:transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:text-primary data-[state=active]:font-medium",
-      // Active bottom border indicator
-      "data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-[2px] data-[state=active]:after:bg-primary",
+      "relative -mb-px inline-flex items-center justify-center gap-1.5 whitespace-nowrap border-b-2 border-transparent px-3.5 py-[9px] text-[13px] font-[550] text-[var(--t-muted)] transition-[color,transform] [transition-duration:var(--motion-press)] [transition-timing-function:var(--ease-out)] hover:text-foreground active:scale-[0.98] motion-reduce:transform-none motion-reduce:transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:border-[var(--teal)] data-[state=active]:text-[var(--teal-deep)]",
       className
     )}
     {...props}

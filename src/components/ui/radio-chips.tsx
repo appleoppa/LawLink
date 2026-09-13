@@ -35,10 +35,11 @@ export function RadioChips<T extends string>({
             title={item.description}
             className={cn(
               "inline-flex shrink-0 items-center gap-1.5 rounded-full border transition-[background-color,border-color,color,box-shadow,transform] [transition-duration:var(--motion-press)] [transition-timing-function:var(--ease-out)] active:scale-[0.98] motion-reduce:transform-none",
-              size === "sm" ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-[12px]",
+              // 墨案 05 页选择胶囊：未选白底细边，选中 teal-soft + 墨点
+              size === "sm" ? "h-[26px] px-2.5 text-[11.5px]" : "h-[32px] px-3.5 text-[13px]",
               active
-                ? "border-primary bg-primary/12 text-foreground"
-                : "border-border bg-transparent text-muted-foreground hover:border-input hover:bg-muted hover:text-foreground"
+                ? "border-[var(--teal-line)] bg-[var(--teal-soft)] font-[600] text-[var(--teal-deep)]"
+                : "border-[var(--bd-default)] bg-card text-[var(--t-secondary)] hover:border-[var(--bd-strong)] hover:bg-[var(--bg-hover)] hover:text-foreground"
             )}
             style={
               active && accent
@@ -46,10 +47,10 @@ export function RadioChips<T extends string>({
                 : undefined
             }
           >
-            {active && accent && (
+            {active && (
               <span
-                className="h-1 w-1 rounded-full"
-                style={{ background: accent }}
+                className="h-[5px] w-[5px] rounded-full bg-current"
+                style={accent ? { background: accent } : undefined}
                 aria-hidden
               />
             )}

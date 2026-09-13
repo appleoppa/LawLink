@@ -100,6 +100,8 @@ LawLink/
 
 **界面语言**：面向用户的按钮、状态、指引、说明和无障碍提示默认中文；数据库/API 枚举须转换为中文标签后展示。品牌名、文件格式、必要的技术配置标识和用户原文可保留英文。文件上传控件须提供中文选择提示，不依赖浏览器系统语言。展示映射集中在 `src/lib/`，不得改变已保存枚举值。
 
+**v4 墨案 UI 重建（2026-09-13 批准）**：界面以 `docs/mockup/v4/` 效果图为验收基准全面重建，不在旧页面上换色小修；方案与页面对照见 `docs/UI-V4-REBUILD-PLAN.md`。原子层 `src/components/ui/` 直接使用墨案 token（`src/app/moan.css`），不得再写 v3 硬编码色值；页面骨架与签名母版（PageHeader、Panel、SpineRow、RiskLadder、ProcedureChain、ReviewSeal 等）统一放 `src/components/patterns/`。重建不改 Schema、权限与 Server Action 语义，效果图未画到的旧模块须归位不得删除，不做无后端支撑的假功能。
+
 **日历订阅入口**：统一放在日程页右上角，以「订阅日历」次级按钮打开弹窗，管理订阅说明、复制链接和重置链接；个人设置不再展示订阅卡片。弹窗组件就近放在 `schedule/_components/`，仅打开时获取订阅链接，沿用现有订阅权限与接口。
 
 ---
