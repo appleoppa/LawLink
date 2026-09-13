@@ -21,7 +21,6 @@ export function IntakeReviewValue({ label, value, sensitive }: IntakeReviewField
 }
 
 const keyFields = new Set(["案件名称", "案件类别", "案由", "主办律师", "首个程序 / 审级", "委托方诉讼地位", "办理机构", "管辖地", "标的金额（元）", "委托方", "姓名 / 名称", "本案角色", "诉讼地位", "收费方式", "收费金额（元）", "基础办案费（元）"]);
-const longFields = new Set(["事实摘要", "补正或不接案说明", "服务范围", "交付成果", "付款节点", "收费说明", "备注", "非金钱标的"]);
 
 export function IntakeApprovalContent({ detail, view = "all", onOpenConflicts }: { detail: Detail; view?: "all" | "overview" | "conflicts"; onOpenConflicts?: () => void }) {
   const latest = detail.checks[0];
