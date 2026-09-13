@@ -16,11 +16,21 @@ export interface MatterSignal {
 /** 风险阶梯：四级紧迫度小条（红=逾期全亮 / 琥珀=临期 3 档 / 蓝=关注 2 档；审批非期限不带阶梯） */
 function SignalLadder({ kind }: { kind: MatterSignal["kind"] }) {
   if (kind === "approval") return null;
-  const ladder = { overdue: ["l-red", 4], "pending-confirm": ["l-amber", 3], "hearing-soon": ["l-blue", 2] }[kind] as const;
+  const ladder: { cls: string; on: number }[] = [
+    { cls: "l-red", on: 4 },
+    { cls: "l-amber", on: 3 },
+    { cls: "l-blue", on: 2 }
+  ];
+  const map: Record<Exclude<MatterSignal["kind"], "approval">, number> = {
+    overdue: 0,
+    "pending-confirm": 1,
+    "hearing-soon": 2
+  };
+  const { cls, on } = ladder[map[kind]];
   return (
-    <span className={`ladder ${ladder[0]}`} aria-hidden>
+    <span className={`ladder ${cls}`} aria-hidden>
       {Array.from({ length: 4 }, (_, i) => (
-        <i key={i} className={i < ladder[1] ? "on" : undefined} />
+        <i key={i} className={i < on ? "on" : undefined} />
       ))}
     </span>
   );

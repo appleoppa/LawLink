@@ -7,7 +7,7 @@ import { audit } from "@/server/audit";
 import { storage } from "@/lib/storage";
 import { decryptBuffer } from "@/lib/storage/crypto";
 import { normalizeUploadedFilename } from "@/lib/filename";
-import { watermarkPdf, watermarkLine } from "@/lib/documents/watermark";
+import { watermarkPdf, watermarkImage, watermarkLine } from "@/lib/documents/watermark";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,11 +45,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     return NextResponse.json({ error: "读取失败" }, { status: 500 });
   }
 
-  // v1.x P1 §四：PDF 下载/预览加水印衍生副本（原件与校验值不动）。
-  // 已签章文件不加改（不破坏签章完整性）；非 PDF 暂不加水印（审计已含下载人）。
+  // v1.x P1 §四 + 收尾：PDF/图像下载加水印衍生副本（原件与校验值不动）。
+  // 已签章文件不加改（不破坏签章完整性）；其余类型暂不加水印（审计已含下载人）。
   let outBuf = buf;
   let watermarked = false;
-  if ((doc.mimeType ?? "").toLowerCase().includes("pdf")) {
+  const lowerMime = (doc.mimeType ?? "").toLowerCase();
+  if (lowerMime.includes("pdf") || lowerMime.startsWith("image/")) {
     const sealed = await prisma.sealRequest.findFirst({
       where: { OR: [{ draftDocId: doc.id }, { stampedDocId: doc.id }] },
       select: { id: true }
@@ -63,7 +64,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         firmName = null;
       }
       const line = watermarkLine({ firm: firmName, userName: session.user.name, at: new Date() });
-      const marked = await watermarkPdf({ buf, text: line });
+      const marked = lowerMime.includes("pdf")
+        ? await watermarkPdf({ buf, text: line })
+        : await watermarkImage({ buf, text: line });
       if (marked) {
         outBuf = marked;
         watermarked = true;

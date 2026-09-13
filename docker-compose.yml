@@ -41,3 +41,12 @@ services:
 volumes:
   postgres_data:
   app_storage:
+
+  # 本地开发用邮件收件箱（--profile dev 才启动，不影响默认部署）
+  mailpit:
+    image: axllent/mailpit:latest
+    profiles: ["dev"]
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web 收件箱
+    restart: unless-stopped

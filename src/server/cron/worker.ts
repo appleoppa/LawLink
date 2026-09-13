@@ -6,6 +6,8 @@
  * 任务失败走队列自身的退避/死信，不在此处吞错。
  */
 import { sendWebhookText } from "@/server/settings/webhook";
+import { prisma } from "@/lib/prisma";
+import { isEmailConfigured, sendReminderEmail } from "@/lib/notifications/email";
 import { saveWebhookLastResult, type ReminderWebhookLastResult } from "@/server/settings/webhook-last-result";
 import { claimDueJobs, completeJob, failJob } from "./queue";
 
@@ -38,8 +40,39 @@ const webhookDigestHandler: JobHandler = async (payload) => {
   }
 };
 
+const emailDigestHandler: JobHandler = async () => {
+  // 个人邮件摘要：按当日站内通知按人聚合外发；未配置 SMTP 时以跳过完结
+  // （幂等键当日一次；重试退避与死信由队列兜底——提醒失败不可静默）。
+  if (!isEmailConfigured()) return;
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const notes = await prisma.notification.findMany({
+    where: { createdAt: { gte: startOfToday } },
+    select: { userId: true, title: true, content: true },
+    orderBy: { createdAt: "asc" },
+    take: 500
+  });
+  if (notes.length === 0) return;
+  const byUser = new Map<string, string[]>();
+  for (const n of notes) {
+    const arr = byUser.get(n.userId) ?? [];
+    arr.push(n.content ? `${n.title}：${n.content.slice(0, 80)}` : n.title);
+    byUser.set(n.userId, arr);
+  }
+  const users = await prisma.user.findMany({
+    where: { id: { in: [...byUser.keys()] }, active: true },
+    select: { id: true, name: true, email: true }
+  });
+  for (const u of users) {
+    const lines = byUser.get(u.id) ?? [];
+    if (!lines.length || !u.email) continue;
+    await sendReminderEmail({ to: u.email, userName: u.name, lines });
+  }
+};
+
 const handlers: Record<string, JobHandler> = {
-  "webhook-digest": webhookDigestHandler
+  "webhook-digest": webhookDigestHandler,
+  "email-digest": emailDigestHandler
 };
 
 export async function processDueJobs(limit = 10): Promise<{ processed: number; succeeded: number; failed: number }> {

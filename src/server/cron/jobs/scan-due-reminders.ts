@@ -18,6 +18,7 @@
 import { prisma } from "@/lib/prisma";
 import { createNotification } from "@/server/notifications/create";
 import { enqueueJob } from "@/server/cron/queue";
+import { isEmailConfigured } from "@/lib/notifications/email";
 import { saveWebhookLastResult } from "@/server/settings/webhook-last-result";
 import { audit } from "@/server/audit";
 import { matterHref } from "@/lib/matters/route";
@@ -463,6 +464,14 @@ export async function scanDueReminders(): Promise<DueReminderScanResult> {
         }
       }
     });
+    // v1.x 收尾：个人邮件摘要（SMTP 配置后启用；当日幂等，发送侧由 worker 执行）
+    if (isEmailConfigured()) {
+      await enqueueJob({
+        type: "email-digest",
+        dedupeKey: `email-digest:${localDate}`,
+        payload: { date: localDate }
+      });
+    }
     await saveWebhookLastResult({
       at: now.toISOString(),
       ok: false,
