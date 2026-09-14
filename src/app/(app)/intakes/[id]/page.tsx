@@ -16,6 +16,7 @@ import {
 import { ConflictSection } from "./_components/conflict-section";
 import { IntakeActions } from "./_components/intake-actions";
 import { matterHref } from "@/lib/matters/route";
+import { formatDate } from "@/lib/utils";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -37,7 +38,7 @@ export default async function IntakeDetailPage({ params }: PageProps) {
         <FieldGrid cols={3}>
           <FieldItem label="主办律师">{intake.ownerUser?.name ?? "尚未指定"}</FieldItem>
           <FieldItem label="客户">{intake.client?.name ?? "未填写"}</FieldItem>
-          <FieldItem label="收案时间" mono>{new Date(intake.receivedAt).toLocaleDateString("zh-CN")}</FieldItem>
+          <FieldItem label="收案时间" mono>{formatDate(new Date(intake.receivedAt))}</FieldItem>
           <FieldItem label="案由">{intake.cause?.name ?? intake.causeFreeText ?? "未填写"}</FieldItem>
           <FieldItem label="办理机构">{intake.firstAgency ?? "未填写"}</FieldItem>
           <FieldItem label="当事人">{intake.parties.map((party) => party.name).join("、") || "未填写"}</FieldItem>
@@ -188,7 +189,7 @@ export default async function IntakeDetailPage({ params }: PageProps) {
               <FieldItem label="客户">
                 {intake.client ? <Link href={`/clients/${intake.client.id}`} className="text-[var(--teal-deep)] hover:underline">{intake.client.name}</Link> : "—"}
               </FieldItem>
-              <FieldItem label="收案日期" mono>{new Date(intake.receivedAt).toLocaleDateString("zh-CN")}</FieldItem>
+              <FieldItem label="收案日期" mono>{formatDate(new Date(intake.receivedAt))}</FieldItem>
               <FieldItem label="办理机构">{intake.firstAgency ?? "—"}</FieldItem>
               {intake.description ? <FieldItem label="描述" wide><span className="whitespace-pre-wrap">{intake.description}</span></FieldItem> : null}
             </FieldGrid>

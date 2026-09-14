@@ -1,6 +1,6 @@
 import { Sparkles, AlertTriangle, FileText } from "lucide-react";
 import type { MatterReviewSummary } from "@/server/ai/matter-review-summary";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { BatchReviewButton } from "./batch-review-button";
 
 export function ReviewSummaryCard({
@@ -28,7 +28,7 @@ export function ReviewSummaryCard({
           <span className="font-mono text-[10px] text-muted-foreground">
             {summary.documentCount} 份文档 · {summary.recordCount} 次审查 · 共 {summary.totalItems} 条
             {summary.latestReviewedAt && (
-              <span className="ml-2">最新 {summary.latestReviewedAt.toLocaleDateString("zh-CN")}</span>
+              <span className="ml-2">最新 {formatDate(summary.latestReviewedAt)}</span>
             )}
           </span>
           <BatchReviewButton matterId={matterId} />

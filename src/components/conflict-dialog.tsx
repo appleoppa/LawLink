@@ -42,6 +42,7 @@ import { toast } from "sonner";
 import { runCheckAndSave } from "@/server/conflicts/actions";
 import { litigationStandingLabel, matterCategoryLabel, matterStatusLabel } from "@/lib/enums";
 import { matterHref } from "@/lib/matters/route";
+import { formatDate as fmtDate } from "@/lib/utils";
 
 type QueryRole = "CLIENT_PARTY" | "OPPOSING_PARTY" | "THIRD_PARTY";
 type QueryRow = { role: QueryRole; name: string; idNumber: string };
@@ -457,5 +458,5 @@ function formatDate(value: string | null) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString("zh-CN");
+  return fmtDate(date);
 }

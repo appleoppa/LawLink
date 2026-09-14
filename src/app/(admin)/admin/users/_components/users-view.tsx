@@ -50,6 +50,7 @@ import { identityDocumentInputSchema } from "@/lib/identity-documents";
 import { userRoleLabel } from "@/lib/enums";
 import { AdminPageHeader } from "@/components/layout/admin-page-header";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { formatDate, formatDateTime } from "@/lib/utils";
 
 type CustomRoleOption = { id: string; name: string; active: boolean };
 const assignment = (value: string) => ROLES.includes(value as UserRole) ? { role: value as UserRole, roleDefinitionId: null } : { role: "CUSTOM" as const, roleDefinitionId: value };
@@ -263,7 +264,7 @@ function UserRow({
         <div className="font-medium">{user.name}</div>
         <div className="font-mono text-xs text-muted-foreground">{user.email}</div>
         {user.lockedUntil && new Date(user.lockedUntil) > new Date() && (
-          <div className="mt-0.5 text-xs text-[var(--amber)]">登录锁定至 {new Date(user.lockedUntil).toLocaleString("zh-CN")}</div>
+          <div className="mt-0.5 text-xs text-[var(--amber)]">登录锁定至 {formatDateTime(new Date(user.lockedUntil))}</div>
         )}
         <div className="mt-1 text-xs text-muted-foreground">审批权限组：{user.approvalMemberships.map(m => m.group.name).join("、") || "未分配"}</div>
       </td>
@@ -302,7 +303,7 @@ function UserRow({
       </td>
       <td className="px-5 py-3 font-mono text-xs text-muted-foreground tabular">
         {user.lastLoginAt
-          ? new Date(user.lastLoginAt).toLocaleDateString("zh-CN")
+          ? formatDate(new Date(user.lastLoginAt))
           : "从未登录"}
       </td>
       <td className="px-5 py-3">

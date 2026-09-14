@@ -18,7 +18,7 @@ import {
   CommandItem,
   CommandList
 } from "@/components/ui/command";
-import { cn } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
 import {
   extractSmsAttachments,
   matchSmsToMatter,
@@ -287,7 +287,7 @@ function SmsCard({
           </span>
         )}
         <span className="ml-auto font-mono text-[10px] text-muted-foreground">
-          {new Date(sms.receivedAt).toLocaleString("zh-CN")}
+          {formatDateTime(new Date(sms.receivedAt))}
         </span>
       </div>
 

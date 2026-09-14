@@ -13,7 +13,7 @@ import {
   litigationStandingLabel,
   procedureTypeLabel as PROC_TYPE_LABEL
 } from "@/lib/enums";
-import { formatCurrency, cn } from "@/lib/utils";
+import { formatCurrency, cn, formatDate as fmtDate } from "@/lib/utils";
 import { matterHref } from "@/lib/matters/route";
 
 export type MatterRow = Omit<Matter, "claimAmount"> & {
@@ -435,7 +435,7 @@ function DataCell({
 
 function formatDate(value: Date | null) {
   if (!value) return "—";
-  return new Date(value).toLocaleDateString("zh-CN");
+  return fmtDate(new Date(value));
 }
 
 function formatDateTime(value: Date | null) {
@@ -624,7 +624,7 @@ function MockupMatterRow({ m, show, onOpen }: { m: MatterRow; show: (c: MatterCo
           ) : overdue ? (
             <span className="mo-cd mo-cd-urgent" style={{ display: "inline-block", minWidth: 110 }} title={nearest.title}>逾期 {Math.abs(days)} 天</span>
           ) : (
-            <span className="flex items-center gap-2" title={`${nearest.title} · ${new Date(nearest.dueAt).toLocaleDateString("zh-CN")}`}>
+            <span className="flex items-center gap-2" title={`${nearest.title} · ${formatDate(new Date(nearest.dueAt))}`}>
               <RiskLadder level={risk.level} tone={risk.tone} />
               <span className={`mo-cd ${risk.tone === "red" ? "mo-cd-urgent" : risk.tone === "amber" ? "mo-cd-soon" : "mo-cd-normal"}`}>
                 {shortCat} {days === 0 ? "今天" : `${days} 天`}

@@ -47,7 +47,7 @@ import {
 import { toast } from "sonner";
 import { deadlineCategoryLabel } from "@/lib/enums";
 import { confirmDeadline, adjustDeadline } from "@/server/deadlines/confirm";
-import { cn, daysUntil } from "@/lib/utils";
+import { cn, daysUntil, formatDate } from "@/lib/utils";
 import { procedureTypeLabel } from "@/lib/enums";
 import {
   addDeadline,
@@ -674,7 +674,7 @@ function DeadlineRow({
           )}
         </div>
         <div className="font-mono text-[10px] text-muted-foreground tabular">
-          {new Date(d.dueAt).toLocaleDateString("zh-CN")}
+          {formatDate(new Date(d.dueAt))}
         </div>
       </div>
 
@@ -814,8 +814,8 @@ function ExpressRow({
         </div>
         <div className="font-mono text-[10px] tabular text-muted-foreground">
           {item.lastUpdateAt
-            ? new Date(item.lastUpdateAt).toLocaleDateString("zh-CN")
-            : new Date(item.createdAt).toLocaleDateString("zh-CN")}
+            ? formatDate(new Date(item.lastUpdateAt))
+            : formatDate(new Date(item.createdAt))}
         </div>
       </div>
       {canManage && (
@@ -855,7 +855,7 @@ function MemoRow({
         <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
           {multiProc && <ProcTag label={memo.procLabel} />}
           <span className="font-mono tabular">
-            {new Date(memo.createdAt).toLocaleDateString("zh-CN")}
+            {formatDate(new Date(memo.createdAt))}
           </span>
         </div>
       </div>

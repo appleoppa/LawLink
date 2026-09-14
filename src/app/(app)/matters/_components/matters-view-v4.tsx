@@ -27,8 +27,8 @@ type SortBy = "hearing" | "intakeDate" | "claimAmount" | "archivedAt";
 const TABS: { key: Tab; label: string }[] = [
   { key: "all", label: "全部" },
   { key: "active", label: "办理中" },
-  { key: "intake", label: "待审批" },
-  { key: "revision", label: "待补正" },
+  { key: "intake", label: "收案待审" },
+  { key: "revision", label: "收案待补正" },
   { key: "archived", label: "已归档" }
 ];
 

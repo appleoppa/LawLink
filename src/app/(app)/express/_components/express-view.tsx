@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { RadioChips } from "@/components/ui/radio-chips";
 import { MatterCombobox } from "@/app/(app)/approvals/seals/_components/matter-combobox";
-import { cn } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
 import { createExpress, refreshExpress, deleteExpress } from "@/server/express/actions";
 import { SUPPORTED_COMPANIES, detectCompany } from "@/lib/express/companies";
 import { matterHref } from "@/lib/matters/route";
@@ -250,7 +250,7 @@ function Card({ e }: { e: Row }) {
         )}
         {e.lastUpdateAt && (
           <div className="font-mono text-[10px]">
-            上次刷新：{new Date(e.lastUpdateAt).toLocaleString("zh-CN")}
+            上次刷新：{formatDateTime(new Date(e.lastUpdateAt))}
           </div>
         )}
       </div>

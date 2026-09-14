@@ -2,6 +2,7 @@
 
 import type { IntakeStatus, ConflictSeverity } from "@prisma/client";
 import { matterCategoryLabel, matterCategoryShort, intakeStatusLabel } from "@/lib/enums";
+import { formatDate } from "@/lib/utils";
 
 export type IntakeRow = {
   id: string;
@@ -92,7 +93,7 @@ export function IntakesTable({
                   {it.client?.name ?? it.parties[0]?.name ?? "—"}
                 </td>
                 <td className="font-mono text-[12px] text-[var(--t-secondary)]">
-                  {new Date(it.receivedAt).toLocaleDateString("zh-CN")}
+                  {formatDate(new Date(it.receivedAt))}
                 </td>
                 <td className="num font-mono">
                   {it.claimAmount != null ? it.claimAmount.toLocaleString("zh-CN", { maximumFractionDigits: 0 }) : "—"}

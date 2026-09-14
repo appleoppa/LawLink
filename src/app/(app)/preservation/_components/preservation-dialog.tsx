@@ -24,6 +24,7 @@ import {
   defaultDurationDays,
   defaultExpiryDate
 } from "@/lib/preservation-defaults";
+import { formatDate } from "@/lib/utils";
 
 // ── Case Dialog (create + edit) ──
 
@@ -317,7 +318,7 @@ export function RenewPropertyDialog({ open, onOpenChange, property }: { open: bo
         <DialogHeader><DialogTitle>续保</DialogTitle></DialogHeader>
         <FormDialogBody>
         <div className="space-y-3">
-          <p className="text-xs text-muted-foreground">当前到期日：{property.expiryDate.toLocaleDateString("zh-CN")}</p>
+          <p className="text-xs text-muted-foreground">当前到期日：{formatDate(property.expiryDate)}</p>
           <Field label="续保天数"><Input type="number" value={days} onChange={(e) => setDays(e.target.value)} className="h-9 text-xs font-mono" /></Field>
           <Field label="备注"><Input value={note} onChange={(e) => setNote(e.target.value)} className="h-9 text-xs" /></Field>
         </div>

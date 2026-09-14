@@ -14,7 +14,7 @@ import {
   ScanLine
 } from "lucide-react";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -126,7 +126,7 @@ export function ContractsCard({
                 <div className="font-mono text-[10px] tabular text-muted-foreground">
                   {r.sealCode ? `${r.sealCode} · ` : ""}
                   {r.doc.size ? `${(r.doc.size / 1024).toFixed(0)} KB · ` : ""}
-                  {new Date(r.doc.createdAt).toLocaleDateString("zh-CN")}
+                  {formatDate(new Date(r.doc.createdAt))}
                 </div>
               </div>
               <a
@@ -214,8 +214,8 @@ export function ExpressMiniCard({
                 <div className="text-[11px] text-foreground/80">{e.lastState ?? "—"}</div>
                 <div className="font-mono text-[10px] tabular text-muted-foreground">
                   {e.lastUpdateAt
-                    ? new Date(e.lastUpdateAt).toLocaleDateString("zh-CN")
-                    : new Date(e.createdAt).toLocaleDateString("zh-CN")}
+                    ? formatDate(new Date(e.lastUpdateAt))
+                    : formatDate(new Date(e.createdAt))}
                 </div>
               </div>
             </li>

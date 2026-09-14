@@ -29,7 +29,14 @@ export function formatDate(date: Date | string, fmt: "full" | "short" | "month-d
   if (fmt === "month-day") {
     return d.toLocaleDateString("zh-CN", { month: "long", day: "numeric" });
   }
-  return d.toLocaleDateString("zh-CN");
+  // 系统统一日期格式 YYYY-MM-DD（上海时区），避免 2026/9/6 与 2026-09-06 混用
+  return d.toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
+}
+
+/** 系统统一日期时间格式 YYYY-MM-DD HH:mm（上海时区） */
+export function formatDateTime(date: Date | string) {
+  const d = typeof date === "string" ? new Date(date) : date;
+  return d.toLocaleString("sv-SE", { timeZone: "Asia/Shanghai", hour12: false }).slice(0, 16);
 }
 
 export function daysUntil(date: Date | string): number {

@@ -4,9 +4,10 @@ import type { getMatterById } from "@/server/matters/actions";
 import { listNotes } from "@/server/notes/actions";
 import { matterStatusLabel, matterCategoryLabel, procedureTypeLabel, litigationStandingLabel } from "@/lib/enums";
 import { Badge } from "@/components/ui/badge";
+import { formatDate } from "@/lib/utils";
 
 type Matter = NonNullable<Awaited<ReturnType<typeof getMatterById>>>;
-function date(value: Date | null) { return value ? new Date(value).toLocaleDateString("zh-CN") : "未填写"; }
+function date(value: Date | null) { return value ? formatDate(new Date(value)) : "未填写"; }
 
 /** Read-only team view deliberately fetches no finance or private attachment payloads. */
 export async function TeamMatterOverview({ matter }: { matter: Matter }) {

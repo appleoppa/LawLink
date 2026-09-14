@@ -28,7 +28,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { runCheckAndSave, setConflictConclusion } from "@/server/conflicts/actions";
 import { conflictConclusionLabel, litigationStandingLabel, matterCategoryLabel, matterStatusLabel } from "@/lib/enums";
 import type { buildIntakeConflictQueries } from "@/lib/approvals/intake-detail";
-import { cn } from "@/lib/utils";
+import { cn, formatDate as fmtDate, formatDateTime } from "@/lib/utils";
 import { matterHref } from "@/lib/matters/route";
 
 type Hit = {
@@ -184,7 +184,7 @@ export function ConflictSection({
           {/* 概览 */}
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/20 p-2.5 text-[12px]">
             <span className="font-mono text-[11px] text-muted-foreground">
-              {new Date(latestCheck.checkedAt).toLocaleString("zh-CN")}
+              {formatDateTime(new Date(latestCheck.checkedAt))}
             </span>
             <span className="text-muted-foreground">·</span>
             <span>
@@ -206,7 +206,7 @@ export function ConflictSection({
               <span className="ml-auto text-[11px] text-muted-foreground">
                 {latestCheck.decidedBy.name} ·{" "}
                 {latestCheck.decidedAt
-                  ? new Date(latestCheck.decidedAt).toLocaleDateString("zh-CN")
+                  ? formatDate(new Date(latestCheck.decidedAt))
                   : ""}
               </span>
             )}
@@ -437,7 +437,7 @@ function formatDate(value: Date | string | null) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString("zh-CN");
+  return fmtDate(date);
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

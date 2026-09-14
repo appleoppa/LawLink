@@ -8,7 +8,7 @@ import type { FirmFileCategory } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { deleteFirmFile } from "@/server/firm-files/actions";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { UploadDialog } from "./upload-dialog";
 import { PreviewDialog } from "./preview-dialog";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
@@ -290,7 +290,7 @@ export function FirmFilesView({
                       <span className="ml-auto flex shrink-0 items-center gap-1.5 text-[10px] text-muted-foreground">
                         <span className="font-mono tabular">{formatBytes(f.size)}</span>
                         <span className="opacity-50">·</span>
-                        <span>{new Date(f.createdAt).toLocaleDateString("zh-CN")}</span>
+                        <span>{formatDate(new Date(f.createdAt))}</span>
                         <span className="opacity-50">·</span>
                         <span>{f.uploadedBy.name}</span>
                         {f.tags.length > 0 && (

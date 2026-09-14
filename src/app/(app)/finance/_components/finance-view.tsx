@@ -27,7 +27,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 
 const feeTypeLabel = {
   RECEIVABLE: "应收",
@@ -363,7 +363,7 @@ export function FinanceView({
                     <tr key={e.id} className="group">
                       <td className="relative px-4 py-2.5 pl-[18px] font-mono text-[12px] text-muted-foreground tabular">
                         <span aria-hidden className="absolute left-0 top-[9px] bottom-[9px] w-[3px] rounded-r-[2px]" style={{ background: color }} />
-                        {new Date(e.occurredAt).toLocaleDateString("zh-CN")}
+                        {formatDate(new Date(e.occurredAt))}
                       </td>
                       <td className="max-w-[16rem] px-4 py-2.5">
                         <Link href={matterHref(e.matter)} className="block min-w-0 no-underline hover:text-primary">

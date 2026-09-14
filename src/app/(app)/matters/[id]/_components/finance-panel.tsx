@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Wallet, Receipt } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 import { InvoiceRequestSheet } from "./invoice-request-sheet";
 import type { FinancePayload, UserOption } from "./matter-detail-tabs";
 
@@ -117,7 +117,7 @@ export function FinancePanel({
                 {e.note && <span className="ml-2 text-[10.5px]">· {e.note}</span>}
               </span>
               <span className="shrink-0 font-mono text-[11px] tabular text-muted-foreground">
-                {new Date(e.occurredAt).toLocaleDateString("zh-CN")}
+                {formatDate(new Date(e.occurredAt))}
               </span>
             </li>
           ))}

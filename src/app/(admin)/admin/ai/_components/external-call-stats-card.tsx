@@ -3,6 +3,7 @@
  */
 import { AlertTriangle } from "lucide-react";
 import type { ExternalCallStats } from "@/server/settings/external-call-stats";
+import { formatDateTime } from "@/lib/utils";
 
 const SERVICE_CN: Record<string, string> = {
   "ai-chat": "AI 对话（审查/草拟/解析/案由）",
@@ -68,7 +69,7 @@ export function ExternalCallStatsCard({ stats }: { stats: ExternalCallStats }) {
               </div>
               {stats.recentFailures.map(f => (
                 <div key={f.id} className="truncate text-[11.5px] text-muted-foreground">
-                  <span className="font-mono">{new Date(f.createdAt).toLocaleString("zh-CN")}</span>
+                  <span className="font-mono">{formatDateTime(new Date(f.createdAt))}</span>
                   {" · "}{SERVICE_CN[f.service] ?? f.service}{f.action ? ` · ${f.action}` : ""} · {f.error?.slice(0, 80) ?? "未知错误"}
                 </div>
               ))}

@@ -30,6 +30,7 @@ import {
 import { uploadDocumentTemplate, toggleTemplate } from "@/server/document-templates/actions";
 import { VARIABLE_LABEL_CN } from "@/app/(app)/matters/[id]/_components/folder-types";
 import { AdminPageHeader } from "@/components/layout/admin-page-header";
+import { formatDate } from "@/lib/utils";
 
 type Category = "INTAKE" | "RETAINER" | "LITIGATION" | "HEARING" | "WORK_PRODUCT" | "ARCHIVE" | "CLOSING" | "BLANK";
 type MatterCat = "CIVIL_COMMERCIAL" | "LABOR_ARBITRATION" | "COMMERCIAL_ARBITRATION" | "CRIMINAL" | "ADMINISTRATIVE" | "NON_LITIGATION" | "LEGAL_COUNSEL" | "SPECIAL_PROJECT";
@@ -109,7 +110,7 @@ export function DocumentTemplatesView({ templates }: { templates: AdminTemplateR
                       </>
                     )}
                     <span>·</span>
-                    <span>{t.createdBy?.name ?? "系统"} · {new Date(t.updatedAt).toLocaleDateString("zh-CN")}</span>
+                    <span>{t.createdBy?.name ?? "系统"} · {formatDate(new Date(t.updatedAt))}</span>
                   </div>
                   {t.description && <div className="mt-0.5 truncate text-[11px] text-muted-foreground/75">{t.description}</div>}
                 </div>

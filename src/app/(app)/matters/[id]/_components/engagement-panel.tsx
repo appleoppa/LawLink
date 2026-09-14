@@ -38,6 +38,7 @@ import {
   terminateEngagement,
   listActiveEngagementsForClient
 } from "@/server/engagements/actions";
+import { formatDate } from "@/lib/utils";
 
 export type EngagementRow = {
   validFrom: Date | null;
@@ -57,7 +58,7 @@ export type EngagementRow = {
 type ActiveEngagementOption = { id: string; title: string; startedAt: Date | null };
 
 function fmtDate(v: Date | null) {
-  return v ? new Date(v).toLocaleDateString("zh-CN") : "—";
+  return v ? formatDate(new Date(v)) : "—";
 }
 
 export function EngagementPanel({

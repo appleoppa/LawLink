@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/select";
 import { createEvidenceItem } from "@/server/evidence/actions";
 import { evidenceKindLabel } from "@/lib/enums";
+import { formatDate } from "@/lib/utils";
 
 type EvidenceKind = keyof typeof evidenceKindLabel;
 
@@ -169,7 +170,7 @@ export function EvidencePanel({
                 </span>
                 <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{item.title}</span>
                 <span className="shrink-0 font-mono text-[10.5px] tabular text-muted-foreground/70">
-                  {new Date(item.createdAt).toLocaleDateString("zh-CN")}
+                  {formatDate(new Date(item.createdAt))}
                 </span>
               </div>
               <p className="mt-1.5 whitespace-pre-wrap pl-1 text-xs leading-relaxed text-muted-foreground">

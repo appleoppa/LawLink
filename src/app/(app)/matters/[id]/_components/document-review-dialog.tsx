@@ -34,7 +34,7 @@ import type {
   ReviewType,
   ReviewSeverity
 } from "@/lib/ai/review-parser";
-import { cn } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
 
 type Props = {
   open: boolean;
@@ -201,7 +201,7 @@ export function DocumentReviewDialog({
             {view.kind === "result" &&
               `${view.result.documentName}${view.result.truncated ? "（已截断前 6000 字）" : ""}`}
             {view.kind === "history-detail" &&
-              `${currentDocName} · 历史 ${view.entry.reviewedAt.toLocaleString("zh-CN")}`}
+              `${currentDocName} · 历史 ${formatDateTime(view.entry.reviewedAt)}`}
           </DialogDescription>
         </DialogHeader>
 
@@ -254,7 +254,7 @@ export function DocumentReviewDialog({
                         >
                           <div className="flex flex-col">
                             <span className="font-mono text-foreground">
-                              {h.reviewedAt.toLocaleString("zh-CN")}
+                              {formatDateTime(h.reviewedAt)}
                             </span>
                             <span className="text-[10px] text-muted-foreground">
                               {h.reviewedBy.name} · {h.itemCount} 条
