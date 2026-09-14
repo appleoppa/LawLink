@@ -87,7 +87,7 @@ import {
   type UserOption
 } from "@/app/(app)/preservation/_components/preservation-types";
 import { TemplatePickerDialog } from "./template-picker-dialog";
-import { DocIcon, EmptyState, ProcedureChain, SourceChip, type ChainNode } from "@/components/patterns/moan";
+import { DocIcon, EmptyState, ProcedureChain, Segmented, SourceChip, type ChainNode } from "@/components/patterns/moan";
 import { documentSourceChip } from "@/lib/ui/moan-tones";
 import type { FolderPayload, TemplateSummary } from "./folder-types";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
@@ -921,7 +921,7 @@ export function ProcedureWorkflowPanel({
               onWriteStageNote={() => onWriteNote({ judgment: true, stageName: selectedItem.name })}
               canManage={canManage}
               uploadSignal={uploadSignal}
-              recordsSlot={recordsCard}
+              events={timelineEvents}
             />
           ) : (
             <div className="card">
@@ -1012,7 +1012,7 @@ const TASK_PRIORITY: Record<number, { label: string; tone: "red" | "amber" | "sl
   0: { label: "普通", tone: "slate" }
 };
 
-type StageTab = "items" | "records" | "docs" | "materials";
+type StageTab = "items" | "records" | "materials";
 
 function NormalStageContent({
   matterId,
@@ -1027,13 +1027,14 @@ function NormalStageContent({
   onWriteStageNote,
   canManage,
   uploadSignal,
-  recordsSlot
+  events
 }: {
   matterId: string;
   stage: WorkflowStage;
   procedure: WorkflowProcedure;
   documents: WorkflowDocument[];
   notes: WorkflowNote[];
+  events: WorkflowTimelineEvent[];
   users: UserOption[];
   onOpenTemplate: () => void;
   onAddTask: () => void;
@@ -1041,7 +1042,6 @@ function NormalStageContent({
   onWriteStageNote: () => void;
   canManage: boolean;
   uploadSignal: number;
-  recordsSlot?: React.ReactNode;
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<StageTab>("items");
@@ -1053,9 +1053,7 @@ function NormalStageContent({
     ? procedure.deadlines.filter((d) => guide.deadlineCategories.includes(d.category)).slice(0, 6)
     : [];
   const relevantDocs = documents.filter((d) => documentMatchesStage(d, stage));
-  const writtenDocs = relevantDocs.filter((d) => d.templateId || d.category === "PLEADING" || d.category === "JUDGMENT");
   const stageHearings = guide.includeHearings ? procedure.hearings.slice(0, 3) : [];
-  const stageNotes = notes.filter((n) => n.tags.includes(stageNoteTag(stage.name)));
   const itemCount = stage.tasks.length + relevantDeadlines.length + stageHearings.length;
   const src = procedure.stages.find((s) => s.id === stage.id);
   const nameOf = (id: string | null | undefined) => (id ? users.find((u) => u.id === id)?.name : undefined);
@@ -1117,9 +1115,8 @@ function NormalStageContent({
           {(
             [
               ["items", "本环节事项", itemCount],
-              ["records", "办案记录", stageNotes.length || null],
-              ["docs", "文书材料", writtenDocs.length],
-              ["materials", "阶段材料", relevantDocs.length]
+              ["records", "办案记录", null],
+              ["materials", "文书与材料", relevantDocs.length]
             ] as [StageTab, string, number | null][]
           ).map(([key, label, count]) => (
             <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)} className={cn("tab", tab === key && "active")}>
@@ -1262,62 +1259,31 @@ function NormalStageContent({
           </>
         ) : null}
 
+        {/* 办案记录与材料只在页签内展示，不再在工作区下方重复一张卡片（2026-09-14 用户反馈重复） */}
         {tab === "records" ? (
-          <>
-            {stageNotes.length === 0 ? (
-              <EmptyState compact title="本环节暂无归档的研判笔记" description="在本环节写下的研判笔记会按环节归档在这里，同时出现在下方办案记录中。" />
-            ) : (
-              stageNotes.map((note) => <JudgmentNoteRow key={note.id} note={note} />)
-            )}
-            {canManage ? (
-              <div className="panel-foot flex justify-end">
-                <button type="button" className="btn btn-secondary btn-sm" onClick={onWriteStageNote}>
-                  <PenLine />
-                  写研判笔记
-                </button>
-              </div>
-            ) : null}
-          </>
+          <MatterRecordsCard
+            bare
+            notes={notes}
+            events={events}
+            canManage={canManage}
+            onWriteNote={onWriteStageNote}
+            scope={{ stageName: stage.name, from: src?.startedAt ?? null, to: src?.completedAt ?? null }}
+          />
         ) : null}
 
-        {tab === "docs" ? (
-          <>
-            {writtenDocs.length === 0 ? (
-              <EmptyState compact title="本环节暂无文书" description="从模板生成的文书与诉辩、裁判文书会出现在这里。" />
-            ) : (
-              writtenDocs.map((doc) => <DocRow key={doc.id} doc={doc} />)
-            )}
-            {canManage ? (
-              <div className="panel-foot flex justify-end">
-                <button type="button" className="btn btn-secondary btn-sm" onClick={onOpenTemplate}>
-                  <Sparkles />
-                  从模板生成
-                </button>
-              </div>
-            ) : null}
-          </>
-        ) : null}
-
-        {tab === "materials" ? (
-          relevantDocs.length === 0 ? (
-            <EmptyState compact title="暂无该环节材料" />
-          ) : (
-            relevantDocs.slice(0, 6).map((doc) => <DocRow key={doc.id} doc={doc} compact />)
-          )
-        ) : null}
+        <div hidden={tab !== "materials"}>
+          <StageMaterialsPanel
+            bare
+            matterId={matterId}
+            procedure={procedure}
+            stage={stage}
+            documents={relevantDocs}
+            canManage={canManage}
+            onOpenTemplate={onOpenTemplate}
+            uploadSignal={uploadSignal}
+          />
+        </div>
       </div>
-
-      {recordsSlot}
-
-      <StageMaterialsPanel
-        matterId={matterId}
-        procedure={procedure}
-        stage={stage}
-        documents={relevantDocs}
-        canManage={canManage}
-        onOpenTemplate={onOpenTemplate}
-        uploadSignal={uploadSignal}
-      />
 
       {deadlineOpen && (
         <AddDeadlineDialog
@@ -1415,43 +1381,74 @@ function MatterRecordsCard({
   notes,
   events,
   canManage,
-  onWriteNote
+  onWriteNote,
+  bare = false,
+  scope
 }: {
   notes: WorkflowNote[];
   events: WorkflowTimelineEvent[];
   canManage: boolean;
   onWriteNote: () => void;
+  /** 嵌在环节页签内：不包卡片、不重复标题 */
+  bare?: boolean;
+  /** 环节范围：研判笔记按环节标签、事务记录按环节起止期间筛选，可切换查看全案 */
+  scope?: { stageName: string; from: Date | null; to: Date | null };
 }) {
   const [expanded, setExpanded] = useState(false);
-  const judgments = notes.filter((n) => n.tags.includes(JUDGMENT_NOTE_TAG));
+  const [range, setRange] = useState<"stage" | "all">(scope ? "stage" : "all");
+  const inStage = range === "stage" && scope;
+  const inPeriod = (at: Date) => {
+    if (!scope?.from) return false;
+    const from = new Date(scope.from).getTime();
+    const to = scope.to ? new Date(scope.to).getTime() + 86_400_000 : Number.POSITIVE_INFINITY;
+    return at.getTime() >= from && at.getTime() < to;
+  };
+  const judgments = notes.filter((n) => n.tags.includes(JUDGMENT_NOTE_TAG) && (!inStage || n.tags.includes(stageNoteTag(scope.stageName))));
   const transactions = [
     ...events.map((e) => ({ kind: "event" as const, id: e.id, at: new Date(e.occurredAt), event: e })),
     ...notes.filter((n) => !n.tags.includes(JUDGMENT_NOTE_TAG)).map((n) => ({ kind: "note" as const, id: n.id, at: new Date(n.occurredAt), note: n }))
-  ].sort((a, b) => b.at.getTime() - a.at.getTime());
+  ]
+    .filter((item) => !inStage || inPeriod(item.at))
+    .sort((a, b) => b.at.getTime() - a.at.getTime());
   const total = transactions.length + judgments.length;
   const txShown = expanded ? transactions : transactions.slice(0, 3);
   const jdShown = expanded ? judgments : judgments.slice(0, 2);
 
+  const expandBtn = total > txShown.length + jdShown.length || expanded ? (
+    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setExpanded((v) => !v)}>
+      {expanded ? "收起" : `查看全部 ${total} 条`}
+    </button>
+  ) : null;
+
   return (
-    <div className="card">
-      <div className="panel-head">
-        <div className="panel-title">
-          <BookOpen className="ic" strokeWidth={1.8} />
-          办案记录
+    <div className={bare ? undefined : "card"}>
+      {bare ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 pb-1 pt-3">
+          {scope ? (
+            <Segmented
+              items={[{ key: "stage", label: "本环节" }, { key: "all", label: "全案" }]}
+              value={range}
+              onChange={(k) => { setRange(k); setExpanded(false); }}
+            />
+          ) : <span />}
+          {expandBtn}
         </div>
-        {total > txShown.length + jdShown.length || expanded ? (
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setExpanded((v) => !v)}>
-            {expanded ? "收起" : `查看全部 ${total} 条`}
-          </button>
-        ) : null}
-      </div>
+      ) : (
+        <div className="panel-head">
+          <div className="panel-title">
+            <BookOpen className="ic" strokeWidth={1.8} />
+            办案记录
+          </div>
+          {expandBtn}
+        </div>
+      )}
 
       <div className="rec-group-label">
         <ListChecks className="h-3 w-3" strokeWidth={2} />
         事务记录 <span className="sub">· 系统与登记产生，自动带时间与操作人</span>
       </div>
       {txShown.length === 0 ? (
-        <div className="rec t-xs t-mute">暂无事务记录</div>
+        <div className="rec t-xs t-mute">{inStage ? (scope.from ? "本环节期间暂无事务记录" : "本环节尚未开始，暂无期间内的事务记录") : "暂无事务记录"}</div>
       ) : (
         txShown.map((item) => {
           if (item.kind === "event") {
@@ -1496,13 +1493,13 @@ function MatterRecordsCard({
         研判笔记 <span className="sub">· 人工判断内容，独立陈列，不与事务记录混排</span>
       </div>
       {jdShown.length === 0 ? (
-        <div className="rec t-xs t-mute">暂无研判笔记</div>
+        <div className="rec t-xs t-mute">{inStage ? "本环节暂无研判笔记" : "暂无研判笔记"}</div>
       ) : (
         jdShown.map((note) => <JudgmentNoteRow key={note.id} note={note} />)
       )}
 
       <div className="panel-foot flex flex-wrap items-center justify-between gap-2">
-        <span className="t-xs t-mute">事务记录自动沉淀时间线；研判笔记支持按环节归档</span>
+        <span className="t-xs t-mute">{inStage ? "事务记录按环节起止期间筛选；研判笔记按所属环节归档" : "事务记录自动沉淀时间线；研判笔记支持按环节归档"}</span>
         {canManage ? (
           <button type="button" className="btn btn-secondary btn-sm" onClick={onWriteNote}>
             <PenLine />
@@ -1854,13 +1851,16 @@ function StageMaterialsPanel({
   documents,
   canManage,
   onOpenTemplate,
-  uploadSignal = 0
+  uploadSignal = 0,
+  bare = false
 }: {
   matterId: string;
   procedure: WorkflowProcedure;
   stage: WorkflowStage;
   documents: WorkflowDocument[];
   canManage: boolean;
+  /** 嵌在环节页签内：不包卡片、不重复标题 */
+  bare?: boolean;
   /** v1.1 UI（方案 D）：模板生成收口到材料区的单一入口 */
   onOpenTemplate?: () => void;
   /** 页头「上传材料」递增信号：打开本环节上传弹窗 */
@@ -1937,17 +1937,13 @@ function StageMaterialsPanel({
     if (d.sourceOrigin) acc[d.sourceOrigin] = (acc[d.sourceOrigin] ?? 0) + 1;
     return acc;
   }, {});
-  const shownDocs = originFilter === "ALL" ? documents : documents.filter((d) => d.sourceOrigin === originFilter);
+  const isWritten = (d: WorkflowDocument) => Boolean(d.templateId) || d.category === "PLEADING" || d.category === "JUDGMENT";
+  const writtenCount = documents.filter(isWritten).length;
+  const [writtenOnly, setWrittenOnly] = useState(false);
+  const shownDocs = (originFilter === "ALL" ? documents : documents.filter((d) => d.sourceOrigin === originFilter)).filter((d) => !writtenOnly || isWritten(d));
 
-  return (
-    <div className="card">
-      <div className="panel-head flex-wrap">
-        <div className="panel-title">
-          <FileText className="ic" strokeWidth={1.8} />
-          阶段材料
-          <span className="badge b-white" style={{ marginLeft: 2 }}>{documents.length}</span>
-        </div>
-        <div className="flex flex-wrap items-center gap-[7px]">
+  const originChips = (
+  <>
           {(Object.keys(originCounts) as DocumentSourceOrigin[]).map((origin, i) => (
             <button
               key={origin}
@@ -1960,6 +1956,33 @@ function StageMaterialsPanel({
               <b style={{ fontWeight: i === 0 ? 600 : 550 }}>{documentSourceChip[origin].label} {originCounts[origin]}</b>
             </button>
           ))}
+  </>
+  );
+
+  return (
+    <div className={bare ? undefined : "card"}>
+      <div className={cn("panel-head flex-wrap", bare && "!border-b-0 !pb-1")}>
+        {bare ? (
+          <div className="flex flex-wrap items-center gap-[7px]">
+            <button type="button" className={cn("src-chip cursor-pointer", !writtenOnly && originFilter === "ALL" && "self")} aria-pressed={!writtenOnly && originFilter === "ALL"} onClick={() => { setWrittenOnly(false); setOriginFilter("ALL"); }}>
+              <b style={{ fontWeight: 550 }}>全部 {documents.length}</b>
+            </button>
+            {writtenCount > 0 ? (
+              <button type="button" className={cn("src-chip cursor-pointer", writtenOnly && "self")} aria-pressed={writtenOnly} onClick={() => setWrittenOnly((v) => !v)}>
+                <b style={{ fontWeight: 550 }}>文书 {writtenCount}</b>
+              </button>
+            ) : null}
+            {originChips}
+          </div>
+        ) : (
+          <div className="panel-title">
+            <FileText className="ic" strokeWidth={1.8} />
+            阶段材料
+            <span className="badge b-white" style={{ marginLeft: 2 }}>{documents.length}</span>
+          </div>
+        )}
+        <div className="flex flex-wrap items-center gap-[7px]">
+          {!bare ? originChips : null}
           {canManage && onOpenTemplate ? (
             <button type="button" className="btn btn-ghost btn-sm" onClick={onOpenTemplate}>
               <Sparkles />

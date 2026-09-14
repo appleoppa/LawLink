@@ -255,8 +255,8 @@
 .mo-matter .member .n { font-size: 12.5px; font-weight: 550; }
 .mo-matter .member .r { font-size: 10.5px; color: var(--t-muted); }
 .mo-matter .member .role-tag { margin-left: auto; }
-.mo-matter .party { padding: 9px 14px; border-bottom: 1px solid var(--bd-hair); }
-.mo-matter .party:last-child { border-bottom: none; }
+.mo-matter .party:not(.src-chip) { padding: 9px 14px; border-bottom: 1px solid var(--bd-hair); }
+.mo-matter .party:not(.src-chip):last-child { border-bottom: none; }
 .mo-matter .party-role { font-size: 10.5px; color: var(--t-muted); display: flex; align-items: center; gap: 5px; }
 .mo-matter .party-name { font-size: 12.5px; font-weight: 600; margin-top: 2px; }
 .mo-matter .party-agent { font-size: 11px; color: var(--t-muted); margin-top: 1px; }
