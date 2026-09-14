@@ -657,7 +657,7 @@
 /* 08 财务 · 实现补充 */
 .mo-finance .kpi-grid > .card { padding: 15px 17px; }
 .mo-finance .mo-table tbody tr[data-spine="violet"] > td:first-child::before { background: var(--violet); }
-@media (max-width: 1180px) { .mo-finance .kpi-grid { grid-template-columns: repeat(2, 1fr) !important; } .mo-finance .fin-grid { grid-template-columns: 1fr; } }
+@media (max-width: 1180px) { .mo-finance .kpi-grid { grid-template-columns: repeat(2, 1fr) !important; } .mo-finance .fin-grid { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 560px) { .mo-finance .kpi-grid { grid-template-columns: 1fr !important; } }
 
 /* 09 日程 · 实现补充 */
@@ -716,3 +716,11 @@
 }
 .tabs .tab { white-space: nowrap; flex-shrink: 0; }
 @media (max-width: 720px) { .tabs { max-width: 100%; overflow-x: auto; scrollbar-width: none; } .tabs::-webkit-scrollbar { display: none; } }
+/* 第二轮走查 · 窄屏溢出 */
+.mo-finance .fin-grid > * { min-width: 0; }
+.mo-matter .signal-strip > * { min-width: 0; }
+.mo-matter .mo-chain { overflow-x: auto; scrollbar-width: none; }
+.mo-matter .mo-chain::-webkit-scrollbar { display: none; }
+@media (max-width: 720px) { .mo-matter .mo-chain .chain-node { min-width: 64px; } }
+.panel-head { flex-wrap: wrap; row-gap: 6px; }
+.mo-matter .ws-grid > * { min-width: 0; }
