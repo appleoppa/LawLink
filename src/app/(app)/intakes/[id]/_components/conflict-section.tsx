@@ -152,14 +152,14 @@ export function ConflictSection({
   }
 
   return (
-    <section className="ll-surface rounded-lg border border-border p-5">
-      <header className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2 className="flex items-center gap-2 text-lg">
-            <ShieldCheck className="h-4 w-4 text-primary" />
+    <section className="card">
+      <div className="panel-head flex-wrap gap-2">
+        <div className="min-w-0">
+          <div className="panel-title">
+            <ShieldCheck className="ic" />
             利益冲突检索
-          </h2>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
+          </div>
+          <p className="t-xs t-mute" style={{ marginTop: 2 }}>
             匹配历史案件当事人；客户库同名仅作提示，不计为冲突
           </p>
         </div>
@@ -168,18 +168,13 @@ export function ConflictSection({
           onClick={handleRunCheck}
           disabled={isPending}
           size="sm"
-          className="gap-1.5"
-          variant={latestCheck ? "outline" : "default"}
+          variant={latestCheck ? "secondary" : "default"}
         >
-          {isPending ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Search className="h-3.5 w-3.5" />
-          )}
+          {isPending ? <Loader2 className="animate-spin" /> : <Search />}
           {latestCheck ? "重新检索" : "运行冲突检索"}
         </Button>
-      </header>
-
+      </div>
+      <div className="panel-body">
       {!latestCheck ? (
         <div className="rounded-md border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
           还未运行冲突检索
@@ -253,7 +248,7 @@ export function ConflictSection({
                     href={`/clients/${c.clientId}`}
                     className="inline-flex items-center gap-1 rounded border border-[var(--amber-line)] bg-[var(--amber-bg)] px-2 py-0.5 text-[11px] text-[var(--amber)] hover:bg-[var(--amber-bg)]"
                   >
-                    {c.name} <span className="font-mono opacity-60">{c.idNumber}</span>
+                    {c.name} <span className="font-mono opacity-60">{maskRef(c.idNumber)}</span>
                     <ExternalLink className="h-2.5 w-2.5" />
                   </Link>
                 ))}
@@ -323,6 +318,7 @@ export function ConflictSection({
           )}
         </div>
       )}
+      </div>
     </section>
   );
 }
@@ -451,4 +447,11 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="truncate text-foreground/85">{children}</span>
     </div>
   );
+}
+
+/** 证件号默认打码（与客户列表同口径） */
+function maskRef(v: string | null | undefined) {
+  if (!v) return "";
+  if (v.length >= 8) return `${v.slice(0, 3)}${"•".repeat(Math.max(4, v.length - 5))}${v.slice(-2)}`;
+  return v;
 }

@@ -2,15 +2,14 @@ import { buildIntakeConflictQueries } from "@/lib/approvals/intake-detail";
 import { canApproveItem } from "@/lib/approvals/service";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Users, FileText, AlertTriangle } from "lucide-react";
+import { Users, AlertTriangle } from "lucide-react";
 import { getIntakeById } from "@/server/intakes/actions";
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+import { maskIdNumber } from "@/lib/clients/id-number-crypto";
+import { FieldGrid, FieldItem, PageHeader, Panel } from "@/components/patterns/moan";
 import {
   matterCategoryLabel,
-  matterCategoryColor,
   intakeStatusLabel,
   clientTypeLabel
 } from "@/lib/enums";
@@ -26,19 +25,28 @@ export default async function IntakeDetailPage({ params }: PageProps) {
   const { id } = await params;
   const [intake, session] = await Promise.all([getIntakeById(id), getSession()]);
   if (!intake) notFound();
-  if (intake.teamReadOnly) return <div className="space-y-4">
-    <Link href="/matters?tab=intake" className="inline-flex items-center gap-1 text-sm text-muted-foreground"><ArrowLeft className="h-4 w-4" />返回收案列表</Link>
-    <header className="ll-hero-surface space-y-2 p-5"><Badge variant="secondary">{intakeStatusLabel[intake.status]}</Badge><h1 className="text-xl font-semibold">{intake.title}</h1><p className="text-sm text-muted-foreground">团队查看 · 收案信息</p></header>
-    <section className="ll-surface space-y-3 p-5 text-sm">
-      <p>主办律师：{intake.ownerUser?.name ?? "尚未指定"}</p><p>客户：{intake.client?.name ?? "未填写"}</p>
-      <p>收案时间：{new Date(intake.receivedAt).toLocaleDateString("zh-CN")}</p>
-      <p>案由：{intake.cause?.name ?? intake.causeFreeText ?? "未填写"}</p>
-      <p>办理机构：{intake.firstAgency ?? "未填写"}</p>
-      <p>当事人：{intake.parties.map((party) => party.name).join("、") || "未填写"}</p>
-      {intake.description && <p className="whitespace-pre-wrap leading-relaxed">{intake.description}</p>}
-    </section>
-    <p className="text-xs text-muted-foreground">审批、修改、财务和材料下载按原有权限开放。</p>
-  </div>;
+  if (intake.teamReadOnly) return (
+    <div className="space-y-4">
+      <PageHeader
+        className="!mb-0"
+        back={{ href: "/matters?tab=intake", label: "返回收案列表" }}
+        title={intake.title}
+        sub={<>团队查看 · 收案信息 · <span className="badge b-white">{intakeStatusLabel[intake.status]}</span></>}
+      />
+      <Panel title="收案信息">
+        <FieldGrid cols={3}>
+          <FieldItem label="主办律师">{intake.ownerUser?.name ?? "尚未指定"}</FieldItem>
+          <FieldItem label="客户">{intake.client?.name ?? "未填写"}</FieldItem>
+          <FieldItem label="收案时间" mono>{new Date(intake.receivedAt).toLocaleDateString("zh-CN")}</FieldItem>
+          <FieldItem label="案由">{intake.cause?.name ?? intake.causeFreeText ?? "未填写"}</FieldItem>
+          <FieldItem label="办理机构">{intake.firstAgency ?? "未填写"}</FieldItem>
+          <FieldItem label="当事人">{intake.parties.map((party) => party.name).join("、") || "未填写"}</FieldItem>
+          {intake.description ? <FieldItem label="描述" wide><span className="whitespace-pre-wrap">{intake.description}</span></FieldItem> : null}
+        </FieldGrid>
+      </Panel>
+      <p className="t-xs t-mute">审批、修改、财务和材料下载按原有权限开放。</p>
+    </div>
+  );
 
   const opposing = intake.parties.filter((p) => p.role === "OPPOSING_PARTY");
   const thirdParty = intake.parties.filter((p) => p.role === "THIRD_PARTY");
@@ -138,185 +146,87 @@ export default async function IntakeDetailPage({ params }: PageProps) {
     };
   }
 
+  const canApprove = intake.status !== "CONVERTED" && intake.status !== "DECLINED";
+  const statusTone = intake.status === "CONVERTED" ? "b-teal" : intake.status === "DECLINED" ? "b-red" : "b-amber";
+
   return (
-    <div className="space-y-6">
-      <div>
-        <Link
-          href="/intakes"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          返回收案列表
-        </Link>
-      </div>
-
-      {/* 头部 */}
-      <header className="card p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex-1">
-            <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-              <FileText className="h-5 w-5 text-primary" />
-              {intake.title}
-            </h1>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span
-                className="inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs"
-                style={{
-                  borderColor: `${matterCategoryColor[intake.category]}40`,
-                  color: matterCategoryColor[intake.category]
-                }}
-              >
-                {matterCategoryLabel[intake.category]}
-              </span>
-              <Badge variant="outline" className="text-[10px]">
-                {intakeStatusLabel[intake.status]}
-              </Badge>
-              {intake.matter && (
-                <Link
-                  href={matterHref(intake.matter)}
-                  className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs text-primary hover:bg-primary/15"
-                >
-                  已转为案件 {intake.matter.internalCode} →
-                </Link>
-              )}
-            </div>
-          </div>
-
-          {intake.status !== "CONVERTED" && intake.status !== "DECLINED" && (
+    <div className="space-y-4">
+      <PageHeader
+        className="!mb-0"
+        back={{ href: "/matters?tab=intake", label: "返回收案列表" }}
+        title={intake.title}
+        sub={
+          <span className="flex flex-wrap items-center gap-1.5">
+            <span className="badge b-white">{matterCategoryLabel[intake.category]}</span>
+            <span className={`badge ${statusTone}`}><span className="bdot" />{intakeStatusLabel[intake.status]}</span>
+            {intake.matter ? (
+              <Link href={matterHref(intake.matter)} className="badge b-teal">已转为案件 {intake.matter.internalCode} →</Link>
+            ) : null}
+          </span>
+        }
+        actions={
+          canApprove ? (
             <IntakeActions intakeId={intake.id} status={intake.status} canApprove={!!session?.user && await canApproveItem(session.user.id, "INTAKE_APPROVE", intake.id)} canResubmit={session?.user.id === intake.createdById || session?.user.id === intake.ownerUserId} />
-          )}
-        </div>
-
-        <Separator className="my-5" />
-
-        <dl className="grid grid-cols-2 gap-4 text-sm md:grid-cols-5">
-          <InfoItem label="案由">
-            {intake.cause?.name ?? intake.causeFreeText ?? "—"}
-          </InfoItem>
-          <InfoItem label="发起人">{createdBy?.name ?? "—"}</InfoItem>
-          <InfoItem label="主办律师">{intake.ownerUser?.name ?? "—"}</InfoItem>
-          <InfoItem label="客户">
-            {intake.client ? (
-              <Link
-                href={`/clients/${intake.client.id}`}
-                className="text-primary hover:underline"
-              >
-                {intake.client.name}
-              </Link>
-            ) : (
-              "—"
-            )}
-          </InfoItem>
-          <InfoItem label="收案日期">
-            {new Date(intake.receivedAt).toLocaleDateString("zh-CN")}
-          </InfoItem>
-        </dl>
-
-        {intake.description && (
-          <>
-            <Separator className="my-5" />
-            <div>
-              <div className="mb-1.5 text-xs uppercase tracking-wider text-muted-foreground">
-                描述
-              </div>
-              <p className="whitespace-pre-wrap text-sm text-foreground/90">
-                {intake.description}
-              </p>
-            </div>
-          </>
-        )}
-
-        {intake.declinedReason && (
-          <>
-            <Separator className="my-5" />
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm">
-              <div className="mb-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-destructive">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                不接案原因
-              </div>
-              <p className="text-foreground/90">{intake.declinedReason}</p>
-            </div>
-          </>
-        )}
-      </header>
-
-      {/* 冲突检索 */}
-      <ConflictSection
-        intakeId={intake.id}
-        queries={buildIntakeConflictQueries(intake)}
-        latestCheck={latestCheck}
-        canEditConclusion={intake.status !== "CONVERTED" && intake.status !== "DECLINED"}
+          ) : null
+        }
       />
 
-      {/* 当事人 */}
-      <section className="card p-6">
-        <h2 className="mb-4 flex items-center gap-2 text-base font-semibold">
-          <Users className="h-4 w-4 text-primary" />
-          当事人
-        </h2>
-
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-          <Column title="客户" color="#1E56C8">
-            {intake.client ? (
-              <PartyCard
-                name={intake.client.name}
-                sub={clientTypeLabel[intake.client.type]}
-                href={`/clients/${intake.client.id}`}
-              />
-            ) : (
-              <Empty />
-            )}
-          </Column>
-          <Column title="相对方" color="#96650B">
-            {opposing.length === 0 ? (
-              <Empty />
-            ) : (
-              opposing.map((p) => <PartyCard key={p.id} name={p.name} sub={p.idNumber ?? undefined} />)
-            )}
-          </Column>
-          <Column title="第三人" color="#6C3FC5">
-            {thirdParty.length === 0 ? (
-              <Empty />
-            ) : (
-              thirdParty.map((p) => (
-                <PartyCard key={p.id} name={p.name} sub={p.idNumber ?? undefined} />
-              ))
-            )}
-          </Column>
+      {intake.declinedReason ? (
+        <div className="flex items-start gap-2 rounded-[10px] border border-[var(--red-line)] bg-[var(--red-bg)] px-3.5 py-3 text-[12.5px]">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--red)]" />
+          <div><b className="text-[var(--red)]">不接案原因</b><div className="mt-0.5 text-[var(--t-secondary)]">{intake.declinedReason}</div></div>
         </div>
-      </section>
+      ) : null}
+
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="min-w-0 space-y-4">
+          <Panel title="收案信息">
+            <FieldGrid cols={3}>
+              <FieldItem label="案由">{intake.cause?.name ?? intake.causeFreeText ?? "—"}</FieldItem>
+              <FieldItem label="发起人">{createdBy?.name ?? "—"}</FieldItem>
+              <FieldItem label="主办律师">{intake.ownerUser?.name ?? "—"}</FieldItem>
+              <FieldItem label="客户">
+                {intake.client ? <Link href={`/clients/${intake.client.id}`} className="text-[var(--teal-deep)] hover:underline">{intake.client.name}</Link> : "—"}
+              </FieldItem>
+              <FieldItem label="收案日期" mono>{new Date(intake.receivedAt).toLocaleDateString("zh-CN")}</FieldItem>
+              <FieldItem label="办理机构">{intake.firstAgency ?? "—"}</FieldItem>
+              {intake.description ? <FieldItem label="描述" wide><span className="whitespace-pre-wrap">{intake.description}</span></FieldItem> : null}
+            </FieldGrid>
+          </Panel>
+
+          <ConflictSection
+            intakeId={intake.id}
+            queries={buildIntakeConflictQueries(intake)}
+            latestCheck={latestCheck}
+            canEditConclusion={canApprove}
+          />
+        </div>
+
+        <Panel title="当事人" icon={Users} count={intake.parties.length + (intake.client ? 1 : 0)} className="xl:sticky xl:top-[68px]">
+          <div className="space-y-3">
+            <PartyGroup title="客户 / 委托方" tone="teal">
+              {intake.client ? <PartyCard name={intake.client.name} sub={clientTypeLabel[intake.client.type]} href={`/clients/${intake.client.id}`} /> : <Empty />}
+            </PartyGroup>
+            <PartyGroup title="相对方" tone="amber">
+              {opposing.length === 0 ? <Empty /> : opposing.map((p) => <PartyCard key={p.id} name={p.name} sub={maskIdNumber(p.idNumber) || undefined} />)}
+            </PartyGroup>
+            <PartyGroup title="第三人" tone="violet">
+              {thirdParty.length === 0 ? <Empty /> : thirdParty.map((p) => <PartyCard key={p.id} name={p.name} sub={maskIdNumber(p.idNumber) || undefined} />)}
+            </PartyGroup>
+            <p className="t-xs t-faint">证件号码默认打码展示。</p>
+          </div>
+        </Panel>
+      </div>
     </div>
   );
 }
 
-function InfoItem({ label, children }: { label: string; children: React.ReactNode }) {
+function PartyGroup({ title, tone, children }: { title: string; tone: "teal" | "amber" | "violet"; children: React.ReactNode }) {
   return (
     <div>
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-1">{children}</dd>
-    </div>
-  );
-}
-
-function Column({
-  title,
-  color,
-  children
-}: {
-  title: string;
-  color: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <div className="mb-2 flex items-center gap-1.5">
-        <span
-          className="h-1.5 w-1.5 rounded-full"
-          style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}` }}
-        />
-        <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          {title}
-        </span>
+      <div className="mb-1.5 flex items-center gap-1.5">
+        <span className={`dot dot-${tone}`} />
+        <span className="t-xs t-mute" style={{ fontWeight: 600 }}>{title}</span>
       </div>
       <div className="space-y-1.5">{children}</div>
     </div>
@@ -325,24 +235,14 @@ function Column({
 
 function PartyCard({ name, sub, href }: { name: string; sub?: string; href?: string }) {
   const inner = (
-    <div className="rounded-md border border-border bg-background px-3 py-2">
-      <div className="truncate text-sm font-medium">{name}</div>
-      {sub && <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">{sub}</div>}
+    <div className="rounded-[9px] border border-[var(--bd-hair)] bg-[var(--bg-card)] px-3 py-2 transition-colors hover:bg-[var(--bg-hover)]">
+      <div className="truncate text-[13px] font-medium">{name}</div>
+      {sub ? <div className="mt-0.5 font-mono text-[11px] text-[var(--t-muted)]">{sub}</div> : null}
     </div>
   );
-  return href ? (
-    <Link href={href} className="block transition-colors hover:opacity-80">
-      {inner}
-    </Link>
-  ) : (
-    inner
-  );
+  return href ? <Link href={href} className="block">{inner}</Link> : inner;
 }
 
 function Empty() {
-  return (
-    <div className="rounded-md border border-dashed border-border py-2 text-center text-[11px] text-muted-foreground">
-      —
-    </div>
-  );
+  return <div className="rounded-[9px] border border-dashed border-[var(--bd-subtle)] py-2 text-center text-[11px] text-[var(--t-faint)]">—</div>;
 }
