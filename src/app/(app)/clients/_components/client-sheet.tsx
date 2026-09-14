@@ -26,6 +26,7 @@ import {
   SheetDescription,
   SheetFooter
 } from "@/components/ui/sheet";
+import { PERSON_ID_TYPES, clientIdTypeLabel, personIdError, sanitizePersonIdInput } from "@/lib/clients/person-id";
 import { clientCreateSchema, type ClientCreateInput } from "@/server/clients/schemas";
 import { createClient, updateClient } from "@/server/clients/actions";
 import {
@@ -89,6 +90,8 @@ export function ClientSheet({ open, onOpenChange, editingClient }: Props) {
   const watchedValues = useWatch({ control });
   const watch = <T = any,>(path: string) => readFormPath<T>(watchedValues, path);
   const watchedType = watch<ClientCreateInput["type"]>("type");
+  const personIdType = watch<ClientCreateInput["idType"]>("idType") || "ID_CARD";
+  const watchedIdNumber = watch<string | undefined>("idNumber") ?? "";
   const watchedTags = watch<string[]>("tags");
 
   // 当 editing 切换时重置表单
@@ -250,9 +253,11 @@ export function ClientSheet({ open, onOpenChange, editingClient }: Props) {
                   onValueChange={(v) => {
                     setValue("type", v as ClientCreateInput["type"], { shouldDirty: true });
                     // 证件类型随主体类型联动默认值（可手动改选护照/其他）
+                    // 自然人不能使用信用代码，单位不能使用个人证件：跨类切换时重置
                     const nextType = v === "INDIVIDUAL" ? "ID_CARD" : "USCC";
                     const current = watch<ClientCreateInput["idType"]>("idType");
-                    if (!current || current === "ID_CARD" || current === "USCC") {
+                    const currentIsPerson = !!current && current !== "USCC" && current !== "OTHER";
+                    if (!current || (v === "INDIVIDUAL" ? current === "USCC" : currentIsPerson)) {
                       setValue("idType", nextType, { shouldDirty: true });
                     }
                   }}
@@ -271,16 +276,17 @@ export function ClientSheet({ open, onOpenChange, editingClient }: Props) {
               <Field label="证件类型" required>
                 <Select
                   value={watch<ClientCreateInput["idType"]>("idType") || (watchedType === "INDIVIDUAL" ? "ID_CARD" : "USCC")}
-                  onValueChange={(v) =>
-                    setValue("idType", v as NonNullable<ClientCreateInput["idType"]>, { shouldDirty: true })
-                  }
+                  onValueChange={(v) => {
+                    setValue("idType", v as NonNullable<ClientCreateInput["idType"]>, { shouldDirty: true });
+                    if (watchedType === "INDIVIDUAL") setValue("idNumber", sanitizePersonIdInput(v, watch("idNumber") ?? ""), { shouldDirty: true });
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {(watchedType === "INDIVIDUAL"
-                      ? [["ID_CARD", "居民身份证"], ["PASSPORT", "护照"], ["OTHER", "其他证件"]]
+                      ? PERSON_ID_TYPES.map((t) => [t, clientIdTypeLabel[t]])
                       : [["USCC", "统一社会信用代码"], ["OTHER", "其他编号"]]
                     ).map(([v, label]) => (
                       <SelectItem key={v} value={v}>{label}</SelectItem>
@@ -290,14 +296,22 @@ export function ClientSheet({ open, onOpenChange, editingClient }: Props) {
               </Field>
 
               <Field
-                label={watchedType === "INDIVIDUAL" ? "身份证号" : "统一社会信用代码"}
+                label={watchedType === "INDIVIDUAL" ? "证件号码" : "统一社会信用代码"}
+                error={errors.idNumber?.message}
               >
                 {watchedType === "INDIVIDUAL" ? (
-                  <Input
-                    className="font-mono"
-                    placeholder="18 位身份证号"
-                    {...register("idNumber")}
-                  />
+                  <div className="space-y-1">
+                    <Input
+                      className="font-mono"
+                      inputMode={personIdType === "ID_CARD" ? "numeric" : undefined}
+                      placeholder={personIdType === "ID_CARD" ? "18 位，仅数字或 X" : "证件号码"}
+                      value={watchedIdNumber}
+                      onChange={(e) => setValue("idNumber", sanitizePersonIdInput(personIdType, e.target.value), { shouldDirty: true, shouldValidate: !!errors.idNumber })}
+                    />
+                    {watchedIdNumber && personIdError(personIdType, watchedIdNumber) ? (
+                      <p className="text-[11px] text-[var(--amber,#b7791f)]">{personIdError(personIdType, watchedIdNumber)}</p>
+                    ) : null}
+                  </div>
                 ) : (
                   <div className="space-y-1">
                     <div className="flex gap-1">

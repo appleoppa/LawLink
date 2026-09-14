@@ -17,8 +17,10 @@ export function normalizeIdNumber(value: string | null | undefined): string | nu
 
 /** 按客户主体类型的默认证件类型建议（仅建议，表单仍需确认） */
 export function suggestIdType(clientType: "PERSON" | "COMPANY" | "ORG" | string): ClientIdType | null {
-  if (clientType === "COMPANY" || clientType === "ORG") return "USCC";
-  if (clientType === "PERSON") return "ID_CARD";
+  // 兼容 ClientType 枚举值（INDIVIDUAL / ORGANIZATION）：此前只认 PERSON / ORG，
+  // 收案与批量导入传入 INDIVIDUAL 时返回 null，个人客户建档缺证件类型、跳过证件查重
+  if (clientType === "COMPANY" || clientType === "ORG" || clientType === "ORGANIZATION") return "USCC";
+  if (clientType === "PERSON" || clientType === "INDIVIDUAL") return "ID_CARD";
   return null;
 }
 

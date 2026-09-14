@@ -15,6 +15,8 @@ import { toast } from "sonner";
 import { partyTypeLabel, PARTY_TYPE_OPTIONS } from "@/lib/enums";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { PERSON_ID_TYPES, clientIdTypeLabel, personIdError, sanitizePersonIdInput, type PersonIdType } from "@/lib/clients/person-id";
 import { ChoiceField } from "@/components/patterns/choice-field";
 import { searchEnterpriseCandidates, getEnterpriseDetail, type EnterpriseSearchItem } from "@/server/yuandian/enterprise";
 
@@ -61,6 +63,9 @@ export function PartyCard({
   const isOrg = partyType !== "NATURAL_PERSON";
   const name = (watch(`${p}.name`) as string) ?? "";
   const idValue = ((isOrg ? watch(`${p}.enterpriseSocialCode`) : watch(`${p}.idNumber`)) as string) ?? "";
+  const idType = ((watch(`${p}.idType`) as string) || "ID_CARD") as PersonIdType;
+  // 即时校验（与服务端 zod 同一规则）：身份证只允许数字与末位 X、必须 18 位
+  const liveIdError = !isOrg && idValue ? personIdError(idType, idValue) : null;
   const legalRep = (watch(`${p}.legalRep`) as string) ?? "";
 
   const fieldErr = (errors as Record<string, Record<number, Record<string, { message?: string }>>> | undefined)?.[fieldPrefix]?.[index] ?? {};
@@ -81,8 +86,11 @@ export function PartyCard({
     if (next === "NATURAL_PERSON") {
       setValue(`${p}.enterpriseSocialCode`, "");
       setValue(`${p}.enterpriseName`, "");
+      setValue(`${p}.legalRep`, "");
+      if (!watch(`${p}.idType`)) setValue(`${p}.idType`, "ID_CARD");
     } else {
       setValue(`${p}.idNumber`, "");
+      setValue(`${p}.idType`, "");
     }
   }
 
@@ -126,7 +134,7 @@ export function PartyCard({
   }
 
   const nameReg = register(`${p}.name`);
-  const meta = [idValue ? idValue : `${isOrg ? "统一社会信用代码" : "证件号码"} 待补充`, isOrg && legalRep ? `法定代表人 ${legalRep}` : null].filter(Boolean).join(" · ");
+  const meta = [idValue ? `${isOrg ? "" : `${clientIdTypeLabel[idType]} `}${idValue}` : `${isOrg ? "统一社会信用代码" : "证件号码"} 待补充`, isOrg && legalRep ? `法定代表人 ${legalRep}` : null].filter(Boolean).join(" · ");
 
   return (
     <div className={cn("entity-card flex-col !items-stretch", hasErr && "!border-[var(--red-line)]")} style={{ marginBottom: 10 }}>
@@ -215,13 +223,41 @@ export function PartyCard({
                 ))}
               {nameErr?.message ? <div className="mt-1 text-[11px] text-[var(--red)]">{nameErr.message}</div> : null}
             </div>
+            {!isOrg ? (
+              <div className="fitem" style={{ maxWidth: 210 }}>
+                <label className="flabel">证件类型</label>
+                <Select value={idType} onValueChange={(v) => { setValue(`${p}.idType`, v, { shouldDirty: true }); setValue(`${p}.idNumber`, sanitizePersonIdInput(v, idValue), { shouldDirty: true, shouldValidate: Boolean(idErr) }); }}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {PERSON_ID_TYPES.map((t) => <SelectItem key={t} value={t}>{clientIdTypeLabel[t]}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
             <div className="fitem">
               <label className="flabel">
-                {isOrg ? "统一社会信用代码" : "身份证号"}
+                {isOrg ? "统一社会信用代码" : idType === "ID_CARD" ? "身份证号" : "证件号码"}
                 <span className="star">*</span>
               </label>
-              <input className={cn("finput font-mono", idErr && "!border-[var(--red)]")} placeholder={isOrg ? "18 位信用代码" : "身份证号码"} {...register(isOrg ? `${p}.enterpriseSocialCode` : `${p}.idNumber`)} />
-              {idErr?.message ? <div className="mt-1 text-[11px] text-[var(--red)]">{idErr.message}</div> : null}
+              {isOrg ? (
+                <input className={cn("finput font-mono", idErr && "!border-[var(--red)]")} placeholder="18 位信用代码" {...register(`${p}.enterpriseSocialCode`)} />
+              ) : (
+                <input
+                  className={cn("finput font-mono", (idErr || liveIdError) && "!border-[var(--red)]")}
+                  placeholder={idType === "ID_CARD" ? "18 位，仅数字或末位 X" : "证件号码"}
+                  inputMode={idType === "ID_CARD" ? "text" : undefined}
+                  maxLength={idType === "ID_CARD" ? 18 : 30}
+                  value={idValue}
+                  onChange={(e) => setValue(`${p}.idNumber`, sanitizePersonIdInput(idType, e.target.value), { shouldDirty: true, shouldValidate: Boolean(idErr) })}
+                />
+              )}
+              {idErr?.message ? (
+                <div className="mt-1 text-[11px] text-[var(--red)]">{idErr.message}</div>
+              ) : liveIdError ? (
+                <div className="mt-1 text-[11px] text-[var(--amber)]">{liveIdError}</div>
+              ) : !isOrg && idType === "ID_CARD" ? (
+                <div className="mt-1 text-[11px] text-[var(--t-faint)]">只能输入数字或 X，共 18 位（{idValue.length}/18）</div>
+              ) : null}
             </div>
           </div>
           <div className="frow">

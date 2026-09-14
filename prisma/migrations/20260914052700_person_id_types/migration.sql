@@ -1,0 +1,7 @@
+-- 自然人证件类型：客户证件类型新增通行证/永居证；当事人新增可空证件类型（历史数据为空，按身份证处理）
+ALTER TYPE "ClientIdType" ADD VALUE IF NOT EXISTS 'HK_MACAO_MAINLAND_PERMIT';
+ALTER TYPE "ClientIdType" ADD VALUE IF NOT EXISTS 'TAIWAN_MAINLAND_PERMIT';
+ALTER TYPE "ClientIdType" ADD VALUE IF NOT EXISTS 'FOREIGN_PERMANENT_ID';
+
+-- AlterTable
+ALTER TABLE "Party" ADD COLUMN "idType" "ClientIdType";

@@ -71,6 +71,7 @@ const emptyParty = (role: PartyRole, ordinal: number): IntakeCreateInput["partie
   ordinal,
   partyType: "NATURAL_PERSON",
   name: "",
+  idType: "ID_CARD",
   idNumber: "",
   enterpriseSocialCode: "",
   enterpriseName: "",
@@ -175,7 +176,7 @@ export function IntakeWizard({
   const firstProcedureType = watch<ProcedureType | undefined>("firstProcedureType");
   const clientId = watch("clientId") ?? "";
   const party0Name = watch("parties.0.name") ?? "";
-  const party0IdNumber = watch("parties.0.partyType") === "ORGANIZATION" ? (watch("parties.0.enterpriseSocialCode") ?? "") : (watch("parties.0.idNumber") ?? "");
+  const party0IdNumber = watch("parties.0.partyType") !== "NATURAL_PERSON" ? (watch("parties.0.enterpriseSocialCode") ?? "") : (watch("parties.0.idNumber") ?? "");
   const feeType = watch<FeeType | undefined>("feeType");
   const ownerUserId = watch("ownerUserId");
   const coUserIds = watch<string[]>("coUserIds") ?? [];
@@ -209,7 +210,7 @@ export function IntakeWizard({
       return;
     }
     const timer = setTimeout(() => {
-      const idType = watch("parties.0.partyType") === "ORGANIZATION" ? "USCC" : "ID_CARD";
+      const idType = watch("parties.0.partyType") !== "NATURAL_PERSON" ? "USCC" : (watch<string | undefined>("parties.0.idType") || "ID_CARD");
       checkClientDuplicate({ idType: idNumber ? idType : null, idNumber: idNumber || null, name: name || undefined })
         .then(setDupResult)
         .catch(() => setDupResult(null));
@@ -352,11 +353,14 @@ export function IntakeWizard({
       toast.warning("请填写委托方", { description: "委托方名称为必填" });
       return;
     }
-    const isOrg = client.partyType === "ORGANIZATION";
+    // 主体类型 → 客户类型：此前只把 ORGANIZATION 视为机构，选「公司 / 合伙企业」等会被建成自然人客户、丢失信用代码
+    const isOrg = client.partyType !== "NATURAL_PERSON";
+    const clientType = !isOrg ? "INDIVIDUAL" : ["COMPANY", "PARTNERSHIP", "INDIVIDUAL_BUSINESS"].includes(client.partyType ?? "") ? "COMPANY" : "ORGANIZATION";
     const payload: IntakeCreateInput = {
       ...values,
       clientName: client.name.trim(),
-      clientType: isOrg ? "COMPANY" : "INDIVIDUAL",
+      clientType,
+      clientIdType: isOrg ? "USCC" : client.idType || "ID_CARD",
       clientIdNumber: (isOrg ? client.enterpriseSocialCode : client.idNumber) ?? "",
       clientAddress: client.address ?? "",
       clientLegalRep: client.legalRep ?? "",

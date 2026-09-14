@@ -1,3 +1,4 @@
+import { clientIdTypeLabel } from "@/lib/clients/person-id";
 import { requireSession } from "@/lib/auth/session";
 import { hasCustomPermission } from "@/lib/roles/catalog";
 import { notFound } from "next/navigation";
@@ -69,7 +70,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
             </div>
             <div className="ch-meta">
               <div className="m">
-                <span className="k">{isIndividual ? "身份证号" : "统一社会信用代码"}</span>
+                <span className="k">{isIndividual ? (!client.idType || client.idType === "ID_CARD" ? "身份证号" : clientIdTypeLabel[client.idType]) : "统一社会信用代码"}</span>
                 {maskedId ? <RevealValue kind="clientId" id={client.id} masked={maskedId} className="v mono" /> : <span className="v t-faint">未登记</span>}
               </div>
               {!isIndividual ? <div className="m"><span className="k">法定代表人</span><span className="v">{client.legalRep || "—"}</span></div> : null}

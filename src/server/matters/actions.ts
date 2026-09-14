@@ -7,7 +7,8 @@ import { approvalSettings } from "@/lib/approvals/service";
 import { assertAssignableColleagues } from "@/lib/teams/validate-colleagues";
 
 import { revalidatePath } from "next/cache";
-import { LitigationStanding, PartyRole, PartyType, Prisma } from "@prisma/client";
+import { LitigationStanding, PartyRole, PartyType, Prisma, type ClientIdType } from "@prisma/client";
+import { decryptIdNumber } from "@/lib/clients/id-number-crypto";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
@@ -41,6 +42,7 @@ import {
 } from "./schemas";
 import { revalidateMatter } from "@/server/matters/route";
 import { recordTimelineEvent } from "@/server/timeline/record";
+import { PERSON_ID_TYPES, personIdError } from "@/lib/clients/person-id";
 
 function emptyToNull<T extends Record<string, unknown>>(obj: T): T {
   const out: Record<string, unknown> = {};
@@ -267,6 +269,7 @@ export async function updateProcedureInfo(input: {
     name: string;
     role: PartyRole;
     partyType: PartyType;
+    idType?: string | null;
     idNumber?: string;
     enterpriseSocialCode?: string;
     legalRep?: string;
@@ -279,6 +282,7 @@ export async function updateProcedureInfo(input: {
     name: string;
     role: PartyRole;
     partyType: PartyType;
+    idType?: string | null;
     idNumber?: string;
     enterpriseSocialCode?: string;
     standings: LitigationStanding[];
@@ -298,7 +302,17 @@ export async function updateProcedureInfo(input: {
     ? normalizeProcedureParties(input.procedureParties)
     : null;
   const updatedPartyRows = normalizeUpdatedParties(input.updatedParties ?? []);
+  for (const row of updatedPartyRows) {
+    if (row.partyType !== "NATURAL_PERSON" || !row.idNumber) continue;
+    const idError = personIdError(row.idType, row.idNumber);
+    if (idError) throw new Error(`当事人「${row.name}」：${idError}`);
+  }
   const newPartyRows = normalizeNewProcedureParties(input.newProcedureParties ?? []);
+  for (const row of newPartyRows) {
+    if (row.partyType !== "NATURAL_PERSON" || row.existingPartyId) continue;
+    const idError = personIdError(row.idType, row.idNumber);
+    if (idError) throw new Error(`新增当事人「${row.name}」：${idError}`);
+  }
   if ((input.updatedParties?.length ?? 0) !== updatedPartyRows.length) {
     throw new Error("已有当事人信息不完整");
   }
@@ -358,6 +372,7 @@ export async function updateProcedureInfo(input: {
           role: row.role,
           name: row.name,
           partyType: row.partyType,
+          idType: row.partyType === "NATURAL_PERSON" ? row.idType : null,
           idNumber: row.partyType === "NATURAL_PERSON" ? row.idNumber || null : null,
           enterpriseSocialCode:
             row.partyType === "NATURAL_PERSON" ? null : row.enterpriseSocialCode || null,
@@ -399,6 +414,7 @@ export async function updateProcedureInfo(input: {
               name: row.name,
               partyType: row.partyType,
               standing: row.standings[0] ?? null,
+              idType: row.partyType === "NATURAL_PERSON" ? row.idType : null,
               idNumber: row.partyType === "NATURAL_PERSON" ? row.idNumber : null,
               enterpriseSocialCode:
                 row.partyType === "NATURAL_PERSON" ? null : row.enterpriseSocialCode,
@@ -478,6 +494,7 @@ type NewProcedurePartyInput = {
   name: string;
   role: PartyRole;
   partyType: PartyType;
+  idType?: string | null;
   idNumber?: string;
   enterpriseSocialCode?: string;
   standings: LitigationStanding[];
@@ -488,6 +505,7 @@ type UpdatedPartyInput = {
   name: string;
   role: PartyRole;
   partyType: PartyType;
+  idType?: string | null;
   idNumber?: string;
   enterpriseSocialCode?: string;
   legalRep?: string;
@@ -510,9 +528,11 @@ async function ensureClientParty(
 ) {
   const client = await tx.client.findUnique({
     where: { id: clientId },
-    select: { id: true, name: true, type: true, idNumber: true }
+    select: { id: true, name: true, type: true, idType: true, idNumber: true }
   });
   if (!client) throw new Error("客户不存在");
+  // 客户证件号入库为密文，当事人表存明文：补入时必须先解密
+  const clientIdPlain = decryptIdNumber(client.idNumber) || null;
 
   const existing = await tx.party.findFirst({
     where: {
@@ -537,8 +557,9 @@ async function ensureClientParty(
       name: client.name,
       partyType,
       standing,
-      idNumber: partyType === "NATURAL_PERSON" ? client.idNumber : null,
-      enterpriseSocialCode: partyType === "NATURAL_PERSON" ? null : client.idNumber,
+      idType: partyType === "NATURAL_PERSON" ? (client.idType && client.idType !== "USCC" ? client.idType : "ID_CARD") : null,
+      idNumber: partyType === "NATURAL_PERSON" ? clientIdPlain : null,
+      enterpriseSocialCode: partyType === "NATURAL_PERSON" ? null : clientIdPlain,
       enterpriseName: partyType === "NATURAL_PERSON" ? null : client.name,
       notes: "由案件关联客户自动补入"
     },
@@ -578,7 +599,8 @@ function normalizeUpdatedParties(rows: UpdatedPartyInput[]) {
       name: row.name.trim(),
       role: row.role,
       partyType: row.partyType,
-      idNumber: row.idNumber?.trim() ?? "",
+      idType: (PERSON_ID_TYPES as readonly string[]).includes(row.idType ?? "") ? (row.idType as ClientIdType) : "ID_CARD",
+      idNumber: row.idNumber?.trim().toUpperCase() ?? "",
       enterpriseSocialCode: row.enterpriseSocialCode?.trim() ?? "",
       legalRep: row.legalRep?.trim() ?? "",
       contactName: row.contactName?.trim() ?? "",
@@ -604,8 +626,9 @@ function normalizeNewProcedureParties(rows: NewProcedurePartyInput[]) {
       name: row.name.trim(),
       role: row.role,
       partyType: row.partyType,
-      idNumber: row.idNumber?.trim() ?? "",
-      enterpriseSocialCode: row.enterpriseSocialCode?.trim() ?? "",
+      idType: ((PERSON_ID_TYPES as readonly string[]).includes(row.idType ?? "") ? row.idType : "ID_CARD") as ClientIdType,
+      idNumber: row.idNumber?.trim().toUpperCase() ?? "",
+      enterpriseSocialCode: row.enterpriseSocialCode?.trim().toUpperCase() ?? "",
       standings: [
         ...new Set(
           row.standings
@@ -838,6 +861,7 @@ export async function createMatter(input: MatterCreateInput) {
               ordinal: p.ordinal,
               name: p.name,
               partyType: p.partyType,
+              idType: p.partyType === "NATURAL_PERSON" ? (p.idType || "ID_CARD") : null,
               idNumber: p.idNumber,
               phone: p.phone,
               address: p.address,

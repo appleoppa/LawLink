@@ -7,6 +7,7 @@ import { requireApprovalRoute } from "@/lib/approvals/service";
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { decryptIdNumber } from "@/lib/clients/id-number-crypto";
 import { requireSession } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import { assertMatterWritable } from "@/lib/archive/guard";
@@ -410,7 +411,7 @@ export async function getMatterInvoiceContext(matterId: string) {
     clientMap.set(m.primaryClient.id, {
       id: m.primaryClient.id,
       name: m.primaryClient.name,
-      taxNo: m.primaryClient.idNumber ?? null,
+      taxNo: decryptIdNumber(m.primaryClient.idNumber) || null,
       isPrimary: true
     });
   }
@@ -423,7 +424,7 @@ export async function getMatterInvoiceContext(matterId: string) {
       clientMap.set(link.client.id, {
         id: link.client.id,
         name: link.client.name,
-        taxNo: link.client.idNumber ?? null,
+        taxNo: decryptIdNumber(link.client.idNumber) || null,
         isPrimary: link.isPrimary
       });
     }

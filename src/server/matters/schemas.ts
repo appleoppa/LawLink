@@ -1,3 +1,4 @@
+import { PERSON_ID_TYPES, personIdError } from "@/lib/clients/person-id";
 import { z } from "zod";
 
 export const matterCategorySchema = z.enum([
@@ -104,6 +105,8 @@ export const partyInputSchema = z
     partyType: partyTypeSchema.default("NATURAL_PERSON"),
     name: z.string().min(1, "当事人姓名/名称必填").max(120),
     // 自然人路径必填：身份证号；公司路径必填：enterpriseSocialCode（superRefine 校验）
+    // 2026-09-14: 自然人证件类型（空 = 居民身份证）
+    idType: z.enum(PERSON_ID_TYPES).optional().or(z.literal("")),
     idNumber: z.string().max(50).optional().or(z.literal("")),
     enterpriseSocialCode: z.string().max(50).optional().or(z.literal("")),
     enterpriseName: z.string().max(120).optional().or(z.literal("")),
@@ -119,8 +122,11 @@ export const partyInputSchema = z
         ctx.addIssue({
           path: ["idNumber"],
           code: z.ZodIssueCode.custom,
-          message: "自然人需填写身份证号码（用于利益冲突检索）"
+          message: "自然人需填写证件号码（用于利益冲突检索）"
         });
+      } else {
+        const idError = personIdError(p.idType || "ID_CARD", p.idNumber);
+        if (idError) ctx.addIssue({ path: ["idNumber"], code: z.ZodIssueCode.custom, message: idError });
       }
     } else {
       if (!p.enterpriseSocialCode || !p.enterpriseSocialCode.trim()) {

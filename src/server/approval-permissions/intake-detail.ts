@@ -1,12 +1,19 @@
 import { prisma } from "@/lib/prisma";
 import { decryptIdNumber } from "@/lib/clients/id-number-crypto";
+import { clientIdTypeLabel } from "@/lib/clients/person-id";
 import { barFilingLabel, clientTypeLabel, conflictConclusionLabel, feeTypeLabel, litigationStandingLabel, matterCategoryLabel, matterCategoryKind, partyTypeLabel, procedureTypeLabel } from "@/lib/enums";
 import { buildIntakeConflictQueries, conflictPartyRoleLabel, conflictQueryCoverage, readConflictPayload, type IntakeReviewField, type IntakeReviewSection } from "@/lib/approvals/intake-detail";
+
+/** 自然人证件字段标签：身份证显示「身份证号」，其他证件带证件类型名 */
+function personIdLabel(idType: string | null | undefined) {
+  if (!idType || idType === "ID_CARD" || idType === "USCC") return "身份证号";
+  return `证件号码（${clientIdTypeLabel[idType as keyof typeof clientIdTypeLabel] ?? "其他证件"}）`;
+}
 
 /** 仅由 getApprovalDetail 在 requireApprovalRecord 对象级鉴权成功后调用。 */
 export async function loadIntakeApprovalDetail(id: string) {
   const r = await prisma.intake.findUniqueOrThrow({ where: { id }, include: {
-    client: { select: { name: true, type: true, idNumber: true, address: true, legalRep: true } },
+    client: { select: { name: true, type: true, idType: true, idNumber: true, address: true, legalRep: true } },
     ownerUser: { select: { name: true } }, cause: { select: { name: true } },
     parties: { orderBy: [{ role: "asc" }, { ordinal: "asc" }] },
     documents: { where: { deletedAt: null }, select: { id: true, name: true } },
@@ -48,7 +55,7 @@ export async function loadIntakeApprovalDetail(id: string) {
       field("主体类型", r.client ? clientTypeLabel[r.client.type] : r.clientType && clientTypeLabel[r.clientType]),
       // 仅当申请时登记的类型与档案当前类型不一致时才需要提示
       ...when(Boolean(r.client && r.clientType && r.clientType !== r.client.type), field("申请时登记的客户类型", r.clientType && clientTypeLabel[r.clientType])),
-      field(clientIsPerson ? "身份证号" : "统一社会信用代码", clientId),
+      field(clientIsPerson ? personIdLabel(r.client?.idType) : "统一社会信用代码", clientId),
       field(clientIsPerson ? "住址" : "注册地址", r.client?.address, true),
       ...when(!clientIsPerson, field("法定代表人", r.client?.legalRep)),
       field("联系人", r.contactName), field("联系电话", r.contactPhone, true)
@@ -60,7 +67,7 @@ export async function loadIntakeApprovalDetail(id: string) {
         ...when(litigation, field("诉讼地位", p.standing && litigationStandingLabel[p.standing])),
         field("主体类型", partyTypeLabel[p.partyType]),
         ...(person
-          ? [field("身份证号", p.idNumber)]
+          ? [field(personIdLabel(p.idType), p.idNumber)]
           : [
               field("统一社会信用代码", p.enterpriseSocialCode),
               ...when(Boolean(p.enterpriseName && p.enterpriseName !== p.name), field("工商登记名称", p.enterpriseName)),

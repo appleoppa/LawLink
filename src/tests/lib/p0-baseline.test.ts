@@ -23,6 +23,8 @@ describe("客户身份规范化（P0-1）", () => {
     expect(suggestIdType("COMPANY")).toBe("USCC");
     expect(suggestIdType("ORG")).toBe("USCC");
     expect(suggestIdType("UNKNOWN")).toBeNull();
+    expect(suggestIdType("INDIVIDUAL")).toBe("ID_CARD");
+    expect(suggestIdType("ORGANIZATION")).toBe("USCC");
   });
   it("查重条件：证件精确走盲索引（P1 §三）+ 同名未删（排除自身）", () => {
     expect(duplicateWhereInput({ idType: "ID_CARD", idNumber: "X" })).toEqual({

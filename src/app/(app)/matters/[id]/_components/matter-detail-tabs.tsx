@@ -1022,6 +1022,7 @@ function buildProcedurePartyOptions(matter: MatterPayload) {
       ordinal: 0,
       name: client.name,
       partyType: clientTypeToPartyType(client.type),
+      idType: null,
       idNumber: client.type === "INDIVIDUAL" ? client.idNumber : null,
       phone: null,
       address: null,

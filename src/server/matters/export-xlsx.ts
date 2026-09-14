@@ -12,6 +12,7 @@ import {
   type ProcedureStatus
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { decryptIdNumber } from "@/lib/clients/id-number-crypto";
 import { intakeVisibilityFilter, matterVisibilityFilter, matterAssociationFilter, teamMatterFilter, teamIntakeFilter } from "@/lib/permissions";
 import {
   barFilingLabel,
@@ -737,7 +738,7 @@ function buildIntakeRow(intake: IntakeExportRow, coUserNames: Map<string, string
     description: intake.description ?? "",
     client: intake.client?.name ?? "",
     clientType: intake.client ? clientTypeLabel[intake.client.type] : label(clientTypeLabel, intake.clientType),
-    clientIdNumber: intake.client?.idNumber ?? "",
+    clientIdNumber: decryptIdNumber(intake.client?.idNumber),
     clientAddress: intake.client?.address ?? "",
     clientLegalRep: intake.client?.legalRep ?? "",
     contactName: intake.contactName ?? "",
@@ -810,7 +811,7 @@ function buildMatterRow(
     archivedAt: formatDate(matter.archivedAt),
     primaryClient: matter.primaryClient?.name ?? "",
     primaryClientType: matter.primaryClient ? clientTypeLabel[matter.primaryClient.type] : "",
-    primaryClientIdNumber: matter.primaryClient?.idNumber ?? "",
+    primaryClientIdNumber: decryptIdNumber(matter.primaryClient?.idNumber),
     primaryClientAddress: matter.primaryClient?.address ?? "",
     primaryClientLegalRep: matter.primaryClient?.legalRep ?? "",
     primaryClientContacts: formatContacts(matter.primaryClient?.contacts ?? []),

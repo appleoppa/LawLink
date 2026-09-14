@@ -12,7 +12,7 @@ import { approvalTransaction, approvalAudit, assertApprovalItem, approvalContext
 
 
 import { revalidatePath } from "next/cache";
-import { Prisma, type ClientType, type LitigationStanding, type PartyType, type PartyRole } from "@prisma/client";
+import { Prisma, type ClientIdType, type ClientType, type LitigationStanding, type PartyType, type PartyRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
@@ -305,7 +305,7 @@ export async function createIntake(input: IntakeCreateInput) {
     // v1.x P0-1: 收案自动建档走统一查重——证件命中（含软删）时拒绝并提示，
     // 避免收案入口绕过客户主数据唯一性。
     const normalizedIdNumber = normalizeIdNumber(data.clientIdNumber);
-    const intakeIdType = suggestIdType(data.clientType ?? "INDIVIDUAL");
+    const intakeIdType: ClientIdType | null = (data.clientIdType || null) as ClientIdType | null ?? suggestIdType(data.clientType ?? "INDIVIDUAL");
     if (normalizedIdNumber && intakeIdType) {
       const dup = await prisma.client.findFirst({
         where: duplicateWhereInput({ idType: intakeIdType, idNumber: normalizedIdNumber }),
@@ -453,6 +453,7 @@ export async function createIntake(input: IntakeCreateInput) {
             ordinal: p.ordinal,
             name: p.name,
             partyType: p.partyType,
+            idType: p.partyType === "NATURAL_PERSON" ? (p.idType || "ID_CARD") : null,
             idNumber: p.idNumber,
             phone: p.phone,
             address: p.address,
@@ -730,6 +731,7 @@ export async function convertIntakeToMatter(intakeId: string, note?: string) {
           ordinal: p.ordinal,
           name: p.name,
           partyType: p.partyType,
+          idType: p.idType,
           idNumber: p.idNumber,
           phone: p.phone,
           address: p.address,

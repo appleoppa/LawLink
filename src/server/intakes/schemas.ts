@@ -1,3 +1,4 @@
+import { ALL_CLIENT_ID_TYPES } from "@/lib/clients/person-id";
 import { z } from "zod";
 import { matterCategorySchema, partyInputSchema, procedureTypeSchema } from "@/server/matters/schemas";
 
@@ -96,6 +97,7 @@ const intakeCreateBaseSchema = z.object({
   contactPhone: z.string().max(30).optional().or(z.literal("")),
 
   // 企业自动填充（元典查询结果，透传到 Client 创建）
+  clientIdType: z.enum(ALL_CLIENT_ID_TYPES).optional().or(z.literal("")),
   clientIdNumber: z.string().max(50).optional().or(z.literal("")),
   clientAddress: z.string().max(200).optional().or(z.literal("")),
   clientLegalRep: z.string().max(40).optional().or(z.literal("")),

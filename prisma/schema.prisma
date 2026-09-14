@@ -64,6 +64,10 @@ enum ClientIdType {
   USCC
   PASSPORT
   OTHER
+  // 2026-09-14: 自然人其他常用证件（客户与当事人共用）
+  HK_MACAO_MAINLAND_PERMIT // 港澳居民来往内地通行证
+  TAIWAN_MAINLAND_PERMIT // 台湾居民来往大陆通行证
+  FOREIGN_PERMANENT_ID // 外国人永久居留身份证
 }
 
 enum MatterStatus {
@@ -1082,6 +1086,8 @@ model Party {
   name                 String
   // v0.27: 主体类型决定必填字段分支（自然人 → idNumber；公司 → enterpriseSocialCode + legalRep + address）
   partyType            PartyType           @default(NATURAL_PERSON)
+  // 2026-09-14: 自然人证件类型（空 = 历史数据，按居民身份证处理）；机构仍用 enterpriseSocialCode
+  idType               ClientIdType?
   idNumber             String?
   phone                String?
   address              String?
