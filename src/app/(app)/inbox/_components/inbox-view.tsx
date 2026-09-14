@@ -2,27 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import {
-  Inbox,
-  Plus,
-  Gavel,
-  Clock,
-  CheckCircle2,
-  Trash2,
-  Link as LinkIcon,
-  Briefcase,
-  ExternalLink,
-  Phone,
-  Loader2,
-  Sparkles,
-  AlertCircle,
-  ArrowRight,
-  CalendarClock,
-  FileCheck2,
-  FileDigit,
-  FileDown,
-  KeyRound
-} from "lucide-react";
+import { Inbox, Plus, Gavel, Clock, CheckCircle2, Trash2, Link as LinkIcon, Briefcase, ExternalLink, Phone, Loader2, Sparkles, AlertCircle, ArrowRight, CalendarClock, FileCheck2, FileDigit, FileDown, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -59,6 +39,7 @@ import {
   GenerateDeadlineDialog
 } from "./sms-actions-dialogs";
 import { matterHref } from "@/lib/matters/route";
+import { PageHeader } from "@/components/patterns/moan";
 
 type Tab = "unprocessed" | "needsManual" | "processed";
 
@@ -93,18 +74,17 @@ export function InboxView({
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="ll-page-title">法院短信</h1>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            粘贴 12368 / 法院短信 → 自动解析 → 一键生成开庭 / 期限
-          </p>
-        </div>
-        <Button onClick={() => setPasteOpen(true)} className="gap-1.5">
-          <Plus className="h-3.5 w-3.5" />
-          粘贴短信
-        </Button>
-      </div>
+      <PageHeader
+        className="!mb-0"
+        title="法院短信"
+        sub="粘贴 12368 / 法院短信 → 自动解析 → 一键生成开庭 / 期限"
+        actions={
+          <Button onClick={() => setPasteOpen(true)}>
+            <Plus />
+            粘贴短信
+          </Button>
+        }
+      />
 
       {/* Tab */}
       <div className="border-b border-border">

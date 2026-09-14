@@ -3,7 +3,7 @@ import { customOrLegacy, hasCustomPermission, scopeFor, type RoleGrant } from "@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { BookUser, Plus, Pencil, Archive, Check, XCircle } from "lucide-react";
+import { Plus, Pencil, Archive, Check, XCircle } from "lucide-react";
 import type { ExternalContactCategory, ExternalContactStatus } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -16,6 +16,7 @@ import {
   rejectExternalContact
 } from "@/server/external-contacts/actions";
 import { toast } from "sonner";
+import { PageHeader } from "@/components/patterns/moan";
 
 type ColleagueItem = {
   id: string;
@@ -128,13 +129,7 @@ export function ContactsView({
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="flex items-center gap-2 text-xl">
-          <BookUser className="h-5 w-5 text-primary" strokeWidth={1.8} />
-          通讯录
-        </h1>
-        <p className="mt-0.5 text-[12px] text-muted-foreground">本所同事与外部联系人</p>
-      </header>
+      <PageHeader className="!mb-0" title="通讯录" sub="本所同事与外部联系人；外部联系人电话默认打码展示。" />
 
       {/* 同事 */}
       <div className="space-y-3">

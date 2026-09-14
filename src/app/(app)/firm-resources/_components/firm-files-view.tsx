@@ -2,17 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
-import {
-  FolderArchive,
-  Search,
-  Upload,
-  Download,
-  Trash2,
-  History,
-  X,
-  Tag,
-  Loader2
-} from "lucide-react";
+import { FolderArchive, Search, Upload, Download, Trash2, History, X, Tag, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { FirmFileCategory } from "@prisma/client";
 import { Button } from "@/components/ui/button";
@@ -70,7 +60,6 @@ export function FirmFilesView({
   hideCategoryNav,
   headerTitle,
   headerSubtitle,
-  headerIcon,
   categorySet
 }: {
   files: FileEntry[];
@@ -88,7 +77,6 @@ export function FirmFilesView({
   /** v0.44: 覆盖默认标题/副标题/图标 */
   headerTitle?: string;
   headerSubtitle?: string;
-  headerIcon?: React.ReactNode;
   /** v0.44: 分类集合（"firm"=律所文书新分类，默认旧分类） */
   categorySet?: "firm" | "legacy";
 }) {
@@ -157,11 +145,10 @@ export function FirmFilesView({
       {!hideHeader ? (
         <header className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="flex items-center gap-2 text-xl">
-              {headerIcon ?? <FolderArchive className="h-5 w-5 text-primary" strokeWidth={1.8} />}
+            <h1 className="mo-ph-title">
               {headerTitle ?? "律所文书"}
             </h1>
-            <p className="mt-0.5 text-[12px] text-muted-foreground">
+            <p className="mo-ph-sub">
               {headerSubtitle ?? (
                 <>
                   合同 · 函件 · 证照 · 其他。全所共享，

@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Calculator, Scale, Coins, CalendarDays } from "lucide-react";
+import { Scale, Coins, CalendarDays } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CourtFeeCalc } from "./court-fee-calc";
 import { LateInterestCalc } from "./late-interest-calc";
 import { DaysCalc } from "./days-calc";
+import { PageHeader } from "@/components/patterns/moan";
 
 type Tab = "courtFee" | "lateInterest" | "days";
 
@@ -22,15 +23,7 @@ export function CalcView({ hideHeader }: { hideHeader?: boolean } = {}) {
     <div className="space-y-5">
       {/* 标题（应用页内嵌时由 tab 标注，隐藏）*/}
       {!hideHeader && (
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl">
-            <Calculator className="h-5 w-5 text-primary" strokeWidth={1.6} />
-            实务工具
-          </h1>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            诉讼费 / 迟延履行金 / 天数 —— 纯前端速算，无需联网
-          </p>
-        </div>
+        <PageHeader className="!mb-0" title="实务工具" sub="诉讼费 / 迟延履行金 / 天数 —— 纯前端速算，无需联网" />
       )}
 
       {/* Tab */}

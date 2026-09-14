@@ -1,10 +1,7 @@
 "use client";
 
 import { useState, useMemo, useTransition } from "react";
-import {
-  Shield, Plus, Search, ChevronDown, ChevronRight,
-  Pencil, Trash2, UserPlus, Landmark
-} from "lucide-react";
+import { Shield, Plus, Search, ChevronDown, ChevronRight, Pencil, Trash2, UserPlus, Landmark } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +25,7 @@ import {
   type MatterOption,
   type UserOption
 } from "./preservation-types";
+import { PageHeader } from "@/components/patterns/moan";
 
 const STATUS_FILTERS = [
   { value: "ALL", label: "全部" },
@@ -91,15 +89,7 @@ export function PreservationsView({
 
   return (
     <div className="space-y-5">
-      <header>
-        <h1 className="flex items-center gap-2 text-xl">
-          <Shield className="h-5 w-5 text-primary" strokeWidth={1.8} />
-          财产保全
-        </h1>
-        <p className="mt-0.5 text-[12px] text-muted-foreground">
-          按被保全人及财产跟踪保全期限，到期前持续提醒
-        </p>
-      </header>
+      <PageHeader className="!mb-0" title="财产保全" sub="按被保全人及财产跟踪保全期限，到期前持续提醒" />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <KpiCard label="生效保全" value={activeCount} />

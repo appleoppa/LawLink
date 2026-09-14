@@ -2,18 +2,7 @@
 
 import { useState, useMemo, useTransition } from "react";
 import Link from "next/link";
-import {
-  Package,
-  Plus,
-  Search,
-  RefreshCw,
-  Trash2,
-  Briefcase,
-  ArrowDownToLine,
-  ArrowUpFromLine,
-  ExternalLink,
-  AlertTriangle
-} from "lucide-react";
+import { Package, Plus, Search, RefreshCw, Trash2, Briefcase, ArrowDownToLine, ArrowUpFromLine, ExternalLink, AlertTriangle } from "lucide-react";
 import type { Prisma, ExpressDirection } from "@prisma/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -34,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { createExpress, refreshExpress, deleteExpress } from "@/server/express/actions";
 import { SUPPORTED_COMPANIES, detectCompany } from "@/lib/express/companies";
 import { matterHref } from "@/lib/matters/route";
+import { PageHeader } from "@/components/patterns/moan";
 
 type Row = Prisma.ExpressTrackingGetPayload<{
   include: {
@@ -96,15 +86,7 @@ export function ExpressView({
         {hideHeader ? (
           <div />
         ) : (
-          <div>
-            <h1 className="flex items-center gap-2 text-2xl">
-              <Package className="h-5 w-5 text-primary" />
-              快递追踪
-            </h1>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">
-              寄出 / 收到的法院文书、当事人材料统一登记 + 自动刷新物流
-            </p>
-          </div>
+          <PageHeader className="!mb-0" title="快递追踪" sub="寄出 / 收到的法院文书、当事人材料统一登记 + 自动刷新物流" />
         )}
         <Button onClick={() => setNewOpen(true)} className="gap-1.5">
           <Plus className="h-3.5 w-3.5" />

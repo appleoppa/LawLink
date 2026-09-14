@@ -5,18 +5,7 @@ import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import type { LucideIcon } from "lucide-react";
-import {
-  Wallet,
-  Briefcase,
-  Archive,
-  CheckCircle2,
-  Download,
-  BarChart3,
-  CircleAlert,
-  Send,
-  Loader2,
-  Printer
-} from "lucide-react";
+import { Wallet, Briefcase, Archive, CheckCircle2, Download, CircleAlert, Send, Loader2, Printer } from "lucide-react";
 import { matterCategoryLabel, matterCategoryColor } from "@/lib/enums";
 import type { ReportData } from "@/server/reports/queries";
 import type {
@@ -134,10 +123,7 @@ export function ReportsView({
     <div className="space-y-5">
       <header className="ll-page-head">
         <div>
-          <h1 className="ll-page-title flex items-center gap-2">
-            <BarChart3 className="h-[22px] w-[22px] text-primary" strokeWidth={1.8} />
-            律所报表
-          </h1>
+          <h1 className="mo-ph-title">律所报表</h1>
           <p className="ll-page-sub">
             统计期：<span className="text-foreground">{periodLabel}</span>
           </p>

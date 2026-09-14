@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Lock, FileText, Calendar, User, Download } from "lucide-react";
+import { FileText, Calendar, User, Download } from "lucide-react";
 import {
   listArchivedMatters
 } from "@/server/archive/actions";
@@ -9,6 +9,7 @@ import { requireSession } from "@/lib/auth/session";
 import { isSystemAdmin } from "@/lib/auth/system-role";
 import { matterCategoryLabel } from "@/lib/enums";
 import { matterHref } from "@/lib/matters/route";
+import { PageHeader } from "@/components/patterns/moan";
 
 
 
@@ -18,18 +19,12 @@ export default async function ArchivePage() {
   const items = await listArchivedMatters();
 
   return (
-    <div className="px-6 py-6 space-y-5">
-      <header className="ll-page-head">
-        <div>
-          <h1 className="ll-page-title flex items-center gap-2">
-            <Lock className="h-[22px] w-[22px]" style={{ color: "var(--bronze)" }} strokeWidth={1.8} />
-            归档管理
-          </h1>
-          <p className="ll-page-sub">
-            已归档 <span className="font-mono tabular text-foreground">{items.length}</span> 件 · 按归档日期降序 · 点击进入案件可查看卷宗封皮与目录
-          </p>
-        </div>
-      </header>
+    <div className="space-y-4">
+      <PageHeader
+        className="!mb-0"
+        title="归档管理"
+        sub={<>已归档 <b>{items.length}</b> 件 · 按归档日期降序 · 点击进入案件可查看卷宗封皮与目录</>}
+      />
 
       {items.length === 0 ? (
         <div className="ll-surface border-dashed py-16 text-center text-sm text-muted-foreground">

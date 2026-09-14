@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { KeyRound, Settings } from "lucide-react";
+import { KeyRound } from "lucide-react";
+import { PageHeader } from "@/components/patterns/moan";
 
 export default async function SettingsLayout({
   children
@@ -8,12 +9,7 @@ export default async function SettingsLayout({
 }) {
   return (
     <div className="space-y-5">
-      <header>
-        <h1 className="flex items-center gap-2 ll-page-title tracking-tight">
-          <Settings className="h-5 w-5 text-primary" />
-          个人设置
-        </h1>
-      </header>
+      <PageHeader className="!mb-0" title="个人设置" sub="个人资料、登录安全与身份信息；修改联系方式不会影响历史案件归属。" />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
         <nav className="lg:col-span-1">

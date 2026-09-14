@@ -17,6 +17,7 @@ import {
   SEAL_STATUS_COLOR
 } from "./seal-types";
 import { matterHref } from "@/lib/matters/route";
+import { PageHeader } from "@/components/patterns/moan";
 
 type Tab = "allMine" | "pending" | "processed" | "toApprove" | "firm";
 
@@ -82,19 +83,20 @@ export function SealsView({
   return (
     <div className="space-y-5">
       {/* 标题区 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl">审批 · 用章</h1>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            按事项分配审批，用章回填单独授权。
-          </p>
-        </div>
-        <a className="text-sm text-primary" href="/approvals">全部审批事项</a>
-        <Button onClick={() => setSheetOpen(true)} className="gap-1.5">
-          <Plus className="h-3.5 w-3.5" />
-          新建用章申请
-        </Button>
-      </div>
+      <PageHeader
+        className="!mb-0"
+        title="审批 · 用章"
+        sub="按事项分配审批，用章回填单独授权。"
+        actions={
+          <>
+            <a className="btn btn-ghost btn-sm" href="/approvals">全部审批事项</a>
+            <Button onClick={() => setSheetOpen(true)}>
+              <Plus />
+              新建用章申请
+            </Button>
+          </>
+        }
+      />
 
       {/* KPI 顶部 */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
