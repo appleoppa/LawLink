@@ -659,3 +659,13 @@
 .mo-finance .mo-table tbody tr[data-spine="violet"] > td:first-child::before { background: var(--violet); }
 @media (max-width: 1180px) { .mo-finance .kpi-grid { grid-template-columns: repeat(2, 1fr) !important; } .mo-finance .fin-grid { grid-template-columns: 1fr; } }
 @media (max-width: 560px) { .mo-finance .kpi-grid { grid-template-columns: 1fr !important; } }
+
+/* 09 日程 · 实现补充 */
+.mo-schedule .ev { color: inherit; }
+.mo-schedule .ev-court { color: var(--blue); } .mo-schedule .ev-dead-red { color: var(--red); } .mo-schedule .ev-dead-amber { color: var(--amber); } .mo-schedule .ev-task { color: var(--teal-deep); }
+.mo-schedule .ev:hover { filter: brightness(0.97); }
+.mo-schedule .today-item { align-items: baseline; }
+@media (max-width: 1280px) { .mo-schedule .cal-grid { grid-template-columns: 1fr; } }
+@media (max-width: 720px) { .mo-schedule .cell { min-height: 72px; padding: 5px; } .mo-schedule .ev .t { display: none; } }
+.mo-schedule .cells, .mo-schedule .dow { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.mo-schedule .cell { min-width: 0; }

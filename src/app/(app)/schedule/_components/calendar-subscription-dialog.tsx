@@ -15,7 +15,7 @@ export function CalendarSubscriptionDialog() {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="h-8 gap-1.5">
+        <Button variant="outline" size="sm">
           <CalendarPlus className="h-3.5 w-3.5" strokeWidth={1.8} />
           订阅日历
         </Button>
