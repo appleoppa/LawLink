@@ -92,10 +92,10 @@ export function Topbar({ onMobileMenuToggle, userAvatar }: { onMobileMenuToggle?
           </DropdownMenuItem>
           {canEnterAdminWorkspace(user) ? (
             <DropdownMenuItem asChild>
-              <Link href="/admin" className="cursor-pointer">
+              <a href="/admin" target="_blank" rel="noopener" className="cursor-pointer">
                 <ShieldCheck />
                 管理后台
-              </Link>
+              </a>
             </DropdownMenuItem>
           ) : null}
           <DropdownMenuSeparator />

@@ -99,7 +99,7 @@ export function ExpressView({
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <div>
             未配置任何快递接入。记录可创建但物流状态拉不到。
-            <Link href="/admin/express" className="ml-1 font-medium underline">
+            <Link href="/admin/express" target="_blank" rel="noopener" className="ml-1 font-medium underline">
               去配置 快递鸟 / 快递100 →
             </Link>
           </div>
