@@ -301,7 +301,7 @@ function UserRow({
       <td className="whitespace-nowrap px-5 py-3 font-mono text-xs tabular text-muted-foreground">
         主办 {user._count.ownedMatters} · 参与 {user._count.memberships}
       </td>
-      <td className="px-5 py-3 font-mono text-xs text-muted-foreground tabular">
+      <td className="whitespace-nowrap px-5 py-3 font-mono text-xs text-muted-foreground tabular">
         {user.lastLoginAt
           ? formatDate(new Date(user.lastLoginAt))
           : "从未登录"}

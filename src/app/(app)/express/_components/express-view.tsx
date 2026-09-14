@@ -23,7 +23,7 @@ import { cn, formatDateTime } from "@/lib/utils";
 import { createExpress, refreshExpress, deleteExpress } from "@/server/express/actions";
 import { SUPPORTED_COMPANIES, detectCompany } from "@/lib/express/companies";
 import { matterHref } from "@/lib/matters/route";
-import { PageHeader } from "@/components/patterns/moan";
+import { PageHeader, Segmented } from "@/components/patterns/moan";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
 import { useTopbarAction } from "@/components/layout/topbar-action";
 
@@ -119,12 +119,11 @@ export function ExpressView({
             className="h-9 border-border bg-card pl-9"
           />
         </div>
-        <RadioChips
-          size="sm"
+        <Segmented
           items={[
-            { value: "ALL", label: "全部" },
-            { value: "OUTBOUND", label: "寄出" },
-            { value: "INBOUND", label: "收到" }
+            { key: "ALL", label: "全部" },
+            { key: "OUTBOUND", label: "寄出" },
+            { key: "INBOUND", label: "收到" }
           ]}
           value={direction}
           onChange={(v) => setDirection(v as DirectionFilter)}

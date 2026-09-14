@@ -5,6 +5,25 @@
 @tailwind utilities;
 
 @layer base {
+  /* 原生 select 统一为墨案输入框外观（审查 2026-09-14：管理后台稠密表单保留原生控件，但外观与 Select 一致） */
+  select {
+    appearance: none;
+    -webkit-appearance: none;
+    min-height: 34px;
+    padding: 0 30px 0 11px;
+    border: 1px solid var(--bd-default);
+    border-radius: 8px;
+    background-color: var(--bg-card);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2368747F' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    font-size: 13px;
+    color: var(--t-primary);
+    box-shadow: var(--sh-well);
+  }
+  select:focus-visible { outline: none; border-color: var(--teal); box-shadow: 0 0 0 3px rgba(0, 123, 127, 0.12); }
+  select:disabled { opacity: 0.55; cursor: not-allowed; }
+
   :root {
     /* v4 墨案：shadcn 语义变量全部映射为 docs/mockup/v4/design-system.css 色值 */
     --background: 150 8% 95%;          /* bg-canvas #F2F4F3 */

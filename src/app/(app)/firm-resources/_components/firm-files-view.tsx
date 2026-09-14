@@ -13,6 +13,7 @@ import { UploadDialog } from "./upload-dialog";
 import { PreviewDialog } from "./preview-dialog";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
 import { useTopbarAction } from "@/components/layout/topbar-action";
+import { Segmented } from "@/components/patterns/moan";
 
 type FileEntry = {
   id: string;
@@ -167,23 +168,11 @@ export function FirmFilesView({
       <div className="space-y-3">
         {!hideCategoryNav && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <CategoryChip
-            label="全部"
-            color="#1E56C8"
-            count={files.length}
-            active={!currentCategory}
-            onClick={() => navigate({ category: undefined })}
+          <Segmented
+            items={[{ key: "ALL", label: "全部", count: files.length }, ...activeCategories.map((c) => ({ key: c as string, label: CATEGORY_META[c].label, count: counts[c] }))]}
+            value={currentCategory ?? "ALL"}
+            onChange={(k) => navigate({ category: k === "ALL" ? undefined : (k as typeof activeCategories[number]) })}
           />
-          {activeCategories.map((c) => (
-            <CategoryChip
-              key={c}
-              label={CATEGORY_META[c].label}
-              color={CATEGORY_META[c].color}
-              count={counts[c]}
-              active={currentCategory === c}
-              onClick={() => navigate({ category: c })}
-            />
-          ))}
           <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
             <input
               type="checkbox"
@@ -364,33 +353,3 @@ export function FirmFilesView({
   );
 }
 
-function CategoryChip({
-  label,
-  color,
-  count,
-  active,
-  onClick
-}: {
-  label: string;
-  color: string;
-  count: number;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-colors",
-        active
-          ? "border-primary bg-primary/15 text-primary"
-          : "border-border bg-background text-muted-foreground hover:border-input hover:bg-muted hover:text-foreground"
-      )}
-    >
-      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
-      {label}
-      <span className="font-mono text-[10px] tabular opacity-70">{count}</span>
-    </button>
-  );
-}

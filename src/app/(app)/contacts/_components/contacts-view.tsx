@@ -7,7 +7,6 @@ import { Plus, Pencil, Archive, Check, XCircle } from "lucide-react";
 import type { ExternalContactCategory, ExternalContactStatus } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { cn } from "@/lib/utils";
 import { userRoleLabel } from "@/lib/enums";
 import { ExternalContactDialog } from "./external-contact-dialog";
 import {
@@ -16,7 +15,7 @@ import {
   rejectExternalContact
 } from "@/server/external-contacts/actions";
 import { toast } from "sonner";
-import { PageHeader } from "@/components/patterns/moan";
+import { PageHeader, Segmented } from "@/components/patterns/moan";
 import { confirmDialog, promptDialog } from "@/components/patterns/confirm-dialog";
 
 type ColleagueItem = {
@@ -186,33 +185,11 @@ export function ContactsView({
         </header>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setFilter("ALL")}
-            className={cn(
-              "rounded-full border px-3 py-0.5 text-[11px] transition-colors",
-              filter === "ALL"
-                ? "border-primary bg-primary/15 text-primary"
-                : "border-border bg-background text-muted-foreground hover:border-input hover:bg-muted hover:text-foreground"
-            )}
-          >
-            全部
-          </button>
-          {(Object.keys(EXT_CATEGORY_LABEL) as ExternalContactCategory[]).map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => setFilter(c)}
-              className={cn(
-                "rounded-full border px-3 py-0.5 text-[11px] transition-colors",
-                filter === c
-                  ? "border-primary bg-primary/15 text-primary"
-                  : "border-border bg-background text-muted-foreground hover:border-input hover:bg-muted hover:text-foreground"
-              )}
-            >
-              {EXT_CATEGORY_LABEL[c]}
-            </button>
-          ))}
+          <Segmented
+            items={[{ key: "ALL" as const, label: "全部" }, ...(Object.keys(EXT_CATEGORY_LABEL) as ExternalContactCategory[]).map((c) => ({ key: c, label: EXT_CATEGORY_LABEL[c] }))]}
+            value={filter}
+            onChange={setFilter}
+          />
           <input
             type="text"
             value={search}

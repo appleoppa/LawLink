@@ -5,7 +5,6 @@ import { Shield, Search, ChevronDown, ChevronRight, Pencil, Trash2, UserPlus, La
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { RadioChips } from "@/components/ui/radio-chips";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils";
 import { deletePreservationCase } from "@/server/preservations/actions-v2";
@@ -25,7 +24,7 @@ import {
   type MatterOption,
   type UserOption
 } from "./preservation-types";
-import { PageHeader } from "@/components/patterns/moan";
+import { PageHeader, Segmented } from "@/components/patterns/moan";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
 import { useTopbarAction } from "@/components/layout/topbar-action";
 
@@ -107,7 +106,7 @@ export function PreservationsView({
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="搜索被保全人 / 案件 / 法院" className="pl-8 text-xs" />
         </div>
-        <RadioChips items={STATUS_FILTERS} value={statusFilter} onChange={setStatusFilter} />
+        <Segmented items={STATUS_FILTERS.map((f) => ({ key: f.value, label: f.label }))} value={statusFilter} onChange={setStatusFilter} />
       </div>
 
       {filtered.length === 0 ? (
