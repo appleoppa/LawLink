@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { partyTypeLabel, PARTY_TYPE_OPTIONS } from "@/lib/enums";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { ChoiceField } from "@/components/patterns/choice-field";
 import { searchEnterpriseCandidates, getEnterpriseDetail, type EnterpriseSearchItem } from "@/server/yuandian/enterprise";
 
 type Props = {
@@ -155,15 +156,19 @@ export function PartyCard({
           <div className="frow">
             <div className="fitem">
               <label className="flabel">主体类型</label>
-              <div className="chip-set">
-                {PARTY_TYPE_OPTIONS.map((t) => (
-                  <button key={t} type="button" onClick={() => changeType(t)} className={cn("chip", partyType === t && "active")}>
-                    {partyType === t ? <span className="cd" /> : null}
-                    {partyTypeLabel[t]}
-                  </button>
-                ))}
-              </div>
+              <ChoiceField ariaLabel="主体类型" options={PARTY_TYPE_OPTIONS.map((t) => ({ value: t, label: partyTypeLabel[t] }))} value={partyType} onChange={changeType} />
             </div>
+            {showStanding && standingSlot ? (
+              <div className="fitem">
+                <label className="flabel">
+                  诉讼地位<span className="star">*</span>
+                </label>
+                {standingSlot}
+                {standingErr?.message ? <div className="mt-1 text-[11px] text-[var(--red)]">{standingErr.message}</div> : null}
+              </div>
+            ) : (
+              <div className="fitem" />
+            )}
           </div>
           <div className="frow">
             <div className="fitem">
@@ -219,17 +224,6 @@ export function PartyCard({
               {idErr?.message ? <div className="mt-1 text-[11px] text-[var(--red)]">{idErr.message}</div> : null}
             </div>
           </div>
-          {showStanding && standingSlot ? (
-            <div className="frow">
-              <div className="fitem">
-                <label className="flabel">
-                  诉讼地位<span className="star">*</span>
-                </label>
-                {standingSlot}
-                {standingErr?.message ? <div className="mt-1 text-[11px] text-[var(--red)]">{standingErr.message}</div> : null}
-              </div>
-            </div>
-          ) : null}
           <div className="frow">
             {isOrg ? (
               <div className="fitem">

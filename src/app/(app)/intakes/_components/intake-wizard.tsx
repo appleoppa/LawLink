@@ -53,6 +53,7 @@ import { ClientCombobox } from "./client-combobox";
 import { CauseRecommendationDialog } from "./cause-recommendation-dialog";
 import { JurisdictionSelect } from "./jurisdiction-select";
 import type { TeamColleague } from "@/lib/teams/colleagues";
+import { ChoiceField } from "@/components/patterns/choice-field";
 
 const CATEGORIES: MatterCategory[] = ["CIVIL_COMMERCIAL", "LABOR_ARBITRATION", "COMMERCIAL_ARBITRATION", "CRIMINAL", "ADMINISTRATIVE", "NON_LITIGATION", "LEGAL_COUNSEL", "SPECIAL_PROJECT"];
 const FEE_TYPES: FeeType[] = ["FIXED", "CONTINGENCY", "TIMED"];
@@ -503,21 +504,20 @@ export function IntakeWizard({
   ].filter(Boolean) as string[];
 
   const standingSelect = (value: string | undefined, options: LitigationStanding[], onChange: (v: LitigationStanding) => void) => (
-    <div className="chip-set">
-      {(options.length ? options : (Object.keys(litigationStandingLabel) as LitigationStanding[])).map((s) => (
-        <button key={s} type="button" onClick={() => onChange(s)} className={cn("chip", value === s && "active")}>
-          {value === s ? <span className="cd" /> : null}
-          {litigationStandingLabel[s]}
-        </button>
-      ))}
-    </div>
+    <ChoiceField
+      ariaLabel="诉讼地位"
+      placeholder="选择诉讼地位"
+      options={(options.length ? options : (Object.keys(litigationStandingLabel) as LitigationStanding[])).map((s) => ({ value: s, label: litigationStandingLabel[s] }))}
+      value={value as LitigationStanding | undefined}
+      onChange={onChange}
+    />
   );
 
   const clientLabel = kind === "counsel" ? "顾问单位" : kind === "project" ? "委托方" : "委托方";
 
   return (
     <Sheet open={open} onOpenChange={(o) => { if (!isPending) onOpenChange(o); }}>
-      <SheetContent side="right" className="mo-intake flex w-full flex-col gap-0 p-0 sm:max-w-[780px] [&>button]:hidden">
+      <SheetContent side="right" className="mo-intake flex w-full flex-col gap-0 p-0 sm:max-w-[780px] [&>button]:hidden" onOpenAutoFocus={(e) => e.preventDefault()}>
         <FormProvider {...methods}>
           <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="flex min-h-0 flex-1 flex-col" noValidate>
             <div className="id-head">
@@ -580,33 +580,19 @@ export function IntakeWizard({
                     <div className="frow">
                       <div className="fitem">
                         <label className="flabel">案件类别<span className="star">*</span></label>
-                        <div className="chip-set">
-                          {CATEGORIES.map((c) => (
-                            <button key={c} type="button" onClick={() => setValue("category", c)} className={cn("chip", category === c && "active")}>
-                              {category === c ? <span className="cd" /> : null}
-                              {matterCategoryLabel[c]}
-                            </button>
-                          ))}
-                        </div>
+                        <ChoiceField ariaLabel="案件类别" options={CATEGORIES.map((c) => ({ value: c, label: matterCategoryLabel[c] }))} value={category} onChange={(c) => setValue("category", c)} />
                       </div>
+                      {kind === "litigation" ? (
+                        <div className="fitem">
+                            <label className="flabel">代理程序<span className="star">*</span></label>
+                            <ChoiceField ariaLabel="代理程序" placeholder="选择代理程序" invalid={Boolean(errors.firstProcedureType)} options={procedureOptions.map((p) => ({ value: p, label: procedureTypeLabel[p] }))} value={firstProcedureType} onChange={handleProcedureChange} />
+                            {errors.firstProcedureType?.message ? <div className="mt-1 text-[11px] text-[var(--red)]">{errors.firstProcedureType.message}</div> : null}
+                          </div>
+                      ) : null}
                     </div>
 
                     {kind === "litigation" ? (
                       <>
-                        <div className="frow">
-                          <div className="fitem">
-                            <label className="flabel">代理程序<span className="star">*</span></label>
-                            <div className="chip-set">
-                              {procedureOptions.map((p) => (
-                                <button key={p} type="button" onClick={() => handleProcedureChange(p)} className={cn("chip", firstProcedureType === p && "active")}>
-                                  {firstProcedureType === p ? <span className="cd" /> : null}
-                                  {procedureTypeLabel[p]}
-                                </button>
-                              ))}
-                            </div>
-                            {errors.firstProcedureType?.message ? <div className="mt-1 text-[11px] text-[var(--red)]">{errors.firstProcedureType.message}</div> : null}
-                          </div>
-                        </div>
                         <div className="frow">
                           <div className="fitem">
                             <label className="flabel">案由<span className="star">*</span></label>
@@ -722,14 +708,7 @@ export function IntakeWizard({
                         <div className="frow">
                           <div className="fitem">
                             <label className="flabel">顾问类型</label>
-                            <div className="chip-set">
-                              {COUNSEL_TYPES.map((t) => (
-                                <button key={t} type="button" onClick={() => setValue("counselType", t, { shouldDirty: true })} className={cn("chip", watch("counselType") === t && "active")}>
-                                  {watch("counselType") === t ? <span className="cd" /> : null}
-                                  {t}
-                                </button>
-                              ))}
-                            </div>
+                            <ChoiceField ariaLabel="顾问类型" placeholder="选择顾问类型" options={COUNSEL_TYPES.map((t) => ({ value: t, label: t }))} value={watch<string | undefined>("counselType")} onChange={(t) => setValue("counselType", t, { shouldDirty: true })} />
                           </div>
                           <div className="fitem" style={{ maxWidth: 160 }}>
                             <label className="flabel">收案日期<span className="star">*</span></label>

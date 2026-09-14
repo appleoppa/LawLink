@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export type RadioChipItem<T extends string> = {
   value: T;
@@ -14,14 +15,35 @@ export function RadioChips<T extends string>({
   value,
   onChange,
   size = "md",
-  className
+  className,
+  maxChips = 6,
+  placeholder = "请选择"
 }: {
   items: RadioChipItem<T>[];
   value: T | null | undefined;
   onChange: (v: T) => void;
   size?: "sm" | "md";
   className?: string;
+  /** 选项超过该数量时收为下拉，避免一屏被胶囊占满（审查 2026-09-14） */
+  maxChips?: number;
+  placeholder?: string;
 }) {
+  if (items.length > maxChips) {
+    return (
+      <Select value={value ?? ""} onValueChange={(v) => onChange(v as T)}>
+        <SelectTrigger className={cn(size === "sm" ? "h-8 text-[12px]" : "h-9", className)}>
+          <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent className="max-h-[320px]">
+          {items.map((item) => (
+            <SelectItem key={item.value} value={item.value}>
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    );
+  }
   return (
     <div className={cn("flex flex-wrap gap-1.5", className)}>
       {items.map((item) => {
