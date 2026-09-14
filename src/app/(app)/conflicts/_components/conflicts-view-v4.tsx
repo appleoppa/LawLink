@@ -17,6 +17,7 @@ import { matterHref } from "@/lib/matters/route";
 import { litigationStandingLabel } from "@/lib/enums";
 import { PageHeader } from "@/components/patterns/moan";
 import { cn } from "@/lib/utils";
+import { useTopbarAction } from "@/components/layout/topbar-action";
 
 type QueryRole = PartyRole;
 type QueryRow = { key: string; role: QueryRole; name: string; idNumber: string; fromIntake: boolean; editing: boolean };
@@ -126,6 +127,7 @@ export function ConflictsViewV4({
     setSubmitted(null);
     if (intake) router.replace("/conflicts");
   }
+  useTopbarAction({ label: "新建检索", onClick: () => reset() }, [intake]);
 
   function run() {
     const valid = queries.filter((q) => q.name.trim() || q.idNumber.trim());
@@ -210,10 +212,6 @@ export function ConflictsViewV4({
         actions={
           <>
             <a href="#recent-checks" className="btn btn-secondary btn-sm">检索记录</a>
-            <button type="button" className="btn btn-primary btn-sm" onClick={reset}>
-              <Plus />
-              新建检索
-            </button>
           </>
         }
       />

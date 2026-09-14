@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { approvalHref } from "@/lib/approvals/workspace";
-import { Plus, FilePlus2, Receipt, Stamp } from "lucide-react";
+import { FilePlus2, Receipt, Stamp } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -11,6 +11,7 @@ import { getApprovalCreateOptions } from "@/server/approval-permissions/create-o
 import { IntakeWizard } from "@/app/(app)/intakes/_components/intake-wizard";
 import { InvoiceCreateDialog } from "@/app/(app)/finance/_components/invoice-create-dialog";
 import { SealRequestSheet } from "./seals/_components/seal-request-sheet";
+import { useTopbarAction } from "@/components/layout/topbar-action";
 
 export function ApprovalCreateMenu() {
   const params = useSearchParams();
@@ -25,8 +26,8 @@ export function ApprovalCreateMenu() {
   }, []);
   const isNewSeal = params.get("new") === "seal";
   useEffect(() => { if (isNewSeal && !autoOpened.current) { autoOpened.current = true; launch("seal"); } }, [isNewSeal, launch]);
+  useTopbarAction({ label: "发起申请", onClick: () => setMenu(true) }, []);
   return <>
-    <Button onClick={() => setMenu(true)}><Plus className="mr-2 h-4 w-4" />发起申请</Button>
     <Dialog open={menu} onOpenChange={setMenu}><DialogContent className="max-w-xl"><DialogHeader><DialogTitle>发起申请</DialogTitle><DialogDescription>选择事项。提交后可在“我的申请”持续跟进。</DialogDescription></DialogHeader>
       <div className="grid gap-3 sm:grid-cols-3">{([
         { kind: "intake", title: "收案申请", description: "登记案件与委托资料", icon: FilePlus2 },

@@ -7,7 +7,7 @@
  */
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDownUp, ChevronDown, Columns3, Download, Plus, Search } from "lucide-react";
+import { ArrowDownUp, ChevronDown, Columns3, Download, Search } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -19,6 +19,7 @@ import { MATTER_COLUMNS, MockupMattersTable, type MatterColumn, type MatterRow }
 import { IntakesTable, type IntakeRow } from "./intakes-table";
 import { IntakeWizard } from "@/app/(app)/intakes/_components/intake-wizard";
 import { cn } from "@/lib/utils";
+import { useTopbarAction } from "@/components/layout/topbar-action";
 
 type Tab = "intake" | "active" | "archived" | "revision" | "all";
 type SortBy = "hearing" | "intakeDate" | "claimAmount" | "archivedAt";
@@ -79,6 +80,7 @@ export function MattersViewV4({
   const [, startTransition] = useTransition();
   const [wizardOpen, setWizardOpen] = useState(Boolean(autoOpenIntake));
   const [searchInput, setSearchInput] = useState(initialFilters.search);
+  useTopbarAction({ label: "新建收案", onClick: () => setWizardOpen(true) }, []);
 
   const f = initialFilters;
   const data = tab === "intake" || tab === "revision" ? intakeData : matterData;
@@ -177,10 +179,6 @@ export function MattersViewV4({
                 导出
               </a>
             ) : null}
-            <button type="button" onClick={() => setWizardOpen(true)} className="btn btn-primary btn-sm">
-              <Plus />
-              新建收案
-            </button>
           </>
         }
       />

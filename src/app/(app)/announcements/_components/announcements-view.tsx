@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pin, Plus, Pencil, Archive } from "lucide-react";
+import { Pin, Pencil, Archive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
 import { AnnouncementDialog } from "./announcement-dialog";
 import { archiveAnnouncement } from "@/server/announcements/actions";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { useTopbarAction } from "@/components/layout/topbar-action";
 
 type AnnouncementItem = {
   id: string;
@@ -33,6 +34,7 @@ export function AnnouncementsView({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<AnnouncementItem | null>(null);
   const router = useRouter();
+  useTopbarAction(isManager ? { label: "发布公告", onClick: () => { setEditing(null); setDialogOpen(true); } } : "none", [isManager]);
 
   async function handleArchive(a: AnnouncementItem) {
     if (!(await confirmDialog({ title: `归档公告「${a.title}」？`, description: "归档后不再显示，但保留历史。", confirmText: "归档" }))) return;
@@ -56,19 +58,6 @@ export function AnnouncementsView({
             共 {active.length} 条公告 · 置顶公告会显示在全站顶部 公告栏
           </p>
         </div>
-        {isManager && (
-          <Button
-            size="sm"
-            onClick={() => {
-              setEditing(null);
-              setDialogOpen(true);
-            }}
-            className="gap-1.5"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            发布公告
-          </Button>
-        )}
       </header>
 
       {active.length === 0 ? (

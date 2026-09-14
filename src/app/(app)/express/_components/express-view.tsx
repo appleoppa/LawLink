@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useTransition } from "react";
 import Link from "next/link";
-import { Package, Plus, Search, RefreshCw, Trash2, Briefcase, ArrowDownToLine, ArrowUpFromLine, ExternalLink, AlertTriangle } from "lucide-react";
+import { Package, Search, RefreshCw, Trash2, Briefcase, ArrowDownToLine, ArrowUpFromLine, ExternalLink, AlertTriangle } from "lucide-react";
 import type { Prisma, ExpressDirection } from "@prisma/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,7 @@ import { SUPPORTED_COMPANIES, detectCompany } from "@/lib/express/companies";
 import { matterHref } from "@/lib/matters/route";
 import { PageHeader } from "@/components/patterns/moan";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { useTopbarAction } from "@/components/layout/topbar-action";
 
 type Row = Prisma.ExpressTrackingGetPayload<{
   include: {
@@ -81,6 +82,8 @@ export function ExpressView({
     });
   }, [items, direction, search]);
 
+  useTopbarAction({ label: "新建追踪", onClick: () => setNewOpen(true) }, []);
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -89,10 +92,6 @@ export function ExpressView({
         ) : (
           <PageHeader className="!mb-0" title="快递追踪" sub="寄出 / 收到的法院文书、当事人材料统一登记 + 自动刷新物流" />
         )}
-        <Button onClick={() => setNewOpen(true)} className="gap-1.5">
-          <Plus className="h-3.5 w-3.5" />
-          新建追踪
-        </Button>
       </div>
 
       {!configured && (

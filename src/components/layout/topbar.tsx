@@ -21,6 +21,7 @@ import {
 import { NotificationPopover } from "@/components/layout/notification-popover";
 import { SearchDialog } from "@/components/layout/search-dialog";
 import { useTopbarActionValue } from "./topbar-action";
+import { hasCustomPermission } from "@/lib/roles/catalog";
 
 export function Topbar({ onMobileMenuToggle, userAvatar }: { onMobileMenuToggle?: () => void; userAvatar?: string | null }) {
   const { data: session } = useSession();
@@ -31,7 +32,8 @@ export function Topbar({ onMobileMenuToggle, userAvatar }: { onMobileMenuToggle?
   const displayName = user?.name ?? "";
   const roleLabel = user?.role ? roleDisplayName(user) : "";
 
-  const action = pageAction ?? { label: "新建收案", onClick: () => router.push("/matters?tab=intake&new=1") };
+  const canCreateIntake = user ? hasCustomPermission(user as Parameters<typeof hasCustomPermission>[0], "intakes.create") : false;
+  const action = pageAction === "none" ? null : pageAction ?? (canCreateIntake ? { label: "新建收案", onClick: () => router.push("/matters?tab=intake&new=1") } : null);
 
   return (
     <header className="topbar ll-material">
@@ -51,10 +53,12 @@ export function Topbar({ onMobileMenuToggle, userAvatar }: { onMobileMenuToggle?
 
       <NotificationPopover />
 
-      <button type="button" onClick={action.onClick} disabled={action.disabled} className="btn btn-primary disabled:opacity-50">
-        <Plus strokeWidth={2.2} />
-        <span className="hidden sm:inline">{action.label}</span>
-      </button>
+      {action ? (
+        <button type="button" onClick={action.onClick} disabled={action.disabled} className="btn btn-primary disabled:opacity-50" aria-label={action.label}>
+          <Plus strokeWidth={2.2} />
+          <span className="hidden sm:inline">{action.label}</span>
+        </button>
+      ) : null}
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

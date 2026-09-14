@@ -2,11 +2,12 @@
 
 import { useState, useTransition, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Search, X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import type { Client, ClientType, Contact } from "@prisma/client";
 import { PageHeader, Pager, Segmented } from "@/components/patterns/moan";
 import { ClientSheet } from "./client-sheet";
 import { ClientsTable } from "./clients-table";
+import { useTopbarAction } from "@/components/layout/topbar-action";
 
 const TYPE_TABS: { key: ClientType | "ALL"; label: string }[] = [
   { key: "ALL", label: "全部客户" },
@@ -40,6 +41,7 @@ export function ClientsView({ initialData, initialFilters }: Props) {
   const [type, setType] = useState<ClientType | "ALL">(initialFilters.type);
 
   const [sheetOpen, setSheetOpen] = useState(false);
+  useTopbarAction({ label: "新建客户", onClick: () => handleNew() }, []);
   const [editingClient, setEditingClient] = useState<ClientRow | null>(null);
 
   const updateUrl = useCallback(
@@ -93,12 +95,6 @@ export function ClientsView({ initialData, initialFilters }: Props) {
       <PageHeader
         title="客户"
         sub={<>共 <span className="font-mono">{initialData.total}</span> 位客户 · 证件与电话默认打码，明文查看逐次审计</>}
-        actions={
-          <button type="button" className="btn btn-primary" onClick={handleNew}>
-            <Plus />
-            新建客户
-          </button>
-        }
       />
 
       <Segmented

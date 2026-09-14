@@ -2,7 +2,7 @@ import { requireSession } from "@/lib/auth/session";
 import { hasCustomPermission } from "@/lib/roles/catalog";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, Folder, Plus, Users, CreditCard, UserRound } from "lucide-react";
+import { ChevronLeft, Folder, Users, CreditCard, UserRound } from "lucide-react";
 import { getClientById, getClientFinanceSummary } from "@/server/clients/actions";
 import { getClientInsights } from "@/server/clients/insights";
 import { isManager } from "@/lib/permissions";
@@ -11,6 +11,7 @@ import { clientTypeLabel, cooperationStatusLabel, genderLabel, matterCategoryLab
 import { matterHref } from "@/lib/matters/route";
 import { avatarTone, matterSpineTone, matterStatusTone } from "@/lib/ui/moan-tones";
 import { FieldGrid, FieldItem, InitialAvatar } from "@/components/patterns/moan";
+import { TopbarLinkAction } from "@/components/layout/topbar-link-action";
 import { ClientEditButton } from "./_components/client-edit-button";
 import { AddContactButton, MergeBanner, RevealValue } from "./_components/client-detail-parts";
 
@@ -46,6 +47,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
 
   return (
     <div className="mo-client">
+      <TopbarLinkAction label="为此客户新建收案" href={hasCustomPermission(session.user, "intakes.create") ? intakeHref : null} />
       <Link href="/clients" className="mo-back">
         <ChevronLeft className="h-3.5 w-3.5" />
         返回客户列表
@@ -83,9 +85,6 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap", alignItems: "center" }}>
-          {hasCustomPermission(session.user, "intakes.create") ? (
-            <Link href={intakeHref} className="btn btn-primary btn-sm"><Plus />为此客户新建收案</Link>
-          ) : null}
           {canWrite ? <ClientEditButton client={client} /> : null}
           <Link href={`/conflicts?name=${encodeURIComponent(client.name)}`} className="btn btn-secondary btn-sm">冲突检索</Link>
           {canMerge && insights.suspects.length === 0 ? <MergeBanner keepId={client.id} keepName={client.name} suspects={[]} canMerge={canMerge} /> : null}

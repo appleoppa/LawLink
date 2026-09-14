@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { Inbox, Plus, Gavel, Clock, CheckCircle2, Trash2, Link as LinkIcon, Briefcase, ExternalLink, Phone, Loader2, Sparkles, AlertCircle, ArrowRight, CalendarClock, FileCheck2, FileDigit, FileDown, KeyRound } from "lucide-react";
+import { Inbox, Gavel, Clock, CheckCircle2, Trash2, Link as LinkIcon, Briefcase, ExternalLink, Phone, Loader2, Sparkles, AlertCircle, ArrowRight, CalendarClock, FileCheck2, FileDigit, FileDown, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,6 +41,7 @@ import {
 import { matterHref } from "@/lib/matters/route";
 import { PageHeader } from "@/components/patterns/moan";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { useTopbarAction } from "@/components/layout/topbar-action";
 
 type Tab = "unprocessed" | "needsManual" | "processed";
 
@@ -73,18 +74,14 @@ export function InboxView({
 
   const rows = tab === "unprocessed" ? unprocessed : tab === "needsManual" ? needsManual : processed;
 
+  useTopbarAction({ label: "粘贴短信", onClick: () => setPasteOpen(true) }, []);
+
   return (
     <div className="space-y-5">
       <PageHeader
         className="!mb-0"
         title="法院短信"
         sub="粘贴 12368 / 法院短信 → 自动解析 → 一键生成开庭 / 期限"
-        actions={
-          <Button onClick={() => setPasteOpen(true)}>
-            <Plus />
-            粘贴短信
-          </Button>
-        }
       />
 
       {/* Tab */}

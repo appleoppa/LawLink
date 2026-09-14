@@ -5,22 +5,7 @@ import { hasCustomPermission, type RoleGrant } from "@/lib/roles/catalog";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import type { ClientType, Prisma } from "@prisma/client";
-import {
-  Archive,
-  ChevronLeft,
-  CircleDollarSign,
-  Clock3,
-  CreditCard,
-  Gavel,
-  Pencil,
-  Plus,
-  SquareCheck,
-  Stamp,
-  Upload,
-  UserRound,
-  Users,
-  X
-} from "lucide-react";
+import { Archive, ChevronLeft, CircleDollarSign, Clock3, CreditCard, Gavel, Pencil, Plus, SquareCheck, Stamp, Upload, UserRound, Users, X } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { InitialAvatar } from "@/components/patterns/moan";
 import { avatarTone, matterStatusTone } from "@/lib/ui/moan-tones";
@@ -359,12 +344,6 @@ export function MatterDetailTabs({
               canChangeStatus={Boolean(currentUserRole && canLeadThisMatter)}
               extraItems={moreItems}
             />
-            {canWriteRecords ? (
-              <button type="button" className="btn btn-primary btn-sm" onClick={() => setProgress({ mode: "record", stage: workflowApi.current?.currentStageName ?? undefined, stageNames: workflowApi.current?.stageNames ?? [] })}>
-                <Plus />
-                登记进展
-              </button>
-            ) : null}
           </div>
         </div>
         <div className="ctx-meta">

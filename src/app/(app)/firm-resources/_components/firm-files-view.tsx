@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
-import { FolderArchive, Search, Upload, Download, Trash2, History, X, Tag, Loader2 } from "lucide-react";
+import { FolderArchive, Search, Download, Trash2, History, X, Tag, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { FirmFileCategory } from "@prisma/client";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { UploadDialog } from "./upload-dialog";
 import { PreviewDialog } from "./preview-dialog";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { useTopbarAction } from "@/components/layout/topbar-action";
 
 type FileEntry = {
   id: string;
@@ -85,6 +86,7 @@ export function FirmFilesView({
   const sp = useSearchParams();
   const [search, setSearch] = useState(currentSearch);
   const [uploadOpen, setUploadOpen] = useState(false);
+  useTopbarAction(canUpload ? { label: "上传资料", onClick: () => setUploadOpen(true) } : null, [canUpload]);
   const [previewFile, setPreviewFile] = useState<FileEntry | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -158,23 +160,8 @@ export function FirmFilesView({
               )}
             </p>
           </div>
-          {canUpload && (
-            <Button size="sm" onClick={() => setUploadOpen(true)} className="gap-1.5">
-              <Upload className="h-3.5 w-3.5" />
-              上传资料
-            </Button>
-          )}
         </header>
-      ) : (
-        canUpload && (
-          <div className="flex justify-end">
-            <Button size="sm" onClick={() => setUploadOpen(true)} className="gap-1.5">
-              <Upload className="h-3.5 w-3.5" />
-              上传资料
-            </Button>
-          </div>
-        )
-      )}
+      ) : null}
 
       {/* 筛选条 */}
       <div className="space-y-3">

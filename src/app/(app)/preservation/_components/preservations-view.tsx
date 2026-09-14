@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useTransition } from "react";
-import { Shield, Plus, Search, ChevronDown, ChevronRight, Pencil, Trash2, UserPlus, Landmark } from "lucide-react";
+import { Shield, Search, ChevronDown, ChevronRight, Pencil, Trash2, UserPlus, Landmark } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,7 @@ import {
 } from "./preservation-types";
 import { PageHeader } from "@/components/patterns/moan";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { useTopbarAction } from "@/components/layout/topbar-action";
 
 const STATUS_FILTERS = [
   { value: "ALL", label: "全部" },
@@ -88,6 +89,8 @@ export function PreservationsView({
     return list;
   }, [items, statusFilter, search]);
 
+  useTopbarAction({ label: "新建保全", onClick: () => setCreateOpen(true) }, []);
+
   return (
     <div className="space-y-5">
       <PageHeader className="!mb-0" title="财产保全" sub="按被保全人及财产跟踪保全期限，到期前持续提醒" />
@@ -105,9 +108,6 @@ export function PreservationsView({
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="搜索被保全人 / 案件 / 法院" className="pl-8 text-xs" />
         </div>
         <RadioChips items={STATUS_FILTERS} value={statusFilter} onChange={setStatusFilter} />
-        <Button size="sm" onClick={() => setCreateOpen(true)} className="ml-auto gap-1.5">
-          <Plus className="h-3.5 w-3.5" /> 新建保全
-        </Button>
       </div>
 
       {filtered.length === 0 ? (

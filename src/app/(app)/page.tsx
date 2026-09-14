@@ -3,7 +3,7 @@
  * 近期日程与期限 + 待我处理 → 趋势与分布（实收应收 / 案件类型 / 客户来源）。
  */
 import Link from "next/link";
-import { ChevronRight, Gavel, Plus, SquareCheck, Timer, TriangleAlert, Calendar as CalendarIcon, Landmark, Clock3, ChartColumn } from "lucide-react";
+import { ChevronRight, Gavel, SquareCheck, Timer, TriangleAlert, Calendar as CalendarIcon, Landmark, Clock3, ChartColumn } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { hasCustomPermission } from "@/lib/roles/catalog";
 import { lunarDateLabel } from "@/lib/ui/lunar";
@@ -81,10 +81,6 @@ export default async function DashboardPage() {
             ，待你审批的申请有 <b style={{ whiteSpace: "nowrap" }}>{queue.approvalTotal} 件</b>。
           </p>
           <div className="greet-actions">
-            <Link href="/matters?tab=intake&new=1" className="btn btn-primary">
-              <Plus strokeWidth={2.2} />
-              新建收案
-            </Link>
             <ConflictSearchButton />
             <Link href="/schedule" className="btn btn-ghost">进入日程</Link>
           </div>
