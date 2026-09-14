@@ -625,14 +625,17 @@ a.seg { text-decoration: none; }
 .mo-empty-title { font-size: 13px; color: var(--t-secondary); font-weight: 550; }
 .mo-empty-desc { font-size: 11.5px; color: var(--t-faint); margin-top: 4px; max-width: 420px; line-height: 1.6; }
 
-.mo-field-grid { display: grid; gap: 0 28px; margin: 0; }
+/* 字段栅格（卷宗表格式）：浅色标签栏 + 深色加粗取值，外框与细分隔线，标签与内容层级分明（2026-09-14 用户反馈对比度不足） */
+.mo-field-grid { display: grid; gap: 0; margin: 0; border: 1px solid var(--bd-subtle); border-right: none; border-bottom: none; border-radius: 10px; overflow: hidden; background: var(--bg-card); }
 .mo-field-grid-1 { grid-template-columns: 1fr; }
 .mo-field-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .mo-field-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.mo-field { display: flex; align-items: baseline; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--bd-hair); min-width: 0; }
+.mo-field { display: flex; align-items: stretch; min-width: 0; border-bottom: 1px solid var(--bd-subtle); border-right: 1px solid var(--bd-subtle); }
 .mo-field-wide { grid-column: 1 / -1; }
-.mo-field-k { width: 84px; flex-shrink: 0; font-size: 12px; color: var(--t-muted); margin: 0; }
-.mo-field-v { flex: 1; min-width: 0; font-size: 12.75px; color: var(--t-primary); margin: 0; word-break: break-word; }
+.mo-field-k { width: 92px; flex-shrink: 0; margin: 0; padding: 9px 12px; font-size: 12px; line-height: 1.5; color: var(--t-muted); background: #F4F7F6; border-right: 1px solid var(--bd-hair); display: flex; align-items: center; }
+.mo-field-v { flex: 1; min-width: 0; margin: 0; padding: 9px 14px; font-size: 13px; line-height: 1.5; font-weight: 550; color: var(--t-primary); word-break: break-word; display: flex; align-items: center; flex-wrap: wrap; }
+.mo-field-v.mono { font-family: var(--font-mono); font-weight: 500; font-size: 12.5px; }
+.mo-field-v .t-faint, .mo-field-v .text-muted-foreground { font-weight: 400; }
 @media (max-width: 720px) { .mo-field-grid-2, .mo-field-grid-3 { grid-template-columns: 1fr; } }
 
 .mo-pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 16px; }

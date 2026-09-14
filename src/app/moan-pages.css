@@ -394,6 +394,7 @@
 .mo-approval .arow { display: flex; align-items: baseline; gap: 12px; padding: 9px 15px; border-bottom: 1px solid var(--bd-hair); }
 .mo-approval .arow:last-child { border-bottom: none; }
 .mo-approval .arow .k { width: 96px; flex-shrink: 0; font-size: 12px; color: var(--t-muted); }
+.mo-approval .arow .v:not(.t-faint) { font-weight: 550; }
 .mo-approval .arow .v { flex: 1; font-size: 12.75px; color: var(--t-primary); }
 .mo-approval .arow .v.mono { font-family: var(--font-mono); }
 .mo-approval .arow.fold { color: var(--t-faint); cursor: pointer; }
