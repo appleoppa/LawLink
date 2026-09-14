@@ -1,7 +1,7 @@
 "use client";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, ShieldCheck, Copy } from "lucide-react";
+import { Plus, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { BUILTIN_ROLES, ADMINISTRATIVE_ROLE_ID, PERMISSIONS, SCOPE_LABELS, copyBuiltinGrants, type RoleScope, type BuiltinRolePresentation } from "@/lib/roles/catalog";
 import { saveRoleDefinition, saveBuiltinRolePresentation, type listRoleDefinitions } from "@/server/roles/actions";
 import type { RoleDefinitionInput } from "@/server/roles/schema";
+import { AdminPageHeader } from "@/components/layout/admin-page-header";
 type Role = Awaited<ReturnType<typeof listRoleDefinitions>>["roles"][number];
 const empty = (): RoleDefinitionInput => ({ name: "", description: "", active: true, permissions: [] });
 export function RolesView({ roles, builtins = BUILTIN_ROLES.map(role => ({ ...role, version: 0 })) }: { roles: Role[]; builtins?: BuiltinRolePresentation[] }) {
@@ -25,7 +26,7 @@ export function RolesView({ roles, builtins = BUILTIN_ROLES.map(role => ({ ...ro
     start(async () => { try { await saveRoleDefinition(editing); toast.success("角色已保存，权限变更立即生效"); setEditing(null); router.refresh(); } catch (e) { toast.error(e instanceof Error ? e.message : "保存失败"); } });
   }
   return <div className="space-y-5">
-    <header className="flex items-start justify-between gap-4"><div><h2 className="flex items-center gap-2 text-lg font-semibold"><ShieldCheck className="h-5 w-5 text-primary" />角色管理</h2><p className="mt-2 text-sm text-muted-foreground">配置岗位功能与数据范围，再到用户管理分配。审批及盖章回填在审批权限中单独授权。</p></div><Button size="sm" onClick={() => setEditing(empty())}><Plus className="mr-1 h-4 w-4" />新增角色</Button></header>
+    <AdminPageHeader title="岗位角色" sub="配置岗位功能与数据范围，再到用户管理分配。审批及盖章回填在审批权限中单独授权。" actions={<Button size="sm" onClick={() => setEditing(empty())}><Plus />新增角色</Button>} />
     <div className="grid gap-3 sm:grid-cols-2">{roles.filter(role => role.id !== ADMINISTRATIVE_ROLE_ID).map(role => <article key={role.id} className="rounded-xl border bg-card p-4"><div className="flex justify-between gap-3"><div><h3 className="font-semibold">{role.name}<span className="ml-2 text-xs font-normal text-muted-foreground">{role.active ? "已启用" : "已停用"}</span></h3><p className="mt-1 text-xs text-muted-foreground">自定义角色 · {role._count.users} 人使用</p></div><Button variant="outline" size="sm" onClick={() => setEditing({ id: role.id, version: role.version, name: role.name, description: role.description, active: role.active, permissions: role.permissions.map(p => ({ permissionKey: p.permissionKey, scope: p.scope as RoleScope })) })}>编辑</Button></div><p className="mt-3 text-sm text-muted-foreground">{role.description || "暂无职责说明"}</p><p className="mt-2 text-xs leading-6 text-muted-foreground">{role.permissions.map(p => `${PERMISSIONS.find(d => d.key === p.permissionKey)?.label ?? "未知权限"}（${SCOPE_LABELS[p.scope as RoleScope] ?? "未知范围"}）`).join("、") || "仅个人基础功能；审批按独立授权"}</p></article>)}</div>
     <section className="space-y-2"><h3 className="text-sm font-semibold">系统内置角色</h3><p className="text-xs text-muted-foreground">名称和介绍可修改，权限固定。复制可创建一份权限可调整的自定义角色。</p>{builtins.map(role => <article key={role.id} className="flex flex-wrap items-center justify-between gap-4 rounded-lg border bg-card p-4"><div className="min-w-0 flex-1"><h4 className="text-sm font-medium">{role.name}<span className="ml-2 text-xs font-normal text-muted-foreground">内置角色</span></h4><p className="mt-1 whitespace-pre-wrap break-words text-xs text-muted-foreground">{role.description || "暂无介绍"}</p></div><div className="flex shrink-0 gap-2"><Button size="sm" variant="outline" aria-label={`编辑${role.name}的名称和介绍`} onClick={() => setBuiltinEditing(role)}>编辑资料</Button><Button size="sm" variant="ghost" onClick={() => setEditing({ ...empty(), description: `参考${role.name}，请核对功能与范围`, permissions: role.id === ADMINISTRATIVE_ROLE_ID ? (roles.find(row => row.id === role.id)?.permissions ?? []).map(grant => ({ permissionKey: grant.permissionKey, scope: grant.scope as RoleScope })) : copyBuiltinGrants(role.id) })}><Copy className="mr-1 h-3.5 w-3.5" />复制新建</Button></div></article>)}</section>
     <Dialog open={Boolean(builtinEditing)} onOpenChange={open => { if (!open && !pending) setBuiltinEditing(null); }}><DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>编辑内置角色资料</DialogTitle><DialogDescription>修改显示名称和介绍，权限与人员分配保持原样。</DialogDescription></DialogHeader>{builtinEditing && <form className="space-y-4" onSubmit={event => {

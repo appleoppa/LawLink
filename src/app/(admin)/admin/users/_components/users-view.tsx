@@ -5,18 +5,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import {
-  Plus,
-  KeyRound,
-  CircleOff,
-  CircleDot,
-  Loader2,
-  LockOpen,
-  ShieldCheck,
-  ShieldOff,
-  Smartphone,
-  Users as UsersIcon
-} from "lucide-react";
+import { Plus, KeyRound, CircleOff, CircleDot, Loader2, LockOpen, ShieldCheck, ShieldOff, Smartphone } from "lucide-react";
 import type { SystemRole, UserRole } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,6 +48,7 @@ import { IdentityForm } from "@/components/users/identity-form";
 import { IdentityDocumentFields, type IdentityDocumentDraft } from "@/components/users/identity-document-fields";
 import { identityDocumentInputSchema } from "@/lib/identity-documents";
 import { userRoleLabel } from "@/lib/enums";
+import { AdminPageHeader } from "@/components/layout/admin-page-header";
 
 type CustomRoleOption = { id: string; name: string; active: boolean };
 const assignment = (value: string) => ROLES.includes(value as UserRole) ? { role: value as UserRole, roleDefinitionId: null } : { role: "CUSTOM" as const, roleDefinitionId: value };
@@ -115,16 +105,11 @@ export function UsersView({
 
   return (
     <div className="space-y-4">
-      <header className="flex items-center justify-between">
-        <h2 className="flex items-center gap-2 text-base font-semibold">
-          <UsersIcon className="h-4 w-4 text-primary" />
-          用户管理 <span className="text-muted-foreground">({users.length})</span>
-        </h2>
-        <Button onClick={() => setSheetOpen(true)} size="sm" className="gap-1.5">
-          <Plus className="h-4 w-4" />
-          新增用户
-        </Button>
-      </header>
+      <AdminPageHeader
+        title="用户与岗位"
+        sub={<>共 <b>{users.length}</b> 个账号 · 岗位决定功能范围，审批资格在「审批权限」单独分配</>}
+        actions={<Button onClick={() => setSheetOpen(true)} size="sm"><Plus />新增用户</Button>}
+      />
 
       <div className="flex gap-3"><Input aria-label="搜索账号" placeholder="按姓名、邮箱、角色或权限组搜索" value={query} onChange={e => setQuery(e.target.value)} /><select aria-label="账号状态" className="rounded-md border bg-background px-3 text-sm" value={status} onChange={e => setStatus(e.target.value)}><option value="all">全部状态</option><option value="active">已启用</option><option value="inactive">已停用</option></select><a className="shrink-0 text-sm text-primary self-center" href="/admin/roles">管理角色</a><a className="shrink-0 text-sm text-primary self-center" href="/admin/approval-permissions">管理审批权限</a></div>
       <div className="overflow-x-auto card">
@@ -311,7 +296,7 @@ function UserRow({
           {user.systemRole === "SUPER_ADMIN" ? "系统超级管理员" : "无"}
         </Badge>
       </td>
-      <td className="px-5 py-3 font-mono text-xs tabular text-muted-foreground">
+      <td className="whitespace-nowrap px-5 py-3 font-mono text-xs tabular text-muted-foreground">
         主办 {user._count.ownedMatters} · 参与 {user._count.memberships}
       </td>
       <td className="px-5 py-3 font-mono text-xs text-muted-foreground tabular">

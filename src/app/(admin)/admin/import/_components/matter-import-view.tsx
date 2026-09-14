@@ -69,7 +69,7 @@ export function MatterImportView() {
       <section className="ll-surface rounded-lg border border-border p-5">
         <header className="mb-3 flex items-center gap-2">
           <FileSpreadsheet className="h-4 w-4 text-primary" />
-          <h2 className="text-lg">案件批量导入</h2>
+          <h2 className="text-[14px] font-semibold">案件批量导入</h2>
         </header>
         <p className="mb-4 text-[12px] text-muted-foreground">
           下载 Excel 模板填写后上传 → 预览校验（有误的行会标红，仅导入无误行）→ 确认导入。

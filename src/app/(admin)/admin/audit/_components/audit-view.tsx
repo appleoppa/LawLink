@@ -3,7 +3,7 @@
 import { useState, useCallback, useTransition } from "react";
 import { auditActionLabel, auditTargetLabel } from "@/lib/audit-labels";
 import { useRouter } from "next/navigation";
-import { ScrollText, RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { AdminPageHeader } from "@/components/layout/admin-page-header";
 
 type AuditItem = {
   id: string;
@@ -93,13 +94,7 @@ export function AuditView({
 
   return (
     <div className="space-y-4">
-      <header className="flex items-center justify-between">
-        <h2 className="flex items-center gap-2 text-base font-semibold">
-          <ScrollText className="h-4 w-4 text-primary" />
-          审计日志{" "}
-          <span className="text-muted-foreground">({items.length})</span>
-        </h2>
-      </header>
+      <AdminPageHeader title="审计日志" sub={<>当前筛选下 <b>{items.length}</b> 条 · 敏感操作（明文查看、导出、权限变更）均在此留痕，不可删除</>} />
 
       <div className="flex flex-wrap items-center gap-3 card p-3">
         <Select

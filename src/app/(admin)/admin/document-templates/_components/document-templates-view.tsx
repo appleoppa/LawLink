@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/select";
 import { uploadDocumentTemplate, toggleTemplate } from "@/server/document-templates/actions";
 import { VARIABLE_LABEL_CN } from "@/app/(app)/matters/[id]/_components/folder-types";
+import { AdminPageHeader } from "@/components/layout/admin-page-header";
 
 type Category = "INTAKE" | "RETAINER" | "LITIGATION" | "HEARING" | "WORK_PRODUCT" | "ARCHIVE" | "CLOSING" | "BLANK";
 type MatterCat = "CIVIL_COMMERCIAL" | "LABOR_ARBITRATION" | "COMMERCIAL_ARBITRATION" | "CRIMINAL" | "ADMINISTRATIVE" | "NON_LITIGATION" | "LEGAL_COUNSEL" | "SPECIAL_PROJECT";
@@ -62,18 +63,13 @@ export function DocumentTemplatesView({ templates }: { templates: AdminTemplateR
 
   return (
     <div className="space-y-4">
-      <header className="ll-page-head">
-        <div>
-          <h2 className="ll-page-title">文书模板</h2>
-          <p className="ll-page-sub">
+      <AdminPageHeader
+        title="文书模板"
+        actions={<Button size="sm" onClick={() => setUploadOpen(true)}><Plus />上传模板</Button>}
+        sub={<>
             模板在案件详情「生成文书」时按案件类别选用；正文使用 <code className="font-mono text-[11px]">{"{{变量}}"}</code> 占位（如 <code className="font-mono text-[11px]">{"{{client.name}}"}</code>），生成时自动填充。
-          </p>
-        </div>
-        <Button onClick={() => setUploadOpen(true)} className="gap-1.5">
-          <Plus className="h-4 w-4" />
-          上传模板
-        </Button>
-      </header>
+        </>}
+      />
 
       <section className="ll-surface">
         <header className="ll-panel-head">

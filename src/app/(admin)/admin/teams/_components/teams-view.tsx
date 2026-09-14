@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Users, Pencil } from "lucide-react";
+import { Plus, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import type { listTeams } from "@/server/teams/actions";
 import { saveTeam } from "@/server/teams/actions";
@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
+import { AdminPageHeader } from "@/components/layout/admin-page-header";
 
 type Team = Awaited<ReturnType<typeof listTeams>>[number];
 type User = { id: string; name: string; role: string; active: boolean };
@@ -20,11 +21,7 @@ type User = { id: string; name: string; role: string; active: boolean };
 export function TeamsView({ teams, users }: { teams: Team[]; users: User[] }) {
   const [editor, setEditor] = useState<Team | "new" | null>(null);
   return <div className="space-y-4">
-    <header className="flex items-center justify-between gap-3">
-      <div><h2 className="flex items-center gap-2 text-base font-semibold"><Users className="h-4 w-4" />律师团队</h2>
-        <p className="mt-1 text-sm text-muted-foreground">设置成员后，负责人自动看到成员立案或主办的全部案件。</p></div>
-      <Button onClick={() => setEditor("new")} className="shrink-0 gap-1.5"><Plus className="h-4 w-4" />新建团队</Button>
-    </header>
+    <AdminPageHeader title="律师团队" sub="设置成员后，负责人自动看到成员立案或主办的全部案件。" actions={<Button size="sm" onClick={() => setEditor("new")}><Plus />新建团队</Button>} />
     {teams.length === 0 ? <div className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">暂无律师团队。先创建团队，再指定负责人和成员。</div> :
       <div className="divide-y rounded-xl border bg-card">{teams.map((team) => <article key={team.id} className="flex items-start justify-between gap-3 p-4">
         <div className="min-w-0 space-y-2"><div className="flex flex-wrap items-center gap-2"><h3 className="font-medium">{team.name}</h3><Badge variant={team.active ? "secondary" : "outline"}>{team.active ? "使用中" : "已停用"}</Badge></div>

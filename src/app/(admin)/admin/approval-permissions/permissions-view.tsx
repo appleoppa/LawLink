@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getPermissionAdministration, savePermissionGroup, saveSealPurpose, saveApprovalSettings, type PermissionGroupInput } from "@/server/approval-permissions/actions";
+import { AdminPageHeader } from "@/components/layout/admin-page-header";
 
 type Data = Awaited<ReturnType<typeof getPermissionAdministration>>;
 const sealLabels: Record<SealType, string> = { OFFICIAL_SEAL: "律所公章", CONTRACT_SEAL: "合同专用章", FINANCE_SEAL: "财务专用章", LEGAL_REP_SEAL: "法定代表人章", CONTRACT_REVIEW_SEAL: "合同审核章" };
@@ -29,7 +30,7 @@ export function PermissionAdministration({ data }: { data: Data }) {
   function run(fn: () => Promise<unknown>, close?: () => void) { start(async () => { try { await fn(); close?.(); router.refresh(); toast.success("已保存"); } catch (e) { toast.error(e instanceof Error ? e.message : "保存失败"); } }); }
   function patchRule(index: number, patch: Partial<PermissionGroupInput["rules"][number]>) { if (group) setGroup({ ...group, rules: group.rules.map((r, i) => i === index ? { ...r, ...patch } : r) }); }
   return <div className="space-y-6">
-    <header><h2 className="text-xl font-semibold">审批权限</h2><p className="mt-2 text-sm text-muted-foreground">审批资格与系统管理身份分开，所有人员均按案件类别和具体事项分配审批权限。</p></header>
+    <AdminPageHeader title="审批权限" sub="审批资格与系统管理身份分开，所有人员均按案件类别和具体事项分配审批权限。" />
     <section className="rounded-xl border bg-card p-5 space-y-3"><h3 className="font-medium">按事项授权</h3>
       <p className="text-sm text-muted-foreground">系统超级管理员也必须加入相应权限组才可处理收案、文书、归档、开票、用章审批及盖章回填；仍须遵守本人审批限制，审批法定代表人章时须核对当前法定代表人。停用权限组或移除账号立即生效；无可审批人员时无法提交。</p>
       <label className="flex gap-2 text-sm"><input type="checkbox" checked={allowSelf} onChange={e => setAllowSelf(e.target.checked)} />允许审批本人申请（仅适用于单人执业，仍须具备对应授权）</label>

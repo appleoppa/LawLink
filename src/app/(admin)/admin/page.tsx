@@ -1,23 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import {
-  ArrowRight,
-  BellRing,
-  BookOpenCheck,
-  Bot,
-  Building2,
-  FileUp,
-  KeyRound,
-  Layers,
-  ListChecks,
-  Package,
-  ScrollText,
-  ShieldCheck,
-  Users
-} from "lucide-react";
+import { ArrowRight, BellRing, BookOpenCheck, Bot, Building2, FileUp, KeyRound, Layers, ListChecks, Package, ScrollText, ShieldCheck, Users } from "lucide-react";
 
 import { getSession } from "@/lib/auth/session";
 import { isSystemAdmin } from "@/lib/auth/system-role";
+import { PageHeader } from "@/components/patterns/moan";
 
 const adminGroups = [
   {
@@ -46,7 +33,7 @@ const adminGroups = [
     items: [
       { href: "/admin/ai", label: "AI 与元典", icon: Bot },
       { href: "/admin/express", label: "快递接入", icon: Package },
-      { href: "/admin/reminders", label: "提醒维护", icon: BellRing },
+      { href: "/admin/reminders", label: "期限规则库", icon: BellRing },
       { href: "/admin/import", label: "批量导入", icon: FileUp }
     ]
   },
@@ -69,13 +56,9 @@ export default async function AdminHomePage() {
   if (!systemAdmin) {
     return (
       <div className="space-y-5">
-        <header>
-          <p className="text-[12px] font-medium text-primary">管理工作区</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">日常维护</h1>
-          <p className="mt-2 max-w-2xl text-[13px] text-muted-foreground">你保留原有的提醒维护和批量导入权限，系统级配置仍仅向超级管理员开放。</p>
-        </header>
+        <PageHeader className="!mb-0" breadcrumb={<>设置 › <b>日常维护</b></>} title="日常维护" sub="你保留原有的期限规则库与批量导入权限，系统级配置仍仅向超级管理员开放。" />
         <div className="grid gap-4 sm:grid-cols-2">
-          <ManagementCard href="/admin/reminders" label="提醒维护" description="检查法定期限和开庭提醒，并维护通知接入。" icon={BellRing} />
+          <ManagementCard href="/admin/reminders" label="期限规则库" description="维护法定期限规则、查看提醒扫描与群机器人投递。" icon={BellRing} />
           <ManagementCard href="/admin/import" label="批量导入" description="使用既有模板导入案件资料。" icon={FileUp} />
         </div>
       </div>
@@ -84,24 +67,11 @@ export default async function AdminHomePage() {
 
   return (
     <div className="space-y-6">
-      <header className="card p-5 shadow-[var(--shadow-low)]">
-        <div className="flex items-start gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <ShieldCheck className="h-5 w-5" />
-          </span>
-          <div>
-            <p className="text-[12px] font-medium text-primary">系统管理模式</p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight">管理后台</h1>
-            <p className="mt-2 max-w-3xl text-[13px] leading-6 text-muted-foreground">
-              在这里维护全所组织、业务规则、外部接入和安全记录。案件办理、客户沟通与审批处理仍在业务系统完成。
-            </p>
-          </div>
-        </div>
-      </header>
+      <PageHeader className="!mb-0" breadcrumb={<>设置 › <b>管理概览</b></>} title="管理后台" sub="在这里维护全所组织、业务规则、外部接入和安全记录。案件办理、客户沟通与审批处理仍在业务系统完成。" />
 
       <div className="grid gap-5 xl:grid-cols-2">
         {adminGroups.map((group) => (
-          <section key={group.title} className="card p-4 shadow-[var(--shadow-low)]">
+          <section key={group.title} className="card p-4">
             <h2 className="text-[15px] font-semibold">{group.title}</h2>
             <p className="mt-1 text-[12px] leading-5 text-muted-foreground">{group.description}</p>
             <div className="mt-4 grid gap-2 sm:grid-cols-2">

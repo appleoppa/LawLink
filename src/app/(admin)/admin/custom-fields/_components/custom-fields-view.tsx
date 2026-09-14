@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import type { CustomFieldDef } from "@prisma/client";
-import { Plus, Pencil, Trash2, ListChecks } from "lucide-react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -28,6 +28,7 @@ import {
   deleteCustomFieldDef,
   toggleCustomFieldDef
 } from "@/server/custom-fields/actions";
+import { AdminPageHeader } from "@/components/layout/admin-page-header";
 
 const TYPE_LABEL: Record<CustomFieldDef["fieldType"], string> = {
   TEXT: "文本",
@@ -65,21 +66,7 @@ export function CustomFieldsView({ matterFields }: { matterFields: CustomFieldDe
 
   return (
     <div className="space-y-4">
-      <header className="flex items-end justify-between gap-3">
-        <div>
-          <h2 className="flex items-center gap-2 text-lg font-medium">
-            <ListChecks className="h-4 w-4 text-primary" />
-            案件自定义字段
-          </h2>
-          <p className="mt-1 text-[13px] text-muted-foreground">
-            为案件添加机构特有的字段，新建/编辑案件详情时填写。
-          </p>
-        </div>
-        <Button onClick={() => setCreateOpen(true)} size="sm" className="gap-1">
-          <Plus className="h-4 w-4" />
-          添加字段
-        </Button>
-      </header>
+      <AdminPageHeader title="自定义字段" sub="为案件添加机构特有的字段，新建/编辑案件详情时填写。" actions={<Button onClick={() => setCreateOpen(true)} size="sm"><Plus />添加字段</Button>} />
 
       <div className="overflow-hidden card">
         <table className="w-full text-[13px]">

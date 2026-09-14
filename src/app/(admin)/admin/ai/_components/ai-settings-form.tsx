@@ -136,7 +136,7 @@ export function AiSettingsForm({
       <section className="ll-surface rounded-lg border border-border p-5">
         <header className="mb-3 flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-primary" strokeWidth={1.8} />
-          <h2 className="text-lg">AI 接入</h2>
+          <h2 className="text-[14px] font-semibold">AI 接入</h2>
           {initial.configured && (
             <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-[var(--green-bg)] px-2 py-0.5 text-[10px] text-[var(--green)]">
               <CheckCircle2 className="h-3 w-3" /> 已配置

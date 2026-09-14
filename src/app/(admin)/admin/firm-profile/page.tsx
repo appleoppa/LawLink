@@ -5,6 +5,7 @@ import { getFirmProfile, CATEGORY_ABBR, CATEGORY_WORD_DEFAULTS } from "@/server/
 import { getWorkflowToggles } from "@/server/settings/workflow-toggles";
 import { FirmProfileForm } from "./_components/firm-profile-form";
 import { WorkflowTogglesCard } from "./_components/workflow-toggles-card";
+import { AdminPageHeader } from "@/components/layout/admin-page-header";
 
 export default async function FirmProfilePage() {
   await requireSystemAdmin();
@@ -17,6 +18,7 @@ export default async function FirmProfilePage() {
   }));
   return (
     <div className="space-y-5">
+      <AdminPageHeader title="律所信息" sub="律所品牌、系统内部编号与所内案号模板；编号规则只影响此后新建的案件。" />
       <FirmProfileForm initial={{
         firmName: profile.firmName,
         firmSubtitle: profile.firmSubtitle,

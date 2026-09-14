@@ -167,7 +167,7 @@ export function DeadlineRulesCard({ rules, rail, headerActions }: { rules: Admin
     <>
       <div className="page-head flex-wrap gap-3">
         <div>
-          <div className="crumbs">设置 › <b>期限规则库</b></div>
+          <div className="crumbs">设置 › 业务规则 › <b>期限规则库</b></div>
           <h1 className="ph-title">期限规则库</h1>
           <p className="ph-sub">法定期限由规则推算生成：起算事件 + 期限，并按统一档位阶梯预警。案件内人工修正过的期限保留修改人与来源，规则调整不回溯已生成的期限。</p>
         </div>

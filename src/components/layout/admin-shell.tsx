@@ -33,7 +33,7 @@ type AdminNavItem = {
   adminOnly?: boolean;
 };
 
-const navigation: Array<{ label: string; items: AdminNavItem[] }> = [
+export const adminNavigation: Array<{ label: string; items: AdminNavItem[] }> = [
   {
     label: "概览",
     items: [{ href: "/admin", label: "管理概览", icon: LayoutDashboard }]
@@ -88,7 +88,7 @@ export function AdminShell({
   isSystemAdmin: boolean;
 }) {
   const pathname = usePathname();
-  const visibleNavigation = navigation
+  const visibleNavigation = adminNavigation
     .map((group) => ({ ...group, items: group.items.filter((item) => isSystemAdmin || !item.adminOnly) }))
     .filter((group) => group.items.length > 0);
   const initial = user.name.charAt(0) || "?";

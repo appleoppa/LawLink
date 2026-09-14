@@ -67,7 +67,7 @@ export function ExpressSettingsForm({ initial }: { initial: Initial }) {
       <section className="ll-surface rounded-lg border border-border p-5">
         <header className="mb-3 flex items-center gap-2">
           <Package className="h-4 w-4 text-primary" />
-          <h2 className="text-lg">快递接入</h2>
+          <h2 className="text-[14px] font-semibold">快递接入</h2>
         </header>
         <p className="mb-4 text-[12px] text-muted-foreground">
           两家物流服务商：优先 <span className="text-foreground/85">快递鸟</span>（500 条/日免费），

@@ -42,9 +42,9 @@ export function ArchivePolicyForm({ data }: { data: Data }) {
   return (
     <section className="space-y-5 rounded-xl border bg-card p-5">
       <header>
-        <h2 className="flex items-center gap-2 text-lg font-semibold">
-          <BookOpenCheck className="h-5 w-5 text-primary" />
-          归档制度
+        <h2 className="flex items-center gap-2 text-[14px] font-semibold">
+          <BookOpenCheck className="h-4 w-4 text-primary" />
+          现行归档制度
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
           归档申请会固定制度名称、版本、生效日期和原文校验值，历史申请不随设置变化。

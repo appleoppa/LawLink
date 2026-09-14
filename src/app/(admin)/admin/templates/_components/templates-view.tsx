@@ -2,14 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import {
-  Layers,
-  Plus,
-  Trash2,
-  Loader2,
-  Pencil,
-  Save
-} from "lucide-react";
+import { Plus, Trash2, Loader2, Pencil, Save } from "lucide-react";
 import type { ProcedureType, StageTemplate } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { upsertStageTemplate } from "@/server/settings/actions";
 import { procedureTypeLabel } from "@/lib/enums";
+import { AdminPageHeader } from "@/components/layout/admin-page-header";
 
 const ALL_PROCEDURE_TYPES: ProcedureType[] = [
   "FIRST_INSTANCE",
@@ -69,11 +63,8 @@ export function TemplatesView({ templates }: { templates: StageTemplate[] }) {
 
   return (
     <div className="space-y-4">
-      <header className="flex items-center justify-between gap-3">
-        <h2 className="flex items-center gap-2 text-base font-semibold">
-          <Layers className="h-4 w-4 text-primary" />
-          阶段模板
-        </h2>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <AdminPageHeader title="阶段模板" sub="新建程序时自动套用对应模板的环节；已建程序的环节不受模板修改影响。" />
         <Select value={selected} onValueChange={(v) => setSelected(v as ProcedureType)}>
           <SelectTrigger className="h-9 w-48 bg-background">
             <SelectValue />

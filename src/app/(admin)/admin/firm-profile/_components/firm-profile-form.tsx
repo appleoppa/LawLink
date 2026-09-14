@@ -90,7 +90,7 @@ export function FirmProfileForm({ initial }: { initial: Initial }) {
       <section className="ll-surface rounded-lg border border-border p-5">
         <header className="mb-3 flex items-center gap-2">
           <Building2 className="h-4 w-4 text-primary" />
-          <h2 className="text-lg">律所品牌</h2>
+          <h2 className="text-[14px] font-semibold">律所品牌</h2>
         </header>
         <p className="mb-4 text-[12px] text-muted-foreground">
           侧边栏顶部显示的名称、副标题与标志图片。留空名称将回退默认「LawLink」。
@@ -166,7 +166,7 @@ export function FirmProfileForm({ initial }: { initial: Initial }) {
       <section className="ll-surface rounded-lg border border-border p-5">
         <header className="mb-3 flex items-center gap-2">
           <Hash className="h-4 w-4 text-primary" />
-          <h2 className="text-lg">系统内部编号</h2>
+          <h2 className="text-[14px] font-semibold">系统内部编号</h2>
         </header>
         <p className="mb-4 text-[12px] text-muted-foreground">
           每个案件自动生成的系统编号前缀。格式固定为
@@ -195,7 +195,7 @@ export function FirmProfileForm({ initial }: { initial: Initial }) {
       <section className="ll-surface rounded-lg border border-border p-5">
         <header className="mb-3 flex items-center gap-2">
           <Hash className="h-4 w-4 text-primary" />
-          <h2 className="text-lg">所内案号（自定义模板）</h2>
+          <h2 className="text-[14px] font-semibold">所内案号（自定义模板）</h2>
         </header>
         <p className="mb-4 text-[12px] text-muted-foreground">
           律所习惯的案号，转化收案时按模板自动生成。可用占位符：
