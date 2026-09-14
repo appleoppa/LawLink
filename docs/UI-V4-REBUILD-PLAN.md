@@ -66,3 +66,27 @@
 ## 六、验收
 
 每批：lint / typecheck / prisma:validate / build；确认 3000 端口属于本仓库；Playwright 1440 宽截图与效果图并排比对（输出 `output/playwright/v4-rebuild/`）；金线实走；空数据、权限受限、390 宽移动端。
+
+## 执行记录（2026-09-14 收口）
+
+分支 `ui/v4-rebuild`，未 push。起点检查点 `22fa4f5`（zcode 在途改动原样存档，另有 `backups/zcode-v4-wip-20260913.patch`）。
+
+| 批次 | 内容 |
+|---|---|
+| 基础层 | 墨案 token 映射、原子组件、patterns/moan、moan-pages.css（按效果图 `<style>` 作用域化） |
+| 01–12 | 登录、案件详情、审批、冲突检索、收案、案件列表、工作台、财务、日程、客户（详情+列表）、全局搜索、期限规则库 |
+| 阶段四 | 无效果图业务页与管理后台统一页头（PageHeader / AdminPageHeader）；收案详情改工作台布局 |
+| 阶段五 | 390 宽横向溢出修复、分段/页签窄屏滚动、零散非墨案色值 |
+
+### 效果图元素的如实处理（不做假功能）
+
+- 登录：不做「中文/EN」「记住此设备」。
+- 期限规则库：系统不内置节假日表、无「工作日」计算方式与单条补发能力，故不提供「节假日表」「单独补发」按钮；预警档位按 `deadlineReminderOffsets` 真实档位（T-3/T-1/T-0/T+1 ∪ 规则提前档）展示；投递记录读 JobQueue 近 30 天。
+- 全局搜索：客户命中补充备注字段；新增期限分组（与日程页同口径授权）；各组最多 20 条，计数显示 20+。
+- 客户详情：来源渠道卡展示「所内同渠道客户占比」，不虚构多渠道分布。
+
+### 待确认删除的无引用文件（未删除）
+
+本次重建后变为无引用：`src/components/patterns/review-dialog.module.css`、`src/app/(app)/clients/[id]/_components/client-merge-card.tsx`、`src/app/(app)/matters/[id]/_components/procedure-stage-chain.tsx`、`src/components/ui/separator.tsx`。
+
+检查点前已无引用（zcode 或更早遗留）：dashboard 下 `action-tiles / dashboard-greeting / hero-block / kpi-cards / my-weekly-card / schedule-list`；matters/[id] 下 `add-reminder-dialog / case-search-panel / documents-panel / folders-panel / invoice-section / notes-panel / overview-panel / parties-panel / procedure-info-panel / timeline-panel`；`approvals/seals/_components/seals-view`、`archive/_components/archive-tabs / pending-archive-table`、`settings/profile/_components/calendar-subscription`、`tools/calc/_components/calc-view`；`ui/card / form / progress / skeleton / table`。
