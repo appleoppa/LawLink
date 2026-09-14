@@ -507,6 +507,7 @@ export function IntakeWizard({
     <ChoiceField
       ariaLabel="诉讼地位"
       placeholder="选择诉讼地位"
+      threshold={0}
       options={(options.length ? options : (Object.keys(litigationStandingLabel) as LitigationStanding[])).map((s) => ({ value: s, label: litigationStandingLabel[s] }))}
       value={value as LitigationStanding | undefined}
       onChange={onChange}

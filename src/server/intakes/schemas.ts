@@ -130,6 +130,9 @@ function requireLitigationStandings(
   }
 
   data.parties.forEach((party, index) => {
+    // 委托方的诉讼地位保存在 ourStanding；表单内委托方占 parties[0]，不能再要求它单独填写 standing，
+    // 否则已选「我方诉讼地位」仍提示未选择、无法进入下一步（2026-09-14 用户反馈）
+    if (party.role === "CLIENT_PARTY") return;
     if (!party.standing) {
       ctx.addIssue({
         path: ["parties", index, "standing"],

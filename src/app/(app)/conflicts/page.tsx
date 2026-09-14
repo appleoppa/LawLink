@@ -1,4 +1,5 @@
 import { buildIntakeConflictQueries } from "@/lib/approvals/intake-detail";
+import { decryptIdNumber } from "@/lib/clients/id-number-crypto";
 import { getIntakeById } from "@/server/intakes/actions";
 import { listMyRecentConflictChecks } from "@/server/conflicts/actions";
 import { ConflictsViewV4 } from "./_components/conflicts-view-v4";
@@ -12,7 +13,7 @@ export default async function ConflictsPage({ searchParams }: { searchParams: Pr
   return (
     <ConflictsViewV4
       intake={intake && !intake.teamReadOnly ? { id: intake.id, title: intake.title, receivedAt: new Date(intake.receivedAt).toISOString() } : null}
-      initialQueries={intake && !intake.teamReadOnly ? buildIntakeConflictQueries(intake) : []}
+      initialQueries={intake && !intake.teamReadOnly ? buildIntakeConflictQueries(intake, decryptIdNumber) : []}
       recent={recent}
       prefillName={prefillName}
     />

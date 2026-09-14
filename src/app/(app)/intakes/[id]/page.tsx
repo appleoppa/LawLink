@@ -6,7 +6,7 @@ import { Users, AlertTriangle } from "lucide-react";
 import { getIntakeById } from "@/server/intakes/actions";
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
-import { maskIdNumber } from "@/lib/clients/id-number-crypto";
+import { decryptIdNumber, maskIdNumber } from "@/lib/clients/id-number-crypto";
 import { FieldGrid, FieldItem, PageHeader, Panel } from "@/components/patterns/moan";
 import {
   matterCategoryLabel,
@@ -198,7 +198,7 @@ export default async function IntakeDetailPage({ params }: PageProps) {
 
           <ConflictSection
             intakeId={intake.id}
-            queries={buildIntakeConflictQueries(intake)}
+            queries={buildIntakeConflictQueries(intake, decryptIdNumber)}
             latestCheck={latestCheck}
             canEditConclusion={canApprove}
           />

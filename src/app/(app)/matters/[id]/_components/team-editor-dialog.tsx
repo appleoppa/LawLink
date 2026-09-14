@@ -58,6 +58,7 @@ import {
 } from "@/server/matters/actions";
 import { CauseCombobox } from "@/app/(app)/matters/_components/cause-combobox";
 import { cn, formatDate } from "@/lib/utils";
+import { matterCategoryKind } from "@/lib/enums";
 import { JurisdictionSelect } from "@/app/(app)/intakes/_components/jurisdiction-select";
 import {
   agencyOptionsForProcedure,
@@ -448,6 +449,12 @@ export function TeamEditorDialog({
     ? currentProcedure.customLabel ?? procedureTypeLabel[currentProcedure.type]
     : "";
   const judgeLabel = currentProcedure ? procedureJudgeLabel(currentProcedure.type) : "主审法官";
+  // 字段联动：非诉 / 专项 / 顾问没有案由、诉讼地位、管辖、案号、法官等诉讼字段
+  const categoryKind = matterCategoryKind(matterMeta.category);
+  const isLitigationMatter = categoryKind === "litigation";
+  const isArbitrationProc = Boolean(currentProcedure && ["COMMERCIAL_ARBITRATION", "LABOR_ARBITRATION"].includes(currentProcedure.type));
+  const isCriminalProc = Boolean(currentProcedure && ["INVESTIGATION", "PROSECUTION_REVIEW"].includes(currentProcedure.type));
+  const assistantLabel = isArbitrationProc ? "仲裁秘书" : isCriminalProc ? "检察官助理" : "书记员";
   const procedureAgencyOptions = useMemo(
     () => agencyOptionsForProcedure(procedureForm.jurisdiction, currentProcedure?.type),
     [procedureForm.jurisdiction, currentProcedure?.type]
@@ -727,9 +734,10 @@ export function TeamEditorDialog({
                 />
               </div>
 
+              {isLitigationMatter ? (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label className={formLabelClass}>案由</Label>
+                  <Label className={formLabelClass}>{matterMeta.category === "CRIMINAL" ? "涉嫌罪名" : "案由"}</Label>
                   <CauseCombobox
                     category={matterMeta.category}
                     procedureType={currentProcedure?.type}
@@ -747,10 +755,12 @@ export function TeamEditorDialog({
                   />
                 </div>
               </div>
+              ) : null}
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {matterMeta.category !== "CRIMINAL" && categoryKind !== "counsel" ? (
                 <div className="space-y-1.5">
-                  <Label className={formLabelClass}>标的额（元）</Label>
+                  <Label className={formLabelClass}>{isLitigationMatter ? "标的额（元）" : "项目金额（元）"}</Label>
                   <Input
                     type="number"
                     inputMode="decimal"
@@ -761,6 +771,8 @@ export function TeamEditorDialog({
                     className={cn(formControlClass, "font-mono")}
                   />
                 </div>
+                ) : null}
+                {isLitigationMatter ? (
                 <div className="space-y-1.5">
                   <Label className={formLabelClass}>我方诉讼地位</Label>
                   <Select
@@ -779,6 +791,7 @@ export function TeamEditorDialog({
                     </SelectContent>
                   </Select>
                 </div>
+                ) : null}
               </div>
 
               <label className="flex cursor-pointer items-start gap-2 rounded-md border border-border bg-background px-3 py-2 text-xs">
@@ -808,6 +821,7 @@ export function TeamEditorDialog({
               </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {isLitigationMatter ? (<>
                 <div className="space-y-1.5">
                   <Label className={formLabelClass}>管辖地（省/市/区县）</Label>
                   <JurisdictionSelect
@@ -817,7 +831,7 @@ export function TeamEditorDialog({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className={formLabelClass}>管辖机构</Label>
+                  <Label className={formLabelClass}>{isArbitrationProc ? "仲裁机构" : isCriminalProc ? "办案机关" : "管辖机构"}</Label>
                   <Input
                     list={`matter-info-agency-${currentProcedure.id}`}
                     value={procedureForm.handlingAgency}
@@ -874,7 +888,7 @@ export function TeamEditorDialog({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className={formLabelClass}>书记员</Label>
+                  <Label className={formLabelClass}>{assistantLabel}</Label>
                   <Input
                     value={procedureForm.judgeAssistant}
                     onChange={(e) => setProcedureField("judgeAssistant", e.target.value)}
@@ -882,15 +896,16 @@ export function TeamEditorDialog({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className={formLabelClass}>书记员联系方式</Label>
+                  <Label className={formLabelClass}>{assistantLabel}联系方式</Label>
                   <Input
                     value={procedureForm.judgeAssistantContact}
                     onChange={(e) => setProcedureField("judgeAssistantContact", e.target.value)}
                     className={cn(formControlClass, "font-mono")}
                   />
                 </div>
+                </>) : null}
                 <div className="space-y-1.5">
-                  <Label className={formLabelClass}>立案时间</Label>
+                  <Label className={formLabelClass}>{isLitigationMatter ? (isArbitrationProc ? "受理时间" : "立案时间") : "开始时间"}</Label>
                   <Input
                     type="date"
                     value={procedureForm.acceptedAt}
@@ -899,7 +914,7 @@ export function TeamEditorDialog({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className={formLabelClass}>裁决 / 结案时间</Label>
+                  <Label className={formLabelClass}>{isLitigationMatter ? "裁决 / 结案时间" : "完成时间"}</Label>
                   <Input
                     type="date"
                     value={procedureForm.concludedAt}

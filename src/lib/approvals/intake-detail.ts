@@ -27,12 +27,17 @@ export function conflictMatchKind(hit: { matchedField: string; matchedName: stri
 }
 
 export type ConflictReviewQuery = { role: string; name: string; idNumber: string };
+/**
+ * 由收案资料生成冲突检索条件。
+ * 客户档案证件号入库为密文：服务端调用须传 decodeClientId（decryptIdNumber），
+ * 否则检索条件会带上密文，证件匹配失效且与已检索条件比对不一致。收案表单内为明文，可不传。
+ */
 export function buildIntakeConflictQueries(intake: {
   client: { name: string; idNumber: string | null } | null;
   parties: { role: PartyRole; name: string; idNumber: string | null; enterpriseSocialCode?: string | null }[];
-}) {
+}, decodeClientId: (stored: string | null) => string = (v) => v ?? "") {
   const queries = [
-    ...(intake.client ? [{ role: "CLIENT_PARTY" as const, name: intake.client.name, idNumber: intake.client.idNumber ?? "" }] : []),
+    ...(intake.client ? [{ role: "CLIENT_PARTY" as const, name: intake.client.name, idNumber: decodeClientId(intake.client.idNumber) }] : []),
     ...intake.parties.map(p => ({ role: p.role, name: p.name, idNumber: p.idNumber || p.enterpriseSocialCode || "" }))
   ].map(q => ({ ...q, name: q.name.trim(), idNumber: q.idNumber.trim() })).filter(q => q.name || q.idNumber);
   const unique = new Map(queries.map(q => [JSON.stringify([q.role, q.name, q.idNumber]), q]));

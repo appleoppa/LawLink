@@ -39,9 +39,14 @@ describe("立案审批完整查阅", () => {
     const result = await getApprovalDetail({ action: "INTAKE_APPROVE", id });
     const fields = result.intakeDetail!.sections.flatMap(s => s.fields);
     expect(result.intakeDetail!.currentParties).toEqual(queries);
-    for (const value of ["一审", "测试法院", "测试管辖地", "返还物品", "事实全文", "共同律师乙", "服务范围全文", "成果全文", "按回款收费", "回款后付款", "联系人乙", "当事人备注", "绑定企业名称", "否", "0"]) expect(fields.some(f => f.value === value)).toBe(true);
+    for (const value of ["一审", "测试法院", "测试管辖地", "返还物品", "事实全文", "共同律师乙", "按回款收费", "回款后付款", "当事人备注", "否", "0"]) expect(fields.some(f => f.value === value)).toBe(true);
     expect(fields.find(f => f.label === "基础办案费（元）")?.value).toBe("0");
-    expect(fields.filter(f => ["TEST-ID", "TEST-PHONE", "TEST-PARTY", "TEST-CODE", "当事人地址", "事实全文"].includes(f.value)).every(f => f.sensitive)).toBe(true);
+    // 证件号码审批中直接明文；电话、地址、事实摘要仍默认打码
+    expect(fields.filter(f => ["TEST-ID", "TEST-PARTY"].includes(f.value)).every(f => !f.sensitive)).toBe(true);
+    expect(fields.filter(f => ["TEST-PHONE", "当事人地址", "事实全文"].includes(f.value)).every(f => f.sensitive)).toBe(true);
+    // 字段联动：诉讼类不展示非诉/顾问字段；自然人当事人不展示信用代码、工商名称、法定代表人
+    for (const value of ["服务范围全文", "成果全文", "TEST-CODE", "绑定企业名称", "代表乙", "联系人乙"]) expect(fields.some(f => f.value === value)).toBe(false);
+    expect(fields.some(f => f.label === "申请时登记的客户类型")).toBe(false);
     expect(result.attachments).toEqual([{ id: "attachment", name: "测试合同.pdf", readable: false }]);
   });
   it("保留历史检索、条件、人工结论及关联摘要，但不泄漏关联案件或客户 ID", async () => {

@@ -34,6 +34,10 @@ function contactRoleLabels(type: string | undefined) {
     return { lead: "执行法官", assistant: "书记员" };
   }
 
+  if (type && ["INVESTIGATION", "PROSECUTION_REVIEW"].includes(type)) {
+    return type === "INVESTIGATION" ? { lead: "承办侦查员", assistant: "协办人员" } : { lead: "承办检察官", assistant: "检察官助理" };
+  }
+
   return { lead: "主办法官", assistant: "书记员" };
 }
 
@@ -76,8 +80,8 @@ export function InfoPanel({
     return `${s ? formatDate(s) : "—"} ~ ${e ? formatDate(e) : "—"}`;
   };
   const claimText = matter.claimAmount ? formatCurrency(Number(matter.claimAmount)) : "—";
-  const amountLabel = kind === "counsel" ? "服务期限" : "标的";
-  const amountValue = kind === "counsel" ? period(matter.serviceStart, matter.serviceEnd) : claimText;
+  const isCriminal = matter.category === "CRIMINAL";
+  const isAdministrative = matter.category === "ADMINISTRATIVE";
   // v1.1「信息总览」：只放标题区/侧栏没有的内容——案由、类别、状态、期限
   // 已由页头与 MatterKeypoints 承载，此处聚焦当前程序的档案字段
   const contactLabels = contactRoleLabels(currentProcedure?.type);
@@ -128,30 +132,47 @@ export function InfoPanel({
         </div>
       </div>
       <div className="panel-body" style={{ paddingTop: 4 }}>
-        <FieldGrid cols={2}>
-          <FieldItem label="收案时间" mono>{matter.intakeDate ? formatDate(matter.intakeDate) : "—"}</FieldItem>
-          <FieldItem label="立案时间" mono>{currentProcedure?.acceptedAt ? formatDate(currentProcedure.acceptedAt) : "—"}</FieldItem>
-          <FieldItem label="案由">{dash(causeText)}</FieldItem>
-          <FieldItem label="案号" mono>{dash(currentProcedure?.caseNumber)}</FieldItem>
-          <FieldItem label="客户名称">{dash(clientName)}</FieldItem>
-          <FieldItem label="相对方">{dash(opposingNames)}</FieldItem>
-          <FieldItem label="我方地位">{standing ? litigationStandingLabel[standing] ?? standing : "—"}</FieldItem>
-          <FieldItem label={amountLabel} mono={kind !== "counsel"}>{amountValue}</FieldItem>
-          <FieldItem label="是否反诉">{dash(counterclaimText)}</FieldItem>
-          <FieldItem label="律协备案">{barFilingText}</FieldItem>
-          <FieldItem label="管辖地">{dash(currentProcedure?.jurisdiction)}</FieldItem>
-          <FieldItem label="管辖机构">{dash(currentProcedure?.handlingAgency)}</FieldItem>
-          <FieldItem label={contactLabels.lead}>{personName(currentProcedure?.presidingJudge)}</FieldItem>
-          <FieldItem label="联系方式"><ContactText value={currentProcedure?.presidingJudgeContact} /></FieldItem>
-          <FieldItem label={contactLabels.assistant}>{personName(currentProcedure?.judgeAssistant)}</FieldItem>
-          <FieldItem label="联系方式"><ContactText value={currentProcedure?.judgeAssistantContact} /></FieldItem>
-          {currentProcedure?.panel?.trim() ? <FieldItem label="合议庭" wide>{currentProcedure.panel}</FieldItem> : null}
-          {requestContent ? <FieldItem label={requestLabel} wide><ClampedText text={requestContent} /></FieldItem> : null}
-          {outcomeText ? <FieldItem label="裁判结果" wide>{outcomeText}</FieldItem> : null}
-          <FieldItem label="关联案件" wide>
-            <RelatedMattersField matterId={matter.id} related={relatedMatters} canManage={canManageRelatedMatters} />
-          </FieldItem>
-        </FieldGrid>
+        {kind === "litigation" ? (
+          <FieldGrid cols={2}>
+            <FieldItem label="收案时间" mono>{matter.intakeDate ? formatDate(matter.intakeDate) : "—"}</FieldItem>
+            <FieldItem label={isArbitration ? "受理时间" : "立案时间"} mono>{currentProcedure?.acceptedAt ? formatDate(currentProcedure.acceptedAt) : "—"}</FieldItem>
+            <FieldItem label={isCriminal ? "涉嫌罪名" : "案由"}>{dash(causeText)}</FieldItem>
+            <FieldItem label="案号" mono>{dash(currentProcedure?.caseNumber)}</FieldItem>
+            <FieldItem label={isCriminal ? "委托人" : "客户名称"}>{dash(clientName)}</FieldItem>
+            {/* 刑事案件没有「相对方」「反诉」「标的」 */}
+            {!isCriminal ? <FieldItem label={isAdministrative ? "被告行政机关" : "相对方"}>{dash(opposingNames)}</FieldItem> : null}
+            <FieldItem label="我方地位">{standing ? litigationStandingLabel[standing] ?? standing : "—"}</FieldItem>
+            {!isCriminal ? <FieldItem label="标的" mono>{claimText}</FieldItem> : null}
+            {!isCriminal && !isAdministrative ? <FieldItem label={isArbitration ? "是否提出反请求" : "是否反诉"}>{dash(counterclaimText)}</FieldItem> : null}
+            <FieldItem label="律协备案">{barFilingText}</FieldItem>
+            <FieldItem label="管辖地">{dash(currentProcedure?.jurisdiction)}</FieldItem>
+            <FieldItem label={isArbitration ? "仲裁机构" : isCriminal ? "办案机关" : "管辖机构"}>{dash(currentProcedure?.handlingAgency)}</FieldItem>
+            <FieldItem label={contactLabels.lead}>{personName(currentProcedure?.presidingJudge)}</FieldItem>
+            <FieldItem label="联系方式"><ContactText value={currentProcedure?.presidingJudgeContact} /></FieldItem>
+            <FieldItem label={contactLabels.assistant}>{personName(currentProcedure?.judgeAssistant)}</FieldItem>
+            <FieldItem label="联系方式"><ContactText value={currentProcedure?.judgeAssistantContact} /></FieldItem>
+            {currentProcedure?.panel?.trim() ? <FieldItem label={isArbitration ? "仲裁庭" : "合议庭"} wide>{currentProcedure.panel}</FieldItem> : null}
+            {requestContent && !isCriminal ? <FieldItem label={requestLabel} wide><ClampedText text={requestContent} /></FieldItem> : null}
+            {outcomeText ? <FieldItem label={isCriminal ? "处理结果" : "裁判结果"} wide>{outcomeText}</FieldItem> : null}
+            <FieldItem label="关联案件" wide>
+              <RelatedMattersField matterId={matter.id} related={relatedMatters} canManage={canManageRelatedMatters} />
+            </FieldItem>
+          </FieldGrid>
+        ) : (
+          /* 非诉 / 专项 / 顾问：没有立案、案号、相对方、诉讼地位、法官等诉讼字段 */
+          <FieldGrid cols={2}>
+            <FieldItem label="收案时间" mono>{matter.intakeDate ? formatDate(matter.intakeDate) : "—"}</FieldItem>
+            <FieldItem label={kind === "counsel" ? "顾问类型" : "业务类型"}>{dash(kind === "counsel" ? matter.counselType : matter.businessType)}</FieldItem>
+            <FieldItem label="客户名称">{dash(clientName)}</FieldItem>
+            <FieldItem label={kind === "counsel" ? "顾问期限" : "服务期间"} mono>{period(matter.serviceStart, matter.serviceEnd)}</FieldItem>
+            {kind === "project" ? <FieldItem label="项目金额" mono>{claimText}</FieldItem> : null}
+            {matter.serviceScope?.trim() ? <FieldItem label="服务范围" wide><ClampedText text={matter.serviceScope} /></FieldItem> : <FieldItem label="服务范围" wide>—</FieldItem>}
+            {kind === "project" ? <FieldItem label="交付成果" wide>{dash(matter.deliverables)}</FieldItem> : null}
+            <FieldItem label="关联案件" wide>
+              <RelatedMattersField matterId={matter.id} related={relatedMatters} canManage={canManageRelatedMatters} />
+            </FieldItem>
+          </FieldGrid>
+        )}
       </div>
     </div>
   );

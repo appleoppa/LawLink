@@ -61,14 +61,14 @@ export function IntakeApprovalContent({ detail, view = "all", onOpenConflicts }:
           {!check.coversCurrentParties && <p className="rounded-md bg-[var(--amber-bg)] p-3 text-sm text-[var(--amber)]">检索资料不完整或当事人已变更，请重新检索后提交审批。</p>}
           <div className={styles.checkConclusion}><div><span>当前保存结论</span><strong>{check.conclusion}</strong></div><div><span>结论来源</span><strong>{check.source}</strong></div>{check.decidedBy && <p>结论记录人：{check.decidedBy} · {dateText(check.decidedAt)}</p>}<p>说明：{check.note || "未记录"}</p></div>
           <div className="space-y-2"><h4 className="text-sm font-medium">本案核查对象</h4>
-            <div className={styles.queries}>{detail.currentParties.map((q, i) => <div key={i}><Badge variant="outline">{roleText(q.role)}</Badge><strong>{q.name || "未填写名称"}</strong><p>证件条件：<IntakeReviewValue label={`本案当事人 ${i + 1} 的证件条件`} value={q.idNumber || "未填写"} sensitive /></p></div>)}</div>
+            <div className={styles.queries}>{detail.currentParties.map((q, i) => <div key={i}><Badge variant="outline">{roleText(q.role)}</Badge><strong>{q.name || "未填写名称"}</strong><p>证件条件：<IntakeReviewValue label={`本案当事人 ${i + 1} 的证件条件`} value={q.idNumber || "未填写"} /></p></div>)}</div>
           </div>
           <details className={styles.emptyFields}><summary>查看本次检索条件</summary>
             {!check.queries.length && <p className="mt-2 text-sm text-muted-foreground">检索条件不完整，请重新检索。</p>}
-            <div className={styles.queries}>{check.queries.map((q, i) => <div key={i}>{roleText(q.role) && <Badge variant="outline">{roleText(q.role)}</Badge>}<strong>{q.name || "未填写名称"}</strong><p>证件条件：<IntakeReviewValue label={`检索对象 ${i + 1} 的证件条件`} value={q.idNumber || "未填写"} sensitive /></p></div>)}</div>
+            <div className={styles.queries}>{check.queries.map((q, i) => <div key={i}>{roleText(q.role) && <Badge variant="outline">{roleText(q.role)}</Badge>}<strong>{q.name || "未填写名称"}</strong><p>证件条件：<IntakeReviewValue label={`检索对象 ${i + 1} 的证件条件`} value={q.idNumber || "未填写"} /></p></div>)}</div>
           </details>
           {!!check.sameNameClients.length && <div className="text-sm"><h4 className="font-medium">历史客户库同名提示（不等同利益冲突）</h4>{check.sameNameClients.map((c, i) => <p key={i}>{c.name || "姓名未记录"}</p>)}</div>}
-          {!!check.idMatchedClients.length && <div className="text-sm"><h4 className="font-medium">历史客户库证件匹配提示（需核对主体身份）</h4>{check.idMatchedClients.map((c, i) => <p key={i}>{c.name} · <IntakeReviewValue label="客户库匹配证件" value={c.idNumber || "未记录"} sensitive /></p>)}</div>}
+          {!!check.idMatchedClients.length && <div className="text-sm"><h4 className="font-medium">历史客户库证件匹配提示（需核对主体身份）</h4>{check.idMatchedClients.map((c, i) => <p key={i}>{c.name} · <IntakeReviewValue label="客户库匹配证件" value={c.idNumber || "未记录"} /></p>)}</div>}
         </div>
       </details>)}
       </div>

@@ -102,7 +102,7 @@ function formatConflictQuery(q: IntakeConflictQuery) {
 }
 
 function buildExpectedConflictQueries(intake: IntakeConflictGateInput) {
-  return buildIntakeConflictQueries(intake);
+  return buildIntakeConflictQueries(intake, decryptIdNumber);
 }
 
 function getCheckedConflictQueries(payload: Prisma.JsonValue) {

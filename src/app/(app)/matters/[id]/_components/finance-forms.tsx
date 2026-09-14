@@ -324,15 +324,18 @@ export function AddFeeEntrySheet({
               </Field>
             )}
 
-            <Field label="付款方 / 收款方">
-              <Input placeholder="如 上海青石建设有限公司" {...register("payerOrPayee")} />
+            {/* 字段联动：付款/收款方名称随类型；应收尚未发生资金往来，不填支付方式 */}
+            <Field label={type === "REFUND" || type === "COST" ? "收款方" : "付款方"}>
+              <Input placeholder={type === "COST" ? "如 法院 / 鉴定机构 / 快递公司" : "如 上海青石建设有限公司"} {...register("payerOrPayee")} />
             </Field>
 
-            <Field label="方式">
-              <Input placeholder="转账 / 现金 / 支付宝" {...register("method")} />
-            </Field>
+            {type !== "RECEIVABLE" && (
+              <Field label="方式">
+                <Input placeholder="转账 / 现金 / 支付宝" {...register("method")} />
+              </Field>
+            )}
 
-            {invoiceRequests.length > 0 && (
+            {(type === "RECEIVED" || type === "RECEIVABLE") && invoiceRequests.length > 0 && (
               <Field
                 label="关联申请发票"
                 hint="选中后自动填金额；已开具的会填真实发票号，未开具的填占位 req:xxxxxxxx"
@@ -373,10 +376,13 @@ export function AddFeeEntrySheet({
               </Field>
             )}
 
+            {type !== "RECEIVABLE" && (
             <Field label="发票号">
               <Input className="font-mono" {...register("invoiceNo")} />
             </Field>
+            )}
 
+            {type !== "RECEIVABLE" && (
             <InvoiceOcrBlock
               onRecognized={(data) => {
                 if (data.invoiceNumber)
@@ -395,6 +401,7 @@ export function AddFeeEntrySheet({
                 }
               }}
             />
+            )}
 
             <Field label="备注">
               <Textarea rows={2} {...register("note")} />
