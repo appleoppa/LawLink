@@ -583,7 +583,9 @@ export async function listAllFeeEntries(params: {
     include: {
       matter: { select: { id: true, internalCode: true, title: true } },
       beneficiaryUser: { select: { id: true, name: true } },
-      recordedBy: { select: { id: true, name: true } }
+      recordedBy: { select: { id: true, name: true } },
+      // P0-6 已确认口径（关联已签署合同或已登记发票号），列表展示用
+      billing: { select: { signedAt: true } }
     }
   });
   return serializeDecimals(rows);

@@ -1,19 +1,25 @@
 "use client";
 
 /**
- * 财务页壳（墨案 08 效果图 · 从零重写，替代旧 finance-view 的渲染路径）。
- * 布局 = 效果图：22px 页头+副文 / KPI 四卡（待回款红卡+回款率进度条）/ 胶囊分段 /
- * 趋势图+开票进度 / 收付流水真表格（案卷脊+金额看色+冲正徽）。
+ * 财务（墨案 08 效果图）：KPI 四卡 → 分段（收付流水 / 开票管理 / 律师分成 / 应收账龄）→
+ * 趋势 + 开票进度 → 收付流水表。已确认口径沿用 P0-6 规则（关联已签署合同或已登记发票号）。
  */
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Coins, TrendingUp, FileText, Receipt, Download } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { DollarSign, FileText, Search, Users, Clock3, Plus } from "lucide-react";
 import type { InvoiceRequestRow } from "./finance-view";
+import type { getReceivablesAging } from "@/server/finance/aging";
 import { RevenueChart } from "@/components/dashboard/revenue-chart";
 import { InvoiceManagementSection } from "./invoice-management";
 import { InvoiceCreateDialog } from "./invoice-create-dialog";
-import { formatCurrency, cn } from "@/lib/utils";
+import { RecordFeeLauncher } from "./record-fee-launcher";
+import { MetricCard, PageHeader, Segmented } from "@/components/patterns/moan";
+import { FilterSelect } from "@/components/patterns/filter-select";
+import { useTopbarAction } from "@/components/layout/topbar-action";
+import { invoiceRequestStatusLabel } from "@/lib/enums";
 import { matterHref } from "@/lib/matters/route";
+import { cn } from "@/lib/utils";
 
 type Entry = {
   id: string;
@@ -21,19 +27,27 @@ type Entry = {
   amount: number;
   occurredAt: Date;
   payerOrPayee: string | null;
+  method: string | null;
+  invoiceNo: string | null;
   note: string | null;
+  confirmed: boolean;
   matter: { id: string; internalCode: string; title: string };
   beneficiaryUser: { id: string; name: string } | null;
   recordedBy: { id: string; name: string };
 };
 
+type Aging = Awaited<ReturnType<typeof getReceivablesAging>>;
+
 type Props = {
   entries: Entry[];
   monthly: { month: string; received: number; receivable: number }[];
+  aging: Aging;
   stats: {
     monthlyReceived: number;
     monthlyReceivable: number;
     yearlyReceived: number;
+    yearlyReceivable: number;
+    lastMonthReceived: number;
     personalMonthly: number;
     personalYearly: number;
     monthlyIssued: number;
@@ -41,132 +55,212 @@ type Props = {
   };
   invoiceRequests: InvoiceRequestRow[];
   canApproveInvoice: boolean;
+  canExport: boolean;
+  canWrite: boolean;
 };
 
-const TYPE_LABEL: Record<Entry["type"], string> = {
-  RECEIVABLE: "应收", RECEIVED: "实收", REFUND: "冲正", COST: "支出", COMMISSION: "分成"
-};
-const TYPE_COLOR: Record<Entry["type"], string> = {
-  RECEIVABLE: "#96650B", RECEIVED: "#1A7F45", REFUND: "#B42318", COST: "#4A5560", COMMISSION: "#6C3FC5"
+type Tab = "ledger" | "invoices" | "commission" | "aging";
+
+const TYPE_META: Record<Entry["type"], { label: string; badge: string; sign: string; cls: string }> = {
+  RECEIVED: { label: "收款", badge: "b-green", sign: "+", cls: "in" },
+  RECEIVABLE: { label: "应收", badge: "b-amber", sign: "", cls: "" },
+  COST: { label: "付款", badge: "b-slate", sign: "−", cls: "out" },
+  REFUND: { label: "退款", badge: "b-red", sign: "−", cls: "out" },
+  COMMISSION: { label: "分成", badge: "b-violet", sign: "", cls: "out" }
 };
 
-const pillCls = "inline-flex h-[32px] items-center gap-1.5 rounded-full border border-[#CFD7D3] bg-card px-3.5 text-[12.5px] text-muted-foreground shadow-[0_1px_2px_rgba(12,25,39,0.05)] transition-colors hover:border-input hover:bg-muted [&>select]:bg-transparent [&>select]:text-[12.5px] [&>select]:text-foreground [&>select]:outline-none";
+const yuan = (n: number, digits = 0) => `¥${n.toLocaleString("zh-CN", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+const mmdd = (d: Date | string) => {
+  const x = new Date(d);
+  return `${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
+};
 
-export function FinanceViewV4({ entries, monthly, stats, invoiceRequests, canApproveInvoice }: Props) {
-  const [tab, setTab] = useState<"overview" | "invoices">("overview");
-  const [typeFilter, setTypeFilter] = useState<"ALL" | Entry["type"]>("ALL");
+export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests, canApproveInvoice, canExport, canWrite }: Props) {
+  const params = useSearchParams();
+  const initialTab = (["ledger", "invoices", "commission", "aging"] as Tab[]).includes(params.get("tab") as Tab) ? (params.get("tab") as Tab) : "ledger";
+  const [tab, setTab] = useState<Tab>(initialTab);
+  const [q, setQ] = useState("");
+  const [range, setRange] = useState<string | undefined>("90");
+  const [typeFilter, setTypeFilter] = useState<Entry["type"] | undefined>(undefined);
   const [invoiceCreateOpen, setInvoiceCreateOpen] = useState(false);
+  const [recordOpen, setRecordOpen] = useState(false);
 
-  const filtered = useMemo(() => typeFilter === "ALL" ? entries : entries.filter(e => e.type === typeFilter), [entries, typeFilter]);
-  const pendingAmount = Math.max(0, stats.monthlyReceivable - stats.monthlyReceived);
-  const receivableRate = stats.monthlyReceivable > 0 ? Math.round((stats.monthlyReceived / stats.monthlyReceivable) * 100) : 0;
+  useTopbarAction(canWrite ? { label: "登记收付", onClick: () => setRecordOpen(true) } : null, [canWrite]);
 
-  const kpis = [
-    { label: "本月实收", value: formatCurrency(stats.monthlyReceived, { compact: true }), icon: Coins, bg: "#E7F3EA", color: "#1A7F45" },
-    { label: "本月待回款", value: formatCurrency(pendingAmount, { compact: true }), icon: TrendingUp, bg: stats.monthlyReceivable > stats.monthlyReceived ? "#FBECE9" : "#FAF0DB", color: pendingAmount > 0 ? "#B42318" : "#96650B", accent: stats.monthlyReceivable > stats.monthlyReceived },
-    { label: "本月已开票", value: formatCurrency(stats.monthlyIssued, { compact: true }), icon: FileText, bg: "#E9EEFA", color: "#1E56C8" },
-    { label: "本月回款率", value: `${receivableRate}%`, icon: Receipt, bg: "#E4F1F0", color: "#007B7F", progress: receivableRate }
-  ];
+  const filtered = useMemo(() => {
+    const since = range ? Date.now() - Number(range) * 86_400_000 : 0;
+    const kw = q.trim().toLowerCase();
+    return entries.filter(
+      (e) =>
+        (!typeFilter || e.type === typeFilter) &&
+        (!since || new Date(e.occurredAt).getTime() >= since) &&
+        (!kw || `${e.matter.title} ${e.matter.internalCode} ${e.payerOrPayee ?? ""} ${e.note ?? ""}`.toLowerCase().includes(kw))
+    );
+  }, [entries, q, range, typeFilter]);
+
+  const now = new Date();
+  const monthGrowth = stats.lastMonthReceived > 0 ? Math.round(((stats.monthlyReceived - stats.lastMonthReceived) / stats.lastMonthReceived) * 100) : null;
+  const monthReceivedCount = entries.filter((e) => e.type === "RECEIVED" && new Date(e.occurredAt).getMonth() === now.getMonth() && new Date(e.occurredAt).getFullYear() === now.getFullYear());
+  const unconfirmedReceived = monthReceivedCount.filter((e) => !e.confirmed);
+  const yearRate = stats.yearlyReceivable > 0 ? Math.round((stats.yearlyReceived / stats.yearlyReceivable) * 1000) / 10 : null;
+  const worst = aging.worst;
+  const pendingInvoices = invoiceRequests.filter((r) => r.status === "PENDING" || r.status === "APPROVED");
+  const invoiceRows = [...pendingInvoices, ...invoiceRequests.filter((r) => r.status === "ISSUED")].slice(0, 4);
+  const overdueRows = aging.items.filter((r) => (r.overdueDays ?? 0) > 0);
+  const commissionEntries = entries.filter((e) => e.type === "COMMISSION");
 
   return (
-    <div className="space-y-3.5 pb-8">
-      {/* 页头（效果图 08） */}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-[22px] font-bold tracking-[-0.02em]">财务</h1>
-          <p className="mt-1 text-[12.5px] text-muted-foreground">
-            {new Date().getFullYear()} 年 {new Date().getMonth() + 1} 月 · 数据截至 {new Date().toLocaleDateString("zh-CN")}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <a href="/api/finance/export" className="btn btn-secondary btn-sm"><Download className="h-3.5 w-3.5" />导出流水</a>
-        </div>
+    <div className="mo-finance">
+      <PageHeader
+        title="财务"
+        sub={`${now.getFullYear()} 年 ${now.getMonth() + 1} 月 · 数据截至 ${mmdd(now)} · 金额按财务查看权限范围汇总`}
+        actions={
+          canExport ? (
+            <a href={`/api/finance/export${range ? `?days=${range}` : ""}`} className="btn btn-secondary btn-sm">导出流水</a>
+          ) : null
+        }
+      />
+
+      <div className="kpi-grid">
+        <MetricCard
+          label="本月实收"
+          value={yuan(stats.monthlyReceived)}
+          trend={monthGrowth === null ? null : { tone: monthGrowth >= 0 ? "up" : "down", text: `${monthGrowth >= 0 ? "↑" : "↓"} ${Math.abs(monthGrowth)}%` }}
+          sub={`已确认 ${monthReceivedCount.length - unconfirmedReceived.length} 笔${unconfirmedReceived.length ? ` · ${unconfirmedReceived.length} 笔待确认 ${yuan(unconfirmedReceived.reduce((s, e) => s + e.amount, 0))}` : ""}`}
+        />
+        <MetricCard
+          label="应收余额"
+          value={yuan(aging.totalOutstanding)}
+          trend={{ tone: "info", text: `${aging.matterCount} 个案件` }}
+          sub={`按应收单核销口径 · 含未到期 ${yuan(aging.buckets[0].amount)}`}
+        />
+        <MetricCard
+          label="逾期未回款"
+          hot={aging.overdueAmount > 0}
+          value={yuan(aging.overdueAmount)}
+          trend={worst ? { tone: "down", text: `超期 ${worst.overdueDays} 天` } : { tone: "up", text: "无逾期" }}
+          sub={worst ? `${worst.matter.clientName ?? worst.matter.title} · ${worst.title} ${worst.dueDate ? `${mmdd(worst.dueDate)} 到期` : ""}` : "所有应收均在账期内"}
+        />
+        <MetricCard label="年度回款率" value={yearRate === null ? "—" : `${yearRate}%`} sub={yearRate === null ? "本年尚无应收" : `实收 ${yuan(stats.yearlyReceived)} / 应收 ${yuan(stats.yearlyReceivable)}`}>
+          {yearRate !== null ? (
+            <div className="progress" style={{ marginTop: 10 }}>
+              <div className="progress-fill" style={{ width: `${Math.min(100, yearRate)}%` }} />
+            </div>
+          ) : null}
+        </MetricCard>
       </div>
 
-      {/* KPI 四卡（效果图 08：待回款红卡 + 回款率进度条） */}
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        {kpis.map(k => {
-          const Icon = k.icon;
-          return (
-            <div key={k.label} className="rounded-xl border bg-card px-4 py-3.5 shadow-[0_1px_2px_rgba(12,25,39,0.05)]"
-              style={k.accent ? { borderColor: "#F0C6BF", background: "linear-gradient(180deg,#FFFFFF 55%,#FBECE9 165%)" } : { borderColor: "#E8ECEA" }}>
-              <div className="flex items-center gap-2">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: k.bg, color: k.color }}><Icon className="h-3.5 w-3.5" strokeWidth={1.8} /></span>
-                <span className="text-[11.5px] text-muted-foreground">{k.label}</span>
+      <div className="fin-tabs">
+        <Segmented
+          items={[
+            { key: "ledger", label: "收付流水" },
+            { key: "invoices", label: "开票管理", count: stats.pendingInvoiceCount || null },
+            { key: "commission", label: "律师分成" },
+            { key: "aging", label: "应收账龄", count: overdueRows.length || null }
+          ]}
+          value={tab}
+          onChange={setTab}
+        />
+      </div>
+
+      {tab === "ledger" ? (
+        <>
+          <div className="fin-grid">
+            <RevenueChart data={monthly} height={190} />
+            <div className="card">
+              <div className="panel-head">
+                <div className="panel-title">
+                  <FileText className="ic" strokeWidth={1.8} />
+                  开票进度
+                </div>
+                <button type="button" className="t-sm t-mute" onClick={() => setTab("invoices")}>开票管理 →</button>
               </div>
-              <div className="mt-2.5 font-mono text-[24px] font-semibold leading-none tabular" style={{ color: k.accent ? "#B42318" : "var(--foreground)" }}>{k.value}</div>
-              {typeof k.progress === "number" && (
-                <div className="mt-3 h-[5px] overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full" style={{ width: `${Math.min(100, k.progress)}%`, background: k.color }} /></div>
+              {invoiceRows.length === 0 && overdueRows.length === 0 ? (
+                <div className="empty mo-empty-compact"><div className="mo-empty-title">暂无开票申请</div></div>
+              ) : (
+                <>
+                  {invoiceRows.slice(0, overdueRows.length ? 3 : 4).map((r) => (
+                    <div key={r.id} className="inv-row">
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="inv-title truncate">{r.matter?.title ?? r.buyerName ?? "无关联案件开票"}{r.title ? ` · ${r.title}` : ""}</div>
+                        <div className="inv-meta truncate">
+                          {yuan(r.amount)} · {r.invoiceType === "SPECIAL" ? "专票" : "普票"} · {r.status === "ISSUED" ? `${r.issuedAt ? mmdd(r.issuedAt) : ""} 已开出${r.invoiceNo ? ` ${r.invoiceNo}` : ""}` : invoiceRequestStatusLabel[r.status]}
+                        </div>
+                      </div>
+                      <span className={cn("badge", r.status === "ISSUED" ? "b-green" : r.status === "REJECTED" ? "b-outline-red" : "b-teal")}>{r.status === "ISSUED" ? "已开票" : r.status === "REJECTED" ? "已驳回" : "待处理"}</span>
+                    </div>
+                  ))}
+                  {overdueRows.slice(0, 1).map((r) => (
+                    <div key={r.id} className="inv-row" style={{ background: "var(--red-bg)" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="inv-title truncate">{r.matter.clientName ?? r.matter.title} · {r.title}</div>
+                        <div className="inv-meta">{yuan(r.outstanding)} · 逾期 {r.overdueDays} 天未回款</div>
+                      </div>
+                      <button type="button" className="badge b-outline-red" onClick={() => setTab("aging")}>催收跟进</button>
+                    </div>
+                  ))}
+                </>
               )}
             </div>
-          );
-        })}
-      </div>
+          </div>
 
-      {/* 分段（效果图 08） */}
-      <div className="inline-flex gap-0.5 rounded-[10px] bg-[#E9EDEB] p-[3px]">
-        {[{ k: "overview", l: "收付流水" }, { k: "invoices", l: `开票管理${stats.pendingInvoiceCount > 0 ? ` ${stats.pendingInvoiceCount}` : ""}` }].map(t => (
-          <button key={t.k} type="button" onClick={() => setTab(t.k as "overview" | "invoices")}
-            className={cn("inline-flex h-[30px] items-center rounded-[7px] px-3.5 text-[12.5px] transition-colors", tab === t.k ? "bg-card font-semibold text-foreground shadow-[0_1px_2px_rgba(12,25,39,0.08)]" : "text-muted-foreground hover:text-foreground")}>{t.l}</button>
-        ))}
-      </div>
-
-      {tab === "overview" ? (
-        <>
-          {/* 趋势图（效果图 08） */}
-          <RevenueChart data={monthly} />
-
-          {/* 收付流水表（效果图 08：案卷脊 + 金额看色 + 冲正徽） */}
-          <div className="overflow-hidden rounded-xl border border-[#E8ECEA] bg-card shadow-[0_1px_2px_rgba(12,25,39,0.05)]">
-            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-              <div className="flex items-center gap-2">
-                <span className="h-3.5 w-[3px] rounded-full bg-primary" />
-                <h2 className="text-[13px] font-semibold">收付流水<span className="ml-1.5 font-mono text-[11px] text-muted-foreground">{filtered.length}</span></h2>
+          <div className="card" style={{ overflow: "hidden" }}>
+            <div className="panel-head flex-wrap">
+              <div className="panel-title">
+                <DollarSign className="ic" strokeWidth={1.8} />
+                收付流水 <span className="mo-count">{filtered.length}</span>
               </div>
-              <label className={pillCls}>类型
-                <select value={typeFilter} onChange={e => setTypeFilter(e.target.value as "ALL" | Entry["type"])}>
-                  <option value="ALL">全部</option>
-                  {(Object.keys(TYPE_LABEL) as Entry["type"][]).map(t => <option key={t} value={t}>{TYPE_LABEL[t]}</option>)}
-                </select>
-              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="mo-toolbar-input" style={{ width: 220, height: 30 }}>
+                  <Search aria-hidden />
+                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="按案件、对方户名搜索" aria-label="搜索流水" />
+                </label>
+                <FilterSelect label="类型" value={typeFilter} options={(Object.keys(TYPE_META) as Entry["type"][]).map((t) => ({ value: t, label: TYPE_META[t].label }))} onChange={(v) => setTypeFilter(v as Entry["type"] | undefined)} />
+                <FilterSelect label="期间" allLabel="全部" value={range} options={[{ value: "30", label: "近 30 天" }, { value: "90", label: "近 90 天" }, { value: "365", label: "近一年" }]} onChange={setRange} />
+                {canWrite ? (
+                  <button type="button" className="btn btn-primary btn-sm" onClick={() => setRecordOpen(true)}>
+                    <Plus />
+                    登记收付
+                  </button>
+                ) : null}
+              </div>
             </div>
             {filtered.length === 0 ? (
-              <p className="py-12 text-center text-xs text-muted-foreground">没有匹配的记录</p>
+              <div className="empty mo-empty-compact"><div className="mo-empty-title">没有匹配的收付记录</div><div className="mo-empty-desc">调整期间或类型筛选；收付在案件详情或点击「登记收付」录入。</div></div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="table">
-                  <thead><tr>
-                    <th style={{ width: "9%" }}>日期</th><th style={{ width: "26%" }}>案件 / 事项</th><th style={{ width: "9%" }}>类型</th>
-                    <th style={{ width: "12%" }} className="th-num">金额</th><th style={{ width: "13%" }}>归属 / 分成</th>
-                    <th style={{ width: "13%" }}>备注</th><th style={{ width: "10%" }}>经手</th><th style={{ width: "8%" }}>状态</th>
-                  </tr></thead>
+              <div className="mo-scroll-x">
+                <table className="mo-table" style={{ minWidth: 960 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ width: "10%", paddingLeft: 20 }}>日期</th>
+                      <th style={{ width: "24%" }}>案件 / 事项</th>
+                      <th style={{ width: "8%" }}>类型</th>
+                      <th style={{ width: "15%" }}>对方户名</th>
+                      <th style={{ width: "14%" }} className="num">金额</th>
+                      <th style={{ width: "10%" }}>方式</th>
+                      <th style={{ width: "10%" }}>经手</th>
+                      <th style={{ width: "9%" }}>状态</th>
+                    </tr>
+                  </thead>
                   <tbody>
-                    {filtered.map(e => {
-                      const color = TYPE_COLOR[e.type];
+                    {filtered.map((e) => {
+                      const meta = TYPE_META[e.type];
                       return (
-                        <tr key={e.id} className="transition-colors hover:bg-muted/50">
-                          <td className="relative px-4 py-2.5 pl-[18px] font-mono text-[12px] text-muted-foreground tabular">
-                            <span aria-hidden className="absolute left-0 top-[9px] bottom-[9px] w-[3px] rounded-r-[2px]" style={{ background: color }} />
-                            {new Date(e.occurredAt).toLocaleDateString("zh-CN")}
-                          </td>
-                          <td className="max-w-[16rem] px-4 py-2.5">
-                            <Link href={matterHref(e.matter)} className="block min-w-0 no-underline hover:text-primary">
-                              <span className="block truncate text-[12.75px] font-medium text-foreground">{e.matter.title}</span>
-                              <span className="block truncate font-mono text-[11px] text-muted-foreground tabular">{e.matter.internalCode}</span>
+                        <tr key={e.id} data-spine={e.type === "RECEIVED" ? "green" : e.type === "REFUND" ? "red" : e.type === "RECEIVABLE" ? "amber" : "slate"}>
+                          <td className="mono t-sm" style={{ paddingLeft: 20 }}>{mmdd(e.occurredAt)}</td>
+                          <td>
+                            <Link href={matterHref(e.matter)} className="block min-w-0 no-underline hover:text-[var(--teal-deep)]">
+                              <div className="fee-matter truncate">{e.matter.title}{e.note ? ` · ${e.note}` : ""}</div>
+                              <div className="fee-meta">{e.matter.internalCode}{e.invoiceNo ? ` · 发票 ${e.invoiceNo}` : ""}{e.beneficiaryUser ? ` · 分成给 ${e.beneficiaryUser.name}` : ""}</div>
                             </Link>
                           </td>
-                          <td className="px-4 py-2.5">
-                            <span className="inline-flex h-5 items-center rounded-full border px-2 text-[10.5px] font-medium" style={{ borderColor: `${color}50`, background: `${color}12`, color }}>{TYPE_LABEL[e.type]}</span>
-                            {e.type === "REFUND" && <span className="badge b-red mt-1" style={{ height: 18, fontSize: 10 }}>冲正</span>}
-                          </td>
-                          <td className="td-num px-4 py-2.5 font-mono text-[13px] font-semibold tabular" style={{ color: e.type === "RECEIVED" ? "#1A7F45" : e.type === "REFUND" ? "#B42318" : undefined }}>
-                            {e.type === "RECEIVED" ? "+" : e.type === "REFUND" ? "−" : ""}{formatCurrency(e.amount)}
-                          </td>
-                          <td className="max-w-[10rem] truncate px-4 py-2.5 text-[12px] text-muted-foreground">{e.beneficiaryUser ? `→ ${e.beneficiaryUser.name}` : "所内"}</td>
-                          <td className="max-w-[10rem] truncate px-4 py-2.5 text-[11.5px] text-muted-foreground">{e.note || "—"}</td>
-                          <td className="px-4 py-2.5 text-[12px] text-muted-foreground">{e.recordedBy.name}</td>
-                          <td className="px-4 py-2.5">
-                            <span className={cn("badge", e.type === "RECEIVED" ? "b-green" : e.type === "REFUND" ? "b-red" : "b-slate")}><span className="bdot" />{e.type === "REFUND" ? "已冲正" : "已确认"}</span>
+                          <td><span className={cn("badge", meta.badge)}>{meta.label}</span></td>
+                          <td className="t-sm max-w-[12rem] truncate">{e.payerOrPayee ?? <span className="t-faint">—</span>}</td>
+                          <td className={cn("num money", meta.cls)}>{meta.sign}{yuan(e.amount, 2)}</td>
+                          <td className="t-sm">{e.method ?? <span className="t-faint">—</span>}</td>
+                          <td className="t-sm">{e.recordedBy.name}</td>
+                          <td>
+                            {e.confirmed ? <span className="badge b-green" title="关联已签署合同或已登记发票号，不可物理删除">已确认</span> : <span className="badge b-white" title="尚未关联已签署合同或发票号">待确认</span>}
                           </td>
                         </tr>
                       );
@@ -175,19 +269,111 @@ export function FinanceViewV4({ entries, monthly, stats, invoiceRequests, canApp
                 </table>
               </div>
             )}
-            <p className="border-t border-[#E8ECEA] bg-muted/40 px-4 py-2.5 text-[11.5px] text-muted-foreground">已确认记录受保护：删除需走关联更正流程并留痕</p>
+            <div className="panel-foot t-xs t-mute">已确认记录受保护：关联已签署合同或已登记发票号的收付不可物理删除，更正需走关联冲正并留痕</div>
           </div>
         </>
-      ) : (
+      ) : null}
+
+      {tab === "invoices" ? (
+        <div className="card">
+          <div className="panel-head">
+            <div className="panel-title">
+              <FileText className="ic" strokeWidth={1.8} />
+              开票管理
+            </div>
+            <button type="button" onClick={() => setInvoiceCreateOpen(true)} className="btn btn-primary btn-sm">
+              <Plus />
+              新建开票申请
+            </button>
+          </div>
+          <div className="panel-body">
+            <InvoiceManagementSection requests={invoiceRequests} canApprove={canApproveInvoice} />
+          </div>
+        </div>
+      ) : null}
+
+      {tab === "commission" ? (
         <>
-          <div className="flex justify-end">
-            <button type="button" onClick={() => setInvoiceCreateOpen(true)} className="btn btn-primary btn-sm">新建开票申请</button>
+          <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+            <MetricCard label="我的本月分成" value={yuan(stats.personalMonthly)} sub="按案件分成方案自动派生，随实收到账计入" />
+            <MetricCard label="我的年度分成" value={yuan(stats.personalYearly)} sub={`${now.getFullYear()} 年累计`} />
           </div>
-          <InvoiceManagementSection requests={invoiceRequests} canApprove={canApproveInvoice} />
+          <div className="card" style={{ overflow: "hidden" }}>
+            <div className="panel-head">
+              <div className="panel-title">
+                <Users className="ic" strokeWidth={1.8} />
+                分成流水 <span className="mo-count">{commissionEntries.length}</span>
+              </div>
+              <span className="t-xs t-mute">分成方案在案件详情「财务明细」中维护</span>
+            </div>
+            {commissionEntries.length === 0 ? (
+              <div className="empty mo-empty-compact"><div className="mo-empty-title">暂无分成记录</div></div>
+            ) : (
+              <div className="mo-scroll-x">
+                <table className="mo-table" style={{ minWidth: 720 }}>
+                  <thead><tr><th style={{ paddingLeft: 20 }}>日期</th><th>案件</th><th>受益人</th><th className="num">金额</th><th>备注</th></tr></thead>
+                  <tbody>
+                    {commissionEntries.map((e) => (
+                      <tr key={e.id} data-spine="violet">
+                        <td className="mono t-sm" style={{ paddingLeft: 20 }}>{mmdd(e.occurredAt)}</td>
+                        <td><Link href={matterHref(e.matter)} className="fee-matter hover:text-[var(--teal-deep)]">{e.matter.title}</Link><div className="fee-meta">{e.matter.internalCode}</div></td>
+                        <td className="t-sm">{e.beneficiaryUser?.name ?? "—"}</td>
+                        <td className="num money">{yuan(e.amount, 2)}</td>
+                        <td className="t-sm t-mute max-w-[14rem] truncate">{e.note ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </>
-      )}
+      ) : null}
+
+      {tab === "aging" ? (
+        <>
+          <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }}>
+            {aging.buckets.map((b, i) => (
+              <MetricCard key={b.key} label={b.label} hot={i >= 3 && b.amount > 0} value={yuan(b.amount)} sub={`${b.count} 笔`} />
+            ))}
+          </div>
+          <div className="card" style={{ overflow: "hidden" }}>
+            <div className="panel-head">
+              <div className="panel-title">
+                <Clock3 className="ic" strokeWidth={1.8} />
+                未核销应收 <span className="mo-count">{aging.items.length}</span>
+              </div>
+              <span className="t-xs t-mute">余额 = 应收金额 − 已核销；按到期日排序</span>
+            </div>
+            {aging.items.length === 0 ? (
+              <div className="empty mo-empty-compact"><div className="mo-empty-title">暂无未核销应收</div></div>
+            ) : (
+              <div className="mo-scroll-x">
+                <table className="mo-table" style={{ minWidth: 760 }}>
+                  <thead><tr><th style={{ paddingLeft: 20 }}>到期日</th><th>案件 / 应收事项</th><th>客户</th><th className="num">未回款</th><th>账龄</th></tr></thead>
+                  <tbody>
+                    {aging.items.map((r) => {
+                      const d = r.overdueDays ?? 0;
+                      return (
+                        <tr key={r.id} data-spine={d > 60 ? "red" : d > 0 ? "amber" : "blue"} className={d > 30 ? "row-risk" : undefined}>
+                          <td className="mono t-sm" style={{ paddingLeft: 20 }}>{r.dueDate ? mmdd(r.dueDate) : "未约定"}</td>
+                          <td><Link href={matterHref(r.matter)} className="fee-matter hover:text-[var(--teal-deep)]">{r.matter.title} · {r.title}</Link><div className="fee-meta">{r.matter.internalCode}</div></td>
+                          <td className="t-sm">{r.matter.clientName ?? "—"}</td>
+                          <td className={cn("num money", d > 0 && "t-red")}>{yuan(r.outstanding, 2)}</td>
+                          <td>{d > 0 ? <span className={cn("badge", d > 30 ? "b-red" : "b-amber")}>逾期 {d} 天</span> : <span className="badge b-white">未到期</span>}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      ) : null}
 
       <InvoiceCreateDialog open={invoiceCreateOpen} onOpenChange={setInvoiceCreateOpen} canCreateUnlinkedInvoice={canApproveInvoice} />
+      {canWrite ? <RecordFeeLauncher open={recordOpen} onOpenChange={setRecordOpen} /> : null}
     </div>
   );
 }

@@ -653,3 +653,9 @@
   .mo-dash .action-grid { grid-template-columns: 1fr; }
   .mo-dash .greet-actions { flex-wrap: wrap; }
 }
+
+/* 08 财务 · 实现补充 */
+.mo-finance .kpi-grid > .card { padding: 15px 17px; }
+.mo-finance .mo-table tbody tr[data-spine="violet"] > td:first-child::before { background: var(--violet); }
+@media (max-width: 1180px) { .mo-finance .kpi-grid { grid-template-columns: repeat(2, 1fr) !important; } .mo-finance .fin-grid { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .mo-finance .kpi-grid { grid-template-columns: 1fr !important; } }

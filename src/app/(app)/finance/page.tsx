@@ -5,18 +5,21 @@ import {
   getPersonalRevenue
 } from "@/server/finance/actions";
 import { listInvoiceRequests, getInvoiceStats } from "@/server/invoices/actions";
+import { getReceivablesAging } from "@/server/finance/aging";
+import { hasCustomPermission } from "@/lib/roles/catalog";
 import { FinanceViewV4 } from "./_components/finance-view-v4";
 
 export default async function FinancePage() {
   const session = await getSession();
   const userId = session!.user.id;
 
-  const [entries, monthly, personal, invoiceRequests, invoiceStats] = await Promise.all([
-    listAllFeeEntries({ limit: 200 }),
-    getMonthlyRevenue(6),
+  const [entries, monthly, personal, invoiceRequests, invoiceStats, aging] = await Promise.all([
+    listAllFeeEntries({ limit: 500 }),
+    getMonthlyRevenue(12),
     getPersonalRevenue(userId),
     listInvoiceRequests(),
-    getInvoiceStats()
+    getInvoiceStats(),
+    getReceivablesAging()
   ]);
 
   const monthStart = new Date();
@@ -30,6 +33,13 @@ export default async function FinancePage() {
   const monthlyReceivable = entries
     .filter((e) => e.type === "RECEIVABLE" && new Date(e.occurredAt) >= monthStart)
     .reduce((acc, e) => acc + Number(e.amount), 0);
+  const lastMonthStart = new Date(monthStart.getFullYear(), monthStart.getMonth() - 1, 1);
+  const lastMonthReceived = entries
+    .filter((e) => e.type === "RECEIVED" && new Date(e.occurredAt) >= lastMonthStart && new Date(e.occurredAt) < monthStart)
+    .reduce((acc, e) => acc + Number(e.amount), 0);
+  const yearlyReceivable = entries
+    .filter((e) => e.type === "RECEIVABLE" && new Date(e.occurredAt) >= yearStart)
+    .reduce((acc, e) => acc + Number(e.amount), 0);
   const yearlyReceived = entries
     .filter((e) => e.type === "RECEIVED" && new Date(e.occurredAt) >= yearStart)
     .reduce((acc, e) => acc + Number(e.amount), 0);
@@ -38,13 +48,19 @@ export default async function FinancePage() {
     <FinanceViewV4
       entries={entries.map((entry) => ({
         ...entry,
-        amount: Number(entry.amount)
+        amount: Number(entry.amount),
+        confirmed: Boolean(entry.billing?.signedAt || entry.invoiceNo)
       }))}
-      monthly={monthly}
+      monthly={monthly.slice(-6)}
+      aging={aging}
+      canExport={hasCustomPermission(session!.user, "reports.export")}
+      canWrite={hasCustomPermission(session!.user, "finance.write")}
       stats={{
         monthlyReceived,
         monthlyReceivable,
         yearlyReceived,
+        yearlyReceivable,
+        lastMonthReceived,
         personalMonthly: personal.monthlyCommission,
         personalYearly: personal.yearlyCommission,
         monthlyIssued: invoiceStats.monthlyIssued,
