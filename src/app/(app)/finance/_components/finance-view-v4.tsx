@@ -217,12 +217,6 @@ export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests,
                 </label>
                 <FilterSelect label="类型" value={typeFilter} options={(Object.keys(TYPE_META) as Entry["type"][]).map((t) => ({ value: t, label: TYPE_META[t].label }))} onChange={(v) => setTypeFilter(v as Entry["type"] | undefined)} />
                 <FilterSelect label="期间" allLabel="全部" value={range} options={[{ value: "30", label: "近 30 天" }, { value: "90", label: "近 90 天" }, { value: "365", label: "近一年" }]} onChange={setRange} />
-                {canWrite ? (
-                  <button type="button" className="btn btn-primary btn-sm" onClick={() => setRecordOpen(true)}>
-                    <Plus />
-                    登记收付
-                  </button>
-                ) : null}
               </div>
             </div>
             {filtered.length === 0 ? (

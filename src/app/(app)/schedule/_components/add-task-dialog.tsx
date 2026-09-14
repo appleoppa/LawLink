@@ -5,7 +5,7 @@ import { FormDialogContent as DialogContent, FormDialogBody } from "@/components
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, Plus, Clock } from "lucide-react";
+import { Loader2, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -94,11 +94,11 @@ export function AddTaskDialog({
           assigneeId: "",
           stageId: ""
         });
-        toast.success("事项已添加");
+        toast.success("任务已创建");
         onOpenChange(false);
         router.refresh();
       } catch (err) {
-        toast.error("添加失败", {
+        toast.error("创建失败", {
           description: err instanceof Error ? err.message : ""
         });
       }
@@ -110,8 +110,7 @@ export function AddTaskDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Plus className="h-4 w-4 text-primary" />
-            添加事项
+            新建任务
           </DialogTitle>
           <DialogDescription className="text-xs">
             {date
@@ -231,7 +230,7 @@ export function AddTaskDialog({
           </Button>
           <Button onClick={submit} disabled={isPending} className="gap-1.5">
             {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-            添加
+            创建任务
           </Button>
         </DialogFooter>
       </DialogContent>
