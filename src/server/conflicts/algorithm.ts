@@ -16,10 +16,16 @@
  *   候选 CLIENT_PARTY  ×  历史 CLIENT_PARTY    → LOW         熟客户复办
  *   候选 THIRD_PARTY    × 任何                  → MEDIUM
  *   身份证一致 → 在原严重度基础上升 1 级（BLOCKING 顶天）
+ *
+ * 检索范围（2026-09-14 用户确认）：历史案件当事人、客户档案关联案件，以及尚未转为案件的在办收案
+ * （INTAKE / PENDING_CONFIRMATION / NEEDS_REVISION）的当事人与委托方。在办收案命中只披露收案名称、
+ * 登记人、状态、登记日期与命中角色（targetType = "Intake"），不开放收案内容。
  */
 
 import type { Prisma, PartyRole, LitigationStanding, MatterCategory, MatterStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { blindIdNumber } from "@/lib/clients/id-number-crypto";
+import { normalizeIdNumber } from "@/lib/clients/identity";
 
 export type QueryItem = {
   role: PartyRole;
@@ -73,9 +79,44 @@ function toMatterInfo(
   };
 }
 
+export const IN_PROGRESS_INTAKE_STATUSES = ["INTAKE", "PENDING_CONFIRMATION", "NEEDS_REVISION"] as const;
+
+export type IntakeInfoForHit = {
+  intakeId: string;
+  title: string;
+  status: (typeof IN_PROGRESS_INTAKE_STATUSES)[number];
+  receivedAt: Date;
+  registrantName: string | null;
+  partyRole: PartyRole;
+  partyStanding: LitigationStanding | null;
+};
+
+const intakeInfoSelect = {
+  id: true,
+  title: true,
+  status: true,
+  receivedAt: true,
+  ownerUser: { select: { name: true } },
+  createdBy: { select: { name: true } }
+} as const;
+
+type SelectedIntakeInfo = Prisma.IntakeGetPayload<{ select: typeof intakeInfoSelect }>;
+
+function toIntakeInfo(intake: SelectedIntakeInfo, partyRole: PartyRole, partyStanding: LitigationStanding | null): IntakeInfoForHit {
+  return {
+    intakeId: intake.id,
+    title: intake.title,
+    status: intake.status as IntakeInfoForHit["status"],
+    receivedAt: intake.receivedAt,
+    registrantName: intake.ownerUser?.name ?? intake.createdBy?.name ?? null,
+    partyRole,
+    partyStanding
+  };
+}
+
 export type ConflictHitDraft = {
-  hitType: "HISTORICAL_PARTY";
-  targetType: "Matter";
+  hitType: "HISTORICAL_PARTY" | "IN_PROGRESS_INTAKE";
+  targetType: "Matter" | "Intake";
   targetId: string;
   matchedName: string;
   matchedField: "name" | "idNumber";
@@ -83,7 +124,8 @@ export type ConflictHitDraft = {
   matchedRatio: number;
   severity: "LOW" | "MEDIUM" | "HIGH" | "BLOCKING";
   reason: string;
-  matterInfo: MatterInfoForHit;
+  matterInfo: MatterInfoForHit | null;
+  intakeInfo?: IntakeInfoForHit | null;
 };
 
 export type SameNameClient = {
@@ -126,7 +168,8 @@ function pickSeverity(
   return "MEDIUM";
 }
 
-export async function runConflictCheck(queries: QueryItem[]): Promise<ConflictCheckResult> {
+/** excludeIntakeId：收案发起的正式检索须排除该收案自身的当事人 */
+export async function runConflictCheck(queries: QueryItem[], options: { excludeIntakeId?: string } = {}): Promise<ConflictCheckResult> {
   const hits: ConflictHitDraft[] = [];
   const sameNameClients = new Map<string, SameNameClient>();
   const idMatchedClients = new Map<string, IdMatchedClient>();
@@ -143,8 +186,11 @@ export async function runConflictCheck(queries: QueryItem[]): Promise<ConflictCh
     // ============ 历史案件 Party 匹配 ============
     const partyWhere: Prisma.PartyWhereInput[] = [];
     if (name) partyWhere.push({ name });
-    if (idNumber) partyWhere.push({ idNumber });
+    // 自然人证件存 idNumber，单位信用代码存 enterpriseSocialCode，两列都要比对
+    if (idNumber) partyWhere.push({ idNumber }, { enterpriseSocialCode: idNumber });
     if (partyWhere.length === 0) continue;
+    // 客户档案证件号为密文，只能用盲索引精确比对
+    const idBlind = idNumber ? blindIdNumber(normalizeIdNumber(idNumber) ?? idNumber) : null;
 
     const partiesExact = await prisma.party.findMany({
       where: {
@@ -156,6 +202,7 @@ export async function runConflictCheck(queries: QueryItem[]): Promise<ConflictCh
         id: true,
         name: true,
         idNumber: true,
+        enterpriseSocialCode: true,
         role: true,
         standing: true,
         matter: {
@@ -169,7 +216,7 @@ export async function runConflictCheck(queries: QueryItem[]): Promise<ConflictCh
       const matterInfo = toMatterInfo(p.matter, p.role, p.standing);
 
       // 身份证一致 → 在基础严重度上升 1 级
-      if (idNumber && p.idNumber && p.idNumber === idNumber) {
+      if (idNumber && (p.idNumber === idNumber || p.enterpriseSocialCode === idNumber)) {
         const base = pickSeverity(q.role, p.role);
         const sev = bumpSeverity(base);
         hits.push({
@@ -239,6 +286,9 @@ export async function runConflictCheck(queries: QueryItem[]): Promise<ConflictCh
       }
     }
 
+    // ============ 在办收案（尚未转为案件）============
+    await collectIntakeHits(hits, q, name, idNumber, options.excludeIntakeId);
+
     // ============ v0.43: 客户档案 → 关联案件 检索（修复漏报）============
     // 老案件常只在 Matter.primaryClient / clientLinks 记客户、Party 表为空，
     // 上面的 Party 检索会漏掉。客户作为某案件的「委托方(CLIENT_PARTY)」是真实
@@ -246,7 +296,7 @@ export async function runConflictCheck(queries: QueryItem[]): Promise<ConflictCh
     // 不滤 status（已归档/进行中都要提示）；孤立客户档案（无任何关联案件）不产出命中。
     const clientWhere: Prisma.ClientWhereInput[] = [];
     if (name) clientWhere.push({ name });
-    if (idNumber) clientWhere.push({ idNumber });
+    if (idBlind) clientWhere.push({ idNumberBlind: idBlind });
     if (name && name.length >= 3) clientWhere.push({ name: { contains: name, mode: "insensitive" } });
 
     if (clientWhere.length > 0) {
@@ -255,7 +305,7 @@ export async function runConflictCheck(queries: QueryItem[]): Promise<ConflictCh
         select: {
           id: true,
           name: true,
-          idNumber: true,
+          idNumberBlind: true,
           matters: { where: { deletedAt: null }, select: matterInfoSelect },
           matterLinks: {
             where: { matter: { deletedAt: null } },
@@ -270,7 +320,7 @@ export async function runConflictCheck(queries: QueryItem[]): Promise<ConflictCh
           (m, i, arr) => arr.findIndex((x) => x.id === m.id) === i
         );
 
-        const idHit = !!(idNumber && c.idNumber && c.idNumber === idNumber);
+        const idHit = !!(idBlind && c.idNumberBlind === idBlind);
         const nameExact = !!(name && c.name === name);
         const nameFuzzy = !!(name && !nameExact && name.length >= 3);
 
@@ -342,6 +392,76 @@ export async function runConflictCheck(queries: QueryItem[]): Promise<ConflictCh
     sameNameClients: Array.from(sameNameClients.values()),
     idMatchedClients: Array.from(idMatchedClients.values())
   };
+}
+
+async function collectIntakeHits(
+  hits: ConflictHitDraft[],
+  q: QueryItem,
+  name: string,
+  idNumber: string | null,
+  excludeIntakeId: string | undefined
+) {
+  const intakeScope: Prisma.IntakeWhereInput = {
+    status: { in: [...IN_PROGRESS_INTAKE_STATUSES] },
+    ...(excludeIntakeId ? { id: { not: excludeIntakeId } } : {})
+  };
+  const push = (intake: SelectedIntakeInfo, matchedName: string, partyRole: PartyRole, standing: LitigationStanding | null, field: "name" | "idNumber", ratio: number) => {
+    const base = pickSeverity(q.role, partyRole);
+    const severity = field === "idNumber" ? bumpSeverity(base) : ratio < 1 ? "LOW" : base;
+    const what = field === "idNumber" ? "身份证 / 信用代码一致" : ratio < 1 ? "名称相似" : "同名";
+    hits.push({
+      hitType: "IN_PROGRESS_INTAKE",
+      targetType: "Intake",
+      targetId: intake.id,
+      matchedName,
+      matchedField: field,
+      matchedValue: field === "idNumber" ? idNumber! : name,
+      matchedRatio: ratio,
+      severity,
+      reason: `与在办收案「${intake.title}」中 ${roleLabel(partyRole)}「${matchedName}」${what}`,
+      matterInfo: null,
+      intakeInfo: toIntakeInfo(intake, partyRole, standing)
+    });
+  };
+
+  const or: Prisma.PartyWhereInput[] = [];
+  if (name) or.push({ name });
+  if (name && name.length >= 3) or.push({ name: { contains: name, mode: "insensitive" } });
+  if (idNumber) or.push({ idNumber }, { enterpriseSocialCode: idNumber });
+  if (or.length) {
+    const parties = await prisma.party.findMany({
+      where: { intakeId: { not: null }, intake: intakeScope, OR: or },
+      select: { name: true, idNumber: true, enterpriseSocialCode: true, role: true, standing: true, intake: { select: intakeInfoSelect } },
+      take: 50
+    });
+    for (const p of parties) {
+      if (!p.intake) continue;
+      if (idNumber && (p.idNumber === idNumber || p.enterpriseSocialCode === idNumber)) push(p.intake, p.name, p.role, p.standing, "idNumber", 1);
+      if (name && p.name === name) push(p.intake, p.name, p.role, p.standing, "name", 1);
+      else if (name && name.length >= 3 && p.name.toLowerCase().includes(name.toLowerCase())) push(p.intake, p.name, p.role, p.standing, "name", name.length / p.name.length);
+    }
+  }
+
+  // 收案关联的客户档案（部分收案委托方只挂 clientId、未落 Party 行）
+  const clientOr: Prisma.ClientWhereInput[] = [];
+  if (name) clientOr.push({ name });
+  if (name && name.length >= 3) clientOr.push({ name: { contains: name, mode: "insensitive" } });
+  const idBlind = idNumber ? blindIdNumber(normalizeIdNumber(idNumber) ?? idNumber) : null;
+  if (idBlind) clientOr.push({ idNumberBlind: idBlind });
+  if (clientOr.length) {
+    const intakes = await prisma.intake.findMany({
+      where: { ...intakeScope, client: { deletedAt: null, OR: clientOr }, parties: { none: { role: "CLIENT_PARTY" } } },
+      select: { ...intakeInfoSelect, client: { select: { name: true, idNumberBlind: true } } },
+      take: 50
+    });
+    for (const intake of intakes) {
+      const c = intake.client;
+      if (!c) continue;
+      if (idBlind && c.idNumberBlind === idBlind) push(intake, c.name, "CLIENT_PARTY", null, "idNumber", 1);
+      if (name && c.name === name) push(intake, c.name, "CLIENT_PARTY", null, "name", 1);
+      else if (name && name.length >= 3 && c.name.toLowerCase().includes(name.toLowerCase())) push(intake, c.name, "CLIENT_PARTY", null, "name", name.length / c.name.length);
+    }
+  }
 }
 
 function roleLabel(role: PartyRole) {

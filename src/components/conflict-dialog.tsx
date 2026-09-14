@@ -171,10 +171,10 @@ export function ConflictDialog({
         <DialogHeader className="border-b border-border bg-background px-6 py-4">
           <DialogTitle className="flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-primary" />
-            利益冲突检索
+            冲突预检
           </DialogTitle>
           <DialogDescription className="text-xs">
-            填入待查的姓名或证件号（至少一项），快速比对历史客户与案件
+            填入姓名或证件号（至少一项），快速了解本所历史案件与在办收案中是否有相关记录；预检不出结论
           </DialogDescription>
         </DialogHeader>
 
@@ -349,7 +349,7 @@ export function ConflictDialog({
                 <div className="rounded-md border border-[#1A7F45]/30 bg-[#1A7F45]/10 p-3 text-sm">
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-[#1A7F45]" />
-                    <span>未命中任何历史客户或案件</span>
+                    <span>未发现相关记录（不等于确认无冲突）</span>
                   </div>
                 </div>
               ) : (
@@ -383,7 +383,7 @@ export function ConflictDialog({
                               </span>
                               <span className="text-xs text-muted-foreground">·</span>
                               <span className="text-xs text-muted-foreground">
-                                {h.hitType === "HISTORICAL_CLIENT" ? "历史客户" : "历史案件"}
+                                {h.hitType === "IN_PROGRESS_INTAKE" ? "在办收案" : h.hitType === "HISTORICAL_CLIENT" ? "历史客户" : "历史案件"}
                               </span>
                             </div>
                             <p className="mt-1 text-sm">{h.reason}</p>

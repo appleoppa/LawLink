@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { formatDate } from "@/lib/utils";
 import { decryptIdNumber } from "@/lib/clients/id-number-crypto";
 import { clientIdTypeLabel } from "@/lib/clients/person-id";
-import { barFilingLabel, clientTypeLabel, conflictConclusionLabel, feeTypeLabel, litigationStandingLabel, matterCategoryLabel, matterCategoryKind, partyTypeLabel, procedureTypeLabel } from "@/lib/enums";
+import { barFilingLabel, clientTypeLabel, intakeStatusLabel, conflictConclusionLabel, feeTypeLabel, litigationStandingLabel, matterCategoryLabel, matterCategoryKind, partyTypeLabel, procedureTypeLabel } from "@/lib/enums";
 import { buildIntakeConflictQueries, conflictPartyRoleLabel, conflictQueryCoverage, readConflictPayload, type IntakeReviewField, type IntakeReviewSection } from "@/lib/approvals/intake-detail";
 
 /** 自然人证件字段标签：身份证显示「身份证号」，其他证件带证件类型名 */
@@ -87,13 +87,17 @@ export async function loadIntakeApprovalDetail(id: string) {
     ] }
   ];
   const matterIds = [...new Set(r.conflictChecks.flatMap(c => c.hits.filter(h => h.targetType === "Matter").map(h => h.targetId)))];
-  const [matters, decisions] = await Promise.all([
+  const intakeIds = [...new Set(r.conflictChecks.flatMap(c => c.hits.filter(h => h.targetType === "Intake").map(h => h.targetId)))];
+  const [matters, decisions, intakes] = await Promise.all([
     matterIds.length ? prisma.matter.findMany({ where: { id: { in: matterIds }, deletedAt: null }, select: {
       id: true, internalCode: true, title: true, owner: { select: { name: true } },
       parties: { select: { name: true, idNumber: true, enterpriseSocialCode: true, role: true, standing: true } }
     } }) : [],
-    r.conflictChecks.length ? prisma.auditLog.findMany({ where: { action: "CONFLICT_CONCLUSION_SET", targetType: "ConflictCheck", targetId: { in: r.conflictChecks.map(c => c.id) } }, select: { targetId: true } }) : []
+    r.conflictChecks.length ? prisma.auditLog.findMany({ where: { action: "CONFLICT_CONCLUSION_SET", targetType: "ConflictCheck", targetId: { in: r.conflictChecks.map(c => c.id) } }, select: { targetId: true } }) : [],
+    // 在办收案命中：仅名称、登记人、状态（最小披露）
+    intakeIds.length ? prisma.intake.findMany({ where: { id: { in: intakeIds } }, select: { id: true, title: true, status: true, ownerUser: { select: { name: true } }, createdBy: { select: { name: true } } } }) : []
   ]);
+  const intakeById = new Map(intakes.map(i => [i.id, i]));
   const byId = new Map(matters.map(m => [m.id, m]));
   const manuallySet = new Set(decisions.map(d => d.targetId));
   const expected = buildIntakeConflictQueries(r, decryptIdNumber);
@@ -109,6 +113,7 @@ export async function loadIntakeApprovalDetail(id: string) {
         const m = h.targetType === "Matter" ? byId.get(h.targetId) : undefined;
         const matched = m?.parties.filter(p => h.matchedField === "name" ? p.name === h.matchedName : h.matchedField === "idNumber" ? p.idNumber === h.matchedValue : h.matchedField === "enterpriseSocialCode" ? p.enterpriseSocialCode === h.matchedValue : false) ?? [];
         return { id: h.id, matchedName: h.matchedName, matchedField: h.matchedField, matchedValue: h.matchedValue, matchedRatio: h.matchedRatio, severity: h.severity, reason: h.reason,
+          intake: h.targetType === "Intake" ? (() => { const i = intakeById.get(h.targetId); return i ? { title: i.title, status: intakeStatusLabel[i.status], registrant: i.ownerUser?.name ?? i.createdBy?.name ?? "未记录" } : null; })() : null,
           matter: m ? { code: m.internalCode, title: m.title, ownerName: m.owner?.name ?? "未记录", roles: [...new Set(matched.map(p => `${conflictPartyRoleLabel[p.role]}${p.standing ? ` · ${litigationStandingLabel[p.standing]}` : ""}`))].join("、") || "当前档案无法核实命中角色" } : null };
       })
     };

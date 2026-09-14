@@ -16,7 +16,7 @@ describe("立案详情人工核查展示", () => {
     expect(screen.getByText(/不能代替审批判断/)).toBeInTheDocument();
   });
   it("展开相同、相似和证件结果，具体结果先于结论且证件默认隐藏", () => {
-    const base = { id: "exact", matchedField: "name", matchedValue: "测试公司", matchedName: "测试公司", matchedRatio: 1, severity: "LOW" as const, reason: "历史同名记录", matter: { code: "TEST-001", title: "测试历史案件", ownerName: "测试律师", roles: "委托方" } };
+    const base = { id: "exact", matchedField: "name", matchedValue: "测试公司", matchedName: "测试公司", matchedRatio: 1, severity: "LOW" as const, reason: "历史同名记录", intake: null, matter: { code: "TEST-001", title: "测试历史案件", ownerName: "测试律师", roles: "委托方" } };
     render(<IntakeApprovalContent view="conflicts" detail={{ sections: [], currentParties: [{ role: "OPPOSING_PARTY", name: "本案测试对方", idNumber: "" }], checks: [{
       id: "check", checkedAt: new Date(), conclusion: "待人工核实", source: "历史记录", decidedBy: null, decidedAt: null, note: null, coversCurrentParties: true, queries: [], sameNameClients: [], idMatchedClients: [],
       hits: [base, { ...base, id: "similar", matchedName: "测试公司分公司", matchedRatio: 0.6 }, { ...base, id: "id", matchedField: "idNumber", matchedValue: "TEST-SECRET-ID" }, { ...base, id: "old", matchedField: "legacy" }]

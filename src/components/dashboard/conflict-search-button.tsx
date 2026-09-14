@@ -9,9 +9,9 @@ export function ConflictSearchButton() {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className="btn btn-secondary" title="快速预检；完整检索与结论留痕请进入「冲突检索」">
+      <button type="button" onClick={() => setOpen(true)} className="btn btn-secondary" title="快速了解本所是否有相关记录；不出结论，正式检索在登记收案时进行">
         <Clock3 strokeWidth={1.8} />
-        发起冲突检索
+        冲突预检
       </button>
       <ConflictDialog open={open} onOpenChange={setOpen} />
     </>

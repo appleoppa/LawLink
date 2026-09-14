@@ -87,7 +87,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap", alignItems: "center" }}>
           {canWrite ? <ClientEditButton client={client} /> : null}
-          <Link href={`/conflicts?name=${encodeURIComponent(client.name)}`} className="btn btn-secondary btn-sm">冲突检索</Link>
+          <Link href={`/conflicts?name=${encodeURIComponent(client.name)}`} className="btn btn-secondary btn-sm">冲突预检</Link>
           {canMerge && insights.suspects.length === 0 ? <MergeBanner keepId={client.id} keepName={client.name} suspects={[]} canMerge={canMerge} /> : null}
           <div style={{ flex: 1 }} />
           <span className="t-xs t-faint">资料修改与审计同事务留痕 · 证件与电话明文查看逐次审计</span>

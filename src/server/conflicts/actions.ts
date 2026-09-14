@@ -7,9 +7,17 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import { matterAssociationFilter } from "@/lib/permissions";
-import { runConflictCheck, conflictHitKey, type MatterInfoForHit, type QueryItem } from "./algorithm";
+import { runConflictCheck, conflictHitKey, type IntakeInfoForHit, type MatterInfoForHit, type QueryItem } from "./algorithm";
 
-function serializeMatterInfo(info: MatterInfoForHit | undefined, canViewMatter: boolean) {
+function serializeIntakeInfo(info: IntakeInfoForHit | null | undefined) {
+  if (!info) return null;
+  // 在办收案命中只披露名称、登记人、状态、登记日期与命中角色；不返回收案 ID
+  const { intakeId: _intakeId, ...rest } = info;
+  void _intakeId;
+  return { ...rest, receivedAt: info.receivedAt.toISOString() };
+}
+
+function serializeMatterInfo(info: MatterInfoForHit | null | undefined, canViewMatter: boolean) {
   if (!info) return null;
   return {
     ...info,
@@ -67,7 +75,9 @@ const runCheckSchema = z.object({
 
 /**
  * 跑一次冲突检索并落库。
- * 如果 intakeId 在，则把 ConflictCheck 挂在该 Intake 上；否则单独存（targetType=Intake 为空）。
+ * - 带 intakeId：收案正式检索，挂在该收案上；未命中时系统自动给出「未命中」结论，供审批与转案件把关。
+ * - 不带 intakeId：工作区「冲突预检」，律师自行了解本所记录。只留存检索记录与审计，
+ *   不出任何结论（conclusion 恒为 PENDING），也不能被收案引用（2026-09-14 用户确认）。
  */
 export async function runCheckAndSave(input: z.infer<typeof runCheckSchema>) {
   const session = await requireSession("intakes.create");
@@ -80,9 +90,11 @@ export async function runCheckAndSave(input: z.infer<typeof runCheckSchema>) {
     idNumber: q.idNumber?.trim() || undefined
   }));
 
-  const result = await runConflictCheck(queries);
-  const noHits = result.hits.length === 0;
+  const result = await runConflictCheck(queries, { excludeIntakeId: data.intakeId });
+  const precheck = !data.intakeId;
+  const noHits = result.hits.length === 0 && !precheck;
   const matterInfoByHit = new Map(result.hits.map((h) => [conflictHitKey(h), h.matterInfo]));
+  const intakeInfoByHit = new Map(result.hits.map((h) => [conflictHitKey(h), h.intakeInfo]));
   const openableMatterIds = await getOpenableMatterIds(
     session.user.id,
     result.hits.filter((h) => h.targetType === "Matter").map((h) => h.targetId)
@@ -124,9 +136,10 @@ export async function runCheckAndSave(input: z.infer<typeof runCheckSchema>) {
     targetId: check.id,
     detail: {
       intakeId: data.intakeId,
+      kind: precheck ? "PRECHECK" : "INTAKE",
       hitCount: result.hits.length,
       sameNameClientCount: result.sameNameClients.length,
-      autoConclusion: noHits ? "DIFFERENT" : "PENDING"
+      autoConclusion: precheck ? null : noHits ? "DIFFERENT" : "PENDING"
     }
   });
 
@@ -140,8 +153,9 @@ export async function runCheckAndSave(input: z.infer<typeof runCheckSchema>) {
       const canViewMatter = h.targetType === "Matter" && openableMatterIds.has(h.targetId);
       return {
         ...h,
-        targetId: h.targetType === "Matter" && !canViewMatter ? "" : h.targetId,
-        matterInfo: serializeMatterInfo(matterInfoByHit.get(conflictHitKey(h)), canViewMatter)
+        targetId: h.targetType === "Matter" && canViewMatter ? h.targetId : "",
+        matterInfo: serializeMatterInfo(matterInfoByHit.get(conflictHitKey(h)), canViewMatter),
+        intakeInfo: serializeIntakeInfo(intakeInfoByHit.get(conflictHitKey(h)))
       };
     }),
     sameNameClients: result.sameNameClients,
@@ -158,6 +172,9 @@ const conclusionSchema = z.object({
 export async function setConflictConclusion(input: z.infer<typeof conclusionSchema>) {
   const session = await requireSession("intakes.create");
   const data = conclusionSchema.parse(input);
+  const target = await prisma.conflictCheck.findUnique({ where: { id: data.checkId }, select: { intakeId: true } });
+  if (!target) throw new Error("检索记录不存在");
+  if (!target.intakeId) throw new Error("冲突预检仅供了解情况，不出检索结论；正式结论请在收案中给出");
 
   const updated = await roleMutation(session.user, "intakes.create", async roleDb => roleDb.conflictCheck.update({
     where: { id: data.checkId },
@@ -185,7 +202,7 @@ export async function setConflictConclusion(input: z.infer<typeof conclusionSche
 }
 
 /**
- * 墨案 06「既往检索记录」：仅列当前账号本人发起的检索（以 CONFLICT_CHECK_RUN 审计为准），
+ * 工作区「既往预检记录」：仅列当前账号本人发起、未挂收案的预检（以 CONFLICT_CHECK_RUN 审计为准），
  * 不跨人展示他人检索的主体名称——检索对象本身可能是尚未签约的潜在客户。
  */
 export async function listMyRecentConflictChecks(limit = 8) {
@@ -193,13 +210,13 @@ export async function listMyRecentConflictChecks(limit = 8) {
   const logs = await prisma.auditLog.findMany({
     where: { userId: session.user.id, action: "CONFLICT_CHECK_RUN", targetType: "ConflictCheck" },
     orderBy: { createdAt: "desc" },
-    take: limit,
+    take: limit * 4,
     select: { targetId: true }
   });
   const ids = logs.map((l) => l.targetId).filter((v): v is string => Boolean(v));
   if (ids.length === 0) return [];
   const checks = await prisma.conflictCheck.findMany({
-    where: { id: { in: ids } },
+    where: { id: { in: ids }, intakeId: null },
     select: {
       id: true,
       checkedAt: true,
@@ -213,6 +230,7 @@ export async function listMyRecentConflictChecks(limit = 8) {
   return ids
     .map((id) => byId.get(id))
     .filter((c): c is NonNullable<typeof c> => Boolean(c))
+    .slice(0, limit)
     .map((c) => {
       const payload = (c.queryPayload ?? {}) as { queries?: { name?: string }[] };
       const names = (payload.queries ?? []).map((q) => q.name ?? "").filter(Boolean);

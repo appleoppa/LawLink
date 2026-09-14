@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const { run, create } = vi.hoisted(() => ({ run: vi.fn(), create: vi.fn() }));
-vi.mock("@/lib/prisma", () => ({ prisma: {} }));
+const { findUnique } = vi.hoisted(() => ({ findUnique: vi.fn() }));
+vi.mock("@/lib/prisma", () => ({ prisma: { conflictCheck: { findUnique } } }));
 vi.mock("@/lib/auth/session", () => ({ requireSession: async () => ({ user: { id: "test-user" } }) }));
 vi.mock("@/lib/roles/service", () => ({ roleMutation: async (_user: unknown, _permission: unknown, fn: (db: unknown) => unknown) => fn({ conflictCheck: { create } }) }));
 vi.mock("@/server/audit", () => ({ audit: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/server/conflicts/algorithm", () => ({ runConflictCheck: run, conflictHitKey: vi.fn() }));
-import { runCheckAndSave } from "@/server/conflicts/actions";
+import { runCheckAndSave, setConflictConclusion } from "@/server/conflicts/actions";
 import { buildIntakeConflictQueries } from "@/lib/approvals/intake-detail";
 
 beforeEach(() => {
@@ -37,5 +38,19 @@ describe("新收案完整检索条件", () => {
   });
   it("独立快捷检索仍允许只输入名称", async () => {
     await expect(runCheckAndSave({ queries: [{ name: "测试公司" }] })).resolves.toMatchObject({ ok: true });
+  });
+  it("工作区预检不出结论：未命中也保持待定，不自动记为可承办", async () => {
+    await runCheckAndSave({ queries: [{ name: "测试公司" }] });
+    expect(create.mock.calls[0][0].data).toMatchObject({ conclusion: "PENDING", decidedById: null, note: null });
+    expect(run.mock.calls[0][1]).toEqual({ excludeIntakeId: undefined });
+  });
+  it("收案正式检索未命中仍自动给出未命中结论，并排除收案自身", async () => {
+    await runCheckAndSave({ intakeId, queries: [{ role: "OPPOSING_PARTY", name: "测试公司" }] });
+    expect(create.mock.calls[0][0].data.conclusion).toBe("DIFFERENT");
+    expect(run.mock.calls[0][1]).toEqual({ excludeIntakeId: intakeId });
+  });
+  it("预检记录不能设置检索结论", async () => {
+    findUnique.mockResolvedValue({ intakeId: null });
+    await expect(setConflictConclusion({ checkId: "ccheck00000000000000000001", conclusion: "DIFFERENT" })).rejects.toThrow("冲突预检仅供了解情况");
   });
 });

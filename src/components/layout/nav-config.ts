@@ -34,7 +34,7 @@ export const primaryNav: NavItem[] = [
   { label: "案件", href: "/matters", icon: Folder, countKey: "matters" },
   { label: "收案", href: "/intakes", icon: ArrowDownToLine, countKey: "intakes" },
   { label: "审批", href: "/approvals", icon: SquareCheck, countKey: "approvals" },
-  { label: "冲突检索", href: "/conflicts", icon: Clock3 },
+  { label: "冲突预检", href: "/conflicts", icon: Clock3 },
   { label: "日程", href: "/schedule", icon: CalendarDays }
 ];
 

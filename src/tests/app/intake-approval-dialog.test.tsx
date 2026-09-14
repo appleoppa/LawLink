@@ -40,10 +40,11 @@ describe("立案审批分区审阅", () => {
     render(<Harness />);
     expect(screen.getByText("办理机构")).toBeVisible();
     expect(screen.getAllByText("0").length).toBeGreaterThan(0);
-    const summary = screen.getByText(/查看未填写项/);
-    expect(summary.closest("details")).not.toHaveAttribute("open");
-    fireEvent.click(summary);
-    expect(summary.closest("details")).toHaveAttribute("open");
+    const toggle = screen.getByRole("button", { name: "未填写 1 项" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("非金钱标的")).toBeNull();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText("非金钱标的")).toBeVisible();
   });
   it("只读记录不出现审批入口，处理按钮仍分别调用原有决定", () => {
