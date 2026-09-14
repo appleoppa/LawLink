@@ -37,7 +37,8 @@ export async function listDeadlineRulesAdmin() {
       id: true, code: true, name: true, description: true, triggerLabel: true,
       periodValue: true, periodUnit: true, category: true,
       legalBasis: true, legalBasisUrl: true, verifiedAt: true,
-      remindDays: true, enabled: true, isBuiltIn: true, createdAt: true
+      remindDays: true, enabled: true, isBuiltIn: true, createdAt: true,
+      applicableProcedures: true
     }
   });
 }

@@ -695,3 +695,9 @@
   .mo-search .palette { top: 12px; max-height: calc(100dvh - 24px); }
   .mo-search .mo-gs-scope-note, .mo-search .gs-foot .hint { display: none; }
 }
+
+/* 12 期限规则库 · 实现补充 */
+.mo-rules .rtable td { vertical-align: middle; }
+.mo-rules .rtable tbody tr:hover { background: var(--bg-hover); }
+.mo-rules .flow-arrow { font-size: 14px; }
+@media (max-width: 1100px) { .mo-rules .flow-strip { grid-template-columns: 1fr; gap: 8px; } .mo-rules .flow-arrow { display: none; } .mo-rules .example { position: static; } }

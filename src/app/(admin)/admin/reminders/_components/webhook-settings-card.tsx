@@ -51,21 +51,21 @@ export function WebhookSettingsCard({
   }
 
   return (
-    <section className="ll-surface">
-      <header className="ll-panel-head">
-        <h3 className="ll-panel-title">
-          <Webhook className="h-4 w-4 text-primary" strokeWidth={1.8} />
+    <section className="card">
+      <div className="panel-head">
+        <div className="panel-title">
+          <Webhook className="ic" strokeWidth={1.8} />
           群机器人推送（企业微信 / 钉钉）
-        </h3>
-      </header>
-      <div className="px-4 pb-4">
-      <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
+        </div>
+      </div>
+      <div className="panel-body">
+      <p className="max-w-[760px] text-[12px] leading-5 text-muted-foreground">
         每日到期扫描发现新提醒时，向群机器人推送一条汇总（只含事项标题与案件编号，不含当事人详情）。
         在企业微信 / 钉钉群里添加「自定义机器人」，把 Webhook 地址粘贴到下方；
         钉钉机器人建议用「自定义关键词」安全设置并填 <code className="font-mono">LawLink</code>。
       </p>
 
-      <div className="mt-3 space-y-3">
+      <div className="mt-3 max-w-[760px] space-y-3">
         <div className="space-y-1.5">
           <Label className="text-xs">机器人 Webhook 地址</Label>
           <Input
@@ -80,16 +80,15 @@ export function WebhookSettingsCard({
           启用每日提醒推送
         </label>
         <div className="flex items-center gap-2">
-          <Button size="sm" onClick={save} disabled={saving} className="h-8 gap-1.5">
+          <Button size="sm" onClick={save} disabled={saving}>
             {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             保存
           </Button>
           <Button
             size="sm"
-            variant="outline"
+            variant="secondary"
             onClick={test}
             disabled={testing}
-            className="h-8 gap-1.5"
           >
             {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
             发送测试消息
