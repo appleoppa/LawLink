@@ -57,10 +57,10 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { uploadDocument } from "@/server/documents/actions";
 import { createTask, toggleTaskCompleted } from "@/server/tasks/actions";
-import { createProcedureStage, ensureProcedureStage, removeProcedureStage } from "@/server/procedures/actions";
+import { createProcedureStage, ensureProcedureStage, removeProcedureStage, toggleDeadlineCompleted } from "@/server/procedures/actions";
 import { AddDeadlineDialog } from "./procedure-forms";
 import { liftProperty } from "@/server/preservations/actions-v2";
-import { cn, daysUntil, formatCurrency, formatDate } from "@/lib/utils";
+import { cn, daysUntil, formatCurrency } from "@/lib/utils";
 import { litigationStandingLabel, procedureTypeLabel } from "@/lib/enums";
 import {
   defaultStageNamesForProcedure,
@@ -87,12 +87,12 @@ import {
   type UserOption
 } from "@/app/(app)/preservation/_components/preservation-types";
 import { TemplatePickerDialog } from "./template-picker-dialog";
-import { DocIcon, EmptyState, ProcedureChain, Segmented, SourceChip, type ChainNode } from "@/components/patterns/moan";
+import { DocIcon, EmptyState, Segmented, SourceChip } from "@/components/patterns/moan";
 import { documentSourceChip } from "@/lib/ui/moan-tones";
 import type { FolderPayload, TemplateSummary } from "./folder-types";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
 import { useDocActions } from "./doc-actions-context";
-import { shMonthDay, shMonthDayTime } from "@/lib/ui/sh-time";
+import { shMonthDay, shMonthDayTime, shTime } from "@/lib/ui/sh-time";
 
 type WorkflowTask = {
   id: string;
@@ -247,16 +247,7 @@ type WorkflowStage = {
   badge: { text: string; hot: boolean } | null;
 };
 
-type MatterInfoWorkflowItem = {
-  key: "matter-info";
-  id: null;
-  name: "信息总览";
-  kind: "matter_info";
-  status: "active";
-  tasks: [];
-};
-
-type WorkflowItem = MatterInfoWorkflowItem | WorkflowStage;
+type WorkflowItem = WorkflowStage;
 
 type StageGuide = {
   summary: string;
@@ -270,14 +261,6 @@ type StageGuide = {
   defaultCategory: DocumentCategory;
 };
 
-const MATTER_INFO_ITEM: MatterInfoWorkflowItem = {
-  key: "matter-info",
-  id: null,
-  name: "信息总览",
-  kind: "matter_info",
-  status: "active",
-  tasks: []
-};
 
 const PRESERVATION_ACTIONS = [
   "财产保全申请书",
@@ -691,6 +674,17 @@ export type WorkflowApi = {
   currentStageName: string | null;
 };
 
+/** 案卷工作台视图（docs/UI-MATTER-DOSSIER-PLAN.md） */
+export type DossierView = "work" | "docs" | "evidence" | "money" | "file";
+
+/** 「下一步 · 等待他人」：审批中的用印、归档等 */
+export type WaitingItem = { key: string; title: string; meta: string; onOpen?: () => void };
+
+/**
+ * 案卷工作台：进程主线 → 视图页签 → 各视图。
+ * 办案视图 = 环节条 + 下一步 + 经办日志（左）+ 速览栏（右，由案件页注入）。
+ * 同一份数据只在一处展示：事项只在「下一步」，记录只在「经办日志」，材料只在「材料」视图。
+ */
 export function ProcedureWorkflowPanel({
   matter,
   procedure,
@@ -700,13 +694,19 @@ export function ProcedureWorkflowPanel({
   templates,
   users,
   canManage,
-  matterInfoNode,
   railSlot,
   chainHeader,
   notes,
   timelineEvents,
   onWriteNote,
-  apiRef
+  apiRef,
+  view,
+  onViewChange,
+  viewCounts,
+  evidenceNode,
+  financeNode,
+  fileNode,
+  waiting
 }: {
   matter: WorkflowMatter;
   procedure: WorkflowProcedure | null;
@@ -716,21 +716,30 @@ export function ProcedureWorkflowPanel({
   templates: TemplateSummary[];
   users: UserOption[];
   canManage: boolean;
-  matterInfoNode?: React.ReactNode;
-  /** 墨案 04：页面级三栏（环节导航 | 环节工作区 | 辅助栏）的右栏内容，由案件页注入 */
+  /** 办案视图右栏（我方请求 / 团队 / 收费 / 审批） */
   railSlot?: React.ReactNode;
-  /** 程序链卡头右侧（程序切换 chips + 新增程序） */
+  /** 进程主线头部右侧（程序切换 + 新增程序） */
   chainHeader?: React.ReactNode;
   notes: WorkflowNote[];
   timelineEvents: WorkflowTimelineEvent[];
   onWriteNote: (opts: { judgment: boolean; stageName?: string }) => void;
   apiRef?: React.MutableRefObject<WorkflowApi | null>;
+  view: DossierView;
+  onViewChange: (view: DossierView) => void;
+  viewCounts?: Partial<Record<DossierView, number>>;
+  evidenceNode?: React.ReactNode;
+  financeNode?: React.ReactNode;
+  fileNode?: React.ReactNode;
+  waiting?: WaitingItem[];
 }) {
   const router = useRouter();
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [scope, setScope] = useState<"all" | "stage">("all");
+  const [focusSignal, setFocusSignal] = useState(0);
   const [templateOpen, setTemplateOpen] = useState(false);
   const [taskStage, setTaskStage] = useState<WorkflowStage | null>(null);
   const [stageCreateOpen, setStageCreateOpen] = useState(false);
+  const [deadlineOpen, setDeadlineOpen] = useState(false);
   const [uploadSignal, setUploadSignal] = useState(0);
   const [, startStageRemovalTransition] = useTransition();
 
@@ -738,32 +747,42 @@ export function ProcedureWorkflowPanel({
     () => buildWorkflowStages(procedure, preservationCases),
     [procedure, preservationCases]
   );
-  const workflowItems: WorkflowItem[] = matterInfoNode ? [MATTER_INFO_ITEM, ...stages] : stages;
-  // 默认进入当前环节（第一个未完成的环节），没有程序环节时进入信息总览
-  const defaultStage = stages.find((s) => s.status === "active" || s.status === "risk") ?? stages.find((s) => s.status === "todo") ?? null;
-  const defaultKey = defaultStage?.key ?? workflowItems[0]?.key ?? null;
-  const selectedItem =
-    workflowItems.find((item) => item.key === selectedKey) ??
-    workflowItems.find((item) => item.key === defaultKey) ??
+  // 当前环节 = 第一个进行中 / 有风险的环节，否则第一个待办环节
+  // 保全是贯穿程序的并行事项（在保期间一直「进行中 / 临期」），不作为主线上的当前环节
+  const mainStages = stages.filter((s) => s.kind !== "preservation");
+  const currentStage =
+    mainStages.find((s) => s.status === "active" || s.status === "risk") ??
+    mainStages.find((s) => s.status === "todo") ??
+    mainStages[mainStages.length - 1] ??
+    stages[0] ??
     null;
-  const selectedStage = selectedItem && selectedItem.kind !== "matter_info" ? selectedItem : null;
+  const selectedStage = stages.find((s) => s.key === selectedKey) ?? currentStage;
 
   useEffect(() => {
     if (!apiRef) return;
     apiRef.current = {
       openUpload: () => {
-        if (!selectedStage && defaultStage) setSelectedKey(defaultStage.key);
+        if (!selectedStage) {
+          toast.info("请先新增程序后再上传材料");
+          return;
+        }
         setUploadSignal((n) => n + 1);
       },
       openAddTask: () => {
-        const target = selectedStage ?? defaultStage ?? stages[0] ?? null;
-        if (target) setTaskStage(target);
+        if (selectedStage) setTaskStage(selectedStage);
         else toast.info("请先新增程序后再添加任务");
       },
       stageNames: stages.map((st) => st.name),
-      currentStageName: (selectedStage ?? defaultStage)?.name ?? null
+      currentStageName: selectedStage?.name ?? null
     };
-  }, [apiRef, selectedStage, defaultStage, stages]);
+  }, [apiRef, selectedStage, stages]);
+
+  function selectStage(key: string) {
+    setSelectedKey(key);
+    setScope("stage");
+    setFocusSignal((n) => n + 1);
+    if (view !== "work" && view !== "docs") onViewChange("work");
+  }
 
   async function handleRemoveStage(stage: WorkflowStage) {
     const stageId = stage.id;
@@ -781,6 +800,7 @@ export function ProcedureWorkflowPanel({
         const res = await removeProcedureStage({ id: stageId });
         toast.success(res.hidden ? "环节已隐藏，数据保留（重新添加同名环节可恢复）" : "环节已移除");
         setSelectedKey(null);
+        setScope("all");
         router.refresh();
       } catch (err) {
         toast.error("移除失败", { description: err instanceof Error ? err.message : "" });
@@ -788,151 +808,130 @@ export function ProcedureWorkflowPanel({
     });
   }
 
-  // 程序链：与环节导航同源（含尚未物化的预设环节），点击节点切换环节
-  const chainNodes: ChainNode[] = stages.map((stage) => ({
-    key: stage.key,
-    label: stage.name,
-    date: stageChainDate(stage, procedure),
-    state:
-      stage.status === "done"
-        ? "done"
-        : stage.status === "risk"
-          ? "risk"
-          : stage.key === (defaultStage?.key ?? "")
-            ? "current"
-            : "todo",
-    onClick: () => setSelectedKey(stage.key)
-  }));
-
-  const chainCard = (
-    <div className="card chain-card">
-      <div className="chain-top">
-        <span className="t">程序链</span>
-        <span className="t-xs t-mute hidden sm:inline">程序间独立推进，材料互不共用</span>
-        <div className="prog-switch">{chainHeader}</div>
-      </div>
-      {procedure && chainNodes.length > 1 ? (
-        <div className="overflow-x-auto pb-1">
-          <ProcedureChain nodes={chainNodes} className="min-w-fit" />
-        </div>
-      ) : (
-        <p className="t-xs t-mute py-1">
-          {procedure ? "当前程序仅一个环节：期限、任务与材料直接在下方工作区处理。" : "暂无在办程序；点击右上「新增程序」开始办案流程。"}
-        </p>
-      )}
-    </div>
-  );
-
-  const recordsCard = (
-    <MatterRecordsCard notes={notes} events={timelineEvents} canManage={canManage} onWriteNote={() => onWriteNote({ judgment: true })} />
-  );
-
-  if (!procedure) {
-    return (
-      <>
-        {chainCard}
-        <div className="ws-grid">
-          <div className="stage-nav">
-            <div className="card" style={{ padding: 8 }}>
-              <button type="button" className="sn-item active w-full">
-                <FileText className="h-[15px] w-[15px]" strokeWidth={1.8} />
-                信息总览
-              </button>
-            </div>
-          </div>
-          <div className="ws">
-            <div className="card">
-              <div className="panel-body">{matterInfoNode}</div>
-            </div>
-            {recordsCard}
-          </div>
-          {railSlot ? <aside className="rail">{railSlot}</aside> : null}
-        </div>
-      </>
-    );
-  }
+  const VIEWS: { key: DossierView; label: string; show: boolean }[] = [
+    { key: "work", label: "办案", show: true },
+    { key: "docs", label: "材料", show: true },
+    { key: "evidence", label: "证据与争点", show: Boolean(evidenceNode) },
+    { key: "money", label: "委托与财务", show: Boolean(financeNode) },
+    { key: "file", label: "案件档案", show: Boolean(fileNode) }
+  ];
 
   return (
     <>
-      {chainCard}
-      <div className="ws-grid">
-        {/* 环节导航 */}
-        <div className="stage-nav">
-          <nav className="card" style={{ padding: 8 }} aria-label="办案环节导航">
-            {workflowItems.map((item) => {
-              const active = selectedItem?.key === item.key;
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  onClick={() => setSelectedKey(item.key)}
-                  className={cn("sn-item w-full text-left", active && "active")}
-                  aria-current={active ? "true" : undefined}
-                >
-                  {item.kind === "matter_info" ? (
-                    <FileText className="h-[15px] w-[15px] shrink-0" strokeWidth={1.8} />
-                  ) : (
-                    <StageGlyph name={item.name} kind={item.kind} className="h-[15px] w-[15px] shrink-0" />
-                  )}
-                  <span className="min-w-0 flex-1 truncate">{item.name}</span>
-                  {item.kind !== "matter_info" ? <StageNavStatus stage={item} /> : null}
-                </button>
-              );
-            })}
-          </nav>
-          {canManage ? (
-            <button type="button" onClick={() => setStageCreateOpen(true)} className="btn btn-secondary btn-sm" style={{ width: "100%", marginTop: 10 }}>
-              <Plus strokeWidth={2.2} />
-              添加环节
-            </button>
-          ) : null}
-        </div>
+      <ProcessSpine
+        procedure={procedure}
+        stages={stages}
+        selectedKey={selectedStage?.key ?? null}
+        currentKey={currentStage?.key ?? null}
+        onSelect={selectStage}
+        chainHeader={chainHeader}
+        onAddStage={canManage && procedure ? () => setStageCreateOpen(true) : undefined}
+      />
 
-        {/* 环节工作区 */}
-        <div className="ws">
-          {selectedItem?.kind === "matter_info" ? (
-            matterInfoNode
-          ) : selectedItem?.kind === "preservation" ? (
-            <PreservationWorkflowContent
-              matter={matter}
-              procedure={procedure}
-              stage={selectedItem}
-              cases={preservationCases}
-              documents={documents}
-              users={users}
-              canManage={canManage}
-              onOpenTemplate={() => setTemplateOpen(true)}
-              onAddTask={() => setTaskStage(selectedItem)}
-              onRemoveStage={canManage && selectedItem.removable ? () => handleRemoveStage(selectedItem) : undefined}
-              uploadSignal={uploadSignal}
-              recordsSlot={recordsCard}
-            />
-          ) : selectedItem ? (
-            <NormalStageContent
-              matterId={matter.id}
-              stage={selectedItem}
-              procedure={procedure}
-              documents={documents}
-              notes={notes}
-              users={users}
-              onOpenTemplate={() => setTemplateOpen(true)}
-              onAddTask={() => setTaskStage(selectedItem)}
-              onRemoveStage={canManage && selectedItem.removable ? () => handleRemoveStage(selectedItem) : undefined}
-              onWriteStageNote={() => onWriteNote({ judgment: true, stageName: selectedItem.name })}
-              canManage={canManage}
-              uploadSignal={uploadSignal}
-              events={timelineEvents}
-            />
-          ) : (
-            <div className="card">
-              <EmptyState compact title="暂无工作环节" />
-            </div>
-          )}
-        </div>
-
-        {/* 辅助栏 */}
-        {railSlot ? <aside className="rail">{railSlot}</aside> : null}
+      <div className="dos-views" role="tablist" aria-label="案件视图">
+        {VIEWS.filter((v) => v.show).map((v) => (
+          <button key={v.key} type="button" role="tab" aria-selected={view === v.key} className={cn("dos-view", view === v.key && "on")} onClick={() => onViewChange(v.key)}>
+            {v.label}
+            {viewCounts?.[v.key] ? <span className="n">{viewCounts[v.key]}</span> : null}
+          </button>
+        ))}
       </div>
+
+      {view === "work" ? (
+        <div className="dos-work">
+          <div className="dos-main">
+            {selectedStage && procedure ? (
+              selectedStage.kind === "preservation" ? (
+                <PreservationWorkflowContent
+                  matter={matter}
+                  procedure={procedure}
+                  stage={selectedStage}
+                  cases={preservationCases}
+                  documents={documents}
+                  users={users}
+                  canManage={canManage}
+                  onOpenTemplate={() => setTemplateOpen(true)}
+                  onAddTask={() => setTaskStage(selectedStage)}
+                  onRemoveStage={canManage && selectedStage.removable ? () => handleRemoveStage(selectedStage) : undefined}
+                  uploadSignal={uploadSignal}
+                />
+              ) : (
+                <StageBar
+                  stage={selectedStage}
+                  procedure={procedure}
+                  documents={documents}
+                  notes={notes}
+                  isCurrent={selectedStage.key === currentStage?.key}
+                  canManage={canManage}
+                  onAddTask={() => setTaskStage(selectedStage)}
+                  onAddDeadline={() => setDeadlineOpen(true)}
+                  onUpload={() => setUploadSignal((n) => n + 1)}
+                  onOpenTemplate={() => setTemplateOpen(true)}
+                  onWriteNote={() => onWriteNote({ judgment: true, stageName: selectedStage.name })}
+                  onRemoveStage={canManage && selectedStage.removable ? () => handleRemoveStage(selectedStage) : undefined}
+                  onOpenMaterials={() => onViewChange("docs")}
+                />
+              )
+            ) : null}
+
+            <NextActions
+              procedure={procedure}
+              stages={stages}
+              selectedStage={selectedStage}
+              scope={scope}
+              onScopeChange={setScope}
+              users={users}
+              canManage={canManage}
+              waiting={waiting ?? []}
+              onAddTask={procedure && selectedStage ? () => setTaskStage(selectedStage) : undefined}
+            />
+
+            <CaseLog
+              procedure={procedure}
+              stages={stages}
+              notes={notes}
+              events={timelineEvents}
+              documents={documents}
+              focusStageName={scope === "stage" ? selectedStage?.name ?? null : null}
+              focusSignal={focusSignal}
+              canManage={canManage}
+              onWriteRecord={() => onWriteNote({ judgment: false, stageName: selectedStage?.name })}
+              onWriteJudgment={() => onWriteNote({ judgment: true, stageName: selectedStage?.name })}
+            />
+          </div>
+          {railSlot ? <aside className="dos-rail">{railSlot}</aside> : null}
+        </div>
+      ) : null}
+
+      {view === "docs" ? (
+        <MaterialsView
+          matterId={matter.id}
+          procedure={procedure}
+          stages={stages}
+          documents={documents}
+          selectedKey={selectedStage?.key ?? null}
+          onSelect={(key) => setSelectedKey(key)}
+          canManage={canManage}
+          onOpenTemplate={() => setTemplateOpen(true)}
+        />
+      ) : null}
+      {view === "evidence" ? evidenceNode : null}
+      {view === "money" ? financeNode : null}
+      {view === "file" ? fileNode : null}
+
+      {/* 环节条「上传材料」与页头「上传材料」共用：打开当前选中环节的上传弹窗（列表在材料视图） */}
+      {procedure && selectedStage && selectedStage.kind !== "preservation" ? (
+        <div hidden>
+          <StageMaterialsPanel
+            matterId={matter.id}
+            procedure={procedure}
+            stage={selectedStage}
+            documents={[]}
+            canManage={canManage}
+            uploadSignal={uploadSignal}
+          />
+        </div>
+      ) : null}
 
       <TemplatePickerDialog
         open={templateOpen}
@@ -942,7 +941,7 @@ export function ProcedureWorkflowPanel({
         folders={folders}
         templates={templates}
       />
-      {taskStage && (
+      {procedure && taskStage && (
         <TaskQuickDialog
           open={!!taskStage}
           onOpenChange={(open) => !open && setTaskStage(null)}
@@ -953,15 +952,25 @@ export function ProcedureWorkflowPanel({
           onStageReady={(stageId) => setSelectedKey(`stage-${stageId}`)}
         />
       )}
-      <StageCreateDialog
-        open={stageCreateOpen}
-        onOpenChange={setStageCreateOpen}
-        procedureId={procedure.id}
-        procedureType={procedure.type}
-        stages={stages}
-        selectedItem={selectedItem}
-        onCreated={(stageId) => setSelectedKey(`stage-${stageId}`)}
-      />
+      {procedure ? (
+        <StageCreateDialog
+          open={stageCreateOpen}
+          onOpenChange={setStageCreateOpen}
+          procedureId={procedure.id}
+          procedureType={procedure.type}
+          stages={stages}
+          selectedItem={selectedStage}
+          onCreated={(stageId) => setSelectedKey(`stage-${stageId}`)}
+        />
+      ) : null}
+      {procedure && deadlineOpen ? (
+        <AddDeadlineDialog
+          open={deadlineOpen}
+          onOpenChange={setDeadlineOpen}
+          procedures={[{ id: procedure.id, label: procedure.customLabel ?? procedureTypeLabel[procedure.type] }]}
+          defaultProcedureId={procedure.id}
+        />
+      ) : null}
     </>
   );
 }
@@ -972,23 +981,6 @@ function stageChainDate(stage: WorkflowStage, procedure: WorkflowProcedure | nul
   const due = stage.tasks.filter((t) => !t.completed && t.dueAt).map((t) => new Date(t.dueAt!).getTime()).sort((a, b) => a - b)[0];
   if (due) return shortDay(new Date(due));
   if (src?.startedAt) return shortDay(src.startedAt);
-  return null;
-}
-
-function StageNavStatus({ stage }: { stage: WorkflowStage }) {
-  if (stage.kind === "preservation" && stage.badge) {
-    // 导航宽度有限：只显示最近到期天数，完整信息放 title
-    const [count, days] = stage.badge.text.split(" · ");
-    return (
-      <span className="sn-badge shrink-0 whitespace-nowrap" title={stage.badge.hot ? `临期保全 ${count}，最近 ${days}` : `在保 ${count}`}>
-        {stage.badge.hot ? days : `在保 ${count.replace(" 项", "")}`}
-      </span>
-    );
-  }
-  if (stage.status === "done") return <span className="st st-done" aria-label="已完成">✓</span>;
-  if (stage.status === "risk") return <span className="st st-risk" aria-label="临期风险">!</span>;
-  if (stage.status === "active") return <span className="st st-cur" aria-label="进行中">●</span>;
-  if (stage.badge) return <span className="st t-faint">{stage.badge.text}</span>;
   return null;
 }
 
@@ -1006,299 +998,117 @@ function StageGlyph({ name, kind, className }: { name: string; kind: WorkflowSta
   return <ListChecks {...p} />;
 }
 
-const TASK_PRIORITY: Record<number, { label: string; tone: "red" | "amber" | "slate" }> = {
-  2: { label: "紧急", tone: "red" },
-  1: { label: "高", tone: "amber" },
-  0: { label: "普通", tone: "slate" }
+const STAGE_STATUS_TEXT: Record<WorkflowStageStatus, string> = {
+  done: "已完成",
+  active: "进行中",
+  risk: "临期风险",
+  todo: "待开始",
+  not_applicable: "不适用"
 };
 
-type StageTab = "items" | "records" | "materials";
-
-function NormalStageContent({
-  matterId,
+/** 环节条：选中环节的说明、清单与本环节操作；事项列表在「下一步」，材料在「材料」视图 */
+function StageBar({
   stage,
   procedure,
   documents,
   notes,
-  users,
-  onOpenTemplate,
-  onAddTask,
-  onRemoveStage,
-  onWriteStageNote,
+  isCurrent,
   canManage,
-  uploadSignal,
-  events
+  onAddTask,
+  onAddDeadline,
+  onUpload,
+  onOpenTemplate,
+  onWriteNote,
+  onRemoveStage,
+  onOpenMaterials
 }: {
-  matterId: string;
   stage: WorkflowStage;
   procedure: WorkflowProcedure;
   documents: WorkflowDocument[];
   notes: WorkflowNote[];
-  events: WorkflowTimelineEvent[];
-  users: UserOption[];
-  onOpenTemplate: () => void;
-  onAddTask: () => void;
-  onRemoveStage?: () => void;
-  onWriteStageNote: () => void;
+  isCurrent: boolean;
   canManage: boolean;
-  uploadSignal: number;
+  onAddTask: () => void;
+  onAddDeadline: () => void;
+  onUpload: () => void;
+  onOpenTemplate: () => void;
+  onWriteNote: () => void;
+  onRemoveStage?: () => void;
+  onOpenMaterials: () => void;
 }) {
-  const router = useRouter();
-  const [tab, setTab] = useState<StageTab>("items");
-  const [deadlineOpen, setDeadlineOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
-  const [, startToggle] = useTransition();
   const guide = stageGuideFor(stage.name);
-  const relevantDeadlines = guide.deadlineCategories.length > 0
-    ? procedure.deadlines.filter((d) => guide.deadlineCategories.includes(d.category)).slice(0, 6)
-    : [];
-  const relevantDocs = documents.filter((d) => documentMatchesStage(d, stage));
-  const stageHearings = guide.includeHearings ? procedure.hearings.slice(0, 3) : [];
-  const itemCount = stage.tasks.length + relevantDeadlines.length + stageHearings.length;
   const src = procedure.stages.find((s) => s.id === stage.id);
-  const nameOf = (id: string | null | undefined) => (id ? users.find((u) => u.id === id)?.name : undefined);
-
-  const statusText: Record<WorkflowStageStatus, string> = {
-    done: "已完成",
-    active: "进行中",
-    risk: "临期风险",
-    todo: "待处理",
-    not_applicable: "不适用"
-  };
-
-  function toggle(taskId: string) {
-    startToggle(async () => {
-      try {
-        await toggleTaskCompleted(taskId);
-        router.refresh();
-      } catch (err) {
-        toast.error("更新失败", { description: err instanceof Error ? err.message : "" });
-      }
-    });
-  }
-
-  useEffect(() => {
-    if (uploadSignal > 0) setTab("materials");
-  }, [uploadSignal]);
+  const openTasks = stage.tasks.filter((t) => !t.completed).length;
+  const docCount = documents.filter((d) => documentMatchesStage(d, stage)).length;
+  const noteCount = notes.filter((n) => n.tags.includes(stageNoteTag(stage.name))).length;
+  const tone = stage.status === "risk" ? "amber" : stage.status === "done" ? "green" : stage.status === "active" ? "teal" : "slate";
 
   return (
-    <>
-      <div className="card">
-        <div className="panel-head" style={{ borderBottom: "none", paddingBottom: 8 }}>
-          <div className="ws-head min-w-0 flex-1">
-            <div className="ic-wrap" style={stage.status === "risk" ? { background: "var(--amber-bg)", color: "var(--amber)" } : undefined}>
-              <StageGlyph name={stage.name} kind={stage.kind} />
-            </div>
-            <div className="min-w-0">
-              <h2 className="truncate">{stage.name}</h2>
-              <div className="desc truncate">
-                {statusText[stage.status]}
-                {src?.startedAt ? ` · 开始于 ${shortDay(src.startedAt)}` : ""}
-                {src?.completedAt ? ` · 完成于 ${shortDay(src.completedAt)}` : ""}
-                {` · ${guide.summary}`}
-              </div>
-            </div>
-            <div className="acts">
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setGuideOpen((v) => !v)} aria-expanded={guideOpen}>
-                环节说明
-              </button>
-              {onRemoveStage ? (
-                <button type="button" className="btn btn-secondary btn-sm" onClick={onRemoveStage}>
-                  移除环节
-                </button>
-              ) : null}
-            </div>
+    <section className="card dos-stage" aria-label={`环节：${stage.name}`}>
+      <div className="dos-stage-head">
+        <div className="ic-wrap" style={stage.status === "risk" ? { background: "var(--amber-bg)", color: "var(--amber)" } : undefined}>
+          <StageGlyph name={stage.name} kind={stage.kind} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="dos-stage-name">{stage.name}</h2>
+            <span className={cn("badge", `b-${tone}`)}>
+              <span className="bdot" />
+              {STAGE_STATUS_TEXT[stage.status]}
+            </span>
+            {!isCurrent ? <span className="t-xs t-mute">（非当前环节）</span> : null}
+          </div>
+          <div className="dos-stage-meta">
+            {[
+              src?.startedAt ? `开始 ${shortDay(src.startedAt)}` : null,
+              src?.completedAt ? `完成 ${shortDay(src.completedAt)}` : null,
+              `未完成事项 ${openTasks}`,
+              `研判 ${noteCount}`
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+            {" · "}
+            <button type="button" className="link-inline" onClick={onOpenMaterials}>
+              材料 {docCount} 份
+            </button>
           </div>
         </div>
-        {guideOpen ? <StageGuideBody guide={guide} /> : null}
-        <div className="tabs" style={{ padding: "0 16px" }} role="tablist">
-          {(
-            [
-              ["items", "本环节事项", itemCount],
-              ["records", "办案记录", null],
-              ["materials", "文书与材料", relevantDocs.length]
-            ] as [StageTab, string, number | null][]
-          ).map(([key, label, count]) => (
-            <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)} className={cn("tab", tab === key && "active")}>
-              {label}
-              {count ? <span className="num-sm t-mute" style={{ marginLeft: 5 }}>{count}</span> : null}
-            </button>
-          ))}
-        </div>
-
-        {tab === "items" ? (
-          <>
-            {itemCount === 0 ? (
-              <EmptyState compact title="本环节还没有任务或期限" description="任务、法定期限与开庭都会汇集在这里；逾期任务会自动进入工作台「今日行动」。" />
-            ) : (
-              <>
-                {relevantDeadlines.map((deadline) => {
-                  const days = daysUntil(deadline.dueAt);
-                  const tone = deadline.completed ? "slate" : days < 0 || days <= 3 ? "red" : days <= 7 ? "amber" : "slate";
-                  return (
-                    <div key={deadline.id} className="task">
-                      <span className={cn("task-box flex items-center justify-center", deadline.completed && "done")} aria-hidden>
-                        {deadline.completed ? <Check /> : <CalendarClock className="h-2.5 w-2.5 text-[var(--t-faint)]" />}
-                      </span>
-                      <div className="min-w-0">
-                        <div className={cn("task-title", deadline.completed && "done-t")}>{deadline.title}</div>
-                        <div className="task-meta">
-                          <span>期限</span>
-                          <span className="sep" />
-                          <span className={cn(!deadline.completed && days <= 3 && "t-red font-semibold")}>
-                            {formatDate(deadline.dueAt)} 截止{!deadline.completed ? ` · ${days < 0 ? `逾期 ${-days} 天` : days === 0 ? "今天到期" : `剩 ${days} 天`}` : ""}
-                          </span>
-                          {deadline.basis ? (
-                            <>
-                              <span className="sep" />
-                              <span className="truncate">{deadline.basis}</span>
-                            </>
-                          ) : null}
-                        </div>
-                      </div>
-                      <div className="task-right">
-                        {deadline.confirmStatus === "PENDING" ? <span className="badge b-amber">待确认</span> : null}
-                        <span className={cn("badge", `b-${tone}`)}>
-                          {tone === "red" ? <span className="bdot" /> : null}
-                          {deadline.completed ? "已完成" : "法定期限"}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-                {stage.tasks.map((task) => {
-                  const pr = TASK_PRIORITY[task.priority] ?? TASK_PRIORITY[0];
-                  const days = task.dueAt ? daysUntil(task.dueAt) : null;
-                  const assignee = nameOf(task.assigneeId);
-                  return (
-                    <div key={task.id} className="task">
-                      <button
-                        type="button"
-                        onClick={() => canManage && toggle(task.id)}
-                        disabled={!canManage}
-                        className={cn("task-box flex items-center justify-center p-0", task.completed && "done")}
-                        aria-label={task.completed ? "标记为未完成" : "标记为完成"}
-                      >
-                        {task.completed ? (
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" aria-hidden>
-                            <path d="M4 12.5l5 5L20 7" />
-                          </svg>
-                        ) : null}
-                      </button>
-                      <div className="min-w-0">
-                        <div className={cn("task-title", task.completed && "done-t")}>{task.title}</div>
-                        <div className="task-meta">
-                          {assignee ? <span>指派 {assignee}</span> : <span>未指派</span>}
-                          {task.completed && task.completedAt ? (
-                            <>
-                              <span className="sep" />
-                              <span>{shortDay(task.completedAt)} 完成</span>
-                            </>
-                          ) : task.dueAt ? (
-                            <>
-                              <span className="sep" />
-                              <span className={cn(days !== null && days < 0 && "t-red font-semibold")}>
-                                {formatDate(task.dueAt)} 截止{days !== null && days < 0 ? ` · 已逾期 ${-days} 天` : ""}
-                              </span>
-                            </>
-                          ) : null}
-                        </div>
-                      </div>
-                      {!task.completed ? (
-                        <div className="task-right">
-                          <span className={cn("badge", `b-${pr.tone}`)}>
-                            {pr.tone === "red" ? <span className="bdot" /> : null}
-                            {pr.label}
-                          </span>
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })}
-                {stageHearings.map((hearing) => (
-                  <div key={hearing.id} className="task">
-                    <span className="task-box flex items-center justify-center" aria-hidden>
-                      <Landmark className="h-2.5 w-2.5 text-[var(--blue)]" />
-                    </span>
-                    <div className="min-w-0">
-                      <div className="task-title">{hearing.title}</div>
-                      <div className="task-meta">
-                        <span>开庭</span>
-                        <span className="sep" />
-                        <span className="code">{formatDate(hearing.startsAt)} {new Date(hearing.startsAt).toTimeString().slice(0, 5)}</span>
-                        {hearing.room ? (
-                          <>
-                            <span className="sep" />
-                            <span>{hearing.room}</span>
-                          </>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div className="task-right">
-                      <span className="badge b-blue">开庭</span>
-                    </div>
-                  </div>
-                ))}
-              </>
-            )}
-            <div className="panel-foot flex flex-wrap items-center justify-between gap-2">
-              <span className="t-xs t-mute">逾期任务会自动进入工作台「今日行动」</span>
-              {canManage ? (
-                <div className="flex gap-[7px]">
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDeadlineOpen(true)}>
-                    <Scale />
-                    法定期限
-                  </button>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={onAddTask}>
-                    <Plus />
-                    添加任务
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          </>
-        ) : null}
-
-        {/* 办案记录与材料只在页签内展示，不再在工作区下方重复一张卡片（2026-09-14 用户反馈重复） */}
-        {tab === "records" ? (
-          <MatterRecordsCard
-            bare
-            notes={notes}
-            events={events}
-            canManage={canManage}
-            onWriteNote={onWriteStageNote}
-            scope={{ stageName: stage.name, from: src?.startedAt ?? null, to: src?.completedAt ?? null }}
-          />
-        ) : null}
-
-        <div hidden={tab !== "materials"}>
-          <StageMaterialsPanel
-            bare
-            matterId={matterId}
-            procedure={procedure}
-            stage={stage}
-            documents={relevantDocs}
-            canManage={canManage}
-            onOpenTemplate={onOpenTemplate}
-            uploadSignal={uploadSignal}
-          />
-        </div>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setGuideOpen((v) => !v)} aria-expanded={guideOpen}>
+          {guideOpen ? "收起说明" : "环节说明"}
+        </button>
       </div>
-
-      {deadlineOpen && (
-        <AddDeadlineDialog
-          open={deadlineOpen}
-          onOpenChange={setDeadlineOpen}
-          procedures={[
-            {
-              id: procedure.id,
-              label: procedure.customLabel ?? procedureTypeLabel[procedure.type]
-            }
-          ]}
-          defaultProcedureId={procedure.id}
-        />
-      )}
-    </>
+      {guideOpen ? <StageGuideBody guide={guide} /> : <p className="dos-stage-summary">{guide.summary}</p>}
+      {canManage ? (
+        <div className="dos-stage-acts">
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onAddTask}>
+            <Plus />
+            添加任务
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onAddDeadline}>
+            <Scale />
+            法定期限
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onUpload}>
+            <Upload />
+            上传到本环节
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onOpenTemplate}>
+            <Sparkles />
+            从模板生成
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onWriteNote}>
+            <PenLine />
+            写研判笔记
+          </button>
+          {onRemoveStage ? (
+            <button type="button" className="btn btn-ghost btn-sm ml-auto text-[var(--t-muted)]" onClick={onRemoveStage}>
+              移除环节
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -1347,10 +1157,6 @@ function noteStage(note: WorkflowNote) {
   return note.tags?.find((t) => t.startsWith("环节:"))?.slice(3) ?? null;
 }
 
-function noteHeadline(note: WorkflowNote) {
-  const firstLine = note.content.split("\n")[0].trim();
-  return firstLine.length > 36 ? `${firstLine.slice(0, 36)}…` : firstLine;
-}
 
 function formatDateTimeShort(date: Date) {
   const d = new Date(date);
@@ -1376,135 +1182,690 @@ const EVENT_TONE: Record<string, { bg: string; fg: string; icon: typeof FileText
   MATTER_CLOSED: { bg: "var(--green-bg)", fg: "var(--green)", icon: Check }
 };
 
-/** 办案记录：事务记录（系统/登记产生）与研判笔记（人工判断）分组陈列，不混排 */
-function MatterRecordsCard({
-  notes,
-  events,
-  canManage,
-  onWriteNote,
-  bare = false,
-  scope
-}: {
-  notes: WorkflowNote[];
-  events: WorkflowTimelineEvent[];
-  canManage: boolean;
-  onWriteNote: () => void;
-  /** 嵌在环节页签内：不包卡片、不重复标题 */
-  bare?: boolean;
-  /** 环节范围：研判笔记按环节标签、事务记录按环节起止期间筛选，可切换查看全案 */
-  scope?: { stageName: string; from: Date | null; to: Date | null };
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [range, setRange] = useState<"stage" | "all">(scope ? "stage" : "all");
-  const inStage = range === "stage" && scope;
-  const inPeriod = (at: Date) => {
-    if (!scope?.from) return false;
-    const from = new Date(scope.from).getTime();
-    const to = scope.to ? new Date(scope.to).getTime() + 86_400_000 : Number.POSITIVE_INFINITY;
-    return at.getTime() >= from && at.getTime() < to;
-  };
-  const judgments = notes.filter((n) => n.tags.includes(JUDGMENT_NOTE_TAG) && (!inStage || n.tags.includes(stageNoteTag(scope.stageName))));
-  const transactions = [
-    ...events.map((e) => ({ kind: "event" as const, id: e.id, at: new Date(e.occurredAt), event: e })),
-    ...notes.filter((n) => !n.tags.includes(JUDGMENT_NOTE_TAG)).map((n) => ({ kind: "note" as const, id: n.id, at: new Date(n.occurredAt), note: n }))
-  ]
-    .filter((item) => !inStage || inPeriod(item.at))
-    .sort((a, b) => b.at.getTime() - a.at.getTime());
-  const total = transactions.length + judgments.length;
-  const txShown = expanded ? transactions : transactions.slice(0, 3);
-  const jdShown = expanded ? judgments : judgments.slice(0, 2);
+/* ------------------------------------------------------------------ */
+/* 进程主线：一条线画完当前程序的全部环节                               */
+/* ------------------------------------------------------------------ */
 
-  const expandBtn = total > txShown.length + jdShown.length || expanded ? (
-    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setExpanded((v) => !v)}>
-      {expanded ? "收起" : `查看全部 ${total} 条`}
-    </button>
-  ) : null;
+function ProcessSpine({
+  procedure,
+  stages,
+  selectedKey,
+  currentKey,
+  onSelect,
+  chainHeader,
+  onAddStage
+}: {
+  procedure: WorkflowProcedure | null;
+  stages: WorkflowStage[];
+  selectedKey: string | null;
+  currentKey: string | null;
+  onSelect: (key: string) => void;
+  chainHeader?: React.ReactNode;
+  onAddStage?: () => void;
+}) {
+  const currentIndex = stages.findIndex((s) => s.key === currentKey);
+  const label = procedure ? procedure.customLabel ?? procedureTypeLabel[procedure.type] : null;
+  const hearingStageKey = (stages.find((s) => /开庭|庭审|询问/.test(s.name)) ?? stages.find((s) => stageGuideFor(s.name).includeHearings))?.key ?? null;
+  const nextHearing = procedure
+    ? [...procedure.hearings].filter((h) => daysUntil(h.startsAt) >= 0).sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())[0] ?? null
+    : null;
+  const doneCount = stages.filter((s) => s.status === "done").length;
+
+  function flagFor(stage: WorkflowStage): { text: string; tone: "red" | "amber" | "blue" } | null {
+    if (!procedure) return null;
+    const guide = stageGuideFor(stage.name);
+    const overdueTasks = stage.tasks.filter((t) => !t.completed && t.dueAt && daysUntil(t.dueAt) < 0).length;
+    const overdueDeadlines = procedure.deadlines.filter((d) => !d.completed && guide.deadlineCategories.includes(d.category) && daysUntil(d.dueAt) < 0).length;
+    if (overdueTasks + overdueDeadlines > 0) return { text: `逾期 ${overdueTasks + overdueDeadlines}`, tone: "red" };
+    if (stage.kind === "preservation" && stage.badge?.hot) return { text: stage.badge.text.split(" · ")[1] ?? "临期", tone: "amber" };
+    if (stage.key === hearingStageKey && nextHearing) return { text: `开庭 ${shortDay(nextHearing.startsAt)}`, tone: "blue" };
+    const soon = procedure.deadlines
+      .filter((d) => !d.completed && guide.deadlineCategories.includes(d.category))
+      .map((d) => daysUntil(d.dueAt))
+      .filter((n) => n >= 0 && n <= 7);
+    if (soon.length) return { text: `剩 ${Math.min(...soon)} 天`, tone: "amber" };
+    return null;
+  }
 
   return (
-    <div className={bare ? undefined : "card"}>
-      {bare ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 px-4 pb-1 pt-3">
-          {scope ? (
-            <Segmented
-              items={[{ key: "stage", label: "本环节" }, { key: "all", label: "全案" }]}
-              value={range}
-              onChange={(k) => { setRange(k); setExpanded(false); }}
-            />
-          ) : <span />}
-          {expandBtn}
+    <section className="dos-spine" aria-label="进程主线">
+      <div className="dos-spine-head">
+        <div className="dos-spine-title">
+          {label ? `${label}进程` : "办案进程"}
+          {procedure ? (
+            <small>
+              {currentIndex >= 0 ? `第 ${currentIndex + 1} / ${stages.length} 环节` : `${stages.length} 个环节`} · 已完成 {doneCount}
+              {procedure.caseNumber ? ` · ${procedure.caseNumber}` : ""}
+            </small>
+          ) : null}
         </div>
+        <div className="dos-tracks">
+          {chainHeader}
+          {onAddStage ? (
+            <button type="button" className="prog-chip" onClick={onAddStage}>
+              + 添加环节
+            </button>
+          ) : null}
+        </div>
+      </div>
+      {!procedure ? (
+        <p className="dos-spine-empty">暂无在办程序。新增程序后，这里会按环节画出办案进程。</p>
+      ) : stages.length === 0 ? (
+        <p className="dos-spine-empty">当前程序还没有环节。</p>
       ) : (
-        <div className="panel-head">
-          <div className="panel-title">
-            <BookOpen className="ic" strokeWidth={1.8} />
-            办案记录
-          </div>
-          {expandBtn}
+        <div className="dos-rail-scroll">
+          <ol className="dos-rail-track" style={{ gridTemplateColumns: `repeat(${stages.length}, minmax(96px, 1fr))` }}>
+            {stages.map((stage, i) => {
+              const state = stage.status === "done" ? "done" : stage.key === currentKey ? "cur" : stage.status === "risk" ? "risk" : "todo";
+              const flag = flagFor(stage);
+              const date = stageChainDate(stage, procedure);
+              return (
+                <li key={stage.key} className={cn("dos-node", state, stage.key === selectedKey && "sel", i < currentIndex && "passed")}>
+                  <span className="dos-flag-slot">{flag ? <span className={cn("dos-flag", flag.tone)}>{flag.text}</span> : state === "cur" ? <span className="dos-flag now">当前</span> : null}</span>
+                  <button type="button" className="dos-node-btn" onClick={() => onSelect(stage.key)} aria-pressed={stage.key === selectedKey} title={`${stage.name} · ${STAGE_STATUS_TEXT[stage.status]}`}>
+                    <span className="pin" aria-hidden>{state === "done" ? <Check strokeWidth={3} /> : null}</span>
+                    <span className="nm">{stage.name}</span>
+                    <span className="dt">{date ?? "—"}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
         </div>
       )}
+    </section>
+  );
+}
 
-      <div className="rec-group-label">
-        <ListChecks className="h-3 w-3" strokeWidth={2} />
-        事务记录 <span className="sub">· 系统与登记产生，自动带时间与操作人</span>
+/* ------------------------------------------------------------------ */
+/* 下一步：任务、法定期限、开庭合并按紧迫度排序                         */
+/* ------------------------------------------------------------------ */
+
+type ActionItem = {
+  key: string;
+  kind: "task" | "deadline" | "hearing";
+  title: string;
+  at: Date | null;
+  days: number | null;
+  stageKey: string | null;
+  stageName: string | null;
+  meta: string;
+  priority: number;
+  taskId?: string;
+  deadlineId?: string;
+  pendingConfirm?: boolean;
+  completed: boolean;
+  completedAt?: Date | null;
+};
+
+function buildActionItems(procedure: WorkflowProcedure | null, stages: WorkflowStage[], users: UserOption[]): ActionItem[] {
+  if (!procedure) return [];
+  const nameOf = (id: string | null) => (id ? users.find((u) => u.id === id)?.name ?? null : null);
+  const items: ActionItem[] = [];
+  for (const stage of stages) {
+    for (const task of stage.tasks) {
+      const assignee = nameOf(task.assigneeId);
+      items.push({
+        key: `t-${task.id}`,
+        kind: "task",
+        title: task.title,
+        at: task.dueAt,
+        days: task.dueAt ? daysUntil(task.dueAt) : null,
+        stageKey: stage.key,
+        stageName: stage.name,
+        meta: [assignee ? `指派 ${assignee}` : "未指派", task.description?.trim() || null].filter(Boolean).join(" · "),
+        priority: task.priority,
+        taskId: task.id,
+        completed: task.completed,
+        completedAt: task.completedAt
+      });
+    }
+  }
+  const stageForDeadline = (category: DeadlineCategory) => stages.find((s) => stageGuideFor(s.name).deadlineCategories.includes(category)) ?? null;
+  for (const deadline of procedure.deadlines) {
+    const stage = stageForDeadline(deadline.category);
+    items.push({
+      key: `d-${deadline.id}`,
+      kind: "deadline",
+      title: deadline.title,
+      at: deadline.dueAt,
+      days: daysUntil(deadline.dueAt),
+      stageKey: stage?.key ?? null,
+      stageName: stage?.name ?? null,
+      meta: deadline.basis ?? "",
+      priority: 2,
+      deadlineId: deadline.id,
+      pendingConfirm: deadline.confirmStatus === "PENDING",
+      completed: deadline.completed
+    });
+  }
+  const hearingStage = stages.find((s) => /开庭|庭审|询问/.test(s.name)) ?? stages.find((s) => stageGuideFor(s.name).includeHearings) ?? null;
+  for (const hearing of procedure.hearings) {
+    const days = daysUntil(hearing.startsAt);
+    if (days < 0) continue;
+    items.push({
+      key: `h-${hearing.id}`,
+      kind: "hearing",
+      title: hearing.title,
+      at: hearing.startsAt,
+      days,
+      stageKey: hearingStage?.key ?? null,
+      stageName: hearingStage?.name ?? null,
+      meta: [hearing.room, hearing.address].filter(Boolean).join(" · "),
+      priority: 1,
+      completed: false
+    });
+  }
+  return items;
+}
+
+function NextActions({
+  procedure,
+  stages,
+  selectedStage,
+  scope,
+  onScopeChange,
+  users,
+  canManage,
+  waiting,
+  onAddTask
+}: {
+  procedure: WorkflowProcedure | null;
+  stages: WorkflowStage[];
+  selectedStage: WorkflowStage | null;
+  scope: "all" | "stage";
+  onScopeChange: (scope: "all" | "stage") => void;
+  users: UserOption[];
+  canManage: boolean;
+  waiting: WaitingItem[];
+  onAddTask?: () => void;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [showLater, setShowLater] = useState(false);
+  const [showDone, setShowDone] = useState(false);
+  const all = buildActionItems(procedure, stages, users);
+  const inScope = scope === "stage" && selectedStage ? all.filter((i) => i.stageKey === selectedStage.key) : all;
+  const open = inScope.filter((i) => !i.completed);
+  const byTime = (a: ActionItem, b: ActionItem) => (a.at ? new Date(a.at).getTime() : Infinity) - (b.at ? new Date(b.at).getTime() : Infinity) || b.priority - a.priority;
+  const overdue = open.filter((i) => i.days !== null && i.days < 0).sort(byTime);
+  const soon = open.filter((i) => i.days !== null && i.days >= 0 && i.days <= 7).sort(byTime);
+  const later = open.filter((i) => i.days === null || i.days > 7).sort(byTime);
+  const done = inScope.filter((i) => i.completed && i.kind === "task");
+
+  function run(action: () => Promise<unknown>, ok: string) {
+    startTransition(async () => {
+      try {
+        await action();
+        toast.success(ok);
+        router.refresh();
+      } catch (err) {
+        toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
+      }
+    });
+  }
+
+  async function completeDeadline(item: ActionItem) {
+    if (!item.deadlineId) return;
+    if (!(await confirmDialog({ title: `标记「${item.title}」已完成？`, description: "法定期限完成后不再提醒，可在案件档案的期限台账中查看。", confirmText: "标记完成" }))) return;
+    run(() => toggleDeadlineCompleted(item.deadlineId!), "期限已标记完成");
+  }
+
+  const row = (item: ActionItem) => {
+    const tone = item.completed ? "done" : item.days !== null && item.days < 0 ? "red" : item.kind === "hearing" ? "blue" : item.days !== null && item.days <= 3 ? "amber" : item.days !== null && item.days <= 7 ? "amber" : "slate";
+    const whenMain = item.completed
+      ? "已完成"
+      : item.kind === "hearing" && item.at
+        ? shortDay(item.at)
+        : item.days === null
+          ? "无期限"
+          : item.days < 0
+            ? `逾期 ${-item.days} 天`
+            : item.days === 0
+              ? "今天"
+              : `剩 ${item.days} 天`;
+    const whenSub = item.completed
+      ? item.completedAt ? shortDay(item.completedAt) : ""
+      : item.at
+        ? item.kind === "hearing"
+          ? shTime(item.at)
+          : `${shortDay(item.at)} 截止`
+        : "";
+    return (
+      <div key={item.key} className={cn("dos-act", tone)}>
+        <i className="sev" aria-hidden />
+        <div className="when">
+          <b>{whenMain}</b>
+          <span>{whenSub}</span>
+        </div>
+        <div className="what">
+          <div className={cn("t", item.completed && "line-through text-[var(--t-muted)]")}>
+            {item.title}
+            {item.kind === "deadline" ? <span className="badge b-outline-red" style={{ fontSize: 10 }}>法定期限</span> : null}
+            {item.kind === "hearing" ? <span className="badge b-blue" style={{ fontSize: 10 }}>开庭</span> : null}
+            {item.kind === "task" && item.priority === 2 && !item.completed ? <span className="badge b-red" style={{ fontSize: 10 }}>紧急</span> : null}
+            {item.pendingConfirm ? <span className="badge b-amber" style={{ fontSize: 10 }}>期限待确认</span> : null}
+          </div>
+          <div className="d">{[scope === "all" ? item.stageName : null, item.meta || null].filter(Boolean).join(" · ") || " "}</div>
+        </div>
+        <div className="op">
+          {canManage && item.kind === "task" && item.taskId ? (
+            <button type="button" className={cn("btn btn-sm", !item.completed && tone === "red" ? "btn-primary" : "btn-secondary")} disabled={pending} onClick={() => run(() => toggleTaskCompleted(item.taskId!), item.completed ? "已恢复为未完成" : "任务已完成")}>
+              {item.completed ? "恢复" : "完成"}
+            </button>
+          ) : null}
+          {canManage && item.kind === "deadline" && !item.completed ? (
+            <button type="button" className="btn btn-secondary btn-sm" disabled={pending} onClick={() => completeDeadline(item)}>
+              完成
+            </button>
+          ) : null}
+        </div>
       </div>
-      {txShown.length === 0 ? (
-        <div className="rec t-xs t-mute">{inStage ? (scope.from ? "本环节期间暂无事务记录" : "本环节尚未开始，暂无期间内的事务记录") : "暂无事务记录"}</div>
+    );
+  };
+
+  const empty = overdue.length + soon.length + later.length === 0;
+
+  return (
+    <section className="card" aria-label="下一步">
+      <div className="panel-head flex-wrap">
+        <div className="panel-title">
+          <ListChecks className="ic" strokeWidth={1.8} />
+          下一步
+          <span className="t-xs t-mute" style={{ fontWeight: 400 }}>任务、法定期限与开庭按紧迫度排列</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {selectedStage ? (
+            <Segmented
+              items={[{ key: "all", label: "全部" }, { key: "stage", label: `本环节 · ${selectedStage.name}` }]}
+              value={scope}
+              onChange={onScopeChange}
+            />
+          ) : null}
+          {canManage && onAddTask ? (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={onAddTask}>
+              <Plus />
+              任务
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {empty && waiting.length === 0 ? (
+        <EmptyState compact title={scope === "stage" ? "本环节没有待办事项" : "没有待办事项"} description="任务、法定期限与开庭会按紧迫度汇集在这里；逾期任务同时进入工作台「今日行动」。" />
+      ) : null}
+
+      {overdue.length ? (
+        <div className="dos-lane">
+          <div className="dos-lane-h red">已逾期 · {overdue.length}</div>
+          {overdue.map(row)}
+        </div>
+      ) : null}
+      {soon.length ? (
+        <div className="dos-lane">
+          <div className="dos-lane-h">7 天内 · {soon.length}</div>
+          {soon.map(row)}
+        </div>
+      ) : null}
+      {later.length ? (
+        <div className="dos-lane">
+          <button type="button" className="dos-lane-h as-btn" onClick={() => setShowLater((v) => !v)} aria-expanded={showLater}>
+            之后 · {later.length} {showLater ? "（收起）" : "（展开）"}
+          </button>
+          {showLater ? later.map(row) : null}
+        </div>
+      ) : null}
+      {waiting.length ? (
+        <div className="dos-lane">
+          <div className="dos-lane-h">等待他人 · {waiting.length}</div>
+          {waiting.map((w) => (
+            <div key={w.key} className="dos-act teal">
+              <i className="sev" aria-hidden />
+              <div className="when">
+                <b>审批中</b>
+                <span />
+              </div>
+              <div className="what">
+                <div className="t">{w.title}</div>
+                <div className="d">{w.meta}</div>
+              </div>
+              <div className="op">
+                {w.onOpen ? (
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={w.onOpen}>
+                    查看
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {done.length ? (
+        <div className="dos-lane">
+          <button type="button" className="dos-lane-h as-btn" onClick={() => setShowDone((v) => !v)} aria-expanded={showDone}>
+            已完成任务 · {done.length} {showDone ? "（收起）" : "（展开）"}
+          </button>
+          {showDone ? done.map(row) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* 经办日志：记录、研判、材料入卷、系统事件——唯一的时间线，按环节分段    */
+/* ------------------------------------------------------------------ */
+
+type LogKind = "talk" | "court" | "note" | "doc" | "sys";
+type LogEntry = { key: string; kind: LogKind; at: Date; stageName: string | null; node: React.ReactNode };
+
+const LOG_FILTERS: { key: "all" | LogKind; label: string }[] = [
+  { key: "all", label: "全部" },
+  { key: "talk", label: "沟通" },
+  { key: "court", label: "法院" },
+  { key: "note", label: "研判" },
+  { key: "doc", label: "材料" },
+  { key: "sys", label: "系统" }
+];
+
+function CaseLog({
+  procedure,
+  stages,
+  notes,
+  events,
+  documents,
+  focusStageName,
+  focusSignal,
+  canManage,
+  onWriteRecord,
+  onWriteJudgment
+}: {
+  procedure: WorkflowProcedure | null;
+  stages: WorkflowStage[];
+  notes: WorkflowNote[];
+  events: WorkflowTimelineEvent[];
+  documents: WorkflowDocument[];
+  focusStageName: string | null;
+  focusSignal: number;
+  canManage: boolean;
+  onWriteRecord: () => void;
+  onWriteJudgment: () => void;
+}) {
+  const [filter, setFilter] = useState<"all" | LogKind>("all");
+  const [expanded, setExpanded] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // 时间归段：有开始时间的环节按开始时间升序，记录落在其后最近开始的环节；明确归属（材料外键、研判标签）优先
+  const started = (procedure?.stages ?? [])
+    .filter((s) => s.status !== "HIDDEN" && s.startedAt)
+    .sort((a, b) => new Date(a.startedAt!).getTime() - new Date(b.startedAt!).getTime());
+  const stageByTime = (at: Date) => {
+    let hit: string | null = null;
+    for (const s of started) if (new Date(s.startedAt!).getTime() <= at.getTime()) hit = s.name;
+    return hit;
+  };
+  const stageNameById = (id: string | null) => (id ? procedure?.stages.find((s) => s.id === id)?.name ?? null : null);
+
+  const entries: LogEntry[] = [];
+  for (const note of notes) {
+    const at = new Date(note.occurredAt);
+    const judgment = note.tags.includes(JUDGMENT_NOTE_TAG);
+    const kind: LogKind = judgment ? "note" : note.channel === "COURT" ? "court" : "talk";
+    entries.push({
+      key: `n-${note.id}`,
+      kind,
+      at,
+      stageName: noteStage(note) ?? stageByTime(at),
+      node: judgment ? (
+        <JudgmentNoteRow note={note} />
       ) : (
-        txShown.map((item) => {
-          if (item.kind === "event") {
-            const tone = EVENT_TONE[item.event.eventType] ?? { bg: "var(--slate-bg)", fg: "var(--slate)", icon: ListChecks };
-            const Icon = tone.icon;
-            return (
-              <div key={item.id} className="rec">
-                <div className="rec-ic" style={{ background: tone.bg, color: tone.fg }}>
-                  <Icon strokeWidth={2} />
-                </div>
-                <div className="min-w-0">
-                  <div className="rec-title">{item.event.title}</div>
-                  <div className="rec-meta">
-                    {formatDateTimeShort(item.at)}
-                    {item.event.content ? ` · ${item.event.content}` : ""}
-                  </div>
-                </div>
-              </div>
-            );
-          }
+        <div className="rec">
+          <div className="rec-ic" style={kind === "court" ? { background: "var(--bronze-bg)", color: "var(--bronze)" } : { background: "var(--teal-soft)", color: "var(--teal-deep)" }}>
+            {kind === "court" ? <Landmark strokeWidth={2} /> : <MessageSquare strokeWidth={2} />}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="rec-title">
+              {NOTE_CHANNEL_LABEL[note.channel] ?? "办案记录"}
+              {note.withWhom ? ` · ${note.withWhom}` : ""}
+            </div>
+            <div className="dos-note-text whitespace-pre-wrap">{note.content}</div>
+            <div className="rec-meta">
+              {note.author.name} · {formatDateTimeShort(at)}
+            </div>
+          </div>
+        </div>
+      )
+    });
+  }
+  for (const event of events) {
+    if (event.eventType === "DOCUMENT_UPLOADED") continue; // 材料以材料本身入日志，避免重复
+    const at = new Date(event.occurredAt);
+    const tone = EVENT_TONE[event.eventType] ?? { bg: "var(--slate-bg)", fg: "var(--slate)", icon: ListChecks };
+    const Icon = tone.icon;
+    entries.push({
+      key: `e-${event.id}`,
+      kind: "sys",
+      at,
+      stageName: stageByTime(at),
+      node: (
+        <div className="rec">
+          <div className="rec-ic" style={{ background: tone.bg, color: tone.fg }}>
+            <Icon strokeWidth={2} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="rec-title">{event.title}</div>
+            <div className="rec-meta">
+              {formatDateTimeShort(at)}
+              {event.content ? ` · ${event.content}` : ""}
+            </div>
+          </div>
+        </div>
+      )
+    });
+  }
+  for (const doc of documents) {
+    const at = new Date(doc.createdAt);
+    const matched = doc.stageId ? stageNameById(doc.stageId) : stages.find((s) => s.id && documentMatchesStage(doc, s))?.name ?? null;
+    entries.push({ key: `d-${doc.id}`, kind: "doc", at, stageName: matched ?? stageByTime(at), node: <DocRow doc={doc} compact /> });
+  }
+
+  const shown = entries.filter((e) => filter === "all" || e.kind === filter);
+  // 段顺序：环节倒序（越晚的环节越靠上），未归段记录最后
+  const order = [...stages.map((s) => s.name)].reverse();
+  const groups = new Map<string, LogEntry[]>();
+  for (const e of shown) {
+    const key = e.stageName && order.includes(e.stageName) ? e.stageName : "__none";
+    groups.set(key, [...(groups.get(key) ?? []), e]);
+  }
+  const segs = [...order.filter((n) => groups.has(n)), ...(groups.has("__none") ? ["__none"] : [])].map((name) => ({
+    name,
+    items: (groups.get(name) ?? []).sort((a, b) => b.at.getTime() - a.at.getTime())
+  }));
+  const focusIndex = focusStageName ? segs.findIndex((s) => s.name === focusStageName) : -1;
+  const visibleSegs = expanded || focusIndex >= 3 ? segs : segs.slice(0, 3);
+
+  useEffect(() => {
+    if (!focusSignal || !focusStageName) return;
+    const el = rootRef.current?.querySelector<HTMLElement>(`[data-seg="${CSS.escape(focusStageName)}"]`);
+    el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [focusSignal, focusStageName]);
+
+  const stageMeta = (name: string) => {
+    const stage = stages.find((s) => s.name === name);
+    const src = stage?.id ? procedure?.stages.find((s) => s.id === stage.id) : null;
+    const period = src?.startedAt ? `${shortDay(src.startedAt)} — ${src.completedAt ? shortDay(src.completedAt) : ""}` : "";
+    return { status: stage ? STAGE_STATUS_TEXT[stage.status] : "", period };
+  };
+
+  return (
+    <section className="card" aria-label="经办日志" ref={rootRef}>
+      <div className="panel-head flex-wrap">
+        <div className="panel-title">
+          <BookOpen className="ic" strokeWidth={1.8} />
+          经办日志
+          <span className="t-xs t-mute" style={{ fontWeight: 400 }}>案件发生过的一切，按环节记在一条线上</span>
+        </div>
+        {canManage ? (
+          <div className="flex gap-[7px]">
+            <button type="button" className="btn btn-ghost btn-sm" onClick={onWriteJudgment}>
+              <PenLine />
+              研判笔记
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={onWriteRecord}>
+              <Plus />
+              记一笔
+            </button>
+          </div>
+        ) : null}
+      </div>
+      <div className="dos-log-filters" role="group" aria-label="日志筛选">
+        {LOG_FILTERS.map((f) => {
+          const count = f.key === "all" ? entries.length : entries.filter((e) => e.kind === f.key).length;
           return (
-            <div key={item.id} className="rec">
-              <div className="rec-ic" style={{ background: "var(--teal-soft)", color: "var(--teal-deep)" }}>
-                <MessageSquare strokeWidth={2} />
+            <button key={f.key} type="button" className={cn("dos-filter", filter === f.key && "on")} aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}>
+              {f.label}
+              {count ? <span>{count}</span> : null}
+            </button>
+          );
+        })}
+      </div>
+      {segs.length === 0 ? (
+        <EmptyState compact title="暂无经办记录" description="电话、会见、法院沟通、研判笔记与上传的材料都会按时间记在这里。" />
+      ) : (
+        visibleSegs.map((seg) => {
+          const meta = seg.name === "__none" ? { status: "", period: "" } : stageMeta(seg.name);
+          return (
+            <div key={seg.name} data-seg={seg.name} className={cn("dos-seg", seg.name === focusStageName && "focus")}>
+              <div className="dos-seg-h">
+                <span className="nm">{seg.name === "__none" ? "收案及其他" : seg.name}</span>
+                {meta.status ? <span className="st">{meta.status}</span> : null}
+                <span className="rule" />
+                {meta.period ? <span className="pd">{meta.period}</span> : null}
+                <span className="pd">{seg.items.length} 条</span>
               </div>
-              <div className="min-w-0">
-                <div className="rec-title">
-                  {NOTE_CHANNEL_LABEL[item.note.channel] ?? "办案记录"}
-                  {item.note.withWhom ? ` · ${item.note.withWhom}` : ""}：{noteHeadline(item.note)}
-                </div>
-                <div className="rec-meta">
-                  {item.note.author.name} · {formatDateTimeShort(item.at)}
-                </div>
-              </div>
+              {seg.items.map((e) => (
+                <div key={e.key}>{e.node}</div>
+              ))}
             </div>
           );
         })
       )}
+      {segs.length > visibleSegs.length ? (
+        <button type="button" className="dos-more" onClick={() => setExpanded(true)}>
+          展开更早的 {segs.length - visibleSegs.length} 个环节
+        </button>
+      ) : null}
+    </section>
+  );
+}
 
-      <div className="rec-group-label">
-        <PenLine className="h-3 w-3" strokeWidth={2} />
-        研判笔记 <span className="sub">· 人工判断内容，独立陈列，不与事务记录混排</span>
+/* ------------------------------------------------------------------ */
+/* 材料视图：按环节归档                                                  */
+/* ------------------------------------------------------------------ */
+
+function MaterialsView({
+  matterId,
+  procedure,
+  stages,
+  documents,
+  selectedKey,
+  onSelect,
+  canManage,
+  onOpenTemplate
+}: {
+  matterId: string;
+  procedure: WorkflowProcedure | null;
+  stages: WorkflowStage[];
+  documents: WorkflowDocument[];
+  selectedKey: string | null;
+  onSelect: (key: string) => void;
+  canManage: boolean;
+  onOpenTemplate: () => void;
+}) {
+  const [allMode, setAllMode] = useState(false);
+  const counts = new Map(stages.map((s) => [s.key, documents.filter((d) => documentMatchesStage(d, s)).length]));
+  const assigned = new Set(documents.filter((d) => stages.some((s) => documentMatchesStage(d, s))).map((d) => d.id));
+  const unassigned = documents.filter((d) => !assigned.has(d.id));
+  const stage = stages.find((s) => s.key === selectedKey) ?? stages[0] ?? null;
+
+  if (!procedure) {
+    return (
+      <div className="card">
+        <EmptyState compact icon={FileText} title="暂无在办程序" description="材料按程序与环节归档，请先新增程序。" />
       </div>
-      {jdShown.length === 0 ? (
-        <div className="rec t-xs t-mute">{inStage ? "本环节暂无研判笔记" : "暂无研判笔记"}</div>
-      ) : (
-        jdShown.map((note) => <JudgmentNoteRow key={note.id} note={note} />)
-      )}
+    );
+  }
 
-      <div className="panel-foot flex flex-wrap items-center justify-between gap-2">
-        <span className="t-xs t-mute">{inStage ? "事务记录按环节起止期间筛选；研判笔记按所属环节归档" : "事务记录自动沉淀时间线；研判笔记支持按环节归档"}</span>
-        {canManage ? (
-          <button type="button" className="btn btn-secondary btn-sm" onClick={onWriteNote}>
-            <PenLine />
-            写研判笔记
+  return (
+    <div className="dos-docs">
+      <nav className="card dos-docs-nav" aria-label="按环节查看材料">
+        <button type="button" className={cn("sn-item w-full text-left", allMode && "active")} onClick={() => setAllMode(true)}>
+          <FolderOpen className="h-[15px] w-[15px] shrink-0" strokeWidth={1.8} />
+          <span className="min-w-0 flex-1 truncate">全部材料</span>
+          <span className="st t-faint">{documents.length}</span>
+        </button>
+        {stages.map((s) => (
+          <button
+            key={s.key}
+            type="button"
+            className={cn("sn-item w-full text-left", !allMode && stage?.key === s.key && "active")}
+            onClick={() => {
+              setAllMode(false);
+              onSelect(s.key);
+            }}
+          >
+            <StageGlyph name={s.name} kind={s.kind} className="h-[15px] w-[15px] shrink-0" />
+            <span className="min-w-0 flex-1 truncate">{s.name}</span>
+            <span className="st t-faint">{counts.get(s.key) || ""}</span>
           </button>
+        ))}
+      </nav>
+      <div className="min-w-0">
+        {allMode ? (
+          <div className="card">
+            <div className="panel-head">
+              <div className="panel-title">
+                <FolderOpen className="ic" strokeWidth={1.8} />
+                全部材料
+                <span className="badge b-white" style={{ marginLeft: 2 }}>{documents.length}</span>
+              </div>
+            </div>
+            {documents.length === 0 ? <EmptyState compact icon={FileText} title="暂无材料" description="在左侧选择环节后上传，材料会归入该环节。" /> : null}
+            {stages.map((s) => {
+              const docs = documents.filter((d) => documentMatchesStage(d, s));
+              if (!docs.length) return null;
+              return (
+                <div key={s.key} className="dos-seg">
+                  <div className="dos-seg-h">
+                    <span className="nm">{s.name}</span>
+                    <span className="rule" />
+                    <span className="pd">{docs.length} 份</span>
+                  </div>
+                  {docs.map((d) => <DocRow key={d.id} doc={d} />)}
+                </div>
+              );
+            })}
+            {unassigned.length ? (
+              <div className="dos-seg">
+                <div className="dos-seg-h">
+                  <span className="nm">未归入环节</span>
+                  <span className="rule" />
+                  <span className="pd">{unassigned.length} 份</span>
+                </div>
+                {unassigned.map((d) => <DocRow key={d.id} doc={d} />)}
+              </div>
+            ) : null}
+          </div>
+        ) : stage ? (
+          <StageMaterialsPanel
+            key={stage.key}
+            matterId={matterId}
+            procedure={procedure}
+            stage={stage}
+            documents={documents.filter((d) => documentMatchesStage(d, stage))}
+            canManage={canManage}
+            onOpenTemplate={onOpenTemplate}
+          />
         ) : null}
       </div>
     </div>
@@ -1577,8 +1938,7 @@ function PreservationWorkflowContent({
   onOpenTemplate,
   onAddTask,
   onRemoveStage,
-  uploadSignal,
-  recordsSlot
+  uploadSignal
 }: {
   matter: WorkflowMatter;
   procedure: WorkflowProcedure;
@@ -1591,7 +1951,6 @@ function PreservationWorkflowContent({
   onAddTask: () => void;
   onRemoveStage?: () => void;
   uploadSignal: number;
-  recordsSlot?: React.ReactNode;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -1739,17 +2098,18 @@ function PreservationWorkflowContent({
       </div>
     </div>
 
-      {recordsSlot}
-
-      <StageMaterialsPanel
-        matterId={matter.id}
-        procedure={procedure}
-        stage={stage}
-        documents={relevantDocs}
-        canManage={canManage}
-        onOpenTemplate={onOpenTemplate}
-        uploadSignal={uploadSignal}
-      />
+      {/* 保全材料列表在「材料」视图；这里只挂载上传弹窗，供环节操作与页头「上传材料」使用 */}
+      <div hidden>
+        <StageMaterialsPanel
+          matterId={matter.id}
+          procedure={procedure}
+          stage={stage}
+          documents={relevantDocs}
+          canManage={canManage}
+          onOpenTemplate={onOpenTemplate}
+          uploadSignal={uploadSignal}
+        />
+      </div>
 
       <PreservationCaseDialog
         open={createOpen}
@@ -2421,7 +2781,7 @@ function StageCreateDialog({
 }
 
 function defaultInsertTarget(selectedItem: WorkflowItem | null) {
-  if (!selectedItem || selectedItem.kind === "matter_info") return "START";
+  if (!selectedItem) return "START";
   return selectedItem.id ? `AFTER_ID:${selectedItem.id}` : `AFTER_NAME:${selectedItem.name}`;
 }
 

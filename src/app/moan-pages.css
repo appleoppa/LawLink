@@ -736,3 +736,163 @@
 @media (max-width: 720px) { .mo-matter .mo-chain .chain-node { min-width: 64px; } }
 .panel-head { flex-wrap: wrap; row-gap: 6px; }
 .mo-matter .ws-grid > * { min-width: 0; }
+
+/* ==================================================================
+   案件详情「案卷工作台」（docs/UI-MATTER-DOSSIER-PLAN.md）
+   ================================================================== */
+.mo-dossier .dos-head { padding: 0; overflow: hidden; }
+.mo-dossier .dos-head-top { display: flex; align-items: flex-start; gap: 16px; padding: 16px 22px 14px; }
+.mo-dossier .dos-eyebrow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 11.5px; color: var(--t-muted); }
+.mo-dossier .dos-eyebrow .ctx-back { margin: 0 4px 0 0; }
+.mo-dossier .dos-eyebrow .code { font-family: var(--font-mono); color: var(--t-secondary); font-variant-numeric: tabular-nums; }
+.mo-dossier .dos-title { margin: 8px 0 0; font-size: 24px; text-wrap: balance; }
+.mo-dossier .dos-head .ctx-badges .mono { font-family: var(--font-mono); margin-left: 3px; }
+
+.mo-dossier .dos-versus { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) minmax(0, 0.95fr); border-top: 1px solid var(--bd-hair); background: #F6F8F7; }
+.mo-dossier .dos-versus.plain { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.mo-dossier .dos-versus .side { padding: 11px 22px 12px; min-width: 0; }
+.mo-dossier .dos-versus .side + .side { border-left: 1px solid var(--bd-hair); }
+.mo-dossier .dos-versus.plain .side + .side, .mo-dossier .dos-versus .vs + .side { border-left: 1px solid var(--bd-hair); }
+.mo-dossier .dos-versus .role { font-size: 11px; color: var(--t-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mo-dossier .dos-versus .ours .role { color: var(--teal-deep); font-weight: 600; }
+.mo-dossier .dos-versus .who { font-size: 14px; font-weight: 650; color: var(--t-primary); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mo-dossier .dos-versus .court .who { font-size: 13px; }
+.mo-dossier .dos-versus .who.mono { font-family: var(--font-mono); font-size: 13px; }
+.mo-dossier .dos-versus .sub { font-size: 11.5px; color: var(--t-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mo-dossier .dos-versus .sub.mono { font-family: var(--font-mono); }
+.mo-dossier .dos-versus .vs { display: flex; align-items: center; padding: 0 8px; border-left: 1px solid var(--bd-hair); font-family: var(--font-serif); font-size: 15px; color: var(--t-faint); }
+
+/* 进程主线 */
+.mo-dossier .dos-spine { margin-top: 14px; background: var(--bg-navy); color: #DDE7EE; border-radius: var(--r-lg); padding: 13px 20px 12px; }
+.mo-dossier .dos-spine-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.mo-dossier .dos-spine-title { font-family: var(--font-serif); font-size: 15px; font-weight: 700; color: #fff; }
+.mo-dossier .dos-spine-title small { font-family: var(--font-sans); font-size: 11.5px; font-weight: 400; color: #8FA3B5; margin-left: 10px; }
+.mo-dossier .dos-tracks { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.mo-dossier .dos-spine .prog-chip { background: transparent; border-color: rgba(255,255,255,0.2); color: #B9C8D4; height: 24px; }
+.mo-dossier .dos-spine .prog-chip:hover { border-color: rgba(255,255,255,0.45); color: #fff; }
+.mo-dossier .dos-spine .prog-chip.active { background: #fff; border-color: #fff; color: var(--navy); font-weight: 650; }
+.mo-dossier .dos-spine-empty { margin: 12px 0 4px; font-size: 12px; color: #8FA3B5; }
+.mo-dossier .dos-rail-scroll { overflow-x: auto; margin: 6px -6px 0; padding: 0 6px; }
+.mo-dossier .dos-rail-track { display: grid; list-style: none; margin: 0; padding: 0; min-width: min-content; }
+.mo-dossier .dos-node { position: relative; text-align: center; min-width: 0; }
+.mo-dossier .dos-node::before { content: ""; position: absolute; top: 31px; left: 0; right: 0; height: 2px; background: rgba(255,255,255,0.14); }
+.mo-dossier .dos-node:first-child::before { left: 50%; }
+.mo-dossier .dos-node:last-child::before { right: 50%; }
+.mo-dossier .dos-node.done::before, .mo-dossier .dos-node.passed::before { background: #4FC3C0; }
+.mo-dossier .dos-node.cur::before { background: linear-gradient(90deg, #4FC3C0 50%, rgba(255,255,255,0.14) 50%); }
+.mo-dossier .dos-flag-slot { display: block; height: 19px; }
+.mo-dossier .dos-flag { display: inline-block; font-size: 10.5px; font-weight: 600; line-height: 17px; padding: 0 6px; border-radius: 4px; white-space: nowrap; }
+.mo-dossier .dos-flag.red { background: #5A1F22; color: #FFB4A9; }
+.mo-dossier .dos-flag.amber { background: #4D3A14; color: #F2C66B; }
+.mo-dossier .dos-flag.blue { background: #1C3561; color: #AFC6F5; }
+.mo-dossier .dos-flag.now { background: rgba(79,195,192,0.18); color: #7FDCD9; }
+.mo-dossier .dos-node-btn { position: relative; display: flex; flex-direction: column; align-items: center; width: 100%; padding: 4px 4px 6px; background: none; border: 0; color: inherit; cursor: pointer; border-radius: 8px; }
+.mo-dossier .dos-node-btn:hover { background: rgba(255,255,255,0.06); }
+.mo-dossier .dos-node-btn:focus-visible { outline: 2px solid #4FC3C0; outline-offset: 0; }
+.mo-dossier .dos-node .pin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #5F7489; background: var(--bg-navy); display: flex; align-items: center; justify-content: center; color: var(--navy); }
+.mo-dossier .dos-node .pin svg { width: 9px; height: 9px; }
+.mo-dossier .dos-node.done .pin { background: #4FC3C0; border-color: #4FC3C0; }
+.mo-dossier .dos-node.risk .pin { border-color: #F2C66B; }
+.mo-dossier .dos-node.cur .pin { width: 18px; height: 18px; margin-top: -2px; margin-bottom: -2px; background: #fff; border: 4px solid #4FC3C0; box-shadow: 0 0 0 5px rgba(79,195,192,0.2); }
+.mo-dossier .dos-node .nm { margin-top: 7px; font-size: 12px; color: #B9C8D4; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.mo-dossier .dos-node.cur .nm, .mo-dossier .dos-node.sel .nm { color: #fff; font-weight: 650; }
+.mo-dossier .dos-node.sel .nm { text-decoration: underline; text-decoration-color: #4FC3C0; text-underline-offset: 4px; text-decoration-thickness: 2px; }
+.mo-dossier .dos-node .dt { font-family: var(--font-mono); font-size: 10.5px; color: #7F93A6; }
+
+/* 视图页签 */
+.mo-dossier .dos-views { display: flex; gap: 2px; margin: 16px 0 12px; border-bottom: 1px solid var(--bd-subtle); overflow-x: auto; }
+.mo-dossier .dos-view { border: 0; background: none; padding: 9px 14px 10px; margin-bottom: -1px; border-bottom: 2px solid transparent; font-size: 13.5px; color: var(--t-muted); white-space: nowrap; cursor: pointer; }
+.mo-dossier .dos-view:hover { color: var(--t-primary); }
+.mo-dossier .dos-view.on { color: var(--t-primary); font-weight: 650; border-bottom-color: var(--teal); }
+.mo-dossier .dos-view .n { margin-left: 5px; font-family: var(--font-mono); font-size: 11px; color: var(--t-faint); }
+
+/* 办案视图 */
+.mo-dossier .dos-work { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; align-items: start; }
+.mo-dossier .dos-main, .mo-dossier .dos-view-stack { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.mo-dossier .dos-rail { display: flex; flex-direction: column; gap: 12px; }
+
+.mo-dossier .dos-stage { padding: 0; }
+.mo-dossier .dos-stage-head { display: flex; align-items: center; gap: 11px; padding: 13px 16px 4px; }
+.mo-dossier .dos-stage-head .ic-wrap { width: 34px; height: 34px; border-radius: 9px; background: var(--teal-soft); color: var(--teal-deep); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.mo-dossier .dos-stage-head .ic-wrap svg { width: 17px; height: 17px; }
+.mo-dossier .dos-stage-name { margin: 0; font-family: var(--font-serif); font-size: 16px; font-weight: 700; }
+.mo-dossier .dos-stage-meta { margin-top: 2px; font-size: 11.5px; color: var(--t-muted); }
+.mo-dossier .link-inline { border: 0; background: none; padding: 0; color: var(--teal-deep); font-size: inherit; cursor: pointer; }
+.mo-dossier .link-inline:hover { text-decoration: underline; }
+.mo-dossier .dos-stage-summary { margin: 4px 16px 0 61px; font-size: 12px; line-height: 1.7; color: var(--t-secondary); }
+.mo-dossier .dos-stage-acts { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px 12px 61px; }
+
+.mo-dossier .dos-lane { padding: 2px 0 4px; }
+.mo-dossier .dos-lane + .dos-lane { border-top: 1px solid var(--bd-hair); }
+.mo-dossier .dos-lane-h { display: block; width: 100%; text-align: left; padding: 9px 16px 3px; font-size: 11px; font-weight: 650; letter-spacing: 0.05em; color: var(--t-muted); background: none; border: 0; }
+.mo-dossier .dos-lane-h.red { color: var(--red); }
+.mo-dossier .dos-lane-h.as-btn { cursor: pointer; }
+.mo-dossier .dos-lane-h.as-btn:hover { color: var(--t-primary); }
+.mo-dossier .dos-act { display: grid; grid-template-columns: 3px 76px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 16px 8px 0; }
+.mo-dossier .dos-act + .dos-act { border-top: 1px dashed var(--bd-hair); }
+.mo-dossier .dos-act .sev { align-self: stretch; border-radius: 0 3px 3px 0; background: var(--bd-subtle); }
+.mo-dossier .dos-act.red .sev { background: var(--red); }
+.mo-dossier .dos-act.amber .sev { background: var(--amber); }
+.mo-dossier .dos-act.blue .sev { background: var(--blue); }
+.mo-dossier .dos-act.teal .sev { background: var(--teal); }
+.mo-dossier .dos-act.done .sev { background: var(--bd-hair); }
+.mo-dossier .dos-act .when { text-align: right; line-height: 1.3; }
+.mo-dossier .dos-act .when b { display: block; font-family: var(--font-mono); font-size: 12.5px; font-weight: 650; color: var(--t-secondary); white-space: nowrap; }
+.mo-dossier .dos-act.red .when b { color: var(--red); }
+.mo-dossier .dos-act.amber .when b { color: var(--amber); }
+.mo-dossier .dos-act.blue .when b { color: var(--blue); }
+.mo-dossier .dos-act.teal .when b { color: var(--teal-deep); }
+.mo-dossier .dos-act .when span { font-size: 10.5px; color: var(--t-muted); font-family: var(--font-mono); }
+.mo-dossier .dos-act .what { min-width: 0; }
+.mo-dossier .dos-act .what .t { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--t-primary); }
+.mo-dossier .dos-act .what .d { font-size: 11.5px; color: var(--t-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mo-dossier .dos-act .op { display: flex; gap: 6px; }
+
+.mo-dossier .dos-log-filters { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px; border-bottom: 1px solid var(--bd-hair); }
+.mo-dossier .dos-filter { display: inline-flex; align-items: center; gap: 5px; height: 25px; padding: 0 10px; border-radius: var(--r-full); border: 1px solid var(--bd-subtle); background: var(--bg-card); font-size: 11.5px; color: var(--t-secondary); cursor: pointer; }
+.mo-dossier .dos-filter span { font-family: var(--font-mono); font-size: 10.5px; color: var(--t-faint); }
+.mo-dossier .dos-filter:hover { border-color: var(--bd-strong); }
+.mo-dossier .dos-filter.on { background: var(--t-primary); border-color: var(--t-primary); color: #fff; }
+.mo-dossier .dos-filter.on span { color: rgba(255,255,255,0.7); }
+.mo-dossier .dos-seg-h { display: flex; align-items: center; gap: 9px; padding: 13px 16px 5px; }
+.mo-dossier .dos-seg-h .nm { font-family: var(--font-serif); font-size: 13.5px; font-weight: 700; color: var(--t-primary); white-space: nowrap; }
+.mo-dossier .dos-seg-h .st { font-size: 11px; color: var(--t-muted); white-space: nowrap; }
+.mo-dossier .dos-seg-h .rule { flex: 1; height: 1px; background: var(--bd-hair); }
+.mo-dossier .dos-seg-h .pd { font-family: var(--font-mono); font-size: 10.5px; color: var(--t-faint); white-space: nowrap; }
+.mo-dossier .dos-seg.focus .dos-seg-h .nm { color: var(--teal-deep); }
+.mo-dossier .dos-seg.focus { background: linear-gradient(180deg, rgba(0,123,127,0.035), transparent 120px); }
+.mo-dossier .dos-seg .rec { border-bottom: 0; }
+.mo-dossier .dos-seg .doc-row { padding-left: 16px; }
+.mo-dossier .dos-note-text { font-size: 12.5px; color: var(--t-secondary); line-height: 1.65; margin-top: 3px; }
+.mo-dossier .dos-more { display: block; width: 100%; padding: 10px; border: 0; border-top: 1px solid var(--bd-hair); background: none; font-size: 12.5px; font-weight: 550; color: var(--teal-deep); cursor: pointer; border-radius: 0 0 var(--r-lg) var(--r-lg); }
+.mo-dossier .dos-more:hover { background: var(--bg-hover); }
+
+.mo-dossier .dos-request { font-size: 12.5px; line-height: 1.75; color: var(--t-secondary); }
+.mo-dossier .dos-request p { margin: 0; }
+.mo-dossier .dos-seal-row { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-top: 1px solid var(--bd-hair); }
+.mo-dossier .rail-sec-head + .dos-seal-row { border-top: 0; }
+
+/* 材料视图 */
+.mo-dossier .dos-docs { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 14px; align-items: start; }
+.mo-dossier .dos-docs-nav { padding: 8px; position: sticky; top: 64px; }
+
+@media (max-width: 1180px) {
+  .mo-dossier .dos-work { grid-template-columns: minmax(0, 1fr); }
+  .mo-dossier .dos-rail { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); align-items: start; }
+}
+@media (max-width: 900px) {
+  .mo-dossier .dos-versus, .mo-dossier .dos-versus.plain { grid-template-columns: minmax(0, 1fr); }
+  .mo-dossier .dos-versus .vs { display: none; }
+  .mo-dossier .dos-versus .side + .side, .mo-dossier .dos-versus .vs + .side { border-left: 0; border-top: 1px solid var(--bd-hair); }
+  .mo-dossier .dos-docs { grid-template-columns: minmax(0, 1fr); }
+  .mo-dossier .dos-docs-nav { position: static; display: flex; overflow-x: auto; gap: 4px; }
+  .mo-dossier .dos-docs-nav .sn-item { width: auto !important; flex-shrink: 0; }
+  .mo-dossier .dos-head-top { flex-direction: column; }
+  .mo-dossier .dos-head-top .ctx-actions { margin-left: 0; order: 2; }
+}
+@media (max-width: 640px) {
+  .mo-dossier .dos-act { grid-template-columns: 3px 62px minmax(0, 1fr); }
+  .mo-dossier .dos-act .op { grid-column: 3; }
+  .mo-dossier .dos-stage-summary { margin-left: 16px; }
+  .mo-dossier .dos-stage-acts { padding-left: 16px; }
+}

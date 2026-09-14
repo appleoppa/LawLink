@@ -35,7 +35,8 @@ export function FinancePanel({
   const outstanding = Math.max(stats.receivable - stats.received, 0);
 
   const cards: { label: string; value: number; tone: StatTone; className?: string }[] = [
-    { label: "合同约定律师费", value: stats.contractAmount, tone: "neutral", className: "col-span-3" },
+    // 非紧凑 6 列：有分成卡时合同额占 2 列、无分成时占 3 列，保证整行填满不留空格
+    { label: "合同约定律师费", value: stats.contractAmount, tone: "neutral", className: compact || stats.commission <= 0 ? "col-span-3" : "col-span-3 sm:col-span-2" },
     { label: "已收", value: stats.received, tone: "emerald" },
     { label: "待收", value: outstanding, tone: "amber" },
     { label: "支出", value: stats.cost, tone: "red" },

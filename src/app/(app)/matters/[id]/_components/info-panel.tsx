@@ -25,7 +25,7 @@ const EXECUTION_TYPES = [
 const dash = (v: string | null | undefined) => v?.trim() || "—";
 
 // 商事仲裁配仲裁秘书，诉讼/劳动仲裁配书记员，不会同时出现
-function contactRoleLabels(type: string | undefined) {
+export function contactRoleLabels(type: string | undefined) {
   if (type && ARBITRATION_TYPES.includes(type)) {
     return { lead: "仲裁员", assistant: "仲裁秘书" };
   }
@@ -118,7 +118,7 @@ export function InfoPanel({
             <h2>信息总览</h2>
             <div className="desc truncate">
               {currentProcedure ? `当前程序档案字段` : "案件档案字段"}
-              {matter.firmCaseNo ? ` · 所内编号 ${matter.firmCaseNo}` : ""} · 期限开庭、证据链、委托与自定义字段见下方
+              {matter.firmCaseNo ? ` · 所内编号 ${matter.firmCaseNo}` : ""}
             </div>
           </div>
           {canEdit ? (
