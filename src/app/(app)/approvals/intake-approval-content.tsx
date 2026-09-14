@@ -6,9 +6,10 @@ import styles from "./intake-approval.module.css";
 import { Badge } from "@/components/ui/badge";
 import { conflictMatchKind, conflictMatchKinds, conflictMatchedFieldLabel, conflictPartyRoleLabel, conflictSeverityLabel, type IntakeReviewField } from "@/lib/approvals/intake-detail";
 import type { getApprovalDetail } from "@/server/approval-permissions/inbox";
+import { formatDateTime } from "@/lib/utils";
 
 type Detail = NonNullable<Awaited<ReturnType<typeof getApprovalDetail>>["intakeDetail"]>;
-const dateText = (date: Date | string | null) => date ? new Date(date).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false }) : "未记录";
+const dateText = (date: Date | string | null) => date ? formatDateTime(date) : "未记录";
 const roleText = (role: string) => conflictPartyRoleLabel[role as keyof typeof conflictPartyRoleLabel] ?? null;
 
 export function IntakeReviewValue({ label, value, sensitive }: IntakeReviewField) {

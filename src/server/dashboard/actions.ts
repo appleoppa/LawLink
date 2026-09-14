@@ -162,15 +162,15 @@ export async function getDashboardRevenueTrend(months = 6) {
     const d = new Date(e.occurredAt);
     const idx = (d.getFullYear() - start.getFullYear()) * 12 + d.getMonth() - start.getMonth();
     if (idx < 0 || idx >= months) continue;
-    const val = Number(e.amount) / 10000; // display in 万
+    // 以元为单位返回，与财务页同一图表组件口径一致（坐标轴自行缩写为 K）
+    const val = Number(e.amount);
     if (e.type === "RECEIVED") buckets[idx].received += val;
     if (e.type === "RECEIVABLE") buckets[idx].receivable += val;
   }
 
-  // Round to 1 decimal
   for (const b of buckets) {
-    b.received = Math.round(b.received * 10) / 10;
-    b.receivable = Math.round(b.receivable * 10) / 10;
+    b.received = Math.round(b.received);
+    b.receivable = Math.round(b.receivable);
   }
 
   return buckets;

@@ -276,7 +276,9 @@ function summarize(text: string): string {
   const informative = lines.find((l) =>
     /开庭|送达|缴费|调解|执行|立案|判决|举证|裁定/.test(l)
   );
-  return (informative ?? lines[0]).slice(0, 80);
+  const sentence = informative ?? lines[0];
+  // 截断时补省略号，避免摘要停在「9月18日09」这类半截信息上
+  return sentence.length > 120 ? `${sentence.slice(0, 120)}…` : sentence;
 }
 
 function contextAround(text: string, needle: string, radius = 24): string {

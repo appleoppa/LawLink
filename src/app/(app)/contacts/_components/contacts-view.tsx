@@ -129,7 +129,7 @@ export function ContactsView({
 
   return (
     <div className="space-y-6">
-      <PageHeader className="!mb-0" title="通讯录" sub="本所同事与外部联系人；外部联系人电话默认打码展示。" />
+      <PageHeader className="!mb-0" title="通讯录" sub="本所同事与外部联系人（法院、仲裁机构、公证处、他所律师等）；外部联系人由行政审核后对全所展示。" />
 
       {/* 同事 */}
       <div className="space-y-3">

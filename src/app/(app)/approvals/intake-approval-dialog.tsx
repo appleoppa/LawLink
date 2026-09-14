@@ -14,6 +14,7 @@ import {
   ReviewSummaryItem
 } from "@/components/patterns/review-dialog";
 import { IntakeApprovalContent } from "./intake-approval-content";
+import { formatDateTime } from "@/lib/utils";
 
 type Detail = Awaited<ReturnType<typeof getApprovalDetail>>;
 type Props = {
@@ -25,7 +26,7 @@ type Props = {
   onDecision: (decision: "approve" | "reject" | "revision") => void;
   onResubmit: () => void;
 };
-const dateText = (date: Date | string | null) => date ? new Date(date).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false }) : "未记录";
+const dateText = (date: Date | string | null) => date ? formatDateTime(date) : "未记录";
 
 /** 墨案 07：收案审批宽幅审阅 */
 export function IntakeApprovalDialog({ detail, intakeDetail, note, onNoteChange, pending, onDecision, onResubmit }: Props) {

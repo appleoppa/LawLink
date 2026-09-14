@@ -9,7 +9,7 @@ import type { ReactNode } from "react";
 import { AlertTriangle, SquareCheck } from "lucide-react";
 import { DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
 
 export type ReviewTab = { id: string; label: string; icon?: ReactNode; count?: number; countTone?: "red" | "muted"; content: ReactNode };
 
@@ -229,7 +229,7 @@ export function ReviewFileRow({ id, name, readable, meta }: { id: string; name: 
 }
 
 export function ReviewHistory({ items, emptyText, emptyDesc }: { items: { id: string; label: string; userName: string; at: Date | string; note?: string | null; decision?: string | boolean | null; legacy?: boolean }[]; emptyText: string; emptyDesc?: string }) {
-  const dateText = (d: Date | string) => new Date(d).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
+  const dateText = (d: Date | string) => formatDateTime(d);
   if (!items.length) return <ReviewEmpty title={emptyText} desc={emptyDesc} />;
   return (
     <ReviewSection title="处理记录">

@@ -15,6 +15,7 @@ import {
 } from "@/lib/enums";
 import { formatCurrency, cn, formatDate as fmtDate } from "@/lib/utils";
 import { matterHref } from "@/lib/matters/route";
+import { shDayKey, shDaysFromToday, shTime } from "@/lib/ui/sh-time";
 
 export type MatterRow = Omit<Matter, "claimAmount"> & {
   primaryClient: { id: string; name: string } | null;
@@ -440,18 +441,9 @@ function formatDate(value: Date | null) {
 
 function formatDateTime(value: Date | null) {
   if (!value) return "暂无开庭";
-  const date = new Date(value);
-  const yyyy = date.getFullYear();
-  const mm = pad2(date.getMonth() + 1);
-  const dd = pad2(date.getDate());
-  const hh = pad2(date.getHours());
-  const min = pad2(date.getMinutes());
-  return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+  return `${shDayKey(value)} ${shTime(value)}`;
 }
 
-function pad2(value: number) {
-  return value.toString().padStart(2, "0");
-}
 
 function StatusChip({ label, dot }: { label: string; dot: string }) {
   return (
@@ -518,17 +510,17 @@ export function MockupMattersTable({ items, columns }: { items: MatterRow[]; col
   }
   return (
     <div className="mo-scroll-x">
-      <table className="mo-table" style={{ minWidth: 980 }}>
+      <table className="mo-table" style={{ minWidth: 1040, tableLayout: "fixed" }}>
         <thead>
           <tr>
-            <th style={{ width: "26%", paddingLeft: 20 }}>案件 / 案由</th>
-            {show("client") ? <th style={{ width: "12%" }}>委托方</th> : null}
-            {show("caseNo") ? <th style={{ width: "13%" }}>案号</th> : null}
+            <th style={{ width: "25%", paddingLeft: 20 }}>案件 / 案由</th>
+            {show("client") ? <th style={{ width: "11%" }}>委托方</th> : null}
+            {show("caseNo") ? <th style={{ width: "14%" }}>案号</th> : null}
             {show("stage") ? <th style={{ width: "11%" }}>程序 · 阶段</th> : null}
-            {show("owner") ? <th style={{ width: "11%" }}>主办 / 协办</th> : null}
+            {show("owner") ? <th style={{ width: "10%" }}>主办 / 协办</th> : null}
             {show("amount") ? <th style={{ width: "9%" }} className="num">标的额</th> : null}
-            {show("deadline") ? <th style={{ width: "12%" }}>最近期限</th> : null}
-            {show("status") ? <th style={{ width: "6%" }}>状态</th> : null}
+            {show("deadline") ? <th style={{ width: "13%" }}>最近期限</th> : null}
+            {show("status") ? <th style={{ width: "7%" }}>状态</th> : null}
           </tr>
         </thead>
         <tbody>
@@ -580,7 +572,7 @@ function MockupMatterRow({ m, show, onOpen }: { m: MatterRow; show: (c: MatterCo
       {show("client") ? <td className="max-w-[10rem] truncate">{m.primaryClient?.name ?? <span className="t-faint">未关联客户</span>}</td> : null}
       {show("caseNo") ? (
         <td>
-          <span className="block font-mono text-[12px] leading-[1.5] text-[var(--t-secondary)]">{proc?.caseNumber ?? <span className="t-faint font-sans">暂无案号</span>}</span>
+          <span className="block truncate whitespace-nowrap font-mono text-[11.5px] leading-[1.5] text-[var(--t-secondary)]" title={proc?.caseNumber ?? undefined}>{proc?.caseNumber ?? <span className="t-faint font-sans">暂无案号</span>}</span>
         </td>
       ) : null}
       {show("stage") ? (
@@ -622,9 +614,9 @@ function MockupMatterRow({ m, show, onOpen }: { m: MatterRow; show: (c: MatterCo
           {days === null || !nearest ? (
             <span className="t-faint">—</span>
           ) : overdue ? (
-            <span className="mo-cd mo-cd-urgent" style={{ display: "inline-block", minWidth: 110 }} title={nearest.title}>逾期 {Math.abs(days)} 天</span>
+            <span className="mo-cd mo-cd-urgent" style={{ display: "inline-block" }} title={nearest.title}>逾期 {Math.abs(days)} 天</span>
           ) : (
-            <span className="flex items-center gap-2" title={`${nearest.title} · ${formatDate(new Date(nearest.dueAt))}`}>
+            <span className="flex items-center gap-2 whitespace-nowrap" title={`${nearest.title} · ${formatDate(new Date(nearest.dueAt))}`}>
               <RiskLadder level={risk.level} tone={risk.tone} />
               <span className={`mo-cd ${risk.tone === "red" ? "mo-cd-urgent" : risk.tone === "amber" ? "mo-cd-soon" : "mo-cd-normal"}`}>
                 {shortCat} {days === 0 ? "今天" : `${days} 天`}
@@ -646,9 +638,5 @@ function MockupMatterRow({ m, show, onOpen }: { m: MatterRow; show: (c: MatterCo
 }
 
 function daysBetween(date: Date | string) {
-  const a = new Date();
-  a.setHours(0, 0, 0, 0);
-  const b = new Date(date);
-  b.setHours(0, 0, 0, 0);
-  return Math.round((b.getTime() - a.getTime()) / 86_400_000);
+  return shDaysFromToday(date);
 }

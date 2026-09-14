@@ -1,17 +1,15 @@
 import Link from "next/link";
-import { FileText, Calendar, User, Download } from "lucide-react";
+import { Download } from "lucide-react";
 import {
   listArchivedMatters
 } from "@/server/archive/actions";
 import { CLOSED_REASON_CN } from "@/server/archive/schemas";
-import { Badge } from "@/components/ui/badge";
+import { formatDate } from "@/lib/utils";
 import { requireSession } from "@/lib/auth/session";
 import { isSystemAdmin } from "@/lib/auth/system-role";
 import { matterCategoryLabel } from "@/lib/enums";
 import { matterHref } from "@/lib/matters/route";
 import { PageHeader } from "@/components/patterns/moan";
-
-
 
 export default async function ArchivePage() {
   const session = await requireSession("archive.read");
@@ -27,92 +25,75 @@ export default async function ArchivePage() {
       />
 
       {items.length === 0 ? (
-        <div className="ll-surface border-dashed py-16 text-center text-sm text-muted-foreground">
-          暂无已归档案件。在案件详情顶部&ldquo;状态 → 归档&rdquo;完成归档流程后，会出现在这里。
+        <div className="card">
+          <div className="empty">
+            <div className="mo-empty-title">暂无已归档案件</div>
+            <div className="mo-empty-desc">在案件详情「···」菜单发起归档申请，审批通过后会出现在这里。</div>
+          </div>
         </div>
       ) : (
-        <div className="ll-surface overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-[#FAFBFA] text-[10.5px] font-semibold tracking-[0.05em] text-[#98A3AD]">
-              <tr>
-                <th className="px-3 py-2 text-left font-normal w-32">所内案号</th>
-                <th className="px-3 py-2 text-left font-normal">案件</th>
-                <th className="px-3 py-2 text-left font-normal w-20">类别</th>
-                <th className="px-3 py-2 text-left font-normal w-24">委托方</th>
-                <th className="px-3 py-2 text-left font-normal w-20">结案方式</th>
-                <th className="px-3 py-2 text-left font-normal w-28">结案日期</th>
-                <th className="px-3 py-2 text-left font-normal w-28">归档日期</th>
-                <th className="px-3 py-2 text-left font-normal w-20">归档人</th>
-                <th className="px-3 py-2 text-left font-normal w-20">必交缺项</th>
-                <th className="px-3 py-2 text-left font-normal w-24">材料核验</th>
-                <th className="px-3 py-2 text-left font-normal w-20">审阅记录</th>
-                <th className="px-3 py-2 text-left font-normal w-16">导出</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/60">
-              {items.map((rec) => (
-                <tr key={rec.id} className="hover:bg-muted/20 transition-colors">
-                  <td className="px-3 py-2.5 font-mono text-xs text-[#6C3FC5]">
-                    {rec.matter.firmCaseNo ?? "—"}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <Link
-                      href={matterHref(rec.matter)}
-                      className="hover:text-[#1E56C8] transition-colors line-clamp-1"
-                    >
-                      <FileText className="h-3 w-3 inline mr-1 text-muted-foreground" />
-                      {rec.matter.title}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2.5 text-xs">
-                    {matterCategoryLabel[rec.matter.category as keyof typeof matterCategoryLabel] ?? "类别待核实"}
-                  </td>
-                  <td className="px-3 py-2.5 text-xs">
-                    <User className="h-3 w-3 inline mr-1 text-muted-foreground" />
-                    {rec.matter.primaryClient?.name ?? "—"}
-                  </td>
-                  <td className="px-3 py-2.5 text-xs">
-                    {rec.closedReason ? CLOSED_REASON_CN[rec.closedReason] : "—"}
-                  </td>
-                  <td className="px-3 py-2.5 text-xs text-muted-foreground">
-                    <Calendar className="h-3 w-3 inline mr-1" />
-                    {rec.completedAt ? rec.completedAt.toISOString().slice(0, 10) : "—"}
-                  </td>
-                  <td className="px-3 py-2.5 text-xs text-muted-foreground">
-                    {rec.archivedAt.toISOString().slice(0, 10)}
-                  </td>
-                  <td className="px-3 py-2.5 text-xs">{rec.archivedBy}</td>
-                  <td className="px-3 py-2.5">
-                    {!rec.materialSnapshotVerified ? (
-                      <span className="text-xs text-[var(--amber)]">待核验</span>
-                    ) : rec.missingItems.length > 0 ? (
-                      <Badge variant="outline" className="border-[var(--amber-line)] text-[var(--amber)] text-[10px]">
-                        {rec.missingItems.length} 项
-                      </Badge>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">无</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5 text-xs">
-                    {rec.materialSnapshotVerified ? <span className="text-[var(--green)]">已固定</span> : <span className="text-[var(--amber)]">历史未固定</span>}
-                  </td>
-                  <td className="px-3 py-2.5 text-xs">
-                    {(canAuditAll || rec.archivedById === session.user.id) ? <Link className="text-primary underline" href={`/approvals?type=ARCHIVE_APPROVE&id=${rec.id}`}>查看</Link> : <span className="text-muted-foreground">—</span>}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    {rec.materialSnapshotVerified ? <a
-                      href={`/api/archive/${rec.matter.id}/export?archiveId=${rec.id}`}
-                      className="inline-flex items-center gap-1 text-xs text-[#1E56C8] hover:text-[#1E56C8]/80"
-                      title="导出归档 ZIP"
-                    >
-                      <Download className="h-3 w-3" />
-                      ZIP
-                    </a> : <span className="text-xs text-muted-foreground" title="历史记录没有固定获批材料，不能生成可核验归档包">待核验</span>}
-                  </td>
+        <div className="card" style={{ overflow: "hidden" }}>
+          <div className="mo-scroll-x">
+            <table className="mo-table" style={{ minWidth: 1080, tableLayout: "fixed" }}>
+              <thead>
+                <tr>
+                  <th style={{ width: 150, paddingLeft: 20 }}>归档号 / 所内案号</th>
+                  <th>案件</th>
+                  <th style={{ width: 84 }}>类别</th>
+                  <th style={{ width: 120 }}>委托方</th>
+                  <th style={{ width: 76 }}>结案方式</th>
+                  <th style={{ width: 108 }}>结案日期</th>
+                  <th style={{ width: 108 }}>归档日期</th>
+                  <th style={{ width: 70 }}>归档人</th>
+                  <th style={{ width: 92 }}>材料</th>
+                  <th style={{ width: 96 }}>操作</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {items.map((rec) => (
+                  <tr key={rec.id} data-spine="bronze">
+                    <td style={{ paddingLeft: 20 }}>
+                      <div className="font-mono text-[12px] font-semibold">{rec.archiveNo}</div>
+                      <div className="font-mono text-[11px] text-[var(--t-muted)]">{rec.matter.firmCaseNo ?? "—"}</div>
+                    </td>
+                    <td className="min-w-0">
+                      <Link href={matterHref(rec.matter)} className="block truncate font-semibold hover:text-[var(--teal-deep)]" title={rec.matter.title}>
+                        {rec.matter.title}
+                      </Link>
+                    </td>
+                    <td className="t-sm">{matterCategoryLabel[rec.matter.category as keyof typeof matterCategoryLabel] ?? "类别待核实"}</td>
+                    <td className="t-sm truncate" title={rec.matter.primaryClient?.name ?? undefined}>{rec.matter.primaryClient?.name ?? "—"}</td>
+                    <td className="t-sm">{rec.closedReason ? CLOSED_REASON_CN[rec.closedReason] : "—"}</td>
+                    <td className="whitespace-nowrap font-mono text-[12px] text-[var(--t-secondary)]">{rec.completedAt ? formatDate(rec.completedAt) : "—"}</td>
+                    <td className="whitespace-nowrap font-mono text-[12px] text-[var(--t-secondary)]">{formatDate(rec.archivedAt)}</td>
+                    <td className="t-sm">{rec.archivedBy}</td>
+                    <td>
+                      {!rec.materialSnapshotVerified ? (
+                        <span className="badge b-amber" title="历史归档记录没有固定获批材料清单">未固定</span>
+                      ) : rec.missingItems.length > 0 ? (
+                        <span className="badge b-amber">缺 {rec.missingItems.length} 项</span>
+                      ) : (
+                        <span className="badge b-green">齐全</span>
+                      )}
+                    </td>
+                    <td>
+                      <div className="flex items-center gap-2 whitespace-nowrap text-[12px]">
+                        {canAuditAll || rec.archivedById === session.user.id ? (
+                          <Link className="text-[var(--teal-deep)] hover:underline" href={`/approvals?type=ARCHIVE_APPROVE&id=${rec.id}`}>审阅记录</Link>
+                        ) : null}
+                        {rec.materialSnapshotVerified ? (
+                          <a href={`/api/archive/${rec.matter.id}/export?archiveId=${rec.id}`} className="inline-flex items-center gap-1 text-[var(--teal-deep)] hover:underline" title="导出归档 ZIP">
+                            <Download className="h-3 w-3" />
+                            ZIP
+                          </a>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

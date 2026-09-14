@@ -844,6 +844,7 @@ async function main() {
     data: [
       { matterId: m1.id, billingId: billing1.id, type: "COMMISSION", amount: 45000, occurredAt: day(-68), parentFeeEntryId: fe1.id, beneficiaryUserId: U.ye.id, note: "主办分成 30%", recordedById: U.he.id },
       { matterId: m1.id, billingId: billing1.id, type: "COMMISSION", amount: 30000, occurredAt: day(-68), parentFeeEntryId: fe1.id, beneficiaryUserId: U.shen.id, note: "协办分成 20%", recordedById: U.he.id },
+      { matterId: m1.id, billingId: billing1.id, type: "RECEIVABLE", amount: 150000, occurredAt: day(-74), payerOrPayee: C.qingshi.name, note: "首期律师费（签约应收）", recordedById: U.he.id },
       { matterId: m1.id, billingId: billing1.id, type: "RECEIVABLE", amount: 120000, occurredAt: day(-45), payerOrPayee: C.qingshi.name, note: "第二期律师费（已逾期）", recordedById: U.he.id },
       { matterId: m1.id, type: "COST", amount: 23870, occurredAt: day(-61), payerOrPayee: "上海市长宁区人民法院", method: "代垫", note: "案件受理费（客户已转付）", recordedById: U.chen.id }
     ]
@@ -913,6 +914,7 @@ async function main() {
   await createDoc({ matterId: m2.id, procedureId: p2.id, name: "劳动仲裁申请书.docx", category: "PLEADING", sourceOrigin: "TEAM_PRODUCED", uploadedById: U.shen.id, createdAt: day(-40), pages: [["申请人：林晓芸", "被申请人：上海晟安人力资源有限公司", "仲裁请求：支付违法解除劳动合同赔偿金 96,000 元、加班费 30,000 元。"]] });
   await createDoc({ matterId: m2.id, procedureId: p2.id, name: "劳动合同及解除通知.docx", category: "EVIDENCE", sourceOrigin: "CLIENT_PROVIDED", sourceParty: C.linxy.name, uploadedById: U.chen.id, createdAt: day(-44), pages: [["解除通知：因你严重违反公司规章制度，公司决定即日起解除劳动合同。"]] });
   const billing2 = await prisma.billing.create({ data: { matterId: m2.id, title: "委托代理合同 - 固定收费", contractAmount: 30000, status: "ACTIVE", signedAt: day(-45) } });
+  await prisma.feeEntry.create({ data: { matterId: m2.id, billingId: billing2.id, type: "RECEIVABLE", amount: 30000, occurredAt: day(-45), payerOrPayee: C.linxy.name, note: "委托代理费（两期）", recordedById: U.he.id } });
   await prisma.feeEntry.create({ data: { matterId: m2.id, billingId: billing2.id, type: "RECEIVED", amount: 15000, occurredAt: monthsAgo(1, 20), payerOrPayee: C.linxy.name, method: "微信转账", note: "首期", recordedById: U.he.id } });
   await prisma.receivable.create({ data: { matterId: m2.id, billingId: billing2.id, title: "尾款", amount: 15000, status: "OPEN", dueDate: day(20) } });
   await prisma.commissionPlan.create({ data: { matterId: m2.id, userId: U.shen.id, percent: 40, label: "主办" } });
@@ -955,6 +957,7 @@ async function main() {
     data: [
       { matterId: m3.id, billingId: billing3.id, type: "RECEIVED", amount: 60000, occurredAt: monthsAgo(5, 8), invoiceNo: "44032600008812", payerOrPayee: C.huachen.name, method: "银行转账", note: "一审律师费", recordedById: U.he.id },
       { matterId: m3.id, billingId: billing3.id, type: "RECEIVED", amount: 40000, occurredAt: monthsAgo(3, 15), payerOrPayee: C.huachen.name, method: "银行转账", note: "一审阶段性付款", recordedById: U.he.id },
+      { matterId: m3.id, billingId: billing3.id, type: "RECEIVABLE", amount: 100000, occurredAt: monthsAgo(5, 1), payerOrPayee: C.huachen.name, note: "一审律师费", recordedById: U.he.id },
       { matterId: m3.id, billingId: billing3.id, type: "RECEIVABLE", amount: 100000, occurredAt: day(-95), payerOrPayee: C.huachen.name, note: "二审律师费", recordedById: U.he.id }
     ]
   });
@@ -988,6 +991,7 @@ async function main() {
   const dd = await createDoc({ matterId: m4.id, procedureId: p4.id, name: "尽职调查清单（第一版）.docx", category: "OTHER", sourceOrigin: "TEAM_PRODUCED", uploadedById: U.lin.id, createdAt: day(-26), pages: [["一、主体资格", "二、股权结构与出资", "三、目标资产抵押情况核查", "四、重大合同"]] });
   void dd;
   const billing4 = await prisma.billing.create({ data: { matterId: m4.id, title: "专项法律服务协议", contractAmount: 260000, status: "ACTIVE", signedAt: day(-30) } });
+  await prisma.feeEntry.create({ data: { matterId: m4.id, billingId: billing4.id, type: "RECEIVABLE", amount: 130000, occurredAt: day(-30), payerOrPayee: C.dinghui.name, note: "首期 50%", recordedById: U.he.id } });
   await prisma.feeEntry.create({ data: { matterId: m4.id, billingId: billing4.id, type: "RECEIVED", amount: 130000, occurredAt: day(-5), payerOrPayee: C.dinghui.name, method: "银行转账", note: "首期 50%", recordedById: U.he.id } });
   const inv4 = await prisma.invoiceRequest.create({ data: { matterId: m4.id, amount: 130000, title: "尽调首期服务费", status: "REJECTED", invoiceType: "SPECIAL", invoiceItem: "CONSULTING_FEE", buyerName: "鼎晖创投（上海）有限公司", requestedById: U.lin.id, requestedAt: day(-4), processedById: U.he.id, processedAt: day(-3), processNote: "开票抬头与合同主体不一致，请核对后重新申请" } });
   await audit(U.he.id, "INVOICE_REJECTED", "InvoiceRequest", inv4.id, day(-3, 10), { note: "开票抬头与合同主体不一致，请核对后重新申请" });
@@ -1004,7 +1008,8 @@ async function main() {
     parties: [{ role: "CLIENT_PARTY", standing: "NON_LITIGATION_PARTY", name: C.bank.name, partyType: "COMPANY", social: C.bank.idPlain }]
   });
   const p5 = await createProcedure({ matterId: m5.id, type: "NON_LITIGATION_PHASE", order: 1, status: "IN_PROGRESS", leadLawyerId: U.ye.id, currentStage: "", startedAt: sh(year, 1, 5) });
-  await prisma.matterStage.updateMany({ where: { procedureId: p5.id }, data: { startedAt: sh(year, 1, 5) } });
+  await prisma.matterStage.updateMany({ where: { procedureId: p5.id, order: { lte: 4 } }, data: { startedAt: sh(year, 1, 5) } });
+  await prisma.matterStage.updateMany({ where: { procedureId: p5.id, order: { lte: 3 } }, data: { completedAt: sh(year, 2, 20) } });
   await prisma.note.createMany({
     data: [
       { matterId: m5.id, authorId: U.ye.id, channel: "EMAIL", withWhom: "孙蕾", occurredAt: day(-2, 16), content: "回复分行关于经营性物业抵押贷款展期的法律意见：展期须办理抵押变更登记，否则抵押权担保范围存在争议。" },
@@ -1014,6 +1019,9 @@ async function main() {
   await prisma.task.create({ data: { matterId: m5.id, title: "审查三份授信合同并出具修改意见", assigneeId: U.ye.id, dueAt: day(0, 17), priority: 2 } });
   await createDoc({ matterId: m5.id, procedureId: p5.id, name: "关于抵押贷款展期的法律意见书.docx", category: "OTHER", sourceOrigin: "TEAM_PRODUCED", uploadedById: U.ye.id, createdAt: day(-2), pages: [["经审查，贷款展期未办理抵押变更登记的，抵押权人主张就展期后的债务优先受偿存在不被支持的风险……"]] });
   const billing5 = await prisma.billing.create({ data: { matterId: m5.id, title: `${year} 年度顾问合同`, contractAmount: 240000, schedule: "按季度支付 60,000", status: "ACTIVE", signedAt: sh(year, 1, 5) } });
+  for (const [i, mAgo] of [8, 5, 2].entries()) {
+    await prisma.feeEntry.create({ data: { matterId: m5.id, billingId: billing5.id, type: "RECEIVABLE", amount: 60000, occurredAt: monthsAgo(mAgo, 1), payerOrPayee: C.bank.name, note: `第 ${i + 1} 季度顾问费`, recordedById: U.he.id } });
+  }
   for (const [i, mAgo] of [5, 2].entries()) {
     await prisma.feeEntry.create({ data: { matterId: m5.id, billingId: billing5.id, type: "RECEIVED", amount: 60000, occurredAt: monthsAgo(mAgo, 12), invoiceNo: `3100260000${5566 + i}`, payerOrPayee: C.bank.name, method: "银行转账", note: `第 ${i + 1} 季度顾问费`, recordedById: U.he.id } });
   }
@@ -1043,6 +1051,7 @@ async function main() {
   await createDoc({ matterId: m6.id, procedureId: p6.id, name: "起诉意见书（阅卷摘录）.docx", category: "PROCEDURE", sourceOrigin: "SELF_COLLECTED", uploadedById: U.chen.id, createdAt: day(-18), pages: [["犯罪嫌疑人张伟以虚构工程项目为由，与被害单位签订合同骗取保证金 86 万元……"]] });
   await prisma.note.create({ data: { matterId: m6.id, authorId: U.ye.id, channel: "MEETING", withWhom: "张伟（看守所会见）", occurredAt: day(-8, 10), content: "研判：保证金已部分用于项目前期费用，主观非法占有目的证据不足，拟提出不起诉意见。", tags: ["研判笔记"] } });
   await prisma.billing.create({ data: { matterId: m6.id, title: "刑事辩护委托协议", contractAmount: 150000, status: "ACTIVE", signedAt: day(-35) } });
+  await prisma.feeEntry.create({ data: { matterId: m6.id, type: "RECEIVABLE", amount: 150000, occurredAt: day(-35), payerOrPayee: "李娜（家属）", note: "刑事辩护费", recordedById: U.he.id } });
   await prisma.feeEntry.create({ data: { matterId: m6.id, type: "RECEIVED", amount: 150000, occurredAt: monthsAgo(1, 3), payerOrPayee: "李娜（家属）", method: "银行转账", note: "一次性支付", recordedById: U.he.id } });
 
   /* ═══════════════ M7 行政诉讼（暂停） ═══════════════ */
@@ -1091,7 +1100,9 @@ async function main() {
     await createDoc({ matterId: m8.id, procedureId: p8.id, name: "证据目录及证据.docx", category: "EVIDENCE", sourceOrigin: "CLIENT_PROVIDED", uploadedById: U.shen.id, createdAt: day(-190), archiveChecklistItemId: "evidence_catalog", pages: [["1. 运输合同", "2. 签收单 46 份", "3. 对账单"]] }),
     await createDoc({ matterId: m8.id, procedureId: p8.id, name: "民事调解书.docx", category: "JUDGMENT", sourceOrigin: "COURT_SERVED", uploadedById: U.shen.id, createdAt: day(-40), archiveChecklistItemId: "judgment", pages: [["经本院主持调解，双方自愿达成协议：被告分两期支付原告运费 360,000 元。"]] })
   ];
-  await prisma.feeEntry.create({ data: { matterId: m8.id, type: "RECEIVED", amount: 45000, occurredAt: monthsAgo(4, 18), invoiceNo: "31002600007788", payerOrPayee: C.shengtong.name, method: "银行转账", recordedById: U.he.id } });
+  const billing8 = await prisma.billing.create({ data: { matterId: m8.id, title: "委托代理合同 - 固定收费", contractAmount: 73000, status: "CLOSED", signedAt: day(-208) } });
+  await prisma.feeEntry.create({ data: { matterId: m8.id, billingId: billing8.id, type: "RECEIVABLE", amount: 73000, occurredAt: day(-208), payerOrPayee: C.shengtong.name, note: "代理费（含调解后补足部分）", recordedById: U.he.id } });
+  await prisma.feeEntry.create({ data: { matterId: m8.id, billingId: billing8.id, type: "RECEIVED", amount: 45000, occurredAt: monthsAgo(4, 18), invoiceNo: "31002600007788", payerOrPayee: C.shengtong.name, method: "银行转账", recordedById: U.he.id } });
   const checklist = checklistForCategory("CIVIL_COMMERCIAL");
   const byItem = new Map(m8Docs.map((d) => [d.archiveChecklistItemId, d.id]));
   const archive8 = await prisma.archiveRecord.create({

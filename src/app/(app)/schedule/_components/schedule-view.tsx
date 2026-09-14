@@ -21,6 +21,7 @@ import { deadlineCategoryLabel, procedureTypeLabel } from "@/lib/enums";
 import { CalendarSubscriptionDialog } from "./calendar-subscription-dialog";
 import { AddTaskDialog } from "./add-task-dialog";
 import { matterHref } from "@/lib/matters/route";
+import { SH_TZ, civilFromKey, civilKey, shDayKey, shDaysFromToday, shParts, shTime, shTodayCivil } from "@/lib/ui/sh-time";
 
 /* 墨案 09：事件配色——开庭蓝、法定期限红、所内提醒琥珀、任务 teal */
 const TYPE_META = {
@@ -56,7 +57,7 @@ export function ScheduleView({
   const [addOpen, setAddOpen] = useState(false);
   const [addDate, setAddDate] = useState<Date | null>(null);
 
-  const itemsWithDate = useMemo(() => items.map((it) => ({ ...it, dateKey: dateKey(new Date(it.occurredAt)) })), [items]);
+  const itemsWithDate = useMemo(() => items.map((it) => ({ ...it, dateKey: shDayKey(it.occurredAt) })), [items]);
   const itemsByKey = useMemo(() => {
     const map = new Map<string, (ScheduleItem & { dateKey: string })[]>();
     for (const it of itemsWithDate) {
@@ -67,8 +68,7 @@ export function ScheduleView({
     return map;
   }, [itemsWithDate]);
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = shTodayCivil();
 
   function openAddDialog(date?: Date | null) {
     setAddDate(date ?? today);
@@ -135,7 +135,7 @@ function Legend() {
 }
 
 function EventChip({ item, onSelect }: { item: ScheduleItem; onSelect: (item: ScheduleItem) => void }) {
-  const hasTime = new Date(item.occurredAt).getHours() !== 0 || new Date(item.occurredAt).getMinutes() !== 0;
+  const hasTime = shTime(item.occurredAt) !== "00:00";
   return (
     <button
       type="button"
@@ -147,7 +147,7 @@ function EventChip({ item, onSelect }: { item: ScheduleItem; onSelect: (item: Sc
       className={cn("ev w-full border-0 text-left font-[inherit]", evClass(item), item.completed && "line-through opacity-50")}
     >
       <span className="t">{hasTime ? formatTime(item.occurredAt) : "—"}</span>
-      <span className="min-w-0 truncate">{item.type === "hearing" ? `开庭·${item.title}` : item.title}</span>
+      <span className="min-w-0 truncate">{item.type === "hearing" && !/^(开庭|庭审|询问)/.test(item.title) ? `开庭·${item.title}` : item.title}</span>
     </button>
   );
 }
@@ -165,8 +165,8 @@ function CalendarView({
   onSelectItem: (item: ScheduleItem) => void;
   onAddDay: (date: Date) => void;
 }) {
-  const now = new Date();
-  const cursor = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+  const now = shTodayCivil();
+  const cursor = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1, 12);
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -174,19 +174,19 @@ function CalendarView({
   const cells: { date: Date; key: string; out: boolean }[] = [];
   const prevMonthDays = new Date(year, month, 0).getDate();
   for (let i = firstWeekday - 1; i >= 0; i--) {
-    const d = new Date(year, month - 1, prevMonthDays - i);
-    cells.push({ date: d, key: dateKey(d), out: true });
+    const d = new Date(year, month - 1, prevMonthDays - i, 12);
+    cells.push({ date: d, key: civilKey(d), out: true });
   }
   for (let day = 1; day <= daysInMonth; day++) {
-    const d = new Date(year, month, day);
-    cells.push({ date: d, key: dateKey(d), out: false });
+    const d = new Date(year, month, day, 12);
+    cells.push({ date: d, key: civilKey(d), out: false });
   }
   let nextDay = 1;
   while (cells.length % 7 !== 0) {
-    const d = new Date(year, month + 1, nextDay++);
-    cells.push({ date: d, key: dateKey(d), out: true });
+    const d = new Date(year, month + 1, nextDay++, 12);
+    cells.push({ date: d, key: civilKey(d), out: true });
   }
-  const todayKey = dateKey(new Date());
+  const todayKey = shDayKey(new Date());
 
   return (
     <div className="card" style={{ overflow: "hidden" }}>
@@ -245,8 +245,7 @@ function WeekView({
   onSelectItem: (item: ScheduleItem) => void;
   onAddDay: (date: Date) => void;
 }) {
-  const base = new Date();
-  base.setHours(0, 0, 0, 0);
+  const base = shTodayCivil();
   const monday = new Date(base);
   monday.setDate(base.getDate() - ((base.getDay() + 6) % 7) + weekOffset * 7);
   const days = Array.from({ length: 7 }, (_, i) => {
@@ -254,7 +253,7 @@ function WeekView({
     d.setDate(monday.getDate() + i);
     return d;
   });
-  const todayKey = dateKey(new Date());
+  const todayKey = shDayKey(new Date());
   const sunday = days[6];
   return (
     <div className="card" style={{ overflow: "hidden" }}>
@@ -271,14 +270,14 @@ function WeekView({
       </div>
       <div className="dow">
         {days.map((d, i) => (
-          <div key={i} style={dateKey(d) === todayKey ? { color: "var(--teal-deep)" } : undefined}>
+          <div key={i} style={civilKey(d) === todayKey ? { color: "var(--teal-deep)" } : undefined}>
             {WEEKDAYS[i]} <span className="font-mono">{d.getDate()}</span>
           </div>
         ))}
       </div>
       <div className="cells">
         {days.map((d) => {
-          const key = dateKey(d);
+          const key = civilKey(d);
           const dayItems = itemsByKey.get(key) ?? [];
           return (
             <div key={key} className={cn("cell group", key === todayKey && "today")} style={{ minHeight: 420 }}>
@@ -295,7 +294,7 @@ function WeekView({
 function ListView({ items, today, onSelectItem }: { items: (ScheduleItem & { dateKey: string })[]; today: Date; onSelectItem: (item: ScheduleItem) => void }) {
   const groups = useMemo(() => {
     const map = new Map<string, (ScheduleItem & { dateKey: string })[]>();
-    for (const it of items.filter((x) => new Date(x.occurredAt) >= new Date(today.getTime() - 7 * 86_400_000))) {
+    for (const it of items.filter((x) => civilFromKey(x.dateKey).getTime() >= today.getTime() - 7 * 86_400_000)) {
       if (!map.has(it.dateKey)) map.set(it.dateKey, []);
       map.get(it.dateKey)!.push(it);
     }
@@ -308,7 +307,7 @@ function ListView({ items, today, onSelectItem }: { items: (ScheduleItem & { dat
   return (
     <div className="card" style={{ overflow: "hidden" }}>
       {groups.map(([key, group]) => {
-        const d = new Date(`${key}T00:00:00`);
+        const d = civilFromKey(key);
         const days = Math.round((d.getTime() - today.getTime()) / 86_400_000);
         return (
           <div key={key}>
@@ -332,11 +331,11 @@ function SideItem({ item, onSelectItem, lead }: { item: ScheduleItem; onSelectIt
       <span className={cn("w-12 shrink-0 font-mono text-[12px]", overdue ? "t-red" : "t-mute")}>{lead}</span>
       <span className="min-w-0 flex-1">
         <span className={cn("tt block truncate", item.completed && "line-through opacity-60")}>
-          {item.type === "hearing" ? `开庭 · ${item.title}` : item.title}
+          {item.type === "hearing" && !/^(开庭|庭审|询问)/.test(item.title) ? `开庭 · ${item.title}` : item.title}
           {item.type === "deadline" && item.category && item.category !== "CUSTOM" ? "（法定）" : ""}
         </span>
         <span className="tm block truncate">
-          {[formatTime(item.occurredAt), displaySubject(item), item.procedureLabel ? formatProcedureLabel(item.procedureLabel) : null].filter(Boolean).join(" · ")}
+          {[lead === formatTime(item.occurredAt) ? null : formatTime(item.occurredAt), displaySubject(item), item.procedureLabel ? formatProcedureLabel(item.procedureLabel) : null].filter(Boolean).join(" · ")}
         </span>
       </span>
     </button>
@@ -356,9 +355,7 @@ function ScheduleSideRail({
 }) {
   const nowMs = Date.now();
   const dayMs = 86_400_000;
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const dayDiff = (d: Date) => Math.floor((new Date(new Date(d).setHours(0, 0, 0, 0)).getTime() - todayStart.getTime()) / dayMs);
+  const dayDiff = (d: Date) => shDaysFromToday(d);
   const open = items.filter((it) => (it.type === "deadline" || it.type === "task") && !it.completed);
   const buckets = [
     { label: "已逾期", test: (t: number) => t < 0, tone: "red" as const, level: 4 },
@@ -366,11 +363,11 @@ function ScheduleSideRail({
     { label: "7 日内到期", test: (t: number) => t > 3 && t <= 7, tone: "amber" as const, level: 3 },
     { label: "30 日内到期", test: (t: number) => t > 7 && t <= 30, tone: "blue" as const, level: 2 }
   ].map((b) => ({ ...b, list: open.filter((it) => b.test(dayDiff(it.occurredAt))) }));
-  const todayKey = dateKey(new Date());
+  const todayKey = shDayKey(new Date());
   const todayItems = itemsByKey.get(todayKey) ?? [];
-  const tomorrowFirst = itemsByKey.get(dateKey(new Date(nowMs + dayMs)))?.[0];
-  const upcoming = items.filter((it) => new Date(it.occurredAt).getTime() >= todayStart.getTime() + dayMs && !it.completed).sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime()).slice(0, 5);
-  const todayTitle = new Date().toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "short" });
+  const tomorrowFirst = itemsByKey.get(shDayKey(nowMs + dayMs))?.[0];
+  const upcoming = items.filter((it) => shDaysFromToday(it.occurredAt) >= 1 && !it.completed).sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime()).slice(0, 5);
+  const todayTitle = new Date().toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "short", timeZone: SH_TZ });
 
   return (
     <aside style={{ display: "flex", flexDirection: "column", gap: 14 }} className="min-w-0 xl:sticky xl:top-[68px]">
@@ -413,7 +410,7 @@ function ScheduleSideRail({
             <RiskLadder level={b.level} tone={b.tone} />
           </button>
         ))}
-        <div className="panel-foot t-xs t-mute">预警档位由管理后台期限规则库统一配置（T-7 / T-3 / T-0 / T+1）</div>
+        <div className="panel-foot t-xs t-mute">提醒档位：T-3 / T-1 / T-0 / T+1，另加各规则建议提前档（管理后台 · 期限规则库）</div>
       </div>
 
       <div className="card">
@@ -535,19 +532,8 @@ function DetailLine({ label, value }: { label: string; value: React.ReactNode })
   );
 }
 
-function dateKey(d: Date) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
 function formatTime(value: Date) {
-  return new Date(value).toLocaleTimeString("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false
-  });
+  return shTime(value);
 }
 
 function formatFullDate(value: Date) {
@@ -555,13 +541,14 @@ function formatFullDate(value: Date) {
     year: "numeric",
     month: "long",
     day: "numeric",
-    weekday: "long"
+    weekday: "long",
+    timeZone: SH_TZ
   });
 }
 
 function formatMonthDay(value: Date) {
-  const d = new Date(value);
-  return `${d.getMonth() + 1}-${String(d.getDate()).padStart(2, "0")}`;
+  const p = shParts(value);
+  return `${p.m}-${String(p.d).padStart(2, "0")}`;
 }
 
 function formatProcedureLabel(value: string) {

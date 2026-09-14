@@ -92,6 +92,7 @@ import { documentSourceChip } from "@/lib/ui/moan-tones";
 import type { FolderPayload, TemplateSummary } from "./folder-types";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
 import { useDocActions } from "./doc-actions-context";
+import { shMonthDay, shMonthDayTime } from "@/lib/ui/sh-time";
 
 type WorkflowTask = {
   id: string;
@@ -976,7 +977,13 @@ function stageChainDate(stage: WorkflowStage, procedure: WorkflowProcedure | nul
 
 function StageNavStatus({ stage }: { stage: WorkflowStage }) {
   if (stage.kind === "preservation" && stage.badge) {
-    return <span className="sn-badge">{stage.badge.hot ? `临期 ${stage.badge.text}` : `在保 ${stage.badge.text.replace(" 项", "")}`}</span>;
+    // 导航宽度有限：只显示最近到期天数，完整信息放 title
+    const [count, days] = stage.badge.text.split(" · ");
+    return (
+      <span className="sn-badge shrink-0 whitespace-nowrap" title={stage.badge.hot ? `临期保全 ${count}，最近 ${days}` : `在保 ${count}`}>
+        {stage.badge.hot ? days : `在保 ${count.replace(" 项", "")}`}
+      </span>
+    );
   }
   if (stage.status === "done") return <span className="st st-done" aria-label="已完成">✓</span>;
   if (stage.status === "risk") return <span className="st st-risk" aria-label="临期风险">!</span>;
@@ -1356,7 +1363,8 @@ function JudgmentNoteRow({ note }: { note: WorkflowNote }) {
       </div>
       <div className="min-w-0 flex-1">
         <div className="rec-title">
-          {noteHeadline(note)}
+          研判笔记
+          {noteStage(note) ? <span className="badge b-white" style={{ fontSize: 9.5, padding: "0 6px", marginLeft: 6 }}>{noteStage(note)}</span> : null}
           <span className="badge b-violet" style={{ fontSize: 9.5, padding: "0 6px", marginLeft: 6 }}>人工判断</span>
         </div>
         <div className="rec-note whitespace-pre-wrap">{note.content}</div>
@@ -1368,6 +1376,11 @@ function JudgmentNoteRow({ note }: { note: WorkflowNote }) {
   );
 }
 
+/** 研判笔记归属环节（tags「环节:xxx」） */
+function noteStage(note: WorkflowNote) {
+  return note.tags?.find((t) => t.startsWith("环节:"))?.slice(3) ?? null;
+}
+
 function noteHeadline(note: WorkflowNote) {
   const firstLine = note.content.split("\n")[0].trim();
   return firstLine.length > 36 ? `${firstLine.slice(0, 36)}…` : firstLine;
@@ -1375,7 +1388,7 @@ function noteHeadline(note: WorkflowNote) {
 
 function formatDateTimeShort(date: Date) {
   const d = new Date(date);
-  return `${shortDay(d)} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return shMonthDayTime(d);
 }
 
 const NOTE_CHANNEL_LABEL: Record<string, string> = {
@@ -2492,8 +2505,12 @@ function workflowStageFromName(
 }
 
 function shortDay(date: Date): string {
-  const d = new Date(date);
-  return `${`${d.getMonth() + 1}`.padStart(2, "0")}-${`${d.getDate()}`.padStart(2, "0")}`;
+  return shMonthDay(date);
+}
+
+/** 徽标天数：逾期显示「逾期 N 天」，否则「N 天」 */
+function dayText(n: number) {
+  return n < 0 ? `逾期 ${-n} 天` : n === 0 ? "今天" : `${n} 天`;
 }
 
 /** 导航徽标：临期期限（含任务数）> 未完成任务数 > 开庭日期，无则不显示 */
@@ -2511,7 +2528,7 @@ function stageBadge(
     if (active.length === 0) return null;
     const nearest = Math.min(...active.map((p) => daysUntil(p.expiryDate)));
     return nearest <= 30
-      ? { text: `${active.length} · ${nearest}d`, hot: true }
+      ? { text: `${active.length} 项 · ${dayText(nearest)}`, hot: true }
       : { text: `${active.length} 项`, hot: false };
   }
 
@@ -2524,7 +2541,7 @@ function stageBadge(
 
   if (nearestDue !== null && nearestDue <= 30) {
     return {
-      text: openTasks > 0 ? `${openTasks} · ${nearestDue}d` : `${nearestDue}d`,
+      text: openTasks > 0 ? `${openTasks} 项 · ${dayText(nearestDue)}` : dayText(nearestDue),
       hot: true
     };
   }

@@ -44,6 +44,7 @@ import { TeamEditorDialog } from "./team-editor-dialog";
 import type { FolderPayload, FolderDocument, TemplateSummary } from "./folder-types";
 import type { UserOption as PresUserOption } from "@/app/(app)/preservation/_components/preservation-types";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { shDayKey, shDaysFromToday, shMonthDay } from "@/lib/ui/sh-time";
 
 type MatterPayloadBase = Prisma.MatterGetPayload<{
   include: {
@@ -135,6 +136,15 @@ export type NotePayload = {
   author: { id: string; name: string };
   authorId: string;
   createdAt: Date;
+};
+
+/** 上下文头「受理机构」随案件类别命名 */
+const AGENCY_LABEL: Partial<Record<string, string>> = {
+  CIVIL_COMMERCIAL: "受理法院",
+  LABOR_ARBITRATION: "仲裁机构",
+  COMMERCIAL_ARBITRATION: "仲裁机构",
+  CRIMINAL: "办案机关",
+  ADMINISTRATIVE: "受理机关"
 };
 
 export function MatterDetailTabs({
@@ -244,7 +254,9 @@ export function MatterDetailTabs({
     canEditMatterInfo ||
     canOwnThisMatter ||
     Boolean(currentProcedure && canAssociateThisMatter);
-  const canWriteRecords = canAssociateThisMatter && allowed("schedule.write");
+  const isArchived = matter.status === "ARCHIVED";
+  // 已归档案件只读：不再提供登记进展、上传材料与新增程序入口
+  const canWriteRecords = canAssociateThisMatter && allowed("schedule.write") && !isArchived;
 
   // 顶栏主操作 = 登记进展（墨案 04）
   useTopbarAction(
@@ -290,7 +302,7 @@ export function MatterDetailTabs({
 
   const moreItems = [
     ...(canOpenUnifiedEditor ? [{ key: "edit", label: "编辑信息与团队", icon: Pencil, onSelect: () => setMatterEditorOpen(true) }] : []),
-    ...(canAssociateThisMatter ? [{ key: "proc", label: "新增程序", icon: Plus, onSelect: () => setAddProcOpen(true) }] : []),
+    ...(canAssociateThisMatter && !isArchived ? [{ key: "proc", label: "新增程序", icon: Plus, onSelect: () => setAddProcOpen(true) }] : []),
     ...(allowed("finance.read") ? [{ key: "fin", label: "财务明细与开票", icon: CircleDollarSign, onSelect: () => setFinanceOpen(true) }] : []),
     { key: "seal", label: "用印审批", icon: Stamp, onSelect: () => setApprovalsOpen(true) },
     ...(capabilities.caseSearch && allowed("matters.write") ? [{ key: "cases", label: "类案检索（元典）", icon: Scale, onSelect: () => setCaseSearchOpen(true) }] : []),
@@ -324,12 +336,14 @@ export function MatterDetailTabs({
             </div>
             <div className="ctx-badges">
               <span className="badge b-white">{matterCategoryLabel[matter.category]}</span>
-              {currentProcedure ? <span className="badge b-white">{procLabel(currentProcedure)}</span> : null}
+              {currentProcedure && procLabel(currentProcedure) !== matterCategoryLabel[matter.category] ? <span className="badge b-white">{procLabel(currentProcedure)}</span> : null}
               {standingLabel ? <span className="badge b-teal">{isLitigation ? `${standingLabel}方代理` : standingLabel}</span> : null}
-              <span className={cn("badge", `b-${matterStatusTone(matter.status)}`)}>
-                <span className="bdot" />
-                {matterStatusLabel[matter.status]}
-              </span>
+              {isArchived && archiveBadge ? null : (
+                <span className={cn("badge", `b-${matterStatusTone(matter.status)}`)}>
+                  <span className="bdot" />
+                  {matterStatusLabel[matter.status]}
+                </span>
+              )}
               {matter.serviceStatus === "SERVICE_COMPLETED" ? <span className="badge b-green" title="服务轴与程序轴分离：律师服务已完成">服务已完成</span> : null}
               {archiveBadge ? (
                 <span className={cn("badge", `b-${archiveBadge.tone}`)}>
@@ -341,7 +355,7 @@ export function MatterDetailTabs({
             </div>
           </div>
           <div className="ctx-actions">
-            {canAssociateThisMatter && allowed("documents.write") && currentProcedure ? (
+            {canAssociateThisMatter && allowed("documents.write") && currentProcedure && !isArchived ? (
               <button type="button" className="btn btn-secondary btn-sm" onClick={() => workflowApi.current?.openUpload()}>
                 <Upload />
                 上传材料
@@ -360,7 +374,7 @@ export function MatterDetailTabs({
         <div className="ctx-meta">
           {[
             ["委托方", matter.primaryClient?.name ?? matter.clientLinks[0]?.client.name ?? "—", false],
-            [isLitigation ? "受理法院" : "受理机构", currentProcedure?.handlingAgency ?? "—", false],
+            [AGENCY_LABEL[matter.category] ?? "受理机构", currentProcedure?.handlingAgency ?? "—", false],
             ["收案", matter.intakeDate ? formatShortDate(matter.intakeDate) : "—", true],
             ...(allowed("finance.read") ? [["合同额", finance.stats.contractAmount > 0 ? `¥${finance.stats.contractAmount.toLocaleString("zh-CN")}` : "—", true] as const] : []),
             ["标的额", matter.claimAmount != null ? `¥${Number(matter.claimAmount).toLocaleString("zh-CN")}` : "—", true],
@@ -393,6 +407,7 @@ export function MatterDetailTabs({
         allProcedures={engagedProcedures}
         finance={allowed("finance.read") ? finance.stats : null}
         invoicePending={finance.stats.receivable > finance.stats.invoiced ? finance.stats.receivable - finance.stats.invoiced : 0}
+        service={isLitigation ? null : { start: matter.serviceStart ?? null, end: matter.serviceEnd ?? null }}
       />
 
       {/* ③ 程序链 + ④ 三栏工作区 */}
@@ -442,7 +457,7 @@ export function MatterDetailTabs({
                 </span>
               );
             })}
-            {canAssociateThisMatter ? (
+            {canAssociateThisMatter && !isArchived ? (
               <button type="button" className="prog-chip" style={{ color: "var(--t-faint)" }} onClick={() => setAddProcOpen(true)}>
                 + 新增程序
               </button>
@@ -834,11 +849,17 @@ function RailFinance({ stats }: { stats: FinancePayload["stats"] }) {
       <div className="fin-row"><span className="k">待收</span><span className="v" style={{ color: outstanding > 0 ? "var(--amber)" : undefined }}>{money(outstanding)}</span></div>
       <div className="fin-row"><span className="k">已开票</span><span className="v">{money(stats.invoiced)}</span></div>
       <div className="panel-body" style={{ padding: "10px 14px 13px" }}>
-        <div className="progress"><div className="progress-fill" style={{ width: `${percent}%` }} /></div>
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
-          <span className="t-xs t-mute">回款进度</span>
-          <span className="num-sm t-mute">{percent}%</span>
-        </div>
+        {base > 0 ? (
+          <>
+            <div className="progress"><div className="progress-fill" style={{ width: `${percent}%` }} /></div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+              <span className="t-xs t-mute">回款进度</span>
+              <span className="num-sm t-mute">{percent}%</span>
+            </div>
+          </>
+        ) : (
+          <span className="t-xs t-mute">未登记合同金额，暂不计算回款进度</span>
+        )}
       </div>
     </>
   );
@@ -959,30 +980,16 @@ function matterTeamRoleDescription(role: "LEAD" | "CO_LEAD" | "ASSISTANT") {
   return "律师助理";
 }
 
-function startOfToday() {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return today;
-}
-
 function daysFromToday(date: Date) {
-  const target = new Date(date);
-  target.setHours(0, 0, 0, 0);
-  return Math.ceil((target.getTime() - startOfToday().getTime()) / 86_400_000);
+  return shDaysFromToday(date);
 }
 
 function formatShortDate(date: Date) {
-  const value = new Date(date);
-  return [
-    value.getFullYear(),
-    String(value.getMonth() + 1).padStart(2, "0"),
-    String(value.getDate()).padStart(2, "0")
-  ].join("-");
+  return shDayKey(date);
 }
 
 function formatMonthDay(date: Date) {
-  const value = new Date(date);
-  return `${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+  return shMonthDay(date);
 }
 
 

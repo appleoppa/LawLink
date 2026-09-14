@@ -256,5 +256,5 @@ function formatTime(date: Date | string): string {
   if (diffHr < 24) return `${diffHr}小时前`;
   const diffDay = Math.floor(diffHr / 24);
   if (diffDay < 7) return `${diffDay}天前`;
-  return d.toLocaleDateString("zh-CN", { month: "short", day: "numeric" });
+  return d.toLocaleDateString("zh-CN", { month: "short", day: "numeric", timeZone: "Asia/Shanghai" });
 }

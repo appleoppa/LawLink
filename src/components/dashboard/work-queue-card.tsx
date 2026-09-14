@@ -12,6 +12,7 @@ import { approvalActionTone } from "@/lib/ui/moan-tones";
 import { cn } from "@/lib/utils";
 import type { WorkQueue } from "@/server/dashboard/actions";
 import type { AlertItem } from "./alerts-list";
+import { shParts } from "@/lib/ui/sh-time";
 
 type Seg = "approvals" | "tasks" | "alerts";
 
@@ -23,7 +24,7 @@ export function WorkQueueCard({ queue, alerts }: { queue: WorkQueue; alerts: Ale
     ["tasks", "任务", queue.taskTotal],
     ["alerts", "提醒", reminders.length]
   ];
-  const fmt = (d: Date | null) => (d ? `${new Date(d).getMonth() + 1}月${new Date(d).getDate()}日` : "");
+  const fmt = (d: Date | null) => (d ? `${shParts(d).m}月${shParts(d).d}日` : "");
 
   return (
     <div className="card" style={{ display: "flex", flexDirection: "column" }}>

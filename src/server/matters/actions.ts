@@ -91,7 +91,7 @@ export async function getMatterTabCounts(input: {
   return {
     all,
     // active = statusNotIn [CLOSED, ARCHIVED]（含收案审批中的 Matter，与列表页口径一致）
-    active: all + (c.PENDING_ACCEPTANCE ?? 0),
+    active: (c.IN_PROGRESS ?? 0) + (c.ON_HOLD ?? 0) + (c.PENDING_ACCEPTANCE ?? 0),
     archived: c.ARCHIVED ?? 0,
     intake: intakePending.total,
     revision: intakeRevision.total

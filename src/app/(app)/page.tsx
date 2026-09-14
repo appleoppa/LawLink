@@ -187,7 +187,7 @@ export default async function DashboardPage() {
                           <span className="sched-time">{it.time ?? "全天"}</span>
                           <span className="sched-ic" style={icStyle}>{isDeadline ? <Clock3 strokeWidth={2} /> : <Gavel strokeWidth={2} />}</span>
                           <span style={{ flex: 1, minWidth: 0 }}>
-                            <span className="sched-title block truncate">{isDeadline ? it.title : `开庭 · ${it.title}`}</span>
+                            <span className="sched-title block truncate">{isDeadline || /^(开庭|庭审|询问)/.test(it.title) ? it.title : `开庭 · ${it.title}`}</span>
                             <span className="sched-meta block truncate">{[it.matter, it.procedure].filter(Boolean).join(" · ")}</span>
                           </span>
                           <span className={`cd cd-${tone}`}>{d < 0 ? `逾期 ${-d} 天` : d === 0 ? "今天" : d === 1 ? "明天" : `${d} 天`}</span>

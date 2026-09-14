@@ -33,10 +33,11 @@ import { ApprovalCreateMenu } from "./approval-create-menu";
 import { IntakeApprovalDialog } from "./intake-approval-dialog";
 import { InvoiceRecognition } from "./invoice-recognition";
 import { ARCHIVE_DOCUMENT_STATUS_LABELS } from "@/lib/archive/snapshot";
+import { formatDateTime } from "@/lib/utils";
 
 type Data = Awaited<ReturnType<typeof listApprovalWorkspace>>;
 type Selection = { id: string; action: ApprovalAction };
-const dateText = (date: Date | string | null) => date ? new Date(date).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false }) : "—";
+const dateText = (date: Date | string | null) => date ? formatDateTime(date) : "—";
 
 export function ApprovalInbox({ data, initialSelection }: { data: Data; initialSelection?: Selection }) {
   const router = useRouter();

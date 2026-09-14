@@ -29,18 +29,18 @@ export function ArchiveStatusBanner({ record, onReArchive }: Props) {
   return (
     <div
       className={cn(
-        "flex items-start gap-3 rounded-md border px-4 py-3",
+        "flex items-start gap-3 rounded-[10px] border px-4 py-3",
         isRejected
-          ? "border-destructive/50 bg-destructive/10"
-          : "border-[#6C3FC5]/50 bg-[#6C3FC5]/10"
+          ? "border-[var(--red-line)] bg-[var(--red-bg)]"
+          : "border-[var(--bronze-line)] bg-[var(--bronze-bg)]"
       )}
     >
-      <div className={cn("mt-0.5", isRejected ? "text-destructive" : "text-[#6C3FC5]")}>
+      <div className={cn("mt-0.5", isRejected ? "text-[var(--red)]" : "text-[var(--bronze)]")}>
         {isRejected ? <XCircle className="h-4 w-4" /> : <Hourglass className="h-4 w-4" />}
       </div>
       <div className="flex-1 space-y-1">
         <div className="flex items-center gap-2">
-          <span className={cn("text-sm font-medium", isRejected ? "text-destructive" : "text-[#6C3FC5]")}>
+          <span className={cn("text-sm font-medium", isRejected ? "text-[var(--red)]" : "text-[var(--bronze)]")}>
             {isRejected ? "归档申请被驳回" : "归档申请审批中"}
           </span>
           <Badge
@@ -48,8 +48,8 @@ export function ArchiveStatusBanner({ record, onReArchive }: Props) {
             className={cn(
               "text-[10px]",
               isRejected
-                ? "border-destructive/50 text-destructive"
-                : "border-[#6C3FC5]/50 text-[#6C3FC5]"
+                ? "border-[var(--red-line)] text-[var(--red)]"
+                : "border-[var(--bronze-line)] text-[var(--bronze)]"
             )}
           >
             {record.archiveNo}
@@ -60,7 +60,7 @@ export function ArchiveStatusBanner({ record, onReArchive }: Props) {
             ? record.reviewNote
               ? `驳回原因：${record.reviewNote}`
               : "管理员未填写驳回原因"
-            : "归档申请已提交，请等待管理员审批。审批通过后案件将转为只读。"}
+            : "归档申请已提交，等待有归档审批权限的人员审批；审批通过后案件转为只读。"}
         </div>
         {isRejected && record.missingItems.length > 0 && (
           <div className="text-[11px] text-muted-foreground">

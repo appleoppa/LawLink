@@ -102,7 +102,7 @@ LawLink/
 
 **v4 墨案 UI 重建（2026-09-13 批准）**：界面以 `docs/mockup/v4/` 效果图为验收基准全面重建，不在旧页面上换色小修；方案与页面对照见 `docs/UI-V4-REBUILD-PLAN.md`。原子层 `src/components/ui/` 直接使用墨案 token（`src/app/moan.css`），不得再写 v3 硬编码色值；页面骨架与签名母版（PageHeader、Panel、SpineRow、RiskLadder、ProcedureChain、ReviewSeal 等）统一放 `src/components/patterns/`。重建不改 Schema、权限与 Server Action 语义，效果图未画到的旧模块须归位不得删除，不做无后端支撑的假功能。
 
-**界面交互原则（2026-09-14 审查确立，详见 `docs/UI-REVIEW-20260914.md`）**：① 一屏一个主操作，由页面通过 `useTopbarAction` / `TopbarLinkAction` 注册到顶栏，页头与工具栏不重复同一主按钮；② 单选项 ≤5 用 chip，>5 用下拉（`ChoiceField`，`RadioChips` 超 6 项自动收为下拉）；③ 禁止原生 `confirm / prompt / alert`，确认用 `confirmDialog`，需录入的用表单弹窗；④ 日期统一 `formatDate`（YYYY-MM-DD）与 `formatDateTime`（YYYY-MM-DD HH:mm），上海时区；⑤ 列表筛选统一分段控件或 `FilterSelect`；⑥ 已实现能力须有可达入口，并按配置与权限显示。
+**界面交互原则（2026-09-14 审查确立，详见 `docs/UI-REVIEW-20260914.md`）**：① 一屏一个主操作，由页面通过 `useTopbarAction` / `TopbarLinkAction` 注册到顶栏，页头与工具栏不重复同一主按钮；② 单选项 ≤5 用 chip，>5 用下拉（`ChoiceField`，`RadioChips` 超 6 项自动收为下拉）；③ 禁止原生 `confirm / prompt / alert`，确认用 `confirmDialog`，需录入的用表单弹窗；④ 日期统一 `formatDate`（YYYY-MM-DD）与 `formatDateTime`（YYYY-MM-DD HH:mm），上海时区；客户端组件禁止用 getHours()/getDate() 等本地时区方法做展示与日历计算，改用 `src/lib/ui/sh-time.ts`（否则服务器与浏览器时区不同会水合失败）；⑤ 列表筛选统一分段控件或 `FilterSelect`；⑥ 已实现能力须有可达入口，并按配置与权限显示。
 
 **日历订阅入口**：统一放在日程页右上角，以「订阅日历」次级按钮打开弹窗，管理订阅说明、复制链接和重置链接；个人设置不再展示订阅卡片。弹窗组件就近放在 `schedule/_components/`，仅打开时获取订阅链接，沿用现有订阅权限与接口。
 

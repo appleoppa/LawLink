@@ -243,7 +243,7 @@ function Card({ e }: { e: Row }) {
             className="inline-flex items-center gap-1 hover:text-primary"
           >
             <Briefcase className="h-3 w-3" />
-            <span className="font-mono text-[10px]">{e.matter.internalCode}</span>
+            <span className="shrink-0 whitespace-nowrap font-mono text-[10px]">{e.matter.internalCode}</span>
             <span className="truncate">{e.matter.title}</span>
           </Link>
         )}

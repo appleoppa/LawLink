@@ -18,6 +18,7 @@ import { litigationStandingLabel } from "@/lib/enums";
 import { PageHeader } from "@/components/patterns/moan";
 import { cn } from "@/lib/utils";
 import { useTopbarAction } from "@/components/layout/topbar-action";
+import { shMonthDayTime } from "@/lib/ui/sh-time";
 
 type QueryRole = PartyRole;
 type QueryRow = { key: string; role: QueryRole; name: string; idNumber: string; fromIntake: boolean; editing: boolean };
@@ -68,10 +69,7 @@ const CONCLUSIONS: { value: Exclude<Conclusion, "PENDING">; title: string; desc:
 const CONCLUSION_LABEL: Record<Conclusion, string> = { PENDING: "未出结论", SAME_SUBJECT: "存在冲突", DIFFERENT: "可承办", NEED_INFO: "需补充" };
 
 const mask = (v: string) => (v.length <= 8 ? v.replace(/.(?=.{2})/g, "*") : `${v.slice(0, 4)}${"*".repeat(Math.max(4, v.length - 8))}${v.slice(-4)}`);
-const mmddhhmm = (iso: string | Date) => {
-  const d = new Date(iso);
-  return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-};
+const mmddhhmm = (iso: string | Date) => shMonthDayTime(iso);
 let seq = 0;
 const newKey = () => `q${++seq}`;
 

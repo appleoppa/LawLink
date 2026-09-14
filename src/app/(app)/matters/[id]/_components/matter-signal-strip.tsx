@@ -33,13 +33,16 @@ export function MatterSignalStrip({
   procedures,
   allProcedures,
   finance,
-  invoicePending
+  invoicePending,
+  service
 }: {
   /** 当前程序（信号以当前程序为准） */
   procedures: SignalProcedure[];
   allProcedures: SignalProcedure[];
   finance: { contractAmount: number; received: number; receivable: number; invoiced: number } | null;
   invoicePending: number;
+  /** 非诉 / 顾问 / 专项：以「服务期限」替代「下次开庭」 */
+  service?: { start: Date | null; end: Date | null } | null;
 }) {
   const deadlines = procedures
     .flatMap((p) => p.deadlines)
@@ -96,6 +99,35 @@ export function MatterSignalStrip({
         )}
       </div>
 
+      {service ? (
+        <div className="card signal">
+          <div className="signal-label">
+            <span className={cn("dot", service.end ? (dayDiff(service.end) < 0 ? "dot-slate" : dayDiff(service.end) <= 30 ? "dot-amber" : "dot-teal") : "dot-slate")} />
+            服务期限
+          </div>
+          {service.end ? (
+            <>
+              <div className="signal-main">
+                <span className="signal-num" style={{ color: dayDiff(service.end) <= 30 && dayDiff(service.end) >= 0 ? "var(--amber)" : "var(--t-primary)" }}>
+                  {Math.abs(dayDiff(service.end))}
+                </span>
+                <span className="signal-unit">{dayDiff(service.end) < 0 ? "天 · 已到期" : "天后到期"}</span>
+              </div>
+              <div className="signal-sub truncate">
+                {service.start ? `${shDay(service.start)} 至 ` : "截至 "}
+                {shDay(service.end)}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="signal-main">
+                <span className="signal-num t-faint">—</span>
+              </div>
+              <div className="signal-sub">未登记服务期限</div>
+            </>
+          )}
+        </div>
+      ) : (
       <div className="card signal">
         <div className="signal-label">
           <span className={cn("dot", hearing ? "dot-blue" : "dot-slate")} />
@@ -123,6 +155,7 @@ export function MatterSignalStrip({
           </>
         )}
       </div>
+      )}
 
       <div className="card signal">
         <div className="signal-label">
@@ -134,12 +167,14 @@ export function MatterSignalStrip({
             <>
               <div className="signal-main">
                 <span className="signal-num">¥{finance.received.toLocaleString("zh-CN")}</span>
-                <span className="signal-unit">/ ¥{finance.contractAmount.toLocaleString("zh-CN")}</span>
+                {finance.contractAmount > 0 ? <span className="signal-unit">/ ¥{finance.contractAmount.toLocaleString("zh-CN")}</span> : <span className="signal-unit">已收</span>}
               </div>
-              <div className="progress" style={{ marginTop: 2 }}>
-                <div className="progress-fill" style={{ width: `${percent}%` }} />
-              </div>
-              <div className="signal-foot">{invoicePending > 0 ? `应收未开票 ¥${invoicePending.toLocaleString("zh-CN")}` : `回款 ${percent}%`}</div>
+              {finance.contractAmount > 0 ? (
+                <div className="progress" style={{ marginTop: 2 }}>
+                  <div className="progress-fill" style={{ width: `${percent}%` }} />
+                </div>
+              ) : null}
+              <div className="signal-foot">{invoicePending > 0 ? `应收未开票 ¥${invoicePending.toLocaleString("zh-CN")}` : finance.contractAmount > 0 ? `回款 ${percent}%` : "未登记合同金额，无法计算回款进度"}</div>
             </>
           ) : (
             <>

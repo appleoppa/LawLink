@@ -20,6 +20,7 @@ import { useTopbarAction } from "@/components/layout/topbar-action";
 import { invoiceRequestStatusLabel } from "@/lib/enums";
 import { matterHref } from "@/lib/matters/route";
 import { cn } from "@/lib/utils";
+import { shMonthDay, shParts } from "@/lib/ui/sh-time";
 
 type Entry = {
   id: string;
@@ -70,10 +71,7 @@ const TYPE_META: Record<Entry["type"], { label: string; badge: string; sign: str
 };
 
 const yuan = (n: number, digits = 0) => `¥${n.toLocaleString("zh-CN", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
-const mmdd = (d: Date | string) => {
-  const x = new Date(d);
-  return `${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
-};
+const mmdd = (d: Date | string) => shMonthDay(d);
 
 export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests, canApproveInvoice, canExport, canWrite }: Props) {
   const params = useSearchParams();
@@ -99,8 +97,9 @@ export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests,
   }, [entries, q, range, typeFilter]);
 
   const now = new Date();
+  const nowSh = shParts(now);
   const monthGrowth = stats.lastMonthReceived > 0 ? Math.round(((stats.monthlyReceived - stats.lastMonthReceived) / stats.lastMonthReceived) * 100) : null;
-  const monthReceivedCount = entries.filter((e) => e.type === "RECEIVED" && new Date(e.occurredAt).getMonth() === now.getMonth() && new Date(e.occurredAt).getFullYear() === now.getFullYear());
+  const monthReceivedCount = entries.filter((e) => e.type === "RECEIVED" && shParts(e.occurredAt).m === nowSh.m && shParts(e.occurredAt).y === nowSh.y);
   const unconfirmedReceived = monthReceivedCount.filter((e) => !e.confirmed);
   const yearRate = stats.yearlyReceivable > 0 ? Math.round((stats.yearlyReceived / stats.yearlyReceivable) * 1000) / 10 : null;
   const worst = aging.worst;
@@ -113,7 +112,7 @@ export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests,
     <div className="mo-finance">
       <PageHeader
         title="财务"
-        sub={`${now.getFullYear()} 年 ${now.getMonth() + 1} 月 · 数据截至 ${mmdd(now)} · 金额按财务查看权限范围汇总`}
+        sub={`${nowSh.y} 年 ${nowSh.m} 月 · 数据截至 ${mmdd(now)} · 金额按财务查看权限范围汇总`}
         actions={
           canExport ? (
             <a href={`/api/finance/export${range ? `?days=${range}` : ""}`} className="btn btn-secondary btn-sm">导出流水</a>
@@ -223,17 +222,17 @@ export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests,
               <div className="empty mo-empty-compact"><div className="mo-empty-title">没有匹配的收付记录</div><div className="mo-empty-desc">调整期间或类型筛选；收付在案件详情或点击「登记收付」录入。</div></div>
             ) : (
               <div className="mo-scroll-x">
-                <table className="mo-table" style={{ minWidth: 960 }}>
+                <table className="mo-table" style={{ minWidth: 1000, tableLayout: "fixed" }}>
                   <thead>
                     <tr>
-                      <th style={{ width: "10%", paddingLeft: 20 }}>日期</th>
-                      <th style={{ width: "24%" }}>案件 / 事项</th>
-                      <th style={{ width: "8%" }}>类型</th>
-                      <th style={{ width: "15%" }}>对方户名</th>
-                      <th style={{ width: "14%" }} className="num">金额</th>
-                      <th style={{ width: "10%" }}>方式</th>
-                      <th style={{ width: "10%" }}>经手</th>
-                      <th style={{ width: "9%" }}>状态</th>
+                      <th style={{ width: 76, paddingLeft: 20 }}>日期</th>
+                      <th>案件 / 事项</th>
+                      <th style={{ width: 72 }}>类型</th>
+                      <th style={{ width: 170 }}>对方户名</th>
+                      <th style={{ width: 132 }} className="num">金额</th>
+                      <th style={{ width: 84 }}>方式</th>
+                      <th style={{ width: 64 }}>经手</th>
+                      <th style={{ width: 80 }}>状态</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -241,18 +240,18 @@ export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests,
                       const meta = TYPE_META[e.type];
                       return (
                         <tr key={e.id} data-spine={e.type === "RECEIVED" ? "green" : e.type === "REFUND" ? "red" : e.type === "RECEIVABLE" ? "amber" : "slate"}>
-                          <td className="mono t-sm" style={{ paddingLeft: 20 }}>{mmdd(e.occurredAt)}</td>
-                          <td>
+                          <td className="mono t-sm whitespace-nowrap" style={{ paddingLeft: 20 }}>{mmdd(e.occurredAt)}</td>
+                          <td className="min-w-0">
                             <Link href={matterHref(e.matter)} className="block min-w-0 no-underline hover:text-[var(--teal-deep)]">
                               <div className="fee-matter truncate">{e.matter.title}{e.note ? ` · ${e.note}` : ""}</div>
-                              <div className="fee-meta">{e.matter.internalCode}{e.invoiceNo ? ` · 发票 ${e.invoiceNo}` : ""}{e.beneficiaryUser ? ` · 分成给 ${e.beneficiaryUser.name}` : ""}</div>
+                              <div className="fee-meta truncate">{e.matter.internalCode}{e.invoiceNo ? ` · 发票 ${e.invoiceNo}` : ""}{e.beneficiaryUser ? ` · 分成给 ${e.beneficiaryUser.name}` : ""}</div>
                             </Link>
                           </td>
                           <td><span className={cn("badge", meta.badge)}>{meta.label}</span></td>
-                          <td className="t-sm max-w-[12rem] truncate">{e.payerOrPayee ?? <span className="t-faint">—</span>}</td>
-                          <td className={cn("num money", meta.cls)}>{meta.sign}{yuan(e.amount, 2)}</td>
-                          <td className="t-sm">{e.method ?? <span className="t-faint">—</span>}</td>
-                          <td className="t-sm">{e.recordedBy.name}</td>
+                          <td className="t-sm truncate" title={e.payerOrPayee ?? undefined}>{e.payerOrPayee ?? <span className="t-faint">—</span>}</td>
+                          <td className={cn("num money whitespace-nowrap", meta.cls)}>{meta.sign}{yuan(e.amount, 2)}</td>
+                          <td className="t-sm truncate whitespace-nowrap">{e.method ?? <span className="t-faint">—</span>}</td>
+                          <td className="t-sm truncate whitespace-nowrap">{e.recordedBy.name}</td>
                           <td>
                             {e.confirmed ? <span className="badge b-green" title="关联已签署合同或已登记发票号，不可物理删除">已确认</span> : <span className="badge b-white" title="尚未关联已签署合同或发票号">待确认</span>}
                           </td>
@@ -290,7 +289,7 @@ export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests,
         <>
           <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
             <MetricCard label="我的本月分成" value={yuan(stats.personalMonthly)} sub="按案件分成方案自动派生，随实收到账计入" />
-            <MetricCard label="我的年度分成" value={yuan(stats.personalYearly)} sub={`${now.getFullYear()} 年累计`} />
+            <MetricCard label="我的年度分成" value={yuan(stats.personalYearly)} sub={`${nowSh.y} 年累计`} />
           </div>
           <div className="card" style={{ overflow: "hidden" }}>
             <div className="panel-head">
