@@ -196,7 +196,7 @@ export function DeadlineRulesCard({ rules, rail, headerActions }: { rules: Admin
         </div>
       </div>
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className="card" style={{ overflow: "hidden", minWidth: 0 }}>
           <div className="panel-head flex-wrap gap-2">
             <div className="panel-title">

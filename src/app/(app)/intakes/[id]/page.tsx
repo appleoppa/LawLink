@@ -178,7 +178,7 @@ export default async function IntakeDetailPage({ params }: PageProps) {
         </div>
       ) : null}
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-4">
           <Panel title="收案信息">
             <FieldGrid cols={3}>

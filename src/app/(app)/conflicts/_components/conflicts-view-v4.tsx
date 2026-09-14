@@ -310,7 +310,7 @@ export function ConflictsViewV4({
         </div>
       </div>
 
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="min-w-0">
           {!hasRun ? (
             <div className="card">

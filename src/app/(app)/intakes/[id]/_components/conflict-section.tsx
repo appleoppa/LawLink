@@ -81,7 +81,7 @@ type Props = {
 
 const severityStyle: Record<ConflictSeverity, { color: string; bg: string; label: string }> = {
   BLOCKING: { color: "#B42318", bg: "rgba(220,38,38,0.10)", label: "阻塞" },
-  HIGH: { color: "#EA580C", bg: "rgba(234,88,12,0.10)", label: "高" },
+  HIGH: { color: "var(--amber)", bg: "var(--amber-bg)", label: "高" },
   MEDIUM: { color: "#96650B", bg: "rgba(217,119,6,0.10)", label: "中" },
   LOW: { color: "#1A7F45", bg: "rgba(101,163,13,0.10)", label: "低" }
 };

@@ -646,7 +646,7 @@
 .mo-dash a.hero-focus:hover { box-shadow: var(--sh-hover); }
 .mo-dash .mini-bar .fill { display: block; }
 @media (max-width: 1180px) {
-  .mo-dash .hero, .mo-dash .main-grid, .mo-dash .chart-grid { grid-template-columns: 1fr; }
+  .mo-dash .hero, .mo-dash .main-grid, .mo-dash .chart-grid { grid-template-columns: minmax(0, 1fr); }
   .mo-dash .action-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 560px) {
@@ -701,3 +701,18 @@
 .mo-rules .rtable tbody tr:hover { background: var(--bg-hover); }
 .mo-rules .flow-arrow { font-size: 14px; }
 @media (max-width: 1100px) { .mo-rules .flow-strip { grid-template-columns: 1fr; gap: 8px; } .mo-rules .flow-arrow { display: none; } .mo-rules .example { position: static; } }
+
+/* 阶段五 · 窄屏收口（390 宽） */
+.segmented { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.segmented::-webkit-scrollbar { display: none; }
+.seg { white-space: nowrap; flex-shrink: 0; }
+@media (max-width: 1100px) { .mo-matter .ws-grid { grid-template-columns: 1fr; } }
+@media (max-width: 720px) {
+  .mo-matter .ctx-top { flex-wrap: wrap; }
+  .mo-matter .ctx-actions { margin-left: 0; flex-wrap: wrap; order: -1; width: 100%; }
+  .mo-matter .ctx-head { padding: 14px 16px; }
+  .mo-matter .ctx-title { font-size: 20px; }
+  .mo-matter .signal-strip, .mo-conflict .risk-strip { grid-template-columns: repeat(2, 1fr); }
+}
+.tabs .tab { white-space: nowrap; flex-shrink: 0; }
+@media (max-width: 720px) { .tabs { max-width: 100%; overflow-x: auto; scrollbar-width: none; } .tabs::-webkit-scrollbar { display: none; } }

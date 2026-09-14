@@ -94,7 +94,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
         </div>
       </div>
 
-      <div className="grid items-start gap-3.5 xl:grid-cols-[minmax(0,1fr)_296px]">
+      <div className="grid grid-cols-1 items-start gap-3.5 xl:grid-cols-[minmax(0,1fr)_296px]">
         <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
           <div className="card" style={{ overflow: "hidden" }}>
             <div className="panel-head">
