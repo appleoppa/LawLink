@@ -2,10 +2,13 @@
 import Link from "next/link";
 import { hasCustomPermission, type RoleGrant } from "@/lib/roles/catalog";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import type { ClientType, Prisma } from "@prisma/client";
-import { Archive, ChevronLeft, CircleDollarSign, Clock3, CreditCard, Gavel, Pencil, Plus, SquareCheck, Stamp, Upload, UserRound, Users, X } from "lucide-react";
+import { Archive, ChevronLeft, CircleDollarSign, Clock3, CreditCard, Gavel, Pencil, Plus, Scale, SquareCheck, Stamp, Upload, UserRound, Users, X } from "lucide-react";
+import { CaseSearchPanel } from "./case-search-panel";
+import { DocumentReviewDialog } from "./document-review-dialog";
+import { DocActionsContext } from "./doc-actions-context";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { InitialAvatar } from "@/components/patterns/moan";
 import { avatarTone, matterStatusTone } from "@/lib/ui/moan-tones";
@@ -155,7 +158,8 @@ export function MatterDetailTabs({
   engagements,
   evidenceItems,
   notes,
-  reviewNode
+  reviewNode,
+  capabilities = { aiReview: false, caseSearch: false }
 }: {
   matter: MatterPayload;
   finance: FinancePayload;
@@ -195,12 +199,17 @@ export function MatterDetailTabs({
   notes: WorkflowNote[];
   /** AI 审查总览（服务端渲染节点），归入「信息总览」 */
   reviewNode?: React.ReactNode;
+  /** 外部能力是否已配置：AI 文书审查 / 元典类案检索（未配置不显示入口） */
+  capabilities?: { aiReview: boolean; caseSearch: boolean };
 }) {
   const allowed = (key: import("@/lib/roles/catalog").PermissionKey) => hasCustomPermission({ role: currentUserRole ?? "", rolePermissions }, key);
   const [selectedProcId, setSelectedProcId] = useState<string | null>(null);
   const [addProcOpen, setAddProcOpen] = useState(false);
   const [matterEditorOpen, setMatterEditorOpen] = useState(false);
   const [financeOpen, setFinanceOpen] = useState(false);
+  const [caseSearchOpen, setCaseSearchOpen] = useState(false);
+  const [reviewDocId, setReviewDocId] = useState<string | null>(null);
+  const docActions = useMemo(() => (capabilities.aiReview && allowed("documents.write") ? { onReview: (id: string) => setReviewDocId(id) } : {}), [capabilities.aiReview, currentUserRole, rolePermissions]); // eslint-disable-line react-hooks/exhaustive-deps
   const [approvalsOpen, setApprovalsOpen] = useState(false);
   const [progress, setProgress] = useState<{ mode: "record" | "judgment"; stage?: string; stageNames: string[] } | null>(null);
   const [deadlineOpen, setDeadlineOpen] = useState(false);
@@ -284,6 +293,7 @@ export function MatterDetailTabs({
     ...(canAssociateThisMatter ? [{ key: "proc", label: "新增程序", icon: Plus, onSelect: () => setAddProcOpen(true) }] : []),
     ...(allowed("finance.read") ? [{ key: "fin", label: "财务明细与开票", icon: CircleDollarSign, onSelect: () => setFinanceOpen(true) }] : []),
     { key: "seal", label: "用印审批", icon: Stamp, onSelect: () => setApprovalsOpen(true) },
+    ...(capabilities.caseSearch && allowed("matters.write") ? [{ key: "cases", label: "类案检索（元典）", icon: Scale, onSelect: () => setCaseSearchOpen(true) }] : []),
     ...(canWriteRecords && currentProcedure ? [{ key: "hearing", label: "安排开庭", icon: Gavel, onSelect: () => setHearingOpen(true) }] : [])
   ];
 
@@ -298,6 +308,7 @@ export function MatterDetailTabs({
   const standingLabel = matter.ourStanding ? litigationStandingLabel[matter.ourStanding] : null;
 
   return (
+    <DocActionsContext.Provider value={docActions}>
     <div className="mo-matter">
       {/* ① 上下文头 */}
       <div className="card ctx-head" style={{ marginBottom: 14 }}>
@@ -354,7 +365,7 @@ export function MatterDetailTabs({
             ...(allowed("finance.read") ? [["合同额", finance.stats.contractAmount > 0 ? `¥${finance.stats.contractAmount.toLocaleString("zh-CN")}` : "—", true] as const] : []),
             ["标的额", matter.claimAmount != null ? `¥${Number(matter.claimAmount).toLocaleString("zh-CN")}` : "—", true],
             ["案由", matter.cause?.name ?? matter.causeFreeText ?? "—", false]
-          ].map(([k, v, mono]) => (
+          ].filter(([k, v]) => k === "委托方" || v !== "—").map(([k, v, mono]) => (
             <div key={k as string} className="m">
               <span className="k">{k}</span>
               <span className={cn("v", mono && "mono")}>{v}</span>
@@ -419,7 +430,7 @@ export function MatterDetailTabs({
                     <button
                       type="button"
                       onClick={async () => {
-                        if (await confirmDialog({ title: `删除程序「${label}」？`, description: deleteProcedureWarning(procedure, label), confirmText: "删除程序", danger: true })) handleDeleteProcedure(procedure.id);
+                        if (await confirmDialog({ title: `删除程序「${label}」？`, description: deleteProcedureWarning(procedure, label).replace(/^确定删除程序「[^」]*」？\s*/, ""), confirmText: "删除程序", danger: true })) handleDeleteProcedure(procedure.id);
                       }}
                       className="pointer-events-none -mr-1 ml-0.5 opacity-0 transition-opacity group-hover/proc:pointer-events-auto group-hover/proc:opacity-100"
                       title="删除此程序"
@@ -492,6 +503,18 @@ export function MatterDetailTabs({
       />
 
       {/* 抽屉：财务明细 / 用印审批（效果图右栏「明细」「全部」入口） */}
+      <Sheet open={caseSearchOpen} onOpenChange={setCaseSearchOpen}>
+        <SheetContent side="right" className="w-full overflow-y-auto p-0 sm:max-w-[760px]">
+          <SheetHeader className="px-5 pt-5">
+            <SheetTitle>类案检索 · {matter.title}</SheetTitle>
+          </SheetHeader>
+          <div className="p-5">
+            {caseSearchOpen ? <CaseSearchPanel matterId={matter.id} matterCategory={matter.category} defaultCauseName={matter.cause?.name ?? matter.causeFreeText ?? null} /> : null}
+          </div>
+        </SheetContent>
+      </Sheet>
+      <DocumentReviewDialog open={Boolean(reviewDocId)} documentId={reviewDocId} matterId={matter.id} onOpenChange={(o) => { if (!o) setReviewDocId(null); }} />
+
       <Sheet open={financeOpen} onOpenChange={setFinanceOpen}>
         <SheetContent side="right" className="w-full overflow-y-auto p-0 sm:max-w-[760px]">
           <SheetHeader className="px-5 pt-5">
@@ -598,6 +621,7 @@ export function MatterDetailTabs({
         />
       )}
     </div>
+    </DocActionsContext.Provider>
   );
 }
 

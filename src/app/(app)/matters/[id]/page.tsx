@@ -8,6 +8,8 @@ import { listActiveColleagues } from "@/server/users/actions";
 import { getLatestArchiveRecord } from "@/server/archive/actions";
 import { getMatterReviewSummary } from "@/server/ai/matter-review-summary";
 import { getSession } from "@/lib/auth/session";
+import { getAiSettings } from "@/lib/ai/settings";
+import { getYuandianSettings } from "@/lib/yuandian/settings";
 import { resolveMatterRoute } from "@/server/matters/route";
 import { matterHref } from "@/lib/matters/route";
 import { prisma } from "@/lib/prisma";
@@ -227,6 +229,10 @@ export default async function MatterDetailPage({ params }: PageProps) {
         engagements={engagements}
         evidenceItems={evidenceItems}
         notes={notes}
+        capabilities={{
+          aiReview: (await getAiSettings().catch(() => null))?.configured ?? false,
+          caseSearch: (await getYuandianSettings().catch(() => null))?.configured ?? false
+        }}
         reviewNode={
           reviewSummary ? <ReviewSummaryCard summary={reviewSummary} matterId={matter.id} /> : undefined
         }

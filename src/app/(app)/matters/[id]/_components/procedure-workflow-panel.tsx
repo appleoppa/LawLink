@@ -91,6 +91,7 @@ import { DocIcon, EmptyState, ProcedureChain, SourceChip, type ChainNode } from 
 import { documentSourceChip } from "@/lib/ui/moan-tones";
 import type { FolderPayload, TemplateSummary } from "./folder-types";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { useDocActions } from "./doc-actions-context";
 
 type WorkflowTask = {
   id: string;
@@ -1501,6 +1502,7 @@ function MatterRecordsCard({
 }
 
 function DocRow({ doc, compact = false }: { doc: WorkflowDocument; compact?: boolean }) {
+  const { onReview } = useDocActions();
   const pUrl = documentPreviewUrl(doc);
   const chip = doc.sourceOrigin ? documentSourceChip[doc.sourceOrigin] : null;
   const ext = doc.name.split(".").pop()?.toLowerCase() ?? "";
@@ -1537,6 +1539,11 @@ function DocRow({ doc, compact = false }: { doc: WorkflowDocument; compact?: boo
           <a href={`/api/documents/${doc.id}/download`} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">
             下载
           </a>
+          {onReview && doc.ocrStatus !== "FAILED" ? (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => onReview(doc.id)} title="AI 审查缺失要素、法律风险与条款问题">
+              AI 审查
+            </button>
+          ) : null}
         </>
       ) : null}
     </div>
