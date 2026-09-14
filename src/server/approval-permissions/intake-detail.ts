@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { formatDate } from "@/lib/utils";
 import { decryptIdNumber } from "@/lib/clients/id-number-crypto";
 import { clientIdTypeLabel } from "@/lib/clients/person-id";
 import { barFilingLabel, clientTypeLabel, conflictConclusionLabel, feeTypeLabel, litigationStandingLabel, matterCategoryLabel, matterCategoryKind, partyTypeLabel, procedureTypeLabel } from "@/lib/enums";
@@ -21,7 +22,7 @@ export async function loadIntakeApprovalDetail(id: string) {
   } });
   const coUsers = r.coUserIds.length ? await prisma.user.findMany({ where: { id: { in: r.coUserIds } }, select: { id: true, name: true } }) : [];
   const names = new Map(coUsers.map(u => [u.id, u.name]));
-  const field = (label: string, value: unknown, sensitive = false): IntakeReviewField => ({ label, value: value == null || value === "" ? "未填写" : value instanceof Date ? value.toLocaleDateString("zh-CN", { timeZone: "Asia/Shanghai" }) : String(value), sensitive });
+  const field = (label: string, value: unknown, sensitive = false): IntakeReviewField => ({ label, value: value == null || value === "" ? "未填写" : value instanceof Date ? formatDate(value) : String(value), sensitive });
   // 字段联动：只展示与所选案件类别 / 主体类型 / 收费方式相符的项目（2026-09-14 用户确认）
   const kind = matterCategoryKind(r.category);
   const litigation = kind === "litigation";

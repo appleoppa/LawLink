@@ -21,24 +21,75 @@ export function IntakeReviewValue({ label, value, sensitive }: IntakeReviewField
   </span>;
 }
 
+// 长文本字段占满整行，其余两列并排，减少留白（2026-09-14 用户反馈「申请资料太空」）
+const wideFields = new Set(["案件名称", "事实摘要", "共同承办律师", "补正说明", "不接案说明", "非金钱标的", "服务范围", "交付成果", "住址", "注册地址", "地址", "收费说明", "风险代理收费方式"]);
+const isWide = (f: IntakeReviewField) => wideFields.has(f.label) || f.value.length > 26;
+
+function ReviewRows({ items }: { items: IntakeReviewField[] }) {
+  return <div className="rv-grid">{items.map(f => <div key={f.label} className={`arow${isWide(f) ? " wide" : ""}`}><span className="k">{f.label}</span><span className={`v min-w-0 break-words ${f.value === "未填写" ? "t-faint" : ""}`}><IntakeReviewValue {...f} /></span></div>)}</div>;
+}
+
+function splitEmpty(fields: IntakeReviewField[]) {
+  const empty = fields.filter(f => f.value === "未填写" && !keyFields.has(f.label));
+  return { empty, visible: fields.filter(f => !empty.includes(f)) };
+}
+
+function EmptyToggle({ count, open, onToggle }: { count: number; open: boolean; onToggle: () => void }) {
+  if (!count) return null;
+  return <button type="button" onClick={onToggle} aria-expanded={open} className="ml-auto text-[11px] font-normal text-[var(--t-faint)] hover:text-[var(--teal-deep)]">{open ? "收起未填写项" : `未填写 ${count} 项`}</button>;
+}
+
+function ReviewSection({ section }: { section: Detail["sections"][number] }) {
+  const [showEmpty, setShowEmpty] = useState(false);
+  const { empty, visible } = splitEmpty(section.fields);
+  const Icon = section.title.includes("收费") ? Wallet : section.title.includes("程序") ? Scale : section.title.includes("委托方") ? Building2 : section.title.includes("顾问") ? BriefcaseBusiness : FileText;
+  return <section className="rv-section">
+    <div className="rv-sec-head"><Icon className="h-[14px] w-[14px] text-[var(--teal)]" />{section.title}<EmptyToggle count={empty.length} open={showEmpty} onToggle={() => setShowEmpty(!showEmpty)} /></div>
+    {section.note && <div className="rv-note">{section.note}</div>}
+    <ReviewRows items={showEmpty ? [...visible, ...empty] : visible} />
+  </section>;
+}
+
+// 各当事人合并为一张卡：姓名、角色、诉讼地位、主体类型并入标题行，其余字段两列排布
+const partyHeadFields = new Set(["姓名 / 名称", "本案角色", "诉讼地位", "主体类型"]);
+function PartiesSection({ sections }: { sections: Detail["sections"] }) {
+  const [showEmpty, setShowEmpty] = useState(false);
+  const emptyCount = sections.reduce((n, sec) => n + emptyPartyFieldCount(sec.fields), 0);
+  return <section className="rv-section">
+    <div className="rv-sec-head"><Users className="h-[14px] w-[14px] text-[var(--teal)]" />当事人<span className="t-xs t-mute font-normal">{sections.length} 位</span><EmptyToggle count={emptyCount} open={showEmpty} onToggle={() => setShowEmpty(!showEmpty)} /></div>
+    {sections.map(sec => {
+      const get = (label: string) => sec.fields.find(f => f.label === label)?.value;
+      const rest = sec.fields.filter(f => !partyHeadFields.has(f.label));
+      const empty = rest.filter(f => f.value === "未填写");
+      const visible = rest.filter(f => f.value !== "未填写");
+      const standing = get("诉讼地位");
+      return <div key={sec.title} className="rv-party">
+        <div className="rv-party-head">
+          <strong>{get("姓名 / 名称") ?? sec.title}</strong>
+          {get("本案角色") && <span className="badge b-white" style={{ fontSize: 10 }}>{get("本案角色")}</span>}
+          {standing && standing !== "未填写" && <span className="badge b-teal" style={{ fontSize: 10 }}>{standing}</span>}
+          {get("主体类型") && <span className="t-xs t-mute">{get("主体类型")}</span>}
+        </div>
+        <ReviewRows items={showEmpty ? [...visible, ...empty] : visible} />
+      </div>;
+    })}
+  </section>;
+}
+const emptyPartyFieldCount = (fields: IntakeReviewField[]) => fields.filter(f => !partyHeadFields.has(f.label) && f.value === "未填写").length;
+
 const keyFields = new Set(["案件名称", "案件类别", "案由", "主办律师", "首个程序 / 审级", "委托方诉讼地位", "办理机构", "管辖地", "标的金额（元）", "委托方", "姓名 / 名称", "本案角色", "诉讼地位", "收费方式", "收费金额（元）", "基础办案费（元）"]);
 
 export function IntakeApprovalContent({ detail, view = "all", onOpenConflicts }: { detail: Detail; view?: "all" | "overview" | "conflicts"; onOpenConflicts?: () => void }) {
   const latest = detail.checks[0];
   return <div>
-    {view !== "conflicts" && detail.sections.map((section) => {
-      const empty = section.fields.filter(f => f.value === "未填写" && !keyFields.has(f.label));
-      const visible = section.fields.filter(f => !empty.includes(f));
-      const party = section.title.startsWith("当事人 ");
-      const Icon = party ? Users : section.title.includes("收费") ? Wallet : section.title.includes("程序") ? Scale : section.title.includes("委托方") ? Building2 : section.title.includes("顾问") ? BriefcaseBusiness : FileText;
-      const rows = (items: IntakeReviewField[]) => items.map(f => <div key={f.label} className="arow"><span className="k">{f.label}</span><span className={`v min-w-0 break-words ${f.value === "未填写" ? "t-faint" : ""}`}><IntakeReviewValue {...f} /></span></div>);
-      return <section key={section.title} className="rv-section">
-        <div className="rv-sec-head"><Icon className="h-[14px] w-[14px] text-[var(--teal)]" />{section.title}{party && <span className="badge b-white" style={{ fontSize: 10 }}>{section.fields.find(f => f.label === "本案角色")?.value}</span>}</div>
-        {section.note && <div className="arow"><span className="v t-xs t-mute">{section.note}</span></div>}
-        {rows(visible)}
-        {!!empty.length && <details className={styles.emptyFields}><summary className="arow fold"><span className="k">未填写项</span><span className="v">查看未填写项 {empty.length}</span></summary>{rows(empty)}</details>}
-      </section>;
-    })}
+    {view !== "conflicts" && (() => {
+      const parties = detail.sections.filter(sec => sec.title.startsWith("当事人 "));
+      const others = detail.sections.filter(sec => !parties.includes(sec));
+      const firstPartyIndex = detail.sections.findIndex(sec => parties.includes(sec));
+      const blocks = others.map(section => <ReviewSection key={section.title} section={section} />);
+      if (parties.length) blocks.splice(firstPartyIndex < 0 ? blocks.length : Math.min(firstPartyIndex, blocks.length), 0, <PartiesSection key="parties" sections={parties} />);
+      return blocks;
+    })()}
     {view === "overview" && <section className="rv-section">
       <div className="rv-sec-head"><AlertTriangle className="h-[14px] w-[14px] text-[var(--red)]" />冲突核查摘要{onOpenConflicts && <button type="button" onClick={onOpenConflicts} className="ml-auto text-[11px] font-[550] text-[var(--teal-deep)]">查看完整检索记录 →</button>}</div>
       <div className="conf-sum">

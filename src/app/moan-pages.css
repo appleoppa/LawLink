@@ -398,6 +398,17 @@
 .mo-approval .arow .v.mono { font-family: var(--font-mono); }
 .mo-approval .arow.fold { color: var(--t-faint); cursor: pointer; }
 .mo-approval .arow.fold .v { font-size: 11.5px; }
+/* 申请资料紧凑排布：短字段两列并排，长文本占整行 */
+.mo-approval .rv-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: row dense; margin-bottom: -1px; }
+.mo-approval .rv-grid .arow { padding: 7px 15px; min-width: 0; }
+.mo-approval .rv-grid .arow:last-child { border-bottom: 1px solid var(--bd-hair); }
+.mo-approval .rv-grid .arow.wide { grid-column: 1 / -1; }
+.mo-approval .rv-grid .arow .k { width: 104px; }
+.mo-approval .rv-note { padding: 7px 15px; font-size: 11.5px; color: var(--t-muted); border-bottom: 1px solid var(--bd-hair); }
+.mo-approval .rv-party + .rv-party { border-top: 1px solid var(--bd-default); }
+.mo-approval .rv-party-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 9px 15px 3px; font-size: 12.75px; }
+.mo-approval .rv-party .rv-grid .arow { border-bottom-style: dashed; }
+@media (max-width: 720px) { .mo-approval .rv-grid { grid-template-columns: minmax(0, 1fr); } }
 .mo-approval .conf-sum { display: flex; gap: 10px; padding: 12px 15px; align-items: flex-start; }
 .mo-approval .conf-sum .cs-ic { width: 30px; height: 30px; border-radius: 8px; background: var(--red-bg); color: var(--red); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .mo-approval .conf-sum .cs-ic svg { width: 15px; height: 15px; }
