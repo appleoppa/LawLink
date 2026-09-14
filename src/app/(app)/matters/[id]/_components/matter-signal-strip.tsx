@@ -16,15 +16,18 @@ type SignalProcedure = {
 
 const WEEK = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
 
+/** 按上海日历日计算相差天数（与工作台同口径，不受浏览器所在时区影响） */
+const shDay = (d: Date) => new Date(d).toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" });
 function dayDiff(date: Date) {
-  const a = new Date();
-  a.setHours(0, 0, 0, 0);
-  const b = new Date(date);
-  b.setHours(0, 0, 0, 0);
-  return Math.round((b.getTime() - a.getTime()) / 86_400_000);
+  return Math.round((Date.parse(shDay(date)) - Date.parse(shDay(new Date()))) / 86_400_000);
 }
 
-const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+const shParts = (d: Date) => {
+  const [y, m, dd] = shDay(d).split("-").map(Number);
+  return { m, d: dd, w: new Date(Date.UTC(y, m - 1, dd)).getUTCDay() };
+};
+
+const hhmm = (d: Date) => new Date(d).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Shanghai" });
 
 export function MatterSignalStrip({
   procedures,
@@ -75,7 +78,7 @@ export function MatterSignalStrip({
                 {nDays < 0 ? Math.abs(nDays) : nDays}
               </span>
               <span className="signal-unit">
-                {nDays < 0 ? "天 · 已逾期" : "天"} · {new Date(nearest.dueAt).getMonth() + 1}月{new Date(nearest.dueAt).getDate()}日 {hhmm(new Date(nearest.dueAt))}
+                {nDays < 0 ? "天 · 已逾期" : "天"} · {shParts(nearest.dueAt).m}月{shParts(nearest.dueAt).d}日 {hhmm(new Date(nearest.dueAt))}
               </span>
             </div>
             <div className="signal-sub truncate">
@@ -102,10 +105,10 @@ export function MatterSignalStrip({
           <>
             <div className="signal-main">
               <span className="signal-num" style={{ color: "var(--blue)" }}>
-                {new Date(hearing.startsAt).getMonth() + 1}-{new Date(hearing.startsAt).getDate()}
+                {shParts(hearing.startsAt).m}-{shParts(hearing.startsAt).d}
               </span>
               <span className="signal-unit">
-                {WEEK[new Date(hearing.startsAt).getDay()]} {hhmm(new Date(hearing.startsAt))}
+                {WEEK[shParts(hearing.startsAt).w]} {hhmm(new Date(hearing.startsAt))}
               </span>
             </div>
             <div className="signal-sub truncate">{[hearing.room, hearing.title].filter(Boolean).join(" · ")}</div>

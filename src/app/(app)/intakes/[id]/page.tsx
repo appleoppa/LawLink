@@ -24,7 +24,8 @@ type PageProps = {
 
 export default async function IntakeDetailPage({ params }: PageProps) {
   const { id } = await params;
-  const [intake, session] = await Promise.all([getIntakeById(id), getSession()]);
+  // 无权查看或不存在统一按 404 处理，不把服务端错误暴露为运行时异常
+  const [intake, session] = await Promise.all([getIntakeById(id).catch(() => null), getSession()]);
   if (!intake) notFound();
   if (intake.teamReadOnly) return (
     <div className="space-y-4">
