@@ -25,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
 
 export type AdminDeadlineRule = {
   id: string; code: string; name: string; description: string | null;
@@ -134,8 +135,8 @@ export function DeadlineRulesCard({ rules, rail, headerActions }: { rules: Admin
     });
   }
 
-  function remove(rule: AdminDeadlineRule) {
-    if (!confirm(`确定删除规则「${rule.name}」？已生成的期限不受影响。`)) return;
+  async function remove(rule: AdminDeadlineRule) {
+    if (!(await confirmDialog({ title: `删除规则「${rule.name}」？`, description: "已生成的期限不受影响。", confirmText: "删除", danger: true }))) return;
     startTransition(async () => {
       try {
         await deleteDeadlineRule({ id: rule.id });

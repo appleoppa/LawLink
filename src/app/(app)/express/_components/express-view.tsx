@@ -24,6 +24,7 @@ import { createExpress, refreshExpress, deleteExpress } from "@/server/express/a
 import { SUPPORTED_COMPANIES, detectCompany } from "@/lib/express/companies";
 import { matterHref } from "@/lib/matters/route";
 import { PageHeader } from "@/components/patterns/moan";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
 
 type Row = Prisma.ExpressTrackingGetPayload<{
   include: {
@@ -174,8 +175,8 @@ function Card({ e }: { e: Row }) {
       }
     });
 
-  const onDelete = () => {
-    if (!confirm(`确认删除单号 ${e.trackingNo}？`)) return;
+  const onDelete = async () => {
+    if (!(await confirmDialog({ title: `删除快递单号 ${e.trackingNo}？`, confirmText: "删除", danger: true }))) return;
     startTransition(async () => {
       try {
         await deleteExpress({ id: e.id });

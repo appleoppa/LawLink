@@ -17,6 +17,7 @@ import {
 } from "@/server/external-contacts/actions";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/patterns/moan";
+import { confirmDialog, promptDialog } from "@/components/patterns/confirm-dialog";
 
 type ColleagueItem = {
   id: string;
@@ -94,7 +95,7 @@ export function ContactsView({
   });
 
   async function handleArchive(c: ExternalContactItem) {
-    if (!confirm(`归档联系人"${c.name}"？`)) return;
+    if (!(await confirmDialog({ title: `归档联系人「${c.name}」？`, description: "归档后不再在通讯录中展示，历史引用保留。", confirmText: "归档" }))) return;
     try {
       await archiveExternalContact(c.id);
       toast.success("已归档");
@@ -105,7 +106,7 @@ export function ContactsView({
   }
 
   async function handleApprove(c: ExternalContactItem) {
-    if (!confirm(`通过联系人"${c.name}"？通过后将对全所展示。`)) return;
+    if (!(await confirmDialog({ title: `通过联系人「${c.name}」？`, description: "通过后将对全所展示。", confirmText: "通过" }))) return;
     try {
       await approveExternalContact({ id: c.id });
       toast.success("已通过");
@@ -116,7 +117,7 @@ export function ContactsView({
   }
 
   async function handleReject(c: ExternalContactItem) {
-    const note = prompt(`驳回联系人"${c.name}"的原因（可选）`);
+    const note = await promptDialog({ title: `驳回联系人「${c.name}」`, label: "驳回原因（可选）", confirmText: "驳回", danger: true });
     if (note === null) return;
     try {
       await rejectExternalContact({ id: c.id, note });

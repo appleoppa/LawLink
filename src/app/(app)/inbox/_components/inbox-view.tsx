@@ -40,6 +40,7 @@ import {
 } from "./sms-actions-dialogs";
 import { matterHref } from "@/lib/matters/route";
 import { PageHeader } from "@/components/patterns/moan";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
 
 type Tab = "unprocessed" | "needsManual" | "processed";
 
@@ -232,8 +233,8 @@ function SmsCard({
       }
     });
 
-  const onDelete = () => {
-    if (!confirm("确认删除这条短信记录？")) return;
+  const onDelete = async () => {
+    if (!(await confirmDialog({ title: "删除这条短信记录？", description: "删除后不可在列表中恢复。", confirmText: "删除", danger: true }))) return;
     startTransition(async () => {
       try {
         await deleteSms({ id: sms.id });

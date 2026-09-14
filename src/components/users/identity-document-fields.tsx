@@ -15,6 +15,7 @@ import {
   type IdentityDocumentTypeValue
 } from "@/lib/identity-documents";
 import { getIdentityRecognitionConfig, recognizeIdentityDocument } from "@/server/identity-documents/recognition";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
 
 export type IdentityDocumentDraft = {
   documentType: IdentityDocumentTypeValue;
@@ -62,7 +63,7 @@ export function IdentityDocumentFields({
           toast.warning("视觉识别服务尚未配置，请手工录入");
           return;
         }
-        const remoteConsent = config.local || window.confirm(`证件照片将发送至 ${config.host} 进行本次识别。是否继续？`);
+        const remoteConsent = config.local || (await confirmDialog({ title: "发送证件照片识别？", description: `证件照片将发送至 ${config.host} 进行本次识别。`, confirmText: "继续识别" }));
         if (!remoteConsent) return;
         const formData = new FormData();
         formData.set("file", value.primaryFile!);

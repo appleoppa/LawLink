@@ -26,6 +26,7 @@ import {
   type UserOption
 } from "./preservation-types";
 import { PageHeader } from "@/components/patterns/moan";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
 
 const STATUS_FILTERS = [
   { value: "ALL", label: "全部" },
@@ -166,7 +167,7 @@ function CaseCard({ caseData: cs, expanded, onToggle, matters, users }: { caseDa
         </button>
         <div className="flex shrink-0 items-center gap-1">
           <button type="button" onClick={() => setEditOpen(true)} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button>
-          <button type="button" onClick={() => { if (confirm("确认删除此保全案件及所有记录？")) { startTransition(async () => { try { await deletePreservationCase({ id: cs.id }); toast.success("已删除"); } catch { toast.error("删除失败"); } }); } }} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
+          <button type="button" onClick={async () => { if (await confirmDialog({ title: "删除此保全案件？", description: "将同时删除其下的被保全人、财产与续保记录。", confirmText: "删除", danger: true })) { startTransition(async () => { try { await deletePreservationCase({ id: cs.id }); toast.success("已删除"); } catch { toast.error("删除失败"); } }); } }} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
         </div>
       </div>
 

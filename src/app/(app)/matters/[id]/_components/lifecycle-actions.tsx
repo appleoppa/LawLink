@@ -42,6 +42,7 @@ import {
   activateMatterService
 } from "@/server/matters/lifecycle";
 import { ArchiveWizardDialog } from "./archive-wizard";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
 
 export function LifecycleActions({
   matterId,
@@ -99,8 +100,8 @@ export function LifecycleActions({
     });
   }
 
-  function handleReopenService() {
-    if (!confirm("将律师服务恢复为「进行中」？程序与归档状态不变。")) return;
+  async function handleReopenService() {
+    if (!(await confirmDialog({ title: "恢复律师服务为「进行中」？", description: "程序与归档状态不变。", confirmText: "恢复" }))) return;
     startTransition(async () => {
       try {
         await activateMatterService(matterId);
@@ -112,8 +113,8 @@ export function LifecycleActions({
     });
   }
 
-  function handleReopen() {
-    if (!confirm("将案件重新开放为'办理中'？")) return;
+  async function handleReopen() {
+    if (!(await confirmDialog({ title: "重新开放案件？", description: "案件状态将改为「办理中」。", confirmText: "重新开放" }))) return;
     startTransition(async () => {
       try {
         await reopenMatter(matterId);

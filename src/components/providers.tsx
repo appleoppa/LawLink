@@ -4,6 +4,7 @@ import { SessionProvider } from "next-auth/react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppMotionProvider } from "@/components/patterns/app-motion-provider";
+import { ConfirmHost } from "@/components/patterns/confirm-dialog";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
@@ -18,6 +19,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           {children}
         </TooltipProvider>
         <Toaster />
+        <ConfirmHost />
       </AppMotionProvider>
     </SessionProvider>
   );

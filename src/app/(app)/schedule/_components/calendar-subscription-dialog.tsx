@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { getCalendarToken, regenerateCalendarToken } from "@/server/calendar/actions";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
 
 export function CalendarSubscriptionDialog() {
   return (
@@ -67,11 +68,9 @@ function CalendarSubscriptionContent() {
       .catch(() => toast.error("复制失败，请手动选中复制"));
   }
 
-  function regenerate() {
+  async function regenerate() {
     if (
-      !confirm(
-        "重置后旧订阅链接立即失效，已订阅的日历需要重新添加。确定重置？"
-      )
+      !(await confirmDialog({ title: "重置订阅链接？", description: "重置后旧订阅链接立即失效，已订阅的日历需要重新添加。", confirmText: "重置链接", danger: true }))
     ) {
       return;
     }

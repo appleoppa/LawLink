@@ -17,6 +17,7 @@ import {
   DialogDescription,
   DialogFooter
 } from "@/components/ui/dialog";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
 
 // v0.27: AI 复检功能暂时隐藏（后端 server action 保留），改回时去掉此 flag
 const SHOW_AI_RECHECK = false;
@@ -29,9 +30,9 @@ export function BatchReviewButton({ matterId }: { matterId: string }) {
 
   if (!SHOW_AI_RECHECK) return null;
 
-  function run() {
+  async function run() {
     if (
-      !confirm("将对本案最多 5 份未审查过的文档发起 AI 审查（会消耗 AI tokens），继续？")
+      !(await confirmDialog({ title: "批量 AI 审查？", description: "将对本案最多 5 份未审查过的文档发起 AI 审查，会消耗 AI 调用额度。", confirmText: "开始审查" }))
     )
       return;
     startTransition(async () => {

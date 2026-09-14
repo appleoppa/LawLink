@@ -29,6 +29,7 @@ import {
   toggleCustomFieldDef
 } from "@/server/custom-fields/actions";
 import { AdminPageHeader } from "@/components/layout/admin-page-header";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
 
 const TYPE_LABEL: Record<CustomFieldDef["fieldType"], string> = {
   TEXT: "文本",
@@ -42,8 +43,8 @@ export function CustomFieldsView({ matterFields }: { matterFields: CustomFieldDe
   const [createOpen, setCreateOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  function handleDelete(id: string, label: string) {
-    if (!confirm(`删除自定义字段「${label}」？已录入的对应值将不再显示。`)) return;
+  async function handleDelete(id: string, label: string) {
+    if (!(await confirmDialog({ title: `删除自定义字段「${label}」？`, description: "已录入的对应值将不再显示。", confirmText: "删除", danger: true }))) return;
     startTransition(async () => {
       try {
         await deleteCustomFieldDef(id);

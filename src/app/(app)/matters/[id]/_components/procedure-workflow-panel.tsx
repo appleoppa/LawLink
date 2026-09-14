@@ -90,6 +90,7 @@ import { TemplatePickerDialog } from "./template-picker-dialog";
 import { DocIcon, EmptyState, ProcedureChain, SourceChip, type ChainNode } from "@/components/patterns/moan";
 import { documentSourceChip } from "@/lib/ui/moan-tones";
 import type { FolderPayload, TemplateSummary } from "./folder-types";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
 
 type WorkflowTask = {
   id: string;
@@ -762,7 +763,7 @@ export function ProcedureWorkflowPanel({
     };
   }, [apiRef, selectedStage, defaultStage, stages]);
 
-  function handleRemoveStage(stage: WorkflowStage) {
+  async function handleRemoveStage(stage: WorkflowStage) {
     const stageId = stage.id;
     if (!stageId) {
       toast.info("该环节尚未写入流程，无需移除");
@@ -772,7 +773,7 @@ export function ProcedureWorkflowPanel({
       toast.warning("必备环节不能移除");
       return;
     }
-    if (!confirm(`确定从当前程序移除「${stage.name}」？已有任务或材料的环节将被隐藏（数据保留，可重新添加恢复）。`)) return;
+    if (!(await confirmDialog({ title: `移除环节「${stage.name}」？`, description: "已有任务或材料的环节将被隐藏（数据保留，重新添加同名环节可恢复）。", confirmText: "移除", danger: true }))) return;
     startStageRemovalTransition(async () => {
       try {
         const res = await removeProcedureStage({ id: stageId });

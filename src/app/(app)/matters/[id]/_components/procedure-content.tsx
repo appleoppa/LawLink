@@ -63,6 +63,7 @@ import { createExpress, deleteExpress } from "@/server/express/actions";
 import { parseExpressLabel } from "@/server/ai/parse-express";
 import { parseSummons } from "@/server/ai/parse-summons";
 import type { ExpressItem } from "./info-extras";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
 
 type ProcedureWithChildren = MatterProcedure & {
   deadlines: Deadline[];
@@ -175,6 +176,7 @@ function ImportantItemsCard({
   const [filter, setFilter] = useState<ImportantFilter>("all");
   const [addOpen, setAddOpen] = useState(false);
   const [addType, setAddType] = useState<ImportantCategory>("hearing");
+  const [adjusting, setAdjusting] = useState<DeadlineRowItem | null>(null);
 
   function handleToggle(id: string) {
     startTransition(async () => {
@@ -186,8 +188,8 @@ function ImportantItemsCard({
     });
   }
 
-  function handleDeleteDeadline(id: string) {
-    if (!confirm("删除这条期限？")) return;
+  async function handleDeleteDeadline(id: string) {
+    if (!(await confirmDialog({ title: "删除这条期限？", description: "删除后不再提醒，操作记入审计。", confirmText: "删除", danger: true }))) return;
     startTransition(async () => {
       try {
         await deleteDeadline(id);
@@ -212,27 +214,11 @@ function ImportantItemsCard({
 
   // v1.x P0-8: 人工调整到期日（写已调整 + 留痕；规则重算不再覆盖）
   function handleAdjustDeadline(d: DeadlineRowItem) {
-    const dateStr = window.prompt("调整后的到期日（格式 2026-09-30）：", formatIsoDate(d.dueAt));
-    if (!dateStr) return;
-    const dueAt = new Date(`${dateStr}T00:00:00`);
-    if (Number.isNaN(dueAt.getTime())) {
-      toast.error("日期格式不正确");
-      return;
-    }
-    const reason = window.prompt("调整原因（必填，将记入审计）：", "");
-    if (!reason?.trim()) return;
-    startTransition(async () => {
-      try {
-        await adjustDeadline({ id: d.id, dueAt, reason: reason.trim() });
-        toast.success("期限已调整");
-      } catch (err) {
-        toast.error("调整失败", { description: err instanceof Error ? err.message : "" });
-      }
-    });
+    setAdjusting(d);
   }
 
-  function handleDeleteHearing(id: string) {
-    if (!confirm("删除这条开庭记录？")) return;
+  async function handleDeleteHearing(id: string) {
+    if (!(await confirmDialog({ title: "删除这条开庭记录？", confirmText: "删除", danger: true }))) return;
     startTransition(async () => {
       try {
         await deleteHearing(id);
@@ -243,8 +229,8 @@ function ImportantItemsCard({
     });
   }
 
-  function handleDeleteExpress(id: string) {
-    if (!confirm("删除这条快递记录？")) return;
+  async function handleDeleteExpress(id: string) {
+    if (!(await confirmDialog({ title: "删除这条快递记录？", confirmText: "删除", danger: true }))) return;
     startTransition(async () => {
       try {
         await deleteExpress({ id });
@@ -412,7 +398,58 @@ function ImportantItemsCard({
           proceduresDetail={proceduresDetail}
         />
       )}
+      {adjusting ? <AdjustDeadlineDialog deadline={adjusting} onClose={() => setAdjusting(null)} /> : null}
     </section>
+  );
+}
+
+/** v1.x P0-8: 人工调整到期日（写已调整 + 留痕；规则重算不再覆盖）——日期控件 + 必填原因 */
+function AdjustDeadlineDialog({ deadline, onClose }: { deadline: DeadlineRowItem; onClose: () => void }) {
+  const [date, setDate] = useState(formatIsoDate(deadline.dueAt));
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function submit() {
+    const dueAt = new Date(`${date}T00:00:00`);
+    if (!date || Number.isNaN(dueAt.getTime())) return setError("请选择调整后的到期日");
+    if (!reason.trim()) return setError("请填写调整原因（将记入审计）");
+    setError(null);
+    startTransition(async () => {
+      try {
+        await adjustDeadline({ id: deadline.id, dueAt, reason: reason.trim() });
+        toast.success("期限已调整");
+        onClose();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "调整失败");
+      }
+    });
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o && !pending) onClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>调整到期日</DialogTitle>
+          <DialogDescription>「{deadline.title}」原到期日 {formatIsoDate(deadline.dueAt)}。人工调整后标记为「已调整」，规则重算不再覆盖。</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label>调整后的到期日 *</Label>
+            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="font-mono" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>调整原因 *</Label>
+            <Textarea rows={3} value={reason} maxLength={300} onChange={(e) => setReason(e.target.value)} placeholder="如：法院通知书载明举证期限延长至…" />
+          </div>
+          {error ? <div className="text-[12px] text-[var(--red)]">{error}</div> : null}
+        </div>
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose} disabled={pending}>取消</Button>
+          <Button onClick={submit} disabled={pending}>保存调整</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

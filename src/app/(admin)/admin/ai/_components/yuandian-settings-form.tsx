@@ -18,6 +18,7 @@ import {
   clearYuandianKeyAction,
   testYuandianConnection
 } from "@/server/settings/yuandian-actions";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
 
 type Initial = {
   configured: boolean;
@@ -54,8 +55,8 @@ export function YuandianSettingsForm({
     });
   };
 
-  const clearKey = () => {
-    if (!confirm("确认清除元典 API key？类案检索功能将停止工作。")) return;
+  const clearKey = async () => {
+    if (!(await confirmDialog({ title: "清除元典 API key？", description: "类案检索与企业信息匹配将停止工作。", confirmText: "清除", danger: true }))) return;
     startTransition(async () => {
       try {
         await clearYuandianKeyAction({ confirm: true });

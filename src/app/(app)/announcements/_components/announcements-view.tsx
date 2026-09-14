@@ -8,6 +8,7 @@ import { formatDate } from "@/lib/utils";
 import { AnnouncementDialog } from "./announcement-dialog";
 import { archiveAnnouncement } from "@/server/announcements/actions";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
 
 type AnnouncementItem = {
   id: string;
@@ -34,7 +35,7 @@ export function AnnouncementsView({
   const router = useRouter();
 
   async function handleArchive(a: AnnouncementItem) {
-    if (!confirm(`归档公告"${a.title}"？归档后不再显示但保留历史。`)) return;
+    if (!(await confirmDialog({ title: `归档公告「${a.title}」？`, description: "归档后不再显示，但保留历史。", confirmText: "归档" }))) return;
     try {
       await archiveAnnouncement(a.id);
       toast.success("已归档");

@@ -11,6 +11,7 @@ import { deleteFirmFile } from "@/server/firm-files/actions";
 import { cn } from "@/lib/utils";
 import { UploadDialog } from "./upload-dialog";
 import { PreviewDialog } from "./preview-dialog";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
 
 type FileEntry = {
   id: string;
@@ -115,8 +116,8 @@ export function FirmFilesView({
     navigate({ q: search.trim() || undefined });
   }
 
-  function handleDelete(f: FileEntry) {
-    if (!confirm(`确认删除「${f.name}」？\n（软删除，可在数据库找回）`)) return;
+  async function handleDelete(f: FileEntry) {
+    if (!(await confirmDialog({ title: `删除「${f.name}」？`, description: "软删除：列表不再展示，数据仍保留可由管理员找回。", confirmText: "删除", danger: true }))) return;
     setPendingId(f.id);
     startTransition(async () => {
       try {

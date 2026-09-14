@@ -49,6 +49,7 @@ import { IdentityDocumentFields, type IdentityDocumentDraft } from "@/components
 import { identityDocumentInputSchema } from "@/lib/identity-documents";
 import { userRoleLabel } from "@/lib/enums";
 import { AdminPageHeader } from "@/components/layout/admin-page-header";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
 
 type CustomRoleOption = { id: string; name: string; active: boolean };
 const assignment = (value: string) => ROLES.includes(value as UserRole) ? { role: value as UserRole, roleDefinitionId: null } : { role: "CUSTOM" as const, roleDefinitionId: value };
@@ -177,10 +178,10 @@ function UserRow({
 }) {
   const [isPending, startTransition] = useTransition();
 
-  function handleRoleChange(value: string) {
+  async function handleRoleChange(value: string) {
     if (value === (user.roleDefinitionId ?? user.role)) return;
     const target = customRoles.find(r => r.id === value)?.name ?? builtinNames[value] ?? userRoleLabel[value as UserRole];
-    if (!confirm(`将角色从“${user.roleName ?? userRoleLabel[user.role]}”改为“${target}”？该账号需重新登录。`)) return;
+    if (!(await confirmDialog({ title: `调整 ${user.name} 的岗位？`, description: `将从「${user.roleName ?? userRoleLabel[user.role]}」改为「${target}」，该账号需重新登录。`, confirmText: "调整" }))) return;
     startTransition(async () => {
       try {
         await updateUserRole({ id: user.id, ...assignment(value), expectedRole: user.role, expectedRoleDefinitionId: user.roleDefinitionId ?? null });
@@ -192,8 +193,8 @@ function UserRow({
   }
 
   // v1.x P0-3: 解除登录锁定
-  function handleUnlock() {
-    if (!confirm(`解除 ${user.name} 的登录锁定？`)) return;
+  async function handleUnlock() {
+    if (!(await confirmDialog({ title: `解除 ${user.name} 的登录锁定？`, confirmText: "解除锁定" }))) return;
     startTransition(async () => {
       try {
         await unlockUserLogin({ id: user.id });
@@ -204,9 +205,9 @@ function UserRow({
     });
   }
 
-  function handleToggleActive() {
+  async function handleToggleActive() {
     if (
-      !confirm(user.active ? `禁用 ${user.name}？禁用后该用户无法登录。` : `重新激活 ${user.name}？`)
+      !(await confirmDialog(user.active ? { title: `禁用 ${user.name}？`, description: "禁用后该用户无法登录。", confirmText: "禁用", danger: true } : { title: `重新激活 ${user.name}？`, confirmText: "激活" }))
     )
       return;
     startTransition(async () => {
@@ -219,10 +220,10 @@ function UserRow({
     });
   }
 
-  function handleSystemRoleChange() {
+  async function handleSystemRoleChange() {
     const next: SystemRole = user.systemRole === "SUPER_ADMIN" ? "NONE" : "SUPER_ADMIN";
     const action = next === "SUPER_ADMIN" ? "授予系统超级管理员资格" : "撤销系统超级管理员资格";
-    if (!confirm(`${action}：${user.name}？该账号的现有会话将失效。`)) return;
+    if (!(await confirmDialog({ title: `${action}：${user.name}？`, description: "该账号的现有会话将失效。", confirmText: "确认", danger: next !== "SUPER_ADMIN" }))) return;
     startTransition(async () => {
       try {
         await updateUserSystemRole({ id: user.id, systemRole: next, expectedSystemRole: user.systemRole });
@@ -234,7 +235,7 @@ function UserRow({
   }
 
   // v1.x P1 收尾 c: 管理员强制账号开启双步验证（TOTP）
-  function handleToggleTotpEnforce() {
+  async function handleToggleTotpEnforce() {
     const next = !user.totpEnforced;
     if (isSelf && next && !user.totpEnabled) {
       toast.warning("你自己尚未绑定动态码：强制后将无法登录，请先在「个人设置 → 登录安全」完成绑定");
@@ -245,7 +246,7 @@ function UserRow({
         ? `要求 ${user.name} 登录时使用双步验证？该账号已绑定动态码，每次登录都须验证。`
         : `要求 ${user.name} 开启双步验证？该账号尚未绑定动态码，完成绑定前将无法登录（需线下协助绑定）。`
       : `解除 ${user.name} 的双步验证强制要求？已绑定的动态码不受影响。`;
-    if (!confirm(warning)) return;
+    if (!(await confirmDialog({ title: next ? "要求双步验证" : "解除双步验证强制", description: warning, confirmText: "确认" }))) return;
     startTransition(async () => {
       try {
         const res = await forceEnforceTotp({ id: user.id, enabled: next });

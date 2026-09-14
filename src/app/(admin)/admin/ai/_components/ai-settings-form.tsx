@@ -11,6 +11,7 @@ import {
   clearAiKeyAction,
   testAiConnection
 } from "@/server/settings/ai-actions";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
 
 type Initial = {
   configured: boolean;
@@ -102,8 +103,8 @@ export function AiSettingsForm({
     });
   };
 
-  const clearKey = () => {
-    if (!confirm("确认清除已保存的 API key？所有依赖 AI 的功能将停止工作。")) return;
+  const clearKey = async () => {
+    if (!(await confirmDialog({ title: "清除 AI API key？", description: "所有依赖 AI 的功能（识别、推荐、审查）将停止工作。", confirmText: "清除", danger: true }))) return;
     startTransition(async () => {
       try {
         await clearAiKeyAction({ confirm: true });

@@ -55,6 +55,7 @@ import { ArchiveWizardDialog } from "./archive-wizard";
 import { TeamEditorDialog } from "./team-editor-dialog";
 import type { FolderPayload, FolderDocument, TemplateSummary } from "./folder-types";
 import type { UserOption as PresUserOption } from "@/app/(app)/preservation/_components/preservation-types";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
 
 type MatterPayloadBase = Prisma.MatterGetPayload<{
   include: {
@@ -438,8 +439,8 @@ export function MatterDetailTabs({
                   {canLeadThisMatter ? (
                     <button
                       type="button"
-                      onClick={() => {
-                        if (confirm(deleteProcedureWarning(procedure, label))) handleDeleteProcedure(procedure.id);
+                      onClick={async () => {
+                        if (await confirmDialog({ title: `删除程序「${label}」？`, description: deleteProcedureWarning(procedure, label), confirmText: "删除程序", danger: true })) handleDeleteProcedure(procedure.id);
                       }}
                       className="pointer-events-none -mr-1 ml-0.5 opacity-0 transition-opacity group-hover/proc:pointer-events-auto group-hover/proc:opacity-100"
                       title="删除此程序"

@@ -17,6 +17,7 @@ import { triggerArchiveOverdueScanNow } from "@/server/cron/manual-triggers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
 
 type PeriodKey = "month" | "quarter" | "year" | "lastYear" | "custom";
 
@@ -56,8 +57,8 @@ export function ReportsView({
   const [pushing, startPushing] = useTransition();
   const [scanning, startScanning] = useTransition();
 
-  function handleScanOverdue() {
-    if (!confirm("立刻扫描已结案超过 30 天未归档的案件，给主办律师发预警通知？")) return;
+  async function handleScanOverdue() {
+    if (!(await confirmDialog({ title: "立即扫描归档逾期？", description: "扫描已结案超过 30 天未归档的案件，并给主办律师发送预警通知。", confirmText: "开始扫描" }))) return;
     startScanning(async () => {
       try {
         const r = await triggerArchiveOverdueScanNow();
@@ -70,8 +71,8 @@ export function ReportsView({
     });
   }
 
-  function handlePushWeekly() {
-    if (!confirm("立刻给所有主任律师和律师推送本周报告？每人收到一条通知。")) return;
+  async function handlePushWeekly() {
+    if (!(await confirmDialog({ title: "推送本周报告？", description: "立即给所有主任律师和律师推送本周报告，每人收到一条通知。", confirmText: "推送" }))) return;
     startPushing(async () => {
       try {
         const res = await pushWeeklyReportToAll();

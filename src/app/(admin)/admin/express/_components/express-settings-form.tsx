@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { saveExpressSettingsAction } from "@/server/express/actions";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
 
 type Initial = {
   kdniao: { ebusinessId: string; configured: boolean; appKeyMasked: string };
@@ -38,8 +39,8 @@ export function ExpressSettingsForm({ initial }: { initial: Initial }) {
     });
   };
 
-  const clearKdniao = () => {
-    if (!confirm("清除快递鸟密钥？")) return;
+  const clearKdniao = async () => {
+    if (!(await confirmDialog({ title: "清除快递鸟密钥？", description: "清除后物流自动刷新将降级到快递100（如已配置）。", confirmText: "清除", danger: true }))) return;
     startTransition(async () => {
       try {
         await saveExpressSettingsAction({ kdniaoClearKey: true });
@@ -50,8 +51,8 @@ export function ExpressSettingsForm({ initial }: { initial: Initial }) {
     });
   };
 
-  const clearKd100 = () => {
-    if (!confirm("清除快递100密钥？")) return;
+  const clearKd100 = async () => {
+    if (!(await confirmDialog({ title: "清除快递100密钥？", confirmText: "清除", danger: true }))) return;
     startTransition(async () => {
       try {
         await saveExpressSettingsAction({ kuaidi100ClearKey: true });
