@@ -20,10 +20,10 @@ export function ClientEditButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1 text-[12px] text-muted-foreground transition-colors hover:text-primary"
+        className="btn btn-secondary btn-sm"
       >
-        <Pencil className="h-3.5 w-3.5" />
-        编辑信息
+        <Pencil />
+        编辑资料
       </button>
       <ClientSheet open={open} onOpenChange={setOpen} editingClient={client} />
     </>

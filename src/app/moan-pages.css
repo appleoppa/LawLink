@@ -669,3 +669,11 @@
 @media (max-width: 720px) { .mo-schedule .cell { min-height: 72px; padding: 5px; } .mo-schedule .ev .t { display: none; } }
 .mo-schedule .cells, .mo-schedule .dow { grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .mo-schedule .cell { min-width: 0; }
+
+/* 10 客户详情 · 实现补充 */
+.mo-client .mo-back { margin-bottom: 10px; }
+.mo-client a.mrow:hover .mr-name { color: var(--teal-deep); }
+.mo-client .mrow.mo-spine::before { top: 9px; bottom: 9px; }
+@media (max-width: 1100px) { .mo-client .ch-stats { margin-left: 0; width: 100%; } .mo-client .ch-stat:first-child { padding-left: 0; } .mo-client .ch-stat { text-align: left; } }
+/* 05 收案 · 实现补充：全局 .cd（倒计时）padding 会把 chip 圆点拉成椭圆 */
+.mo-intake .chip .cd { padding: 0; margin-left: 0; flex-shrink: 0; }

@@ -84,6 +84,7 @@ type Props = {
     sortDir?: string;
     page?: string;
     new?: string;
+    clientId?: string;
     scope?: "all" | "mine" | "team";
     teamId?: string;
     ownerId?: string;
@@ -167,6 +168,7 @@ export default async function MattersPage({ searchParams }: Props) {
           sortDir
         }}
         autoOpenIntake={params.new === "1"}
+        initialClientId={params.clientId}
         tabCounts={tabCounts}
       />
     );
@@ -236,6 +238,7 @@ export default async function MattersPage({ searchParams }: Props) {
         sortDir
       }}
       autoOpenIntake={params.new === "1"}
+      initialClientId={params.clientId}
     />
   );
 }

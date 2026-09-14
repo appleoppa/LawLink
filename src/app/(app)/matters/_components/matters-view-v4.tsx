@@ -50,7 +50,8 @@ export function MattersViewV4({
   tabCounts,
   readableTeams = [],
   initialFilters,
-  autoOpenIntake
+  autoOpenIntake,
+  initialClientId
 }: {
   tab: Tab;
   matterData?: { items: MatterRow[]; total: number; page: number; pageSize: number };
@@ -72,6 +73,7 @@ export function MattersViewV4({
     sortDir?: "asc" | "desc";
   };
   autoOpenIntake?: boolean;
+  initialClientId?: string;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -120,6 +122,7 @@ export function MattersViewV4({
     if (!open && autoOpenIntake) {
       const url = new URL(window.location.href);
       url.searchParams.delete("new");
+      url.searchParams.delete("clientId");
       window.history.replaceState(null, "", url.toString());
     }
   }
@@ -275,7 +278,7 @@ export function MattersViewV4({
       </div>
       <p className="t-xs t-faint mt-3 text-center">列表即档案架 · 左侧脊线代表案件状态 · 红色仅用于逾期与阻断</p>
 
-      <IntakeWizard open={wizardOpen} onOpenChange={closeWizard} clientOptions={clientOptions} colleagues={colleagues} />
+      <IntakeWizard open={wizardOpen} onOpenChange={closeWizard} clientOptions={clientOptions} colleagues={colleagues} initialClientId={autoOpenIntake ? initialClientId : undefined} />
     </div>
   );
 }

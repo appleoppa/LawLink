@@ -7,12 +7,14 @@ export default async function ConflictsPage({ searchParams }: { searchParams: Pr
   const params = await searchParams;
   const intakeId = typeof params.intakeId === "string" ? params.intakeId : undefined;
   const intake = intakeId ? await getIntakeById(intakeId).catch(() => null) : null;
+  const prefillName = typeof params.name === "string" ? params.name.slice(0, 100) : "";
   const recent = await listMyRecentConflictChecks().catch(() => []);
   return (
     <ConflictsViewV4
       intake={intake && !intake.teamReadOnly ? { id: intake.id, title: intake.title, receivedAt: new Date(intake.receivedAt).toISOString() } : null}
       initialQueries={intake && !intake.teamReadOnly ? buildIntakeConflictQueries(intake) : []}
       recent={recent}
+      prefillName={prefillName}
     />
   );
 }

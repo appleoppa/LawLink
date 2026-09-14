@@ -130,7 +130,8 @@ export function IntakeWizard({
   onOpenChange,
   clientOptions,
   colleagues,
-  onSubmitted
+  onSubmitted,
+  initialClientId
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -138,6 +139,8 @@ export function IntakeWizard({
   colleagues: Colleague[];
   /** 提交成功回调（审批创建入口用于直接跳转审批详情） */
   onSubmitted?: (intakeId: string) => void;
+  /** 从客户档案「为此客户新建收案」进入时预关联的客户 */
+  initialClientId?: string;
 }) {
   const router = useRouter();
   const { data: session } = useSession();
@@ -181,6 +184,16 @@ export function IntakeWizard({
   const agencyOpts = useMemo(() => agencyOptionsForProcedure(jurisdiction, firstProcedureType), [jurisdiction, firstProcedureType]);
   const kind: CategoryKind = matterCategoryKind(category);
   const nameLabel = kind === "counsel" ? "顾问事项名称" : kind === "project" ? "项目名称" : "案件名称";
+
+  // 客户档案入口：打开时预关联该客户（仅在尚未选择委托方时带入）
+  useEffect(() => {
+    if (!open || !initialClientId || getValues("clientId")) return;
+    const c = clientOptions.find((o) => o.id === initialClientId);
+    if (!c) return;
+    setValue("clientId", c.id, { shouldDirty: true });
+    setValue("parties.0.name", c.name, { shouldDirty: true, shouldValidate: true });
+    if (c.type !== "INDIVIDUAL") setValue("parties.0.partyType", c.type === "COMPANY" ? "COMPANY" : "ORGANIZATION", { shouldDirty: true });
+  }, [open, initialClientId, clientOptions, getValues, setValue]);
 
   // 委托方建档查重（P0-1）：按名称 + 证件号防抖，证件精确命中可一键关联
   useEffect(() => {

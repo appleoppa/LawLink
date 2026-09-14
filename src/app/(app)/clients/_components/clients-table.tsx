@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { Building2, User, Briefcase, Pencil, Phone, Mail } from "lucide-react";
 import type { Client, ClientCooperationStatus, ClientType, Contact } from "@prisma/client";
-import { Button } from "@/components/ui/button";
 import { clientTypeLabel, cooperationStatusLabel } from "@/lib/enums";
 
 /** P1 §三：证件号展示打码（client 端纯字符串处理；密文形态直接遮蔽） */
@@ -21,12 +20,12 @@ function maskPhoneText(v: string | null | undefined): string {
   return v.length > 4 ? `${v.slice(0, 2)}****${v.slice(-2)}` : v;
 }
 
-/** 墨案：合作状态 → 徽章 + 行脊线（teal=签约 / amber=洽谈 / slate=潜在 / bronze=终止） */
+/** 墨案：合作状态 → 徽章 + 案卷脊（teal=签约 / amber=洽谈 / slate=潜在 / bronze=终止） */
 const COOP_META: Record<ClientCooperationStatus, { badge: string; spine: string }> = {
-  POTENTIAL: { badge: "b-slate", spine: "#98A3AD" },
-  NEGOTIATING: { badge: "b-amber", spine: "#96650B" },
-  SIGNED: { badge: "b-teal", spine: "#007B7F" },
-  TERMINATED: { badge: "b-bronze", spine: "#8A6B3E" }
+  POTENTIAL: { badge: "b-slate", spine: "slate" },
+  NEGOTIATING: { badge: "b-amber", spine: "amber" },
+  SIGNED: { badge: "b-teal", spine: "teal" },
+  TERMINATED: { badge: "b-bronze", spine: "bronze" }
 };
 
 function CoopBadge({ status }: { status: ClientCooperationStatus }) {
@@ -63,109 +62,69 @@ export function ClientsTable({
 }) {
   if (items.length === 0) {
     return (
-      <div className="ll-surface flex flex-col items-center gap-2 py-20 text-center">
-        <div className="text-sm text-muted-foreground">还没有客户</div>
-        <div className="text-xs text-muted-foreground">
-          点击右上角 <span className="text-foreground/80">新建客户</span> 开始
-        </div>
+      <div className="empty">
+        <div className="mo-empty-title">没有符合条件的客户</div>
+        <div className="mo-empty-desc">调整筛选条件，或点击右上角「新建客户」建档；收案时关联的委托方也会自动出现在这里。</div>
       </div>
     );
   }
 
   return (
     <>
-      {/* 桌面端表格（墨案 03/10 语言：脊线在首格内嵌 span，避免 tr 伪元素错列） */}
-      <div className="ll-surface hidden overflow-x-auto md:block">
-        <table className="w-full text-[13px]">
+      <div className="mo-scroll-x hidden md:block">
+        <table className="mo-table" style={{ minWidth: 900 }}>
           <thead>
-            <tr className="border-b border-[#E8ECEA] bg-[#FAFBFA] text-left text-[11px] font-medium text-muted-foreground">
-              <th className="px-5 py-2.5">客户</th>
-              <th className="px-4 py-2.5">类型</th>
-              <th className="px-4 py-2.5">合作状态</th>
-              <th className="px-4 py-2.5">联系方式</th>
-              <th className="px-4 py-2.5">主要联系人</th>
-              <th className="px-4 py-2.5 text-right">案件</th>
-              <th className="w-16 px-5 py-2.5 text-right">操作</th>
+            <tr>
+              <th style={{ width: "30%", paddingLeft: 20 }}>客户</th>
+              <th>类型</th>
+              <th>合作状态</th>
+              <th>联系方式</th>
+              <th>主要联系人</th>
+              <th className="num">案件 / 收案</th>
+              <th style={{ width: 56 }} />
             </tr>
           </thead>
           <tbody>
             {items.map((c) => {
               const primary = c.contacts[0];
-              const spine = COOP_META[c.cooperationStatus].spine;
               return (
-                <tr key={c.id} className="group border-t border-[#E8ECEA] transition-colors hover:bg-[#F7FAF9]">
-                  <td className="relative px-5 py-3">
-                    <span className="absolute left-0 top-[11px] bottom-[11px] w-[3px] rounded-r" style={{ background: spine }} aria-hidden />
-                    <Link href={`/clients/${c.id}`} className="block">
-                      <div className="text-[13px] font-semibold leading-snug transition-colors group-hover:text-[#005054]">
-                        {c.name}
+                <tr key={c.id} data-spine={COOP_META[c.cooperationStatus].spine} className="group">
+                  <td style={{ paddingLeft: 20 }}>
+                    <Link href={`/clients/${c.id}`} className="block min-w-0">
+                      <div className="truncate font-semibold group-hover:text-[var(--teal-deep)]" style={{ fontSize: 13 }}>{c.name}</div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-[var(--t-muted)]">
+                        {c.idNumber ? <span className="font-mono">{maskClientRef(c.idNumber)}</span> : null}
+                        {c.source ? <span className="truncate">来源：{c.source}</span> : null}
                       </div>
-                      {c.idNumber && (
-                        <div className="mt-1 font-mono text-[10.5px] text-muted-foreground tabular">
-                          {maskClientRef(c.idNumber)}
-                        </div>
-                      )}
-                      {c.source && (
-                        <div className="mt-0.5 truncate text-[10.5px] text-muted-foreground/80">
-                          来源：{c.source}
-                        </div>
-                      )}
                     </Link>
                   </td>
-                  <td className="px-4 py-3">
-                    <TypeBadge type={c.type} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <CoopBadge status={c.cooperationStatus} />
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    <div className="flex flex-col gap-0.5">
-                      {c.phone && (
-                        <span className="flex items-center gap-1.5 text-xs">
-                          <Phone className="h-3 w-3" strokeWidth={1.8} />
-                          <span className="font-mono tabular">{maskPhoneText(c.phone)}</span>
-                        </span>
-                      )}
-                      {c.email && (
-                        <span className="flex items-center gap-1.5 text-xs">
-                          <Mail className="h-3 w-3" strokeWidth={1.8} />
-                          <span className="truncate">{c.email}</span>
-                        </span>
-                      )}
+                  <td><TypeBadge type={c.type} /></td>
+                  <td><CoopBadge status={c.cooperationStatus} /></td>
+                  <td className="text-[var(--t-secondary)]">
+                    <div className="flex flex-col gap-0.5 text-[12px]">
+                      {c.phone ? <span className="flex items-center gap-1.5"><Phone className="h-3 w-3" strokeWidth={1.8} /><span className="font-mono">{maskPhoneText(c.phone)}</span></span> : null}
+                      {c.email ? <span className="flex items-center gap-1.5"><Mail className="h-3 w-3" strokeWidth={1.8} /><span className="truncate">{c.email}</span></span> : null}
+                      {!c.phone && !c.email ? <span className="t-faint">—</span> : null}
                     </div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td>
                     {primary ? (
                       <div>
-                        <div className="text-[13px] text-foreground/90">{primary.name}</div>
-                        {primary.phone && (
-                          <div className="font-mono text-[10.5px] text-muted-foreground tabular">
-                            {maskPhoneText(primary.phone)}
-                          </div>
-                        )}
+                        <div>{primary.name}</div>
+                        {primary.phone ? <div className="font-mono text-[11px] text-[var(--t-muted)]">{maskPhoneText(primary.phone)}</div> : null}
                       </div>
                     ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
+                      <span className="t-faint">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <span className="font-mono text-[15px] font-semibold tabular">{c._count.matters}</span>
-                    {c._count.intakes > 0 && (
-                      <span className="ml-1.5 font-mono text-[10.5px] text-muted-foreground tabular">
-                        +{c._count.intakes}收
-                      </span>
-                    )}
+                  <td className="num">
+                    <span className="font-mono font-semibold" style={{ fontSize: 14 }}>{c._count.matters}</span>
+                    <span className="font-mono text-[11px] text-[var(--t-muted)]"> / {c._count.intakes}</span>
                   </td>
-                  <td className="px-5 py-3 text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onEdit(c)}
-                      className="h-7 w-7 p-0 opacity-0 transition-opacity group-hover:opacity-100"
-                      aria-label="编辑"
-                    >
-                      <Pencil className="h-3.5 w-3.5" strokeWidth={1.8} />
-                    </Button>
+                  <td className="text-right">
+                    <button type="button" className="btn btn-ghost btn-sm btn-icon opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100" onClick={() => onEdit(c)} aria-label={`编辑 ${c.name}`}>
+                      <Pencil />
+                    </button>
                   </td>
                 </tr>
               );
@@ -175,13 +134,12 @@ export function ClientsTable({
       </div>
 
       {/* 移动端卡片列表 */}
-      <div className="space-y-2 md:hidden">
+      <div className="md:hidden">
         {items.map((c) => {
           const primary = c.contacts[0];
           const spine = COOP_META[c.cooperationStatus].spine;
           return (
-            <div key={c.id} className="ll-surface relative overflow-hidden p-3 pl-4">
-              <span className="absolute left-0 top-[11px] bottom-[11px] w-[3px] rounded-r" style={{ background: spine }} aria-hidden />
+            <div key={c.id} className="mo-spine border-b border-[var(--bd-hair)] p-3 pl-4 last:border-b-0" data-spine={spine}>
               <div className="flex items-start justify-between gap-2">
                 <Link href={`/clients/${c.id}`} className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -199,15 +157,9 @@ export function ClientsTable({
                     </div>
                   )}
                 </Link>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onEdit(c)}
-                  className="h-7 w-7 shrink-0 p-0"
-                  aria-label="编辑"
-                >
-                  <Pencil className="h-3.5 w-3.5" strokeWidth={1.8} />
-                </Button>
+                <button type="button" className="btn btn-ghost btn-sm btn-icon shrink-0" onClick={() => onEdit(c)} aria-label={`编辑 ${c.name}`}>
+                  <Pencil />
+                </button>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                 <CoopBadge status={c.cooperationStatus} />

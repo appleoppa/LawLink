@@ -77,17 +77,20 @@ const newKey = () => `q${++seq}`;
 export function ConflictsViewV4({
   intake,
   initialQueries,
-  recent
+  recent,
+  prefillName = ""
 }: {
   intake: { id: string; title: string; receivedAt: string } | null;
   initialQueries: { role: QueryRole; name: string; idNumber: string }[];
   recent: Recent;
+  /** 客户档案「冲突检索」入口带入的主体名称 */
+  prefillName?: string;
 }) {
   const router = useRouter();
   const [queries, setQueries] = useState<QueryRow[]>(() =>
     initialQueries.length
       ? initialQueries.map((q) => ({ key: newKey(), ...q, fromIntake: true, editing: false }))
-      : [{ key: newKey(), role: "CLIENT_PARTY", name: "", idNumber: "", fromIntake: false, editing: true }]
+      : [{ key: newKey(), role: "CLIENT_PARTY", name: prefillName, idNumber: "", fromIntake: false, editing: true }]
   );
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [results, setResults] = useState<HitResult[] | null>(null);
