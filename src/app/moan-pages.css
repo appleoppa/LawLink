@@ -1054,3 +1054,6 @@
   .mo-dossier .dos-doc-ops { width: 100%; padding-left: 38px; }
   .mo-dossier .dos-doc-evbox { margin-left: 20px; }
 }
+
+.mo-dossier .dos-mat-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 16px; border-bottom: 1px solid var(--bd-hair); background: #FAFBFB; }
+.mo-dossier .dos-mat-sep { width: 1px; height: 14px; background: var(--bd-subtle); margin: 0 2px; }

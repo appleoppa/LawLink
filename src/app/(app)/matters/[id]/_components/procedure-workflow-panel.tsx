@@ -2586,34 +2586,15 @@ function StageMaterialsPanel({
 
   return (
     <div className={bare ? undefined : "card"}>
-      <div className={cn("panel-head flex-wrap", bare && "!border-b-0 !pb-1")}>
-        {bare ? (
-          <div className="flex flex-wrap items-center gap-[7px]">
-            <button type="button" className={cn("src-chip cursor-pointer", !writtenOnly && originFilter === "ALL" && "self")} aria-pressed={!writtenOnly && originFilter === "ALL"} onClick={() => { setWrittenOnly(false); setOriginFilter("ALL"); }}>
-              <b style={{ fontWeight: 550 }}>全部 {documents.length}</b>
-            </button>
-            {writtenCount > 0 ? (
-              <button type="button" className={cn("src-chip cursor-pointer", writtenOnly && "self")} aria-pressed={writtenOnly} onClick={() => setWrittenOnly((v) => !v)}>
-                <b style={{ fontWeight: 550 }}>文书 {writtenCount}</b>
-              </button>
-            ) : null}
-            {originChips}
-          </div>
-        ) : (
-          <div className="panel-title">
-            <FileText className="ic" strokeWidth={1.8} />
-            本环节材料
-            <span className="badge b-white" style={{ marginLeft: 2 }}>{documents.length}</span>
-            <span className="t-xs t-mute" style={{ fontWeight: 400 }}>证据要点挂在材料上</span>
-          </div>
-        )}
-        <div className="flex flex-wrap items-center gap-[7px]">
-          {!bare && evidenceDocCount > 0 ? (
-            <button type="button" className={cn("src-chip cursor-pointer", evidenceOnly && "self")} aria-pressed={evidenceOnly} onClick={() => setEvidenceOnly((v) => !v)}>
-              <b style={{ fontWeight: 550 }}>有证据要点 {evidenceDocCount}</b>
-            </button>
-          ) : null}
-          {!bare ? originChips : null}
+      {/* 头部两行：标题与操作按钮固定一行，筛选标签单独一行（窄宽度下不再挤乱） */}
+      <div className={cn("panel-head", bare && "!border-b-0 !pb-1")}>
+        <div className="panel-title min-w-0">
+          <FileText className="ic" strokeWidth={1.8} />
+          {bare ? "材料" : "本环节材料"}
+          <span className="badge b-white" style={{ marginLeft: 2 }}>{documents.length}</span>
+          <span className="t-xs t-mute hidden sm:inline" style={{ fontWeight: 400 }}>证据要点挂在材料上</span>
+        </div>
+        <div className="flex shrink-0 items-center gap-[7px]">
           {canManage && onOpenTemplate ? (
             <button type="button" className="btn btn-ghost btn-sm" onClick={onOpenTemplate}>
               <Sparkles />
@@ -2628,6 +2609,30 @@ function StageMaterialsPanel({
           ) : null}
         </div>
       </div>
+      {documents.length > 0 ? (
+        <div className="dos-mat-filters" role="group" aria-label="材料筛选">
+          <button
+            type="button"
+            className={cn("src-chip cursor-pointer", !writtenOnly && !evidenceOnly && originFilter === "ALL" && "self")}
+            aria-pressed={!writtenOnly && !evidenceOnly && originFilter === "ALL"}
+            onClick={() => { setWrittenOnly(false); setEvidenceOnly(false); setOriginFilter("ALL"); }}
+          >
+            <b style={{ fontWeight: 550 }}>全部 {documents.length}</b>
+          </button>
+          {evidenceDocCount > 0 ? (
+            <button type="button" className={cn("src-chip cursor-pointer", evidenceOnly && "self")} aria-pressed={evidenceOnly} onClick={() => setEvidenceOnly((v) => !v)}>
+              <b style={{ fontWeight: 550 }}>有证据要点 {evidenceDocCount}</b>
+            </button>
+          ) : null}
+          {writtenCount > 0 ? (
+            <button type="button" className={cn("src-chip cursor-pointer", writtenOnly && "self")} aria-pressed={writtenOnly} onClick={() => setWrittenOnly((v) => !v)}>
+              <b style={{ fontWeight: 550 }}>文书 {writtenCount}</b>
+            </button>
+          ) : null}
+          {Object.keys(originCounts).length ? <span className="dos-mat-sep" aria-hidden /> : null}
+          {originChips}
+        </div>
+      ) : null}
 
       {shownDocs.length === 0 ? (
         <EmptyState compact icon={FileText} title="暂无该阶段材料" description={`上传后自动归入本环节（${stageTag}），并记录来源与校验值。`} />
