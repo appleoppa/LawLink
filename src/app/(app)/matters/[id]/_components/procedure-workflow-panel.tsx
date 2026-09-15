@@ -851,24 +851,10 @@ export function ProcedureWorkflowPanel({
         ))}
       </div>
 
-      {view === "archive" ? (
-        <div className="dos-work">
-          <div className="dos-main">{archiveNode}</div>
-          <aside className="dos-rail">
-            {archiveRailTop}
-            <ArchiveGlance
-              actions={actions}
-              logItems={logItems}
-              waiting={waiting ?? []}
-              procedureLabel={procedure ? procedure.customLabel ?? procedureTypeLabel[procedure.type] : null}
-              onOpenWork={() => {
-                setScope("all");
-                onViewChange("work");
-              }}
-            />
-          </aside>
-        </div>
-      ) : null}
+      {/* 侧栏在四个页签间常驻（2026-09-14 用户要求）：承办团队 + 最近待办 + 最近记录 */}
+      <div className="dos-work">
+        <div className="dos-main">
+      {view === "archive" ? archiveNode : null}
 
       {view === "work" ? (
         <div className="dos-main">
@@ -958,6 +944,21 @@ export function ProcedureWorkflowPanel({
 
       {view === "money" ? financeNode : null}
       {view === "seal" ? sealNode : null}
+        </div>
+        <aside className="dos-rail">
+          {archiveRailTop}
+          <ArchiveGlance
+            actions={actions}
+            logItems={logItems}
+            waiting={waiting ?? []}
+            procedureLabel={procedure ? procedure.customLabel ?? procedureTypeLabel[procedure.type] : null}
+            onOpenWork={() => {
+              setScope("all");
+              onViewChange("work");
+            }}
+          />
+        </aside>
+      </div>
 
       {/* 环节操作条与页头「上传材料」共用：打开当前选中环节的上传弹窗 */}
       {procedure && selectedStage ? (
@@ -1262,7 +1263,7 @@ function StageLine({
         </span>
       </div>
       <div className="dos-rail-scroll">
-        <ol className="dos-rail-track" style={{ gridTemplateColumns: `repeat(${columns}, minmax(92px, 1fr))` }}>
+        <ol className="dos-rail-track" style={{ gridTemplateColumns: `repeat(${columns}, minmax(74px, 1fr))` }}>
           {stages.map((stage, i) => {
             const state = stage.status === "done" ? "done" : stage.key === currentKey ? "cur" : stage.status === "risk" ? "risk" : "todo";
             const flag = flagFor(stage);
@@ -1286,7 +1287,7 @@ function StageLine({
                   <Plus strokeWidth={2.6} />
                 </span>
                 <span className="nm">添加环节</span>
-                <span className="dt">可插入任意位置</span>
+                <span className="dt">可插入</span>
               </button>
             </li>
           ) : null}
