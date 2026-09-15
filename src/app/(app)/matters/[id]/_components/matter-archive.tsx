@@ -31,9 +31,9 @@ const ROLE_LABEL: Record<string, string> = {
   OTHER: "其他参与人"
 };
 const PARTY_GROUPS: { key: string; title: string; roles: string[] }[] = [
-  { key: "ours", title: "我方", roles: ["CLIENT_PARTY", "CO_LITIGANT"] },
-  { key: "opp", title: "对方", roles: ["OPPOSING_PARTY"] },
-  { key: "other", title: "第三人及其他参与人", roles: ["THIRD_PARTY", "AGENT", "WITNESS", "OTHER"] }
+  { key: "ours", title: "委托方", roles: ["CLIENT_PARTY", "CO_LITIGANT"] },
+  { key: "opp", title: "对方当事人", roles: ["OPPOSING_PARTY"] },
+  { key: "other", title: "第三人及其他", roles: ["THIRD_PARTY", "AGENT", "WITNESS", "OTHER"] }
 ];
 
 const dash = (v: string | null | undefined) => v?.trim() || null;
@@ -59,55 +59,88 @@ function MaskedId({ value }: { value: string }) {
   const [shown, setShown] = useState(false);
   const masked = value.length > 8 ? `${value.slice(0, 3)}${"•".repeat(value.length - 7)}${value.slice(-4)}` : value.replace(/.(?=.{2})/g, "•");
   return (
-    <span className="inline-flex items-center gap-2">
-      <span className="font-mono">{shown ? value : masked}</span>
-      <button type="button" className="link-inline text-[11.5px] font-normal" onClick={() => setShown((v) => !v)}>
+    <>
+      <span className="min-w-0 truncate font-mono tabular-nums">{shown ? value : masked}</span>
+      <button type="button" className="link-inline shrink-0" onClick={() => setShown((v) => !v)}>
         {shown ? "打码" : "明文"}
       </button>
-    </span>
+    </>
   );
 }
 
-function PartyCard({ party, standings, clientHref }: { party: PartyRow; standings: string[]; clientHref: string | null }) {
-  const person = party.partyType === "NATURAL_PERSON";
-  const idLabel = person ? (party.idType && party.idType !== "ID_CARD" ? clientIdTypeLabel[party.idType] : "居民身份证") : "统一社会信用代码";
-  const idValue = person ? party.idNumber : party.enterpriseSocialCode;
+const CLAIMANT_STANDINGS = ["PLAINTIFF", "JOINT_PLAINTIFF", "APPELLANT", "RETRIAL_APPLICANT", "ENFORCEMENT_APPLICANT", "ARBITRATION_CLAIMANT", "ADMIN_RECONSIDERATION_APPLICANT", "ADMIN_PLAINTIFF"];
+const RESPONDENT_STANDINGS = ["DEFENDANT", "JOINT_DEFENDANT", "APPELLEE", "RETRIAL_RESPONDENT", "EXECUTED_PERSON", "ARBITRATION_RESPONDENT", "ADMIN_RECONSIDERATION_RESPONDENT", "ADMIN_DEFENDANT"];
+
+/** 诉讼地位配色（沿用 v1.3.2）：申请方青、被申请方橙、第三人紫、其他绿、未设置灰 */
+function standingTone(standing: string | null) {
+  if (!standing) return "slate";
+  if (CLAIMANT_STANDINGS.includes(standing)) return "teal";
+  if (RESPONDENT_STANDINGS.includes(standing)) return "amber";
+  if (standing === "THIRD_PARTY") return "violet";
+  return "green";
+}
+
+/**
+ * 当事人紧凑卡片（沿用 v1.3.2 ProcedurePartyBlock 形式，2026-09-14 用户要求）：
+ * 头像 + 名称 + 主体类型 / 证件 / 法定代表人标签，第二行联系人、电话、地址，右侧诉讼地位。
+ */
+function PartyBlock({ party, standings, clientHref }: { party: PartyRow; standings: string[]; clientHref: string | null }) {
+  const isOrg = party.partyType !== "NATURAL_PERSON";
+  const idValue = isOrg ? party.enterpriseSocialCode : party.idNumber;
+  const idLabel = isOrg ? "信用代码" : party.idType && party.idType !== "ID_CARD" ? clientIdTypeLabel[party.idType] : "身份证";
+  const primary = standings[0] ?? null;
+  const contact = [
+    party.contactName ? `联系人：${party.contactName}` : "",
+    party.phone ? `电话：${party.phone}` : "",
+    party.address ? `地址：${party.address}` : ""
+  ].filter(Boolean);
   return (
-    <article className="dos-party">
-      <header className="dos-party-head">
-        <InitialAvatar name={party.name} tone={avatarTone(party.name)} />
-        <div className="min-w-0 flex-1">
-          <div className="dos-party-name">
-            {party.name}
-            {clientHref ? (
-              <Link href={clientHref} className="link-inline text-[11.5px] font-normal">
-                客户档案
-              </Link>
-            ) : null}
-          </div>
-          <div className="dos-party-tags">
-            <span className="badge b-white">{ROLE_LABEL[party.role] ?? "当事人"}</span>
-            {standings.filter((s) => s !== ROLE_LABEL[party.role]).map((s) => (
-              <span key={s} className={cn("badge", party.role === "CLIENT_PARTY" ? "b-teal" : "b-slate")}>{s}</span>
-            ))}
-            <span className="t-xs t-mute">{partyTypeLabel[party.partyType]}</span>
-          </div>
+    <div className="dos-pb" title={[party.name, ...contact, party.notes ? `备注：${party.notes}` : ""].filter(Boolean).join("\n")}>
+      <span className={cn("dos-pb-av", `tone-${standingTone(primary)}`)}>{party.name.trim().charAt(0) || "—"}</span>
+      <div className="min-w-0 flex-1">
+        <div className="dos-pb-top">
+          <span className="dos-pb-name">{party.name || "—"}</span>
+          <span className="dos-pb-chip">{partyTypeLabel[party.partyType]}</span>
+          {party.role !== "CLIENT_PARTY" && party.role !== "OPPOSING_PARTY" && !standings.some((st) => litigationStandingLabel[st as keyof typeof litigationStandingLabel] === ROLE_LABEL[party.role]) ? <span className="dos-pb-chip">{ROLE_LABEL[party.role] ?? "当事人"}</span> : null}
+          {idValue ? (
+            <span className="dos-pb-chip">
+              <span className="k">{idLabel}</span>
+              <MaskedId value={idValue} />
+            </span>
+          ) : null}
+          {isOrg && party.legalRep ? (
+            <span className="dos-pb-chip">
+              <span className="k">法定代表人</span>
+              <span className="min-w-0 truncate">{party.legalRep}</span>
+            </span>
+          ) : null}
+          {!isOrg || !party.enterpriseName || party.enterpriseName === party.name ? null : (
+            <span className="dos-pb-chip">
+              <span className="k">工商登记</span>
+              <span className="min-w-0 truncate">{party.enterpriseName}</span>
+            </span>
+          )}
+          {clientHref ? (
+            <Link href={clientHref} className="link-inline text-[11px]">
+              客户档案
+            </Link>
+          ) : null}
         </div>
-      </header>
-      <FieldGrid cols={2}>
-        <FieldItem label={idLabel}>{idValue ? <MaskedId value={idValue} /> : null}</FieldItem>
-        {person ? (
-          <FieldItem label="联系电话" mono>{dash(party.phone)}</FieldItem>
+        <div className="dos-pb-sub">{contact.length ? contact.join(" · ") : "暂无联系人、电话或地址"}</div>
+        {party.notes?.trim() ? <div className="dos-pb-sub">备注：{party.notes}</div> : null}
+      </div>
+      <div className="dos-pb-standing">
+        {standings.length ? (
+          standings.map((s) => (
+            <span key={s} className={cn("dos-pb-st", `tone-${standingTone(s)}`)}>
+              {litigationStandingLabel[s as keyof typeof litigationStandingLabel] ?? s}
+            </span>
+          ))
         ) : (
-          <FieldItem label="法定代表人">{dash(party.legalRep)}</FieldItem>
+          <span className="dos-pb-st tone-slate">未设置地位</span>
         )}
-        {!person ? <FieldItem label="联系电话" mono>{dash(party.phone)}</FieldItem> : null}
-        <FieldItem label={person ? "联系人" : "经办联系人"}>{dash(party.contactName)}</FieldItem>
-        {!person && party.enterpriseName && party.enterpriseName !== party.name ? <FieldItem label="工商登记名称" wide>{party.enterpriseName}</FieldItem> : null}
-        <FieldItem label={person ? "住址" : "注册地址"} wide>{dash(party.address)}</FieldItem>
-        {party.notes?.trim() ? <FieldItem label="备注" wide>{party.notes}</FieldItem> : null}
-      </FieldGrid>
-    </article>
+      </div>
+    </div>
   );
 }
 
@@ -157,10 +190,11 @@ export function MatterArchive({
   ) : null;
 
   // 本程序诉讼地位：一个当事人在同一程序可有多个地位（如被告兼反诉原告）
+  const normalize = (st: string) => (st === "JOINT_PLAINTIFF" ? "PLAINTIFF" : st === "JOINT_DEFENDANT" ? "DEFENDANT" : st);
   const standingsOf = (party: PartyRow) => {
-    const rows = currentProcedure?.procedureParties.filter((pp) => pp.partyId === party.id).map((pp) => litigationStandingLabel[pp.standing]) ?? [];
-    if (rows.length) return rows;
-    return party.standing ? [litigationStandingLabel[party.standing]] : [];
+    const rows = currentProcedure?.procedureParties.filter((pp) => pp.partyId === party.id).sort((a, b) => a.ordinal - b.ordinal).map((pp) => normalize(pp.standing)) ?? [];
+    if (rows.length) return [...new Set(rows)];
+    return party.standing ? [normalize(party.standing)] : [];
   };
 
   const members = [
@@ -220,7 +254,7 @@ export function MatterArchive({
                   </div>
                   <div className="dos-party-list">
                     {rows.map((p) => (
-                      <PartyCard key={p.id} party={p} standings={standingsOf(p)} clientHref={p.id.startsWith("client:") ? `/clients/${p.id.slice(7)}` : null} />
+                      <PartyBlock key={p.id} party={p} standings={standingsOf(p)} clientHref={p.id.startsWith("client:") ? `/clients/${p.id.slice(7)}` : null} />
                     ))}
                   </div>
                 </div>

@@ -825,15 +825,27 @@
 .mo-dossier .dos-node .dt { font-family: var(--font-mono); font-size: 10.5px; color: var(--t-faint); }
 
 /* 案件档案 */
-.mo-dossier .dos-party-groups { display: flex; flex-direction: column; gap: 16px; }
-.mo-dossier .dos-party-group-h { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 650; letter-spacing: .04em; color: var(--t-muted); margin-bottom: 8px; }
+.mo-dossier .dos-party-groups { display: flex; flex-direction: column; gap: 12px; }
+.mo-dossier .dos-party-group-h { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 650; letter-spacing: .04em; color: var(--t-muted); margin-bottom: 6px; }
 .mo-dossier .dos-party-group-h span { font-family: var(--font-mono); font-weight: 500; color: var(--t-faint); }
-.mo-dossier .dos-party-list { display: flex; flex-direction: column; gap: 14px; }
-.mo-dossier .dos-party { min-width: 0; }
-.mo-dossier .dos-party-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-.mo-dossier .dos-party-name { display: flex; align-items: baseline; gap: 8px; font-size: 14px; font-weight: 650; color: var(--t-primary); }
-.mo-dossier .dos-party-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 3px; }
-.mo-dossier .dos-party .mo-field-k { width: 130px; white-space: nowrap; }
+.mo-dossier .dos-party-list { display: flex; flex-direction: column; gap: 6px; }
+/* 当事人紧凑卡片（沿用 v1.3.2） */
+.mo-dossier .dos-pb { display: flex; align-items: flex-start; gap: 12px; padding: 10px 12px; border-radius: 8px; background: #F4F7F6; transition: background .15s; }
+.mo-dossier .dos-pb:hover { background: var(--bg-sunken); }
+.mo-dossier .dos-pb-av { width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 8px; border: 1px solid; font-size: 13px; font-weight: 650; }
+.mo-dossier .tone-teal { border-color: #B8D8D8; background: #ECF4F4; color: #007B7F; }
+.mo-dossier .tone-amber { border-color: #F0CFC0; background: #FBEDD8; color: #B45309; }
+.mo-dossier .tone-violet { border-color: #D9C5F2; background: #F1E8F8; color: #6B21A8; }
+.mo-dossier .tone-green { border-color: #C8EAD2; background: #E6F2EC; color: #15803D; }
+.mo-dossier .tone-slate { border-color: #D5D7DC; background: #EDF0F4; color: #475569; }
+.mo-dossier .dos-pb-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.mo-dossier .dos-pb-name { margin-right: 2px; font-size: 13px; font-weight: 650; line-height: 20px; color: var(--t-primary); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mo-dossier .dos-pb-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 1px 6px; border: 1px solid var(--bd-subtle); border-radius: 4px; background: rgba(255,255,255,0.75); font-size: 10.5px; line-height: 16px; color: var(--t-secondary); }
+.mo-dossier .dos-pb-chip .k { color: var(--t-muted); flex-shrink: 0; }
+.mo-dossier .dos-pb-chip .link-inline { font-size: 10.5px; }
+.mo-dossier .dos-pb-sub { margin-top: 4px; font-size: 11px; line-height: 16px; color: var(--t-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mo-dossier .dos-pb-standing { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; align-self: center; flex-shrink: 0; }
+.mo-dossier .dos-pb-st { display: inline-flex; align-items: center; justify-content: center; min-width: 42px; min-height: 22px; padding: 1px 9px; border: 1px solid; border-radius: 999px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
 .mo-dossier .dos-eng-list { display: flex; flex-direction: column; gap: 10px; }
 .mo-dossier .dos-eng { display: flex; gap: 10px; }
 .mo-dossier .dos-eng-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
@@ -956,7 +968,6 @@
 }
 @media (max-width: 640px) {
   .mo-dossier .dos-act { grid-template-columns: 3px 62px minmax(0, 1fr); }
-  .mo-dossier .dos-party .mo-field-k { width: 92px; white-space: normal; }
   .mo-dossier .dos-act .op { grid-column: 3; }
   .mo-dossier .dos-stage-summary { margin-left: 16px; }
   .mo-dossier .dos-stage-acts { padding-left: 16px; }
