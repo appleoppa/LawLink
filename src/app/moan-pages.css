@@ -972,3 +972,10 @@
   .mo-dossier .dos-stage-summary { margin-left: 16px; }
   .mo-dossier .dos-stage-acts { padding-left: 16px; }
 }
+
+.mo-dossier .dos-others { display: block; width: calc(100% - 32px); margin: 10px 16px 0; padding: 6px 10px; border: 1px dashed var(--bd-default); border-radius: 8px; background: var(--bg-card); text-align: left; font-size: 12px; color: var(--t-secondary); cursor: pointer; }
+.mo-dossier .dos-others:hover { border-color: var(--teal-line); color: var(--teal-deep); }
+.mo-dossier .dos-others.hot { border-color: var(--red-line); background: var(--red-bg); color: var(--red); }
+.mo-dossier .dos-log-ops { display: flex; gap: 2px; margin-left: auto; align-self: center; opacity: 0; transition: opacity .15s; }
+.mo-dossier .rec:hover .dos-log-ops, .mo-dossier .dos-log-ops:focus-within { opacity: 1; }
+.mo-dossier .dos-stage-head .segmented { flex-shrink: 0; }

@@ -62,12 +62,20 @@ export function EvidencePanel({
   matterId,
   items,
   documents,
-  canManage
+  canManage,
+  subtitle,
+  extraAction,
+  emptyText
 }: {
   matterId: string;
   items: EvidenceItemRow[];
   documents: { id: string; name: string }[];
   canManage: boolean;
+  /** 范围说明（如「本环节材料上挂的证据」） */
+  subtitle?: string;
+  /** 头部额外操作（类案检索） */
+  extraAction?: React.ReactNode;
+  emptyText?: string;
 }) {
   const router = useRouter();
   const [filter, setFilter] = useState<"ALL" | EvidenceKind>("ALL");
@@ -131,6 +139,7 @@ export function EvidencePanel({
           <FileSearch className="h-3.5 w-3.5 text-primary" />
           证据链
           <span className="font-mono text-[11px] tabular text-muted-foreground">{items.length}</span>
+          {subtitle ? <span className="t-xs t-mute" style={{ fontWeight: 400 }}>{subtitle}</span> : null}
         </span>
         <div className="flex items-center gap-1">
           <div className="mr-1 flex flex-wrap items-center gap-1">
@@ -145,6 +154,7 @@ export function EvidencePanel({
               />
             ))}
           </div>
+          {extraAction}
           {canManage && (
             <Button variant="ghost" size="sm" className="h-7 gap-1" onClick={() => setCreateOpen(true)}>
               <Plus className="h-3 w-3" />
@@ -156,7 +166,7 @@ export function EvidencePanel({
 
       {visible.length === 0 ? (
         <p className="px-4 py-5 text-center text-xs text-muted-foreground">
-          {items.length === 0 ? "尚未记录证据项" : "该分类下暂无证据项"}
+          {items.length === 0 ? emptyText ?? "尚未记录证据项" : "该分类下暂无证据项"}
         </p>
       ) : (
         <ul className="divide-y divide-border/60">

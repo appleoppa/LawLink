@@ -6,7 +6,7 @@
  */
 import { useState } from "react";
 import Link from "next/link";
-import { Briefcase, FileText, Landmark, Pencil, UserRound, Users, Wallet } from "lucide-react";
+import { FileText, Pencil, UserRound, Users } from "lucide-react";
 import { FieldGrid, FieldItem, InitialAvatar } from "@/components/patterns/moan";
 import { avatarTone } from "@/lib/ui/moan-tones";
 import { litigationStandingLabel, matterCategoryKind, matterCategoryLabel, partyTypeLabel, procedureTypeLabel } from "@/lib/enums";
@@ -15,8 +15,7 @@ import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { RelatedMattersField } from "./related-matters-field";
 import { ARBITRATION_TYPES, PROCEDURE_OUTCOME_LABEL, contactRoleLabels } from "./info-panel";
 import { CustomFieldsPanel } from "./custom-fields-panel";
-import type { EngagementRow } from "./engagement-panel";
-import type { FinancePayload, MatterPayload } from "./matter-detail-tabs";
+import type { MatterPayload } from "./matter-detail-tabs";
 
 type Procedure = MatterPayload["procedures"][number];
 type PartyRow = MatterPayload["parties"][number];
@@ -148,28 +147,22 @@ export function MatterArchive({
   matter,
   currentProcedure,
   parties,
-  financeStats,
-  engagements,
   customFieldDefs,
   customValues,
   canEdit,
   canEditCustom,
   canManageRelated,
-  onEdit,
-  onOpenFinance
+  onEdit
 }: {
   matter: MatterPayload;
   currentProcedure: Procedure | null;
   parties: PartyRow[];
-  financeStats: FinancePayload["stats"] | null;
-  engagements: EngagementRow[];
   customFieldDefs: React.ComponentProps<typeof CustomFieldsPanel>["defs"];
   customValues: Record<string, string>;
   canEdit: boolean;
   canEditCustom: boolean;
   canManageRelated: boolean;
   onEdit: () => void;
-  onOpenFinance: () => void;
 }) {
   const kind = matterCategoryKind(matter.category);
   const isCriminal = matter.category === "CRIMINAL";
@@ -182,6 +175,7 @@ export function MatterArchive({
   const money = (v: number | null | undefined) => (v != null && v > 0 ? formatCurrency(v) : null);
   const standing = currentProcedure?.ourStanding ?? matter.ourStanding;
   const outcome = currentProcedure?.outcomeNote?.trim() || (currentProcedure?.outcome ? PROCEDURE_OUTCOME_LABEL[currentProcedure.outcome] : "");
+  const procLabel = currentProcedure ? currentProcedure.customLabel ?? procedureTypeLabel[currentProcedure.type] : null;
   const editBtn = canEdit ? (
     <button type="button" className="btn btn-ghost btn-sm" onClick={onEdit}>
       <Pencil />
@@ -197,14 +191,10 @@ export function MatterArchive({
     return party.standing ? [normalize(party.standing)] : [];
   };
 
-  const members = [
-    ...(matter.owner && !matter.members.some((m) => m.userId === matter.ownerId) ? [{ id: matter.owner.id, name: matter.owner.name, role: "LEAD" as const, roleName: (matter.owner as { roleName?: string }).roleName }] : []),
-    ...matter.members.map((m) => ({ id: m.userId, name: m.user.name, role: m.role, roleName: m.user.roleName }))
-  ].sort((a, b) => ({ LEAD: 0, CO_LEAD: 1, ASSISTANT: 2 })[a.role] - ({ LEAD: 0, CO_LEAD: 1, ASSISTANT: 2 })[b.role]);
-
   return (
     <>
-      <Section icon={FileText} title="基本信息" action={editBtn}>
+      {/* 基本信息与当前程序信息合并为一张表（2026-09-14 用户要求） */}
+      <Section icon={FileText} title="基本信息" hint={kind === "litigation" && procLabel ? `程序字段为当前程序「${procLabel}」` : undefined} action={editBtn}>
         <FieldGrid cols={2}>
           <FieldItem label="案件类别">{matterCategoryLabel[matter.category]}</FieldItem>
           <FieldItem label={isCriminal ? "涉嫌罪名" : kind === "litigation" ? "案由" : kind === "counsel" ? "顾问类型" : "业务类型"}>
@@ -216,6 +206,37 @@ export function MatterArchive({
             <>
               {!isCriminal ? <FieldItem label="标的额" mono>{money(matter.claimAmount)}</FieldItem> : null}
               <FieldItem label="我方地位">{standing ? litigationStandingLabel[standing] : null}</FieldItem>
+              {currentProcedure ? (
+                <>
+                  <FieldItem label="案号" mono>{dash(currentProcedure.caseNumber)}</FieldItem>
+                  <FieldItem label={isArbitration ? "仲裁机构" : isCriminal ? "办案机关" : "受理机构"}>{dash(currentProcedure.handlingAgency)}</FieldItem>
+                  <FieldItem label="管辖地">{dash(currentProcedure.jurisdiction)}</FieldItem>
+                  <FieldItem label={isArbitration ? "受理时间" : "立案时间"} mono>{currentProcedure.acceptedAt ? formatDate(currentProcedure.acceptedAt) : null}</FieldItem>
+                  <FieldItem label={contactLabels.lead}>
+                    {currentProcedure.presidingJudge?.trim() ? (
+                      <span>
+                        {currentProcedure.presidingJudge}
+                        {currentProcedure.presidingJudgeContact ? <span className="ml-2 font-mono text-[12px] font-normal text-[var(--t-secondary)]">{currentProcedure.presidingJudgeContact}</span> : null}
+                      </span>
+                    ) : null}
+                  </FieldItem>
+                  <FieldItem label={contactLabels.assistant}>
+                    {currentProcedure.judgeAssistant?.trim() ? (
+                      <span>
+                        {currentProcedure.judgeAssistant}
+                        {currentProcedure.judgeAssistantContact ? <span className="ml-2 font-mono text-[12px] font-normal text-[var(--t-secondary)]">{currentProcedure.judgeAssistantContact}</span> : null}
+                      </span>
+                    ) : null}
+                  </FieldItem>
+                  {currentProcedure.panel?.trim() ? <FieldItem label={isArbitration ? "仲裁庭" : "合议庭"} wide>{currentProcedure.panel}</FieldItem> : null}
+                  {currentProcedure.concludedAt || outcome ? (
+                    <>
+                      <FieldItem label="结案时间" mono>{currentProcedure.concludedAt ? formatDate(currentProcedure.concludedAt) : null}</FieldItem>
+                      <FieldItem label={isCriminal ? "处理结果" : "裁判结果"}>{outcome || null}</FieldItem>
+                    </>
+                  ) : null}
+                </>
+              ) : null}
               {!isCriminal && matter.category !== "ADMINISTRATIVE" ? (
                 <FieldItem label={isArbitration ? "是否提出反请求" : "是否反诉"}>{matter.intake ? (matter.intake.counterclaim ? "是" : "否") : null}</FieldItem>
               ) : null}
@@ -238,7 +259,7 @@ export function MatterArchive({
         </FieldGrid>
       </Section>
 
-      <Section icon={UserRound} title="当事人" hint={`${parties.length} 方 · 诉讼地位按当前程序${currentProcedure ? `「${currentProcedure.customLabel ?? procedureTypeLabel[currentProcedure.type]}」` : ""}`} action={editBtn}>
+      <Section icon={UserRound} title="当事人" hint={`${parties.length} 方 · 诉讼地位按当前程序${procLabel ? `「${procLabel}」` : ""}`} action={editBtn}>
         {parties.length === 0 ? (
           <p className="t-xs t-mute">暂未登记当事人</p>
         ) : (
@@ -264,98 +285,52 @@ export function MatterArchive({
         )}
       </Section>
 
-      {/* 非诉 / 顾问没有案号、受理机构、法官等程序字段 */}
-      {currentProcedure && kind === "litigation" ? (
-        <Section icon={Landmark} title="本程序信息" hint={currentProcedure.customLabel ?? procedureTypeLabel[currentProcedure.type]} action={editBtn}>
-          <FieldGrid cols={2}>
-            <FieldItem label="案号" mono>{dash(currentProcedure.caseNumber)}</FieldItem>
-            <FieldItem label={isArbitration ? "仲裁机构" : isCriminal ? "办案机关" : "受理机构"}>{dash(currentProcedure.handlingAgency)}</FieldItem>
-            <FieldItem label="管辖地">{dash(currentProcedure.jurisdiction)}</FieldItem>
-            <FieldItem label={isArbitration ? "受理时间" : "立案时间"} mono>{currentProcedure.acceptedAt ? formatDate(currentProcedure.acceptedAt) : null}</FieldItem>
-            <FieldItem label={contactLabels.lead}>{dash(currentProcedure.presidingJudge)}</FieldItem>
-            <FieldItem label="联系方式" mono>{dash(currentProcedure.presidingJudgeContact)}</FieldItem>
-            <FieldItem label={contactLabels.assistant}>{dash(currentProcedure.judgeAssistant)}</FieldItem>
-            <FieldItem label="联系方式" mono>{dash(currentProcedure.judgeAssistantContact)}</FieldItem>
-            {currentProcedure.panel?.trim() ? <FieldItem label={isArbitration ? "仲裁庭" : "合议庭"} wide>{currentProcedure.panel}</FieldItem> : null}
-            <FieldItem label="结案时间" mono>{currentProcedure.concludedAt ? formatDate(currentProcedure.concludedAt) : null}</FieldItem>
-            <FieldItem label={isCriminal ? "处理结果" : "裁判结果"}>{outcome || null}</FieldItem>
-          </FieldGrid>
-        </Section>
-      ) : null}
-
-      <Section
-        icon={Wallet}
-        title="委托与收费"
-        action={
-          financeStats ? (
-            <button type="button" className="btn btn-ghost btn-sm" onClick={onOpenFinance}>
-              财务明细
-            </button>
-          ) : null
-        }
-      >
-        {engagements.length === 0 ? (
-          <p className="t-xs t-mute">尚未关联委托合同</p>
-        ) : (
-          <div className="dos-eng-list">
-            {engagements.map((row) => (
-              <div key={row.engagement.id} className="dos-eng">
-                <Briefcase className="h-4 w-4 shrink-0 text-[var(--t-muted)]" strokeWidth={1.8} />
-                <div className="min-w-0 flex-1">
-                  <div className="dos-eng-title">
-                    {row.engagement.title}
-                    <span className={cn("badge", row.engagement.endedAt ? "b-slate" : "b-green")}>{row.engagement.endedAt ? "已终止" : "生效中"}</span>
-                  </div>
-                  <div className="t-xs t-mute">
-                    {row.engagement.client.name} · {row.engagement.startedAt ? formatDate(row.engagement.startedAt) : "—"} 起
-                  </div>
-                  {row.engagement.scopeText ? <div className="dos-eng-text">委托范围：{row.engagement.scopeText}</div> : null}
-                  {row.engagement.feeNote ? <div className="dos-eng-text">收费约定：{row.engagement.feeNote}</div> : null}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        {financeStats ? (
-          <div className="dos-fee-strip">
-            {[
-              ["合同额", financeStats.contractAmount, ""],
-              ["已收", financeStats.received, "green"],
-              ["待收", Math.max(0, financeStats.receivable - financeStats.received), "amber"],
-              ["已开票", financeStats.invoiced, ""]
-            ].map(([k, v, tone]) => (
-              <div key={k as string} className="dos-fee">
-                <span className="k">{k}</span>
-                <span className={cn("v", tone && `t-${tone}`)}>{(v as number) > 0 ? formatCurrency(v as number) : "—"}</span>
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </Section>
-
-      <Section icon={Users} title="承办团队" action={editBtn}>
-        {members.length === 0 ? (
-          <p className="t-xs t-mute">暂无团队成员</p>
-        ) : (
-          <div className="dos-team">
-            {members.map((m) => (
-              <div key={`${m.id}-${m.role}`} className="dos-member">
-                <InitialAvatar name={m.name} tone={avatarTone(m.name)} />
-                <div className="min-w-0">
-                  <div className="n">{m.name}</div>
-                  <div className="r">{m.roleName ?? "—"}</div>
-                </div>
-                <span className={cn("badge ml-auto", m.role === "LEAD" ? "b-teal" : "b-slate")}>{m.role === "LEAD" ? "主办" : m.role === "CO_LEAD" ? "协办" : "助理"}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        {(matter as { teamAccessRestricted?: boolean }).teamAccessRestricted ? <p className="t-xs t-mute mt-2">受限事项：不进入团队汇总视图。</p> : null}
-      </Section>
-
       {customFieldDefs.length > 0 ? (
         <CustomFieldsPanel matterId={matter.id} defs={customFieldDefs} values={customValues} canEdit={canEditCustom} />
       ) : null}
     </>
+  );
+}
+
+/** 案件档案侧栏：承办团队 */
+export function TeamRailCard({ matter, canManage, onManage }: { matter: MatterPayload; canManage: boolean; onManage: () => void }) {
+  const order = { LEAD: 0, CO_LEAD: 1, ASSISTANT: 2 } as const;
+  const members = [
+    ...(matter.owner && !matter.members.some((m) => m.userId === matter.ownerId) ? [{ id: matter.owner.id, name: matter.owner.name, role: "LEAD" as const, roleName: (matter.owner as { roleName?: string }).roleName }] : []),
+    ...matter.members.map((m) => ({ id: m.userId, name: m.user.name, role: m.role, roleName: m.user.roleName }))
+  ].sort((a, b) => order[a.role] - order[b.role]);
+  return (
+    <div className="card">
+      <div className="rail-sec-head">
+        <Users className="h-[15px] w-[15px] text-[var(--t-muted)]" strokeWidth={1.8} />
+        承办团队
+        {canManage ? (
+          <button type="button" className="link border-0 bg-transparent p-0" onClick={onManage}>
+            管理
+          </button>
+        ) : null}
+      </div>
+      {members.length === 0 ? (
+        <div className="panel-body t-xs t-mute">暂无团队成员</div>
+      ) : (
+        members.map((m) => (
+          <div key={`${m.id}-${m.role}`} className="member">
+            <InitialAvatar name={m.name} tone={avatarTone(m.name)} />
+            <div className="min-w-0">
+              <div className="n truncate">{m.name}</div>
+              <div className="r truncate">{m.roleName ?? "—"}</div>
+            </div>
+            <span className={cn("badge role-tag", m.role === "LEAD" ? "b-teal" : "b-slate")} style={{ fontSize: 10 }}>
+              {m.role === "LEAD" ? "主办" : m.role === "CO_LEAD" ? "协办" : "助理"}
+            </span>
+          </div>
+        ))
+      )}
+      {(matter as { teamAccessRestricted?: boolean }).teamAccessRestricted ? (
+        <div className="panel-body" style={{ padding: "8px 14px" }}>
+          <span className="t-xs t-mute">受限事项：不进入团队汇总视图</span>
+        </div>
+      ) : null}
+    </div>
   );
 }

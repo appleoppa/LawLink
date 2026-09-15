@@ -81,7 +81,7 @@ function formatIsoDate(d: Date | string) {
   return shDayKey(d);
 }
 type MemoRowItem = ProcedureMemo & { procLabel: string };
-type ImportantCategory = "hearing" | "deadline" | "express" | "memo";
+export type ImportantCategory = "hearing" | "deadline" | "express" | "memo";
 type ImportantFilter = "all" | ImportantCategory;
 type AllImportantItem =
   | { id: string; type: "hearing"; sortAt: Date; item: HearingRowItem }
@@ -910,7 +910,7 @@ function toDateTimeInput(date = new Date()) {
   return local.toISOString().slice(0, 16);
 }
 
-function ImportantItemDialog({
+export function ImportantItemDialog({
   open,
   onOpenChange,
   matterId,

@@ -21,9 +21,9 @@ import {
 } from "@/lib/enums";
 import { cn } from "@/lib/utils";
 import { contactRoleLabels } from "./info-panel";
-import { MatterArchive } from "./matter-archive";
+import { MatterArchive, TeamRailCard } from "./matter-archive";
 import { FinancePanel } from "./finance-panel";
-import { ProcedureRemindersAndMemos } from "./procedure-content";
+import { ImportantItemDialog } from "./procedure-content";
 import { ProcedureWorkflowPanel } from "./procedure-workflow-panel";
 import type { DossierView, WaitingItem, WorkflowApi, WorkflowNote, WorkflowPreservationCase } from "./procedure-workflow-panel";
 
@@ -206,6 +206,7 @@ export function MatterDetailTabs({
   const [addProcOpen, setAddProcOpen] = useState(false);
   const [matterEditorOpen, setMatterEditorOpen] = useState(false);
   const [view, setView] = useState<DossierView>("archive");
+  const [ledgerAdd, setLedgerAdd] = useState<"express" | "memo" | null>(null);
   const [caseSearchOpen, setCaseSearchOpen] = useState(false);
   const [reviewDocId, setReviewDocId] = useState<string | null>(null);
   const docActions = useMemo(() => (capabilities.aiReview && allowed("documents.write") ? { onReview: (id: string) => setReviewDocId(id) } : {}), [capabilities.aiReview, currentUserRole, rolePermissions]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -290,7 +291,7 @@ export function MatterDetailTabs({
     ...(canOpenUnifiedEditor ? [{ key: "edit", label: "编辑信息与团队", icon: Pencil, onSelect: () => setMatterEditorOpen(true) }] : []),
     ...(canAssociateThisMatter && !isArchived ? [{ key: "proc", label: "新增程序", icon: Plus, onSelect: () => setAddProcOpen(true) }] : []),
     ...(allowed("finance.read") ? [{ key: "fin", label: "财务明细与开票", icon: CircleDollarSign, onSelect: () => setView("money") }] : []),
-    { key: "seal", label: "用印审批", icon: Stamp, onSelect: () => setView("money") },
+    { key: "seal", label: "用印审批", icon: Stamp, onSelect: () => setView("seal") },
     ...(capabilities.caseSearch && allowed("matters.write") ? [{ key: "cases", label: "类案检索（元典）", icon: Scale, onSelect: () => setCaseSearchOpen(true) }] : []),
     ...(canWriteRecords && currentProcedure ? [{ key: "hearing", label: "安排开庭", icon: Gavel, onSelect: () => setHearingOpen(true) }] : [])
   ];
@@ -321,7 +322,7 @@ export function MatterDetailTabs({
   const waiting: WaitingItem[] = [
     ...sealContracts
       .filter((s) => s.status === "PENDING")
-      .map((s) => ({ key: `seal-${s.id}`, title: `用印申请 · ${s.documentTitle}`, meta: `${s.code} · ${formatMonthDay(s.createdAt)} 提交`, onOpen: () => setView("money") })),
+      .map((s) => ({ key: `seal-${s.id}`, title: `用印申请 · ${s.documentTitle}`, meta: `${s.code} · ${formatMonthDay(s.createdAt)} 提交`, onOpen: () => setView("seal") })),
     ...(latestArchive?.status === "PENDING_REVIEW" ? [{ key: "archive", title: `归档申请 · ${latestArchive.archiveNo}`, meta: `提交人 ${latestArchive.archivedBy} · 等待归档审核` }] : [])
   ];
   const money = (n: number | null | undefined) => (n != null && n > 0 ? `¥${n.toLocaleString("zh-CN")}` : null);
@@ -490,61 +491,45 @@ export function MatterDetailTabs({
         onWriteNote={({ judgment, stageName }) => setProgress({ mode: judgment ? "judgment" : "record", stage: stageName, stageNames: workflowApi.current?.stageNames ?? [] })}
         view={view}
         onViewChange={setView}
-        viewCounts={{ docs: procDocs.length }}
+        viewCounts={{}}
         waiting={waiting}
         archiveNode={
           <MatterArchive
             matter={matter}
             currentProcedure={currentProcedure}
             parties={parties}
-            financeStats={allowed("finance.read") ? finance.stats : null}
-            engagements={engagements}
             customFieldDefs={customFieldDefs}
             customValues={customValues}
             canEdit={canOpenUnifiedEditor}
             canEditCustom={canLeadThisMatter}
             canManageRelated={canAssociateThisMatter}
             onEdit={() => setMatterEditorOpen(true)}
-            onOpenFinance={() => setView("money")}
           />
         }
-        ledgerNode={
-          <ProcedureRemindersAndMemos
-            matterId={matter.id}
-            procedures={engagedProcedures}
-            currentProcedureId={currentProcedure?.id ?? ""}
-            expresses={expresses}
-            canManage={canAssociateThisMatter}
-            kinds={["express", "memo"]}
-          />
-        }
-        evidenceNode={
-          <>
-            {allowed("matters.read") ? (
-              <EvidencePanel
-                matterId={matter.id}
-                items={evidenceItems}
-                documents={documents.map((d: { id: string; name: string }) => ({ id: d.id, name: d.name }))}
-                canManage={canAssociateThisMatter}
-              />
-            ) : null}
-            {capabilities.caseSearch && allowed("matters.write") ? (
-              <div className="card">
-                <div className="panel-head">
-                  <div className="panel-title">
-                    <Scale className="ic" strokeWidth={1.8} />
+        archiveRailTop={<TeamRailCard matter={matter} canManage={canOwnThisMatter} onManage={() => setMatterEditorOpen(true)} />}
+        expresses={expresses}
+        onAddLedger={canAssociateThisMatter && currentProcedure ? (type) => setLedgerAdd(type) : undefined}
+        renderEvidence={({ docIds, stageName, documents: scopeDocs }) =>
+          allowed("matters.read") ? (
+            <EvidencePanel
+              matterId={matter.id}
+              items={docIds ? evidenceItems.filter((it) => it.sourceDocumentId && docIds.includes(it.sourceDocumentId)) : evidenceItems}
+              documents={scopeDocs}
+              canManage={canAssociateThisMatter}
+              subtitle={stageName ? `挂在「${stageName}」材料上的证据项` : "全部环节（含未挂材料的证据项）"}
+              emptyText={stageName ? "本环节材料上还没有证据项" : undefined}
+              extraAction={
+                capabilities.caseSearch && allowed("matters.write") ? (
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCaseSearchOpen(true)}>
+                    <Scale />
                     类案检索
-                    <span className="t-xs t-mute" style={{ fontWeight: 400 }}>按案由与争点检索元典类案</span>
-                  </div>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setCaseSearchOpen(true)}>
-                    开始检索
                   </button>
-                </div>
-              </div>
-            ) : null}
-            {reviewNode}
-          </>
+                ) : null
+              }
+            />
+          ) : null
         }
+        materialsExtra={reviewNode}
         financeNode={
           <div className="dos-main">
             {allowed("matters.read") ? (
@@ -558,8 +543,10 @@ export function MatterDetailTabs({
             {allowed("finance.read") ? (
               <FinancePanel matterId={matter.id} finance={finance} userOptions={userOptions} canRequestInvoice={canAssociateThisMatter} />
             ) : null}
-            <ApprovalsPanel matterId={matter.id} matterTitle={matter.title} sealContracts={sealContracts} canRequest={canAssociateThisMatter && allowed("seals.request")} />
           </div>
+        }
+        sealNode={
+          <ApprovalsPanel matterId={matter.id} matterTitle={matter.title} sealContracts={sealContracts} canRequest={canAssociateThisMatter && allowed("seals.request")} />
         }
       />
 
@@ -573,6 +560,18 @@ export function MatterDetailTabs({
           </div>
         </SheetContent>
       </Sheet>
+      {currentProcedure && ledgerAdd ? (
+        <ImportantItemDialog
+          open={Boolean(ledgerAdd)}
+          onOpenChange={(o) => { if (!o) setLedgerAdd(null); }}
+          matterId={matter.id}
+          defaultType={ledgerAdd}
+          procedures={engagedProcedures.map((p) => ({ id: p.id, label: procLabel(p) }))}
+          defaultProcedureId={currentProcedure.id}
+          hearingCounts={Object.fromEntries(engagedProcedures.map((p) => [p.id, p.hearings.length]))}
+          proceduresDetail={Object.fromEntries(engagedProcedures.map((p) => [p.id, { handlingAgency: p.handlingAgency, panel: p.panel, jurisdiction: p.jurisdiction }]))}
+        />
+      ) : null}
       <DocumentReviewDialog open={Boolean(reviewDocId)} documentId={reviewDocId} matterId={matter.id} onOpenChange={(o) => { if (!o) setReviewDocId(null); }} />
 
       {progress ? (
