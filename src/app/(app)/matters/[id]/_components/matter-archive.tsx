@@ -94,7 +94,7 @@ function PartyBlock({ party, standings, clientHref }: { party: PartyRow; standin
     party.address ? `地址：${party.address}` : ""
   ].filter(Boolean);
   return (
-    <div className="dos-pb" title={[party.name, ...contact, party.notes ? `备注：${party.notes}` : ""].filter(Boolean).join("\n")}>
+    <div className={cn("dos-pb", `line-${standingTone(primary)}`)} title={[party.name, ...contact, party.notes ? `备注：${party.notes}` : ""].filter(Boolean).join("\n")}>
       <span className={cn("dos-pb-av", `tone-${standingTone(primary)}`)}>{party.name.trim().charAt(0) || "—"}</span>
       <div className="min-w-0 flex-1">
         <div className="dos-pb-top">

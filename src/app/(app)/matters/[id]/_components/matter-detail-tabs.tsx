@@ -507,7 +507,7 @@ export function MatterDetailTabs({
         onWriteNote={({ judgment, stageName }) => setProgress({ mode: judgment ? "judgment" : "record", stage: stageName, stageNames: workflowApi.current?.stageNames ?? [] })}
         view={view}
         onViewChange={setView}
-        viewCounts={{}}
+        viewCounts={{ seal: sealContracts.filter((sc) => sc.status === "PENDING").length }}
         waiting={waiting}
         archiveNode={
           <MatterArchive
@@ -529,6 +529,7 @@ export function MatterDetailTabs({
         onCaseSearch={capabilities.caseSearch && allowed("matters.write") ? () => setCaseSearchOpen(true) : undefined}
         financeNode={
           <div className="dos-main">
+            {allowed("finance.read") ? <FinanceHero stats={finance.stats} /> : null}
             {allowed("matters.read") ? (
               <EngagementPanel
                 matterId={matter.id}
@@ -538,7 +539,7 @@ export function MatterDetailTabs({
               />
             ) : null}
             {allowed("finance.read") ? (
-              <FinancePanel matterId={matter.id} finance={finance} userOptions={userOptions} canRequestInvoice={canAssociateThisMatter} />
+              <FinancePanel matterId={matter.id} finance={finance} userOptions={userOptions} canRequestInvoice={canAssociateThisMatter} hideStats />
             ) : null}
           </div>
         }
@@ -699,6 +700,49 @@ function deleteProcedureWarning(procedure: ProcedureItem, label: string): string
 const PROC_STATUS_LABEL: Record<string, string> = { PENDING: "未开始", IN_PROGRESS: "进行中", CONCLUDED: "已结" };
 
 
+/** 委托与财务：收费概览（大号数字 + 回款进度） */
+function FinanceHero({ stats }: { stats: FinancePayload["stats"] }) {
+  const outstanding = Math.max(0, stats.receivable - stats.received);
+  const base = stats.contractAmount > 0 ? stats.contractAmount : stats.receivable;
+  const received = base > 0 ? Math.min(100, Math.round((stats.received / base) * 100)) : 0;
+  const pending = base > 0 ? Math.min(100 - received, Math.round((outstanding / base) * 100)) : 0;
+  const money = (n: number) => (n > 0 ? `¥${n.toLocaleString("zh-CN")}` : "—");
+  const cells: [string, number, string][] = [
+    ["合同额", stats.contractAmount, ""],
+    ["已收", stats.received, "green"],
+    ["待收", outstanding, "amber"],
+    ["已开票", stats.invoiced, "blue"],
+    ...(stats.cost > 0 ? [["支出", stats.cost, "red"] as [string, number, string]] : [])
+  ];
+  return (
+    <section className="card dos-fin-hero" aria-label="收费概览">
+      <div className="dos-fin-cells">
+        {cells.map(([k, v, tone]) => (
+          <div key={k} className={cn("dos-fin-cell", tone)}>
+            <span className="k">{k}</span>
+            <span className="v">{money(v)}</span>
+          </div>
+        ))}
+      </div>
+      {base > 0 ? (
+        <div className="dos-fin-bar">
+          <div className="track" aria-hidden>
+            <i className="got" style={{ width: `${received}%` }} />
+            <i className="due" style={{ width: `${pending}%` }} />
+          </div>
+          <div className="legend">
+            <span><b className="dot got" />回款 {received}%</span>
+            <span><b className="dot due" />待收 {pending}%</span>
+            <span className="t-mute">按合同额计算</span>
+          </div>
+        </div>
+      ) : (
+        <p className="t-xs t-mute" style={{ margin: "10px 0 0" }}>未登记合同金额，暂不计算回款进度</p>
+      )}
+    </section>
+  );
+}
+
 function nextUncompletedDeadline(procedures: ProcedureItem[]) {
   const all = procedures
     .flatMap((procedure) => procedure.deadlines)
@@ -765,7 +809,7 @@ function MatterStickyBar({
       {pinned && rect && (
         <div className="fixed top-[58px] z-10" style={{ left: rect.left, width: rect.width }}>
           <div className="flex items-center gap-2.5 rounded-[10px] border border-[var(--bd-hair)] bg-[var(--bg-glass)] px-3 py-1.5 shadow-[var(--sh-hover)] backdrop-blur-xl">
-            <span className="min-w-0 truncate font-serif text-[13px] font-bold" title={title}>
+            <span className="min-w-0 truncate text-[13px] font-semibold" title={title}>
               {title}
             </span>
             {caseNumber && (

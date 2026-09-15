@@ -23,6 +23,7 @@ import {
   Scale,
   ScrollText,
   Shield,
+  Stamp,
   StickyNote,
   Truck,
   Sparkles,
@@ -833,22 +834,26 @@ export function ProcedureWorkflowPanel({
   }
 
 
-  const VIEWS: { key: DossierView; label: string; show: boolean }[] = [
-    { key: "archive", label: "案件档案", show: true },
-    { key: "work", label: "办案进程", show: true },
-    { key: "money", label: "委托与财务", show: Boolean(financeNode) },
-    { key: "seal", label: "审批用印", show: Boolean(sealNode) }
+  const VIEWS: { key: DossierView; label: string; show: boolean; icon: typeof FileText; count?: number; hot?: boolean }[] = [
+    { key: "archive", label: "案件档案", show: true, icon: FileText },
+    { key: "work", label: "办案进程", show: true, icon: ListChecks, count: actions.length, hot: actions.some((a) => a.days !== null && a.days < 0) },
+    { key: "money", label: "委托与财务", show: Boolean(financeNode), icon: CircleDollarSign },
+    { key: "seal", label: "审批用印", show: Boolean(sealNode), icon: Stamp, count: viewCounts?.seal }
   ];
 
   return (
     <>
       <div className="dos-views" role="tablist" aria-label="案件视图">
-        {VIEWS.filter((v) => v.show).map((v) => (
-          <button key={v.key} type="button" role="tab" aria-selected={view === v.key} className={cn("dos-view", view === v.key && "on")} onClick={() => onViewChange(v.key)}>
-            {v.label}
-            {viewCounts?.[v.key] ? <span className="n">{viewCounts[v.key]}</span> : null}
-          </button>
-        ))}
+        {VIEWS.filter((v) => v.show).map((v) => {
+          const Icon = v.icon;
+          return (
+            <button key={v.key} type="button" role="tab" aria-selected={view === v.key} className={cn("dos-view", view === v.key && "on")} onClick={() => onViewChange(v.key)}>
+              <Icon strokeWidth={1.9} />
+              {v.label}
+              {v.count ? <span className={cn("n", v.hot && "hot")}>{v.count}</span> : null}
+            </button>
+          );
+        })}
       </div>
 
       {/* 侧栏在四个页签间常驻（2026-09-14 用户要求）：承办团队 + 最近待办 + 最近记录 */}

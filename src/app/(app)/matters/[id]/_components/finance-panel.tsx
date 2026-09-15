@@ -17,13 +17,16 @@ export function FinancePanel({
   matterId,
   finance,
   canRequestInvoice,
-  compact = false
+  compact = false,
+  hideStats = false
 }: {
   matterId: string;
   finance: FinancePayload;
   userOptions: UserOption[];
   canRequestInvoice: boolean;
   compact?: boolean;
+  /** 上方已有收费概览时隐藏指标网格 */
+  hideStats?: boolean;
 }) {
   const [invoiceOpen, setInvoiceOpen] = useState(false);
 
@@ -68,6 +71,7 @@ export function FinancePanel({
       </header>
 
       {/* 紧凑指标卡（对照案件云"财务概览"指标看板） */}
+      {!hideStats ? (
       <div
         className={
           compact
@@ -86,6 +90,7 @@ export function FinancePanel({
           />
         ))}
       </div>
+      ) : null}
 
       {received.length === 0 ? (
         <p className="py-6 text-center text-xs text-muted-foreground">
