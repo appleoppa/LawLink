@@ -5,24 +5,23 @@ import { hasCustomPermission, type RoleGrant } from "@/lib/roles/catalog";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import type { ClientType, Prisma } from "@prisma/client";
-import { Archive, ChevronLeft, CircleDollarSign, Clock3, CreditCard, Gavel, Pencil, Plus, Scale, ScrollText, SquareCheck, Stamp, Upload, Users, X } from "lucide-react";
+import { Archive, ChevronLeft, CircleDollarSign, Clock3, Gavel, Pencil, Plus, Scale, Stamp, Upload, X } from "lucide-react";
 import { CaseSearchPanel } from "./case-search-panel";
 import { DocumentReviewDialog } from "./document-review-dialog";
 import { DocActionsContext } from "./doc-actions-context";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { InitialAvatar } from "@/components/patterns/moan";
-import { avatarTone, matterStatusTone } from "@/lib/ui/moan-tones";
+import { matterStatusTone } from "@/lib/ui/moan-tones";
 import { useTopbarAction } from "@/components/layout/topbar-action";
 import { ProgressDialog } from "./progress-dialog";
 import {
   matterStatusLabel,
   procedureTypeLabel,
   matterCategoryKind,
-  matterCategoryLabel,
-  litigationStandingLabel
+  matterCategoryLabel
 } from "@/lib/enums";
 import { cn } from "@/lib/utils";
-import { InfoPanel, contactRoleLabels } from "./info-panel";
+import { contactRoleLabels } from "./info-panel";
+import { MatterArchive } from "./matter-archive";
 import { FinancePanel } from "./finance-panel";
 import { ProcedureRemindersAndMemos } from "./procedure-content";
 import { ProcedureWorkflowPanel } from "./procedure-workflow-panel";
@@ -33,7 +32,6 @@ import type { SealContractItem, ExpressItem } from "./info-extras";
 import { AddDeadlineDialog, AddHearingDialog, AddProcedureSheet } from "./procedure-forms";
 import { deleteProcedure } from "@/server/procedures/actions";
 import { useRouter } from "next/navigation";
-import { CustomFieldsPanel } from "./custom-fields-panel";
 import { LifecycleActions } from "./lifecycle-actions";
 import { EngagementPanel, type EngagementRow } from "./engagement-panel";
 import { EvidencePanel, type EvidenceItemRow } from "./evidence-panel";
@@ -137,14 +135,6 @@ export type NotePayload = {
   createdAt: Date;
 };
 
-/** 上下文头「受理机构」随案件类别命名 */
-const AGENCY_LABEL: Partial<Record<string, string>> = {
-  CIVIL_COMMERCIAL: "受理法院",
-  LABOR_ARBITRATION: "仲裁机构",
-  COMMERCIAL_ARBITRATION: "仲裁机构",
-  CRIMINAL: "办案机关",
-  ADMINISTRATIVE: "受理机关"
-};
 
 export function MatterDetailTabs({
   matter,
@@ -215,7 +205,7 @@ export function MatterDetailTabs({
   const [selectedProcId, setSelectedProcId] = useState<string | null>(null);
   const [addProcOpen, setAddProcOpen] = useState(false);
   const [matterEditorOpen, setMatterEditorOpen] = useState(false);
-  const [view, setView] = useState<DossierView>("work");
+  const [view, setView] = useState<DossierView>("archive");
   const [caseSearchOpen, setCaseSearchOpen] = useState(false);
   const [reviewDocId, setReviewDocId] = useState<string | null>(null);
   const docActions = useMemo(() => (capabilities.aiReview && allowed("documents.write") ? { onReview: (id: string) => setReviewDocId(id) } : {}), [capabilities.aiReview, currentUserRole, rolePermissions]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -293,7 +283,6 @@ export function MatterDetailTabs({
     !Array.isArray(matter.customValues)
       ? (matter.customValues as Record<string, string>)
       : {};
-  const hasCustomFields = customFieldDefs.length > 0;
   const restricted = Boolean((matter as { teamAccessRestricted?: boolean }).teamAccessRestricted);
   const procLabel = (p: ProcedureItem) => p.customLabel ?? procedureTypeLabel[p.type] ?? p.type;
 
@@ -314,46 +303,33 @@ export function MatterDetailTabs({
         ? { tone: "outline-red", text: "归档被驳回" }
         : null;
 
-  const standingLabel = matter.ourStanding ? litigationStandingLabel[matter.ourStanding] : null;
   const categoryKind = matterCategoryKind(matter.category);
   const parties = procedureParties;
-  const standingOf = (partyId: string, fallback: string | null) => {
-    const row = currentProcedure?.procedureParties.find((pp) => pp.partyId === partyId);
-    const s = row?.standing ?? fallback;
-    return s ? litigationStandingLabel[s as keyof typeof litigationStandingLabel] ?? null : null;
-  };
-  const sideOf = (role: string) => parties.filter((p) => p.role === role);
-  const ours = sideOf("CLIENT_PARTY");
-  const opposing = sideOf("OPPOSING_PARTY");
-  const thirds = parties.filter((p) => p.role === "THIRD_PARTY" || p.role === "CO_LITIGANT");
-  const contactLabels = contactRoleLabels(currentProcedure?.type);
+  const ours = parties.filter((p) => p.role === "CLIENT_PARTY");
+  const opposing = parties.filter((p) => p.role === "OPPOSING_PARTY");
 
   // 案卷头异常标签：当前程序逾期事项、保全临期
-  const today0 = shDaysFromToday;
   const overdueCount = currentProcedure
-    ? currentProcedure.stages.flatMap((s) => (s.status === "HIDDEN" ? [] : s.tasks)).filter((t) => !t.completed && t.dueAt && today0(t.dueAt) < 0).length +
-      currentProcedure.deadlines.filter((d) => !d.completed && today0(d.dueAt) < 0).length
+    ? currentProcedure.stages.flatMap((s) => (s.status === "HIDDEN" ? [] : s.tasks)).filter((t) => !t.completed && t.dueAt && shDaysFromToday(t.dueAt) < 0).length +
+      currentProcedure.deadlines.filter((d) => !d.completed && shDaysFromToday(d.dueAt) < 0).length
     : 0;
   const expiringProps = preservationCases
     .flatMap((c) => c.targets.flatMap((t) => t.properties))
-    .filter((p) => (p.status === "ACTIVE" || p.status === "RENEWED") && today0(p.expiryDate) <= 30);
-  const nearestExpiry = expiringProps.length ? Math.min(...expiringProps.map((p) => today0(p.expiryDate))) : null;
+    .filter((p) => (p.status === "ACTIVE" || p.status === "RENEWED") && shDaysFromToday(p.expiryDate) <= 30);
+  const nearestExpiry = expiringProps.length ? Math.min(...expiringProps.map((p) => shDaysFromToday(p.expiryDate))) : null;
 
   const waiting: WaitingItem[] = [
     ...sealContracts
       .filter((s) => s.status === "PENDING")
       .map((s) => ({ key: `seal-${s.id}`, title: `用印申请 · ${s.documentTitle}`, meta: `${s.code} · ${formatMonthDay(s.createdAt)} 提交`, onOpen: () => setView("money") })),
-    ...(latestArchive?.status === "PENDING_REVIEW" ? [{ key: "archive", title: `归档申请 · ${latestArchive.archiveNo}`, meta: `提交人 ${latestArchive.archivedBy} · 等待归档审核`, onOpen: () => setView("file") }] : [])
+    ...(latestArchive?.status === "PENDING_REVIEW" ? [{ key: "archive", title: `归档申请 · ${latestArchive.archiveNo}`, meta: `提交人 ${latestArchive.archivedBy} · 等待归档审核` }] : [])
   ];
-
   const money = (n: number | null | undefined) => (n != null && n > 0 ? `¥${n.toLocaleString("zh-CN")}` : null);
-  const requestLabel = currentProcedure && ["COMMERCIAL_ARBITRATION", "LABOR_ARBITRATION"].includes(currentProcedure.type) ? "仲裁请求" : "诉讼请求";
-  const requestText = matter.intake?.claimDescription?.trim() || "";
 
   return (
     <DocActionsContext.Provider value={docActions}>
     <div className="mo-matter mo-dossier">
-      {/* ① 案卷头：这是什么案、谁对谁、在哪办 */}
+      {/* ① 案卷头 */}
       <section className="card dos-head" aria-label="案卷头">
         <div className="dos-head-top">
           <div className="min-w-0 flex-1">
@@ -364,16 +340,31 @@ export function MatterDetailTabs({
               </Link>
               <span className="code">{matter.internalCode}</span>
               {matter.firmCaseNo ? <span className="code">所内 {matter.firmCaseNo}</span> : null}
-              {currentProcedure?.caseNumber ? <span className="code">{currentProcedure.caseNumber}</span> : null}
               <span>{[matterCategoryLabel[matter.category], matter.cause?.name ?? matter.causeFreeText].filter(Boolean).join(" · ")}</span>
             </div>
             <h1 className="ctx-title dos-title">{matter.title}</h1>
+            <div className="dos-sides">
+              {categoryKind === "litigation" ? (
+                <>
+                  <span className="k">委托方</span>
+                  <span className="v">{ours.map((p) => p.name).join("、") || matter.primaryClient?.name || "—"}</span>
+                  <span className="k">{matter.category === "CRIMINAL" ? "办案机关" : "对方"}</span>
+                  <span className="v">{matter.category === "CRIMINAL" ? currentProcedure?.handlingAgency || "—" : opposing.map((p) => p.name).join("、") || "—"}</span>
+                </>
+              ) : (
+                <>
+                  <span className="k">委托人</span>
+                  <span className="v">{matter.primaryClient?.name ?? matter.clientLinks[0]?.client.name ?? "—"}</span>
+                  <span className="k">{categoryKind === "counsel" ? "顾问期限" : "服务期间"}</span>
+                  <span className="v mono">{[matter.serviceStart ? formatShortDate(matter.serviceStart) : null, matter.serviceEnd ? formatShortDate(matter.serviceEnd) : null].filter(Boolean).join(" — ") || "—"}</span>
+                </>
+              )}
+            </div>
             <div className="ctx-badges">
               {isArchived && archiveBadge ? null : (
                 <span className={cn("badge", `b-${matterStatusTone(matter.status)}`)}>
                   <span className="bdot" />
                   {matterStatusLabel[matter.status]}
-                  {currentProcedure ? ` · ${procLabel(currentProcedure)}` : ""}
                 </span>
               )}
               {overdueCount > 0 ? <span className="badge b-red"><span className="bdot" />{overdueCount} 项逾期</span> : null}
@@ -408,62 +399,71 @@ export function MatterDetailTabs({
             />
           </div>
         </div>
-
-        {/* 对阵行：诉讼类「我方｜对方｜受理机构」；非诉 / 顾问「委托人｜业务｜服务期间」 */}
-        {categoryKind === "litigation" ? (
-          <div className="dos-versus">
-            <div className="side ours">
-              <div className="role">
-                {ours[0] ? standingOf(ours[0].id, ours[0].standing) ?? standingLabel ?? "委托方" : standingLabel ?? "委托方"} · 我方委托人
-              </div>
-              <div className="who" title={ours.map((p) => p.name).join("、")}>{ours.map((p) => p.name).join("、") || matter.primaryClient?.name || "—"}</div>
-              <div className="sub">{[ours[0]?.legalRep ? `法定代表人 ${ours[0].legalRep}` : null, ours[0]?.contactName ? `对接人 ${ours[0].contactName}` : null].filter(Boolean).join(" · ") || " "}</div>
-            </div>
-            <div className="vs" aria-hidden>{matter.category === "CRIMINAL" ? "辩" : "诉"}</div>
-            {matter.category === "CRIMINAL" && opposing.length === 0 ? (
-              <div className="side">
-                <div className="role">涉嫌罪名</div>
-                <div className="who">{matter.cause?.name ?? matter.causeFreeText ?? "—"}</div>
-                <div className="sub">{currentProcedure ? procLabel(currentProcedure) : "\u00a0"}</div>
-              </div>
-            ) : (
-              <div className="side">
-                <div className="role">{opposing[0] ? standingOf(opposing[0].id, opposing[0].standing) ?? "对方" : "对方"}</div>
-                <div className="who" title={opposing.map((p) => p.name).join("、")}>{opposing.map((p) => p.name).join("、") || "—"}</div>
-                <div className="sub">{thirds.length ? `${thirds.map((p) => `${PARTY_ROLE_LABEL[p.role] ?? "第三人"} ${p.name}`).join("、")}` : opposing[0]?.legalRep ? `法定代表人 ${opposing[0].legalRep}` : " "}</div>
-              </div>
-            )}
-            <div className="side court">
-              <div className="role">{currentProcedure?.handlingAgency || AGENCY_LABEL[matter.category] || "受理机构"}</div>
-              <div className="who">
-                {[currentProcedure?.presidingJudge ? `${contactLabels.lead} ${currentProcedure.presidingJudge}` : null, currentProcedure?.judgeAssistant ? `${contactLabels.assistant} ${currentProcedure.judgeAssistant}` : null].filter(Boolean).join(" · ") || "承办人员未登记"}
-              </div>
-              <div className="sub mono">{currentProcedure?.presidingJudgeContact || currentProcedure?.judgeAssistantContact || " "}</div>
-            </div>
-          </div>
-        ) : (
-          <div className="dos-versus plain">
-            <div className="side ours">
-              <div className="role">委托人</div>
-              <div className="who">{matter.primaryClient?.name ?? matter.clientLinks[0]?.client.name ?? "—"}</div>
-              <div className="sub">{ours[0]?.contactName ? `对接人 ${ours[0].contactName}` : " "}</div>
-            </div>
-            <div className="side">
-              <div className="role">{categoryKind === "counsel" ? "顾问类型" : "业务类型"}</div>
-              <div className="who">{(categoryKind === "counsel" ? matter.counselType : matter.businessType) || "—"}</div>
-              <div className="sub">{matterCategoryLabel[matter.category]}</div>
-            </div>
-            <div className="side court">
-              <div className="role">{categoryKind === "counsel" ? "顾问期限" : "服务期间"}</div>
-              <div className="who mono">{[matter.serviceStart ? formatShortDate(matter.serviceStart) : null, matter.serviceEnd ? formatShortDate(matter.serviceEnd) : null].filter(Boolean).join(" — ") || "未登记"}</div>
-              <div className="sub">{matter.serviceEnd ? (shDaysFromToday(matter.serviceEnd) < 0 ? "已到期" : `剩 ${shDaysFromToday(matter.serviceEnd)} 天`) : " "}</div>
-            </div>
-          </div>
-        )}
       </section>
 
       {/* 吸顶摘要：标题滚出视野后常驻案件身份与下一节点 */}
       <MatterStickyBar title={matter.title} caseNumber={currentProcedure?.caseNumber ?? null} procedures={engagedProcedures} />
+
+      {/* ② 程序栏：每个程序一张卡片，点击切换，全页共用 */}
+      <section className="dos-procs" aria-label="程序">
+        <div className="dos-procs-h">
+          <span className="t">程序</span>
+          <span className="t-xs t-mute">办案进程、材料按程序分开；切换程序后下方各页签同步切换</span>
+        </div>
+        <div className="dos-procs-list" role="tablist">
+          {engagedProcedures.map((procedure) => {
+            const active = currentProcedure?.id === procedure.id;
+            const label = procLabel(procedure);
+            const labels = contactRoleLabels(procedure.type);
+            return (
+              <div key={procedure.id} className={cn("dos-proc", active && "on")}>
+                <button type="button" role="tab" aria-selected={active} className="dos-proc-main" onClick={() => setSelectedProcId(procedure.id)}>
+                  <span className="top">
+                    <span className="nm">{label}</span>
+                    <span className={cn("badge", procedure.status === "CONCLUDED" ? "b-slate" : procedure.status === "IN_PROGRESS" ? "b-teal" : "b-white")} style={{ fontSize: 10 }}>
+                      {PROC_STATUS_LABEL[procedure.status] ?? procedure.status}
+                    </span>
+                  </span>
+                  {categoryKind === "litigation" ? (
+                    <>
+                      <span className="no">{procedure.caseNumber || "案号未登记"}</span>
+                      <span className="ag">
+                        {[procedure.handlingAgency, procedure.presidingJudge ? `${labels.lead} ${procedure.presidingJudge}` : null].filter(Boolean).join(" · ") || "受理机构未登记"}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="ag">{procedure.stages.filter((st) => st.status !== "HIDDEN").length} 个环节 · 已完成 {procedure.stages.filter((st) => st.status !== "HIDDEN" && st.completedAt).length}</span>
+                      <span className="ag">{procedure.acceptedAt ? `开始 ${formatShortDate(procedure.acceptedAt)}` : "\u00a0"}</span>
+                    </>
+                  )}
+                </button>
+                {canLeadThisMatter ? (
+                  <button
+                    type="button"
+                    className="dos-proc-del"
+                    title="删除此程序"
+                    aria-label={`删除程序 ${label}`}
+                    onClick={async () => {
+                      if (await confirmDialog({ title: `删除程序「${label}」？`, description: deleteProcedureWarning(procedure, label).replace(/^确定删除程序「[^」]*」？\s*/, ""), confirmText: "删除程序", danger: true })) handleDeleteProcedure(procedure.id);
+                    }}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                ) : null}
+              </div>
+            );
+          })}
+          {canAssociateThisMatter && !isArchived ? (
+            <button type="button" className="dos-proc add" onClick={() => setAddProcOpen(true)}>
+              <Plus className="h-4 w-4" />
+              <span>新增程序</span>
+              <span className="t-xs t-mute">二审、执行、保全等</span>
+            </button>
+          ) : null}
+          {engagedProcedures.length === 0 && !(canAssociateThisMatter && !isArchived) ? <span className="t-xs t-mute">暂无程序</span> : null}
+        </div>
+      </section>
 
       {latestArchive && latestArchive.status !== "APPROVED" ? (
         <div style={{ margin: "14px 0 0" }}>
@@ -474,7 +474,7 @@ export function MatterDetailTabs({
         </div>
       ) : null}
 
-      {/* ② 进程主线 → ③ 视图 */}
+      {/* ③ 页签 */}
       <ProcedureWorkflowPanel
         apiRef={workflowApi}
         matter={{ id: matter.id, internalCode: matter.internalCode, title: matter.title, category: matter.category }}
@@ -490,83 +490,63 @@ export function MatterDetailTabs({
         onWriteNote={({ judgment, stageName }) => setProgress({ mode: judgment ? "judgment" : "record", stage: stageName, stageNames: workflowApi.current?.stageNames ?? [] })}
         view={view}
         onViewChange={setView}
-        viewCounts={{ docs: procDocs.length, evidence: evidenceItems.length }}
+        viewCounts={{ docs: procDocs.length }}
         waiting={waiting}
-        chainHeader={
-          <>
-            {engagedProcedures.map((procedure) => {
-              const isActive = currentProcedure?.id === procedure.id;
-              const label = procLabel(procedure);
-              return (
-                <span key={procedure.id} className={cn("prog-chip group/proc relative", isActive && "active")}>
-                  <button type="button" onClick={() => setSelectedProcId(procedure.id)} className="max-w-[144px] truncate border-0 bg-transparent p-0 text-inherit">
-                    {label}
-                    {procedure.status === "CONCLUDED" ? "（已结）" : ""}
-                  </button>
-                  {canLeadThisMatter ? (
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (await confirmDialog({ title: `删除程序「${label}」？`, description: deleteProcedureWarning(procedure, label).replace(/^确定删除程序「[^」]*」？\s*/, ""), confirmText: "删除程序", danger: true })) handleDeleteProcedure(procedure.id);
-                      }}
-                      className="pointer-events-none -mr-1 ml-0.5 opacity-0 transition-opacity group-hover/proc:pointer-events-auto group-hover/proc:opacity-100"
-                      title="删除此程序"
-                      aria-label={`删除程序 ${label}`}
-                    >
-                      <X className="h-2.5 w-2.5" />
-                    </button>
-                  ) : null}
-                </span>
-              );
-            })}
-            {canAssociateThisMatter && !isArchived ? (
-              <button type="button" className="prog-chip" onClick={() => setAddProcOpen(true)}>
-                + 新增程序
-              </button>
-            ) : null}
-          </>
-        }
-        railSlot={
-          <DossierRail
+        archiveNode={
+          <MatterArchive
             matter={matter}
-            requestLabel={categoryKind === "litigation" ? requestLabel : "服务范围"}
-            requestText={categoryKind === "litigation" ? (matter.category === "CRIMINAL" ? "" : requestText) : matter.serviceScope?.trim() ?? ""}
+            currentProcedure={currentProcedure}
+            parties={parties}
             financeStats={allowed("finance.read") ? finance.stats : null}
-            sealContracts={sealContracts}
-            canManageTeam={canOwnThisMatter}
-            onManageTeam={() => setMatterEditorOpen(true)}
+            engagements={engagements}
+            customFieldDefs={customFieldDefs}
+            customValues={customValues}
+            canEdit={canOpenUnifiedEditor}
+            canEditCustom={canLeadThisMatter}
+            canManageRelated={canAssociateThisMatter}
+            onEdit={() => setMatterEditorOpen(true)}
             onOpenFinance={() => setView("money")}
-            restricted={restricted}
+          />
+        }
+        ledgerNode={
+          <ProcedureRemindersAndMemos
+            matterId={matter.id}
+            procedures={engagedProcedures}
+            currentProcedureId={currentProcedure?.id ?? ""}
+            expresses={expresses}
+            canManage={canAssociateThisMatter}
+            kinds={["express", "memo"]}
           />
         }
         evidenceNode={
-          allowed("matters.read") ? (
-            <div className="dos-view-stack">
+          <>
+            {allowed("matters.read") ? (
               <EvidencePanel
                 matterId={matter.id}
                 items={evidenceItems}
                 documents={documents.map((d: { id: string; name: string }) => ({ id: d.id, name: d.name }))}
                 canManage={canAssociateThisMatter}
               />
-              {capabilities.caseSearch && allowed("matters.write") ? (
-                <div className="card">
-                  <div className="panel-head">
-                    <div className="panel-title">
-                      <Scale className="ic" strokeWidth={1.8} />
-                      类案检索
-                      <span className="t-xs t-mute" style={{ fontWeight: 400 }}>按案由与争点检索元典类案，结果可挂到证据链</span>
-                    </div>
-                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => setCaseSearchOpen(true)}>
-                      开始检索
-                    </button>
+            ) : null}
+            {capabilities.caseSearch && allowed("matters.write") ? (
+              <div className="card">
+                <div className="panel-head">
+                  <div className="panel-title">
+                    <Scale className="ic" strokeWidth={1.8} />
+                    类案检索
+                    <span className="t-xs t-mute" style={{ fontWeight: 400 }}>按案由与争点检索元典类案</span>
                   </div>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setCaseSearchOpen(true)}>
+                    开始检索
+                  </button>
                 </div>
-              ) : null}
-            </div>
-          ) : undefined
+              </div>
+            ) : null}
+            {reviewNode}
+          </>
         }
         financeNode={
-          <div className="dos-view-stack">
+          <div className="dos-main">
             {allowed("matters.read") ? (
               <EngagementPanel
                 matterId={matter.id}
@@ -579,28 +559,6 @@ export function MatterDetailTabs({
               <FinancePanel matterId={matter.id} finance={finance} userOptions={userOptions} canRequestInvoice={canAssociateThisMatter} />
             ) : null}
             <ApprovalsPanel matterId={matter.id} matterTitle={matter.title} sealContracts={sealContracts} canRequest={canAssociateThisMatter && allowed("seals.request")} />
-          </div>
-        }
-        fileNode={
-          <div className="dos-view-stack">
-            <InfoPanel
-              matter={matter}
-              currentProcedure={currentProcedure}
-              canEdit={canOpenUnifiedEditor}
-              canManageRelatedMatters={canAssociateThisMatter}
-              onEdit={() => setMatterEditorOpen(true)}
-            />
-            <ProcedureRemindersAndMemos
-              matterId={matter.id}
-              procedures={engagedProcedures}
-              currentProcedureId={currentProcedure?.id ?? ""}
-              expresses={expresses}
-              canManage={canAssociateThisMatter}
-            />
-            {hasCustomFields ? (
-              <CustomFieldsPanel matterId={matter.id} defs={customFieldDefs} values={customValues} canEdit={canLeadThisMatter} />
-            ) : null}
-            {reviewNode}
           </div>
         }
       />
@@ -733,188 +691,8 @@ function deleteProcedureWarning(procedure: ProcedureItem, label: string): string
   );
 }
 
-const PARTY_ROLE_LABEL: Record<string, string> = {
-  CLIENT_PARTY: "委托方",
-  OPPOSING_PARTY: "相对方",
-  THIRD_PARTY: "第三人",
-  CO_LITIGANT: "共同诉讼人",
-  AGENT: "代理人",
-  WITNESS: "证人",
-  OTHER: "其他"
-};
+const PROC_STATUS_LABEL: Record<string, string> = { PENDING: "未开始", IN_PROGRESS: "进行中", CONCLUDED: "已结" };
 
-const SEAL_STATUS: Record<string, { label: string; tone: "amber" | "teal" | "red" | "slate"; sealText: string; badge: string | null }> = {
-  PENDING: { label: "审批中", tone: "amber", sealText: "待 审", badge: "b-amber" },
-  APPROVED: { label: "已批准", tone: "teal", sealText: "审 毕", badge: "b-teal" },
-  STAMPED: { label: "已用印", tone: "teal", sealText: "审 毕", badge: "b-green" },
-  REJECTED: { label: "已驳回", tone: "red", sealText: "驳 回", badge: "b-outline-red" },
-  CANCELLED: { label: "已取消", tone: "slate", sealText: "取 消", badge: null }
-};
-
-/**
- * 办案视图右栏：只放随时要瞄一眼的——我方请求、承办团队、收费进度、审批与用印。
- * 当事人在案卷头对阵行；财务与用印全量在「委托与财务」视图。
- */
-function DossierRail({
-  matter,
-  requestLabel,
-  requestText,
-  financeStats,
-  sealContracts,
-  canManageTeam,
-  onManageTeam,
-  onOpenFinance,
-  restricted
-}: {
-  matter: MatterPayload;
-  requestLabel: string;
-  requestText: string;
-  financeStats: FinancePayload["stats"] | null;
-  sealContracts: SealContractItem[];
-  canManageTeam: boolean;
-  onManageTeam: () => void;
-  onOpenFinance: () => void;
-  restricted: boolean;
-}) {
-  const [requestOpen, setRequestOpen] = useState(false);
-  const roleOrder = { LEAD: 0, CO_LEAD: 1, ASSISTANT: 2 } as const;
-  const members = matter.members.map((m) => ({ id: m.userId, name: m.user.name, matterRole: m.role, roleName: m.user.roleName }));
-  if (matter.owner && !members.some((m) => m.id === matter.ownerId)) {
-    members.unshift({ id: matter.owner.id, name: matter.owner.name, matterRole: "LEAD", roleName: (matter.owner as { roleName?: string }).roleName });
-  }
-  members.sort((a, b) => roleOrder[a.matterRole] - roleOrder[b.matterRole]);
-  const roleTag: Record<string, string> = { LEAD: "b-teal", CO_LEAD: "b-slate", ASSISTANT: "b-slate" };
-  const recentSeals = sealContracts.slice(0, 3);
-  const longRequest = requestText.length > 140;
-
-  return (
-    <>
-      {/* 请求 / 服务范围来自收案登记；未登记时不占位 */}
-      {requestText ? (
-        <div className="card">
-          <div className="rail-sec-head">
-            <ScrollText className="h-[15px] w-[15px] text-[var(--t-muted)]" strokeWidth={1.8} />
-            {requestLabel}
-          </div>
-          <div className="panel-body dos-request">
-            <p className={cn("whitespace-pre-wrap", !requestOpen && longRequest && "line-clamp-6")}>{requestText}</p>
-            {longRequest ? (
-              <button type="button" className="link-inline" onClick={() => setRequestOpen((v) => !v)}>
-                {requestOpen ? "收起" : "展开全部"}
-              </button>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-
-      <div className="card">
-        <div className="rail-sec-head">
-          <Users className="h-[15px] w-[15px] text-[var(--t-muted)]" strokeWidth={1.8} />
-          承办团队
-          {canManageTeam ? (
-            <button type="button" className="link border-0 bg-transparent p-0" onClick={onManageTeam}>
-              管理
-            </button>
-          ) : null}
-        </div>
-        {members.length === 0 ? (
-          <div className="member t-xs t-mute">暂无团队成员</div>
-        ) : (
-          members.map((m) => (
-            <div key={`${m.id}-${m.matterRole}`} className="member">
-              <InitialAvatar name={m.name} tone={avatarTone(m.name)} />
-              <div className="min-w-0">
-                <div className="n truncate">{m.name}</div>
-                <div className="r truncate">{m.roleName ?? matterTeamRoleDescription(m.matterRole)}</div>
-              </div>
-              <span className={`badge ${roleTag[m.matterRole]} role-tag`} style={{ fontSize: 10 }}>
-                {matterTeamRoleLabel(m.matterRole)}
-              </span>
-            </div>
-          ))
-        )}
-        {restricted ? (
-          <div className="panel-body" style={{ padding: "8px 14px" }}>
-            <span className="t-xs t-mute">受限事项，不进入团队汇总视图</span>
-          </div>
-        ) : null}
-      </div>
-
-      {financeStats ? (
-        <div className="card">
-          <div className="rail-sec-head">
-            <CreditCard className="h-[15px] w-[15px] text-[var(--t-muted)]" strokeWidth={1.8} />
-            收费
-            <button type="button" className="link border-0 bg-transparent p-0" onClick={onOpenFinance}>
-              明细
-            </button>
-          </div>
-          <RailFinance stats={financeStats} />
-        </div>
-      ) : null}
-
-      <div className="card">
-        <div className="rail-sec-head">
-          <SquareCheck className="h-[15px] w-[15px] text-[var(--t-muted)]" strokeWidth={1.8} />
-          审批与用印
-          <button type="button" className="link border-0 bg-transparent p-0" onClick={onOpenFinance}>
-            全部
-          </button>
-        </div>
-        {recentSeals.length === 0 ? (
-          <div className="panel-body t-xs t-mute">暂无用印审批记录</div>
-        ) : (
-          recentSeals.map((seal) => {
-            const meta = SEAL_STATUS[seal.status] ?? SEAL_STATUS.PENDING;
-            return (
-              <div key={seal.id} className="dos-seal-row">
-                <span className={cn("seal", meta.tone === "teal" && "teal")} style={{ width: 34, height: 34, fontSize: 7.5, ...(meta.tone === "amber" ? { borderColor: "var(--amber)", color: "var(--amber)" } : meta.tone === "slate" ? { borderColor: "var(--t-faint)", color: "var(--t-faint)" } : meta.tone === "red" ? { borderColor: "var(--red)", color: "var(--red)" } : {}) }} aria-hidden>
-                  <span>{meta.sealText}</span>
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate" style={{ fontSize: 12.5, fontWeight: 600 }} title={seal.documentTitle}>
-                    {seal.documentTitle}
-                  </div>
-                  <div className="t-xs t-mute">
-                    {seal.code} · {formatMonthDay(seal.createdAt)} · {seal.stampedDoc ? "已用印回填" : meta.label}
-                  </div>
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-    </>
-  );
-}
-
-function RailFinance({ stats }: { stats: FinancePayload["stats"] }) {
-  const outstanding = Math.max(0, stats.receivable - stats.received);
-  const base = stats.contractAmount > 0 ? stats.contractAmount : stats.receivable;
-  const percent = base > 0 ? Math.min(100, Math.round((stats.received / base) * 100)) : 0;
-  const money = (n: number) => (n > 0 ? `¥${n.toLocaleString("zh-CN")}` : "—");
-  return (
-    <>
-      <div className="fin-row"><span className="k">合同额</span><span className="v">{money(stats.contractAmount)}</span></div>
-      <div className="fin-row"><span className="k">已实收</span><span className="v" style={{ color: "var(--green)" }}>{money(stats.received)}</span></div>
-      <div className="fin-row"><span className="k">待收</span><span className="v" style={{ color: outstanding > 0 ? "var(--amber)" : undefined }}>{money(outstanding)}</span></div>
-      <div className="fin-row"><span className="k">已开票</span><span className="v">{money(stats.invoiced)}</span></div>
-      <div className="panel-body" style={{ padding: "10px 14px 13px" }}>
-        {base > 0 ? (
-          <>
-            <div className="progress"><div className="progress-fill" style={{ width: `${percent}%` }} /></div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
-              <span className="t-xs t-mute">回款进度</span>
-              <span className="num-sm t-mute">{percent}%</span>
-            </div>
-          </>
-        ) : (
-          <span className="t-xs t-mute">未登记合同金额，暂不计算回款进度</span>
-        )}
-      </div>
-    </>
-  );
-}
 
 function nextUncompletedDeadline(procedures: ProcedureItem[]) {
   const all = procedures
@@ -1017,18 +795,6 @@ function MatterStickyBar({
       )}
     </div>
   );
-}
-
-function matterTeamRoleLabel(role: "LEAD" | "CO_LEAD" | "ASSISTANT") {
-  if (role === "LEAD") return "主办";
-  if (role === "CO_LEAD") return "协办";
-  return "助理";
-}
-
-function matterTeamRoleDescription(role: "LEAD" | "CO_LEAD" | "ASSISTANT") {
-  if (role === "LEAD") return "主办律师";
-  if (role === "CO_LEAD") return "协办律师";
-  return "律师助理";
 }
 
 function daysFromToday(date: Date) {

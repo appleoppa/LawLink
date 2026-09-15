@@ -8,7 +8,7 @@ import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import type { MatterPayload } from "./matter-detail-tabs";
 import { RelatedMattersField } from "./related-matters-field";
 
-const ARBITRATION_TYPES = [
+export const ARBITRATION_TYPES = [
   "COMMERCIAL_ARBITRATION",
   "LABOR_ARBITRATION",
   "ARBITRATION_SET_ASIDE",
@@ -41,7 +41,7 @@ export function contactRoleLabels(type: string | undefined) {
   return { lead: "主办法官", assistant: "书记员" };
 }
 
-const PROCEDURE_OUTCOME_LABEL: Record<string, string> = {
+export const PROCEDURE_OUTCOME_LABEL: Record<string, string> = {
   WON: "胜诉",
   PARTIAL_WON: "部分胜诉",
   LOST: "败诉",

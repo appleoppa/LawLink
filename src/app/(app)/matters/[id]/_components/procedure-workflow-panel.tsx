@@ -87,6 +87,8 @@ import {
   type UserOption
 } from "@/app/(app)/preservation/_components/preservation-types";
 import { TemplatePickerDialog } from "./template-picker-dialog";
+import { AdjustDeadlineDialog } from "./procedure-content";
+import { confirmDeadline } from "@/server/deadlines/confirm";
 import { DocIcon, EmptyState, Segmented, SourceChip } from "@/components/patterns/moan";
 import { documentSourceChip } from "@/lib/ui/moan-tones";
 import type { FolderPayload, TemplateSummary } from "./folder-types";
@@ -674,16 +676,19 @@ export type WorkflowApi = {
   currentStageName: string | null;
 };
 
-/** 案卷工作台视图（docs/UI-MATTER-DOSSIER-PLAN.md） */
-export type DossierView = "work" | "docs" | "evidence" | "money" | "file";
+/** 案卷工作台页签（docs/UI-MATTER-DOSSIER-PLAN.md 第二版） */
+export type DossierView = "archive" | "work" | "docs" | "money";
 
-/** 「下一步 · 等待他人」：审批中的用印、归档等 */
+/** 待办「等待他人」：审批中的用印、归档等 */
 export type WaitingItem = { key: string; title: string; meta: string; onOpen?: () => void };
 
 /**
- * 案卷工作台：进程主线 → 视图页签 → 各视图。
- * 办案视图 = 环节条 + 下一步 + 经办日志（左）+ 速览栏（右，由案件页注入）。
- * 同一份数据只在一处展示：事项只在「下一步」，记录只在「经办日志」，材料只在「材料」视图。
+ * 案卷工作台（程序栏之下）：页签 → 各视图。
+ * - 案件档案：案件页注入的档案内容 + 右侧提醒小栏（最近待办 / 最近记录）
+ * - 办案进程：环节线（末尾「＋ 添加环节」）+ 环节操作条 + 待办 + 经办记录 + 快递与备忘
+ * - 材料与证据：按环节的材料 + 证据链等
+ * - 财务与用印
+ * 同一份数据只在一处展示：未完成事项只在待办，已发生事项只在经办记录，材料只在材料与证据。
  */
 export function ProcedureWorkflowPanel({
   matter,
@@ -694,8 +699,6 @@ export function ProcedureWorkflowPanel({
   templates,
   users,
   canManage,
-  railSlot,
-  chainHeader,
   notes,
   timelineEvents,
   onWriteNote,
@@ -703,9 +706,10 @@ export function ProcedureWorkflowPanel({
   view,
   onViewChange,
   viewCounts,
+  archiveNode,
+  ledgerNode,
   evidenceNode,
   financeNode,
-  fileNode,
   waiting
 }: {
   matter: WorkflowMatter;
@@ -716,10 +720,6 @@ export function ProcedureWorkflowPanel({
   templates: TemplateSummary[];
   users: UserOption[];
   canManage: boolean;
-  /** 办案视图右栏（我方请求 / 团队 / 收费 / 审批） */
-  railSlot?: React.ReactNode;
-  /** 进程主线头部右侧（程序切换 + 新增程序） */
-  chainHeader?: React.ReactNode;
   notes: WorkflowNote[];
   timelineEvents: WorkflowTimelineEvent[];
   onWriteNote: (opts: { judgment: boolean; stageName?: string }) => void;
@@ -727,15 +727,17 @@ export function ProcedureWorkflowPanel({
   view: DossierView;
   onViewChange: (view: DossierView) => void;
   viewCounts?: Partial<Record<DossierView, number>>;
+  archiveNode: React.ReactNode;
+  /** 办案进程右栏：快递与备忘 */
+  ledgerNode?: React.ReactNode;
+  /** 材料与证据：材料之下的证据链、类案检索、AI 审查总览 */
   evidenceNode?: React.ReactNode;
   financeNode?: React.ReactNode;
-  fileNode?: React.ReactNode;
   waiting?: WaitingItem[];
 }) {
   const router = useRouter();
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [scope, setScope] = useState<"all" | "stage">("all");
-  const [focusSignal, setFocusSignal] = useState(0);
   const [templateOpen, setTemplateOpen] = useState(false);
   const [taskStage, setTaskStage] = useState<WorkflowStage | null>(null);
   const [stageCreateOpen, setStageCreateOpen] = useState(false);
@@ -747,8 +749,7 @@ export function ProcedureWorkflowPanel({
     () => buildWorkflowStages(procedure, preservationCases),
     [procedure, preservationCases]
   );
-  // 当前环节 = 第一个进行中 / 有风险的环节，否则第一个待办环节
-  // 保全是贯穿程序的并行事项（在保期间一直「进行中 / 临期」），不作为主线上的当前环节
+  // 保全是贯穿程序的并行事项（在保期间一直「进行中 / 临期」），不作为当前环节
   const mainStages = stages.filter((s) => s.kind !== "preservation");
   const currentStage =
     mainStages.find((s) => s.status === "active" || s.status === "risk") ??
@@ -757,6 +758,14 @@ export function ProcedureWorkflowPanel({
     stages[0] ??
     null;
   const selectedStage = stages.find((s) => s.key === selectedKey) ?? currentStage;
+  const actions = useMemo(() => buildActionItems(procedure, stages, users), [procedure, stages, users]);
+  const logItems = useMemo(() => buildLogItems({ procedure, stages, notes, events: timelineEvents, users }), [procedure, stages, notes, timelineEvents, users]);
+
+  // 切换程序后回到该程序的当前环节
+  useEffect(() => {
+    setSelectedKey(null);
+    setScope("all");
+  }, [procedure?.id]);
 
   useEffect(() => {
     if (!apiRef) return;
@@ -780,8 +789,6 @@ export function ProcedureWorkflowPanel({
   function selectStage(key: string) {
     setSelectedKey(key);
     setScope("stage");
-    setFocusSignal((n) => n + 1);
-    if (view !== "work" && view !== "docs") onViewChange("work");
   }
 
   async function handleRemoveStage(stage: WorkflowStage) {
@@ -809,25 +816,14 @@ export function ProcedureWorkflowPanel({
   }
 
   const VIEWS: { key: DossierView; label: string; show: boolean }[] = [
-    { key: "work", label: "办案", show: true },
-    { key: "docs", label: "材料", show: true },
-    { key: "evidence", label: "证据与争点", show: Boolean(evidenceNode) },
-    { key: "money", label: "委托与财务", show: Boolean(financeNode) },
-    { key: "file", label: "案件档案", show: Boolean(fileNode) }
+    { key: "archive", label: "案件档案", show: true },
+    { key: "work", label: "办案进程", show: true },
+    { key: "docs", label: "材料与证据", show: true },
+    { key: "money", label: "财务与用印", show: Boolean(financeNode) }
   ];
 
   return (
     <>
-      <ProcessSpine
-        procedure={procedure}
-        stages={stages}
-        selectedKey={selectedStage?.key ?? null}
-        currentKey={currentStage?.key ?? null}
-        onSelect={selectStage}
-        chainHeader={chainHeader}
-        onAddStage={canManage && procedure ? () => setStageCreateOpen(true) : undefined}
-      />
-
       <div className="dos-views" role="tablist" aria-label="案件视图">
         {VIEWS.filter((v) => v.show).map((v) => (
           <button key={v.key} type="button" role="tab" aria-selected={view === v.key} className={cn("dos-view", view === v.key && "on")} onClick={() => onViewChange(v.key)}>
@@ -837,89 +833,108 @@ export function ProcedureWorkflowPanel({
         ))}
       </div>
 
-      {view === "work" ? (
+      {view === "archive" ? (
         <div className="dos-work">
-          <div className="dos-main">
-            {selectedStage && procedure ? (
-              selectedStage.kind === "preservation" ? (
-                <PreservationWorkflowContent
-                  matter={matter}
-                  procedure={procedure}
-                  stage={selectedStage}
-                  cases={preservationCases}
-                  documents={documents}
-                  users={users}
-                  canManage={canManage}
-                  onOpenTemplate={() => setTemplateOpen(true)}
-                  onAddTask={() => setTaskStage(selectedStage)}
-                  onRemoveStage={canManage && selectedStage.removable ? () => handleRemoveStage(selectedStage) : undefined}
-                  uploadSignal={uploadSignal}
-                />
-              ) : (
-                <StageBar
-                  stage={selectedStage}
-                  procedure={procedure}
-                  documents={documents}
-                  notes={notes}
-                  isCurrent={selectedStage.key === currentStage?.key}
-                  canManage={canManage}
-                  onAddTask={() => setTaskStage(selectedStage)}
-                  onAddDeadline={() => setDeadlineOpen(true)}
-                  onUpload={() => setUploadSignal((n) => n + 1)}
-                  onOpenTemplate={() => setTemplateOpen(true)}
-                  onWriteNote={() => onWriteNote({ judgment: true, stageName: selectedStage.name })}
-                  onRemoveStage={canManage && selectedStage.removable ? () => handleRemoveStage(selectedStage) : undefined}
-                  onOpenMaterials={() => onViewChange("docs")}
-                />
-              )
-            ) : null}
-
-            <NextActions
-              procedure={procedure}
-              stages={stages}
-              selectedStage={selectedStage}
-              scope={scope}
-              onScopeChange={setScope}
-              users={users}
-              canManage={canManage}
+          <div className="dos-main">{archiveNode}</div>
+          <aside className="dos-rail">
+            <ArchiveGlance
+              actions={actions}
+              logItems={logItems}
               waiting={waiting ?? []}
-              onAddTask={procedure && selectedStage ? () => setTaskStage(selectedStage) : undefined}
+              procedureLabel={procedure ? procedure.customLabel ?? procedureTypeLabel[procedure.type] : null}
+              onOpenWork={() => onViewChange("work")}
             />
+          </aside>
+        </div>
+      ) : null}
 
-            <CaseLog
-              procedure={procedure}
-              stages={stages}
-              notes={notes}
-              events={timelineEvents}
-              documents={documents}
-              focusStageName={scope === "stage" ? selectedStage?.name ?? null : null}
-              focusSignal={focusSignal}
-              canManage={canManage}
-              onWriteRecord={() => onWriteNote({ judgment: false, stageName: selectedStage?.name })}
-              onWriteJudgment={() => onWriteNote({ judgment: true, stageName: selectedStage?.name })}
-            />
+      {view === "work" ? (
+        <div className="dos-main">
+          <StageLine
+            procedure={procedure}
+            stages={stages}
+            selectedKey={selectedStage?.key ?? null}
+            currentKey={currentStage?.key ?? null}
+            onSelect={selectStage}
+            onAddStage={canManage && procedure ? () => setStageCreateOpen(true) : undefined}
+          />
+          {selectedStage && procedure ? (
+            selectedStage.kind === "preservation" ? (
+              <PreservationWorkflowContent
+                matter={matter}
+                procedure={procedure}
+                stage={selectedStage}
+                cases={preservationCases}
+                documents={documents}
+                users={users}
+                canManage={canManage}
+                onOpenTemplate={() => setTemplateOpen(true)}
+                onAddTask={() => setTaskStage(selectedStage)}
+                onRemoveStage={canManage && selectedStage.removable ? () => handleRemoveStage(selectedStage) : undefined}
+                uploadSignal={uploadSignal}
+              />
+            ) : (
+              <StageBar
+                stage={selectedStage}
+                procedure={procedure}
+                documents={documents}
+                notes={notes}
+                isCurrent={selectedStage.key === currentStage?.key}
+                canManage={canManage}
+                onAddTask={() => setTaskStage(selectedStage)}
+                onAddDeadline={() => setDeadlineOpen(true)}
+                onUpload={() => setUploadSignal((n) => n + 1)}
+                onOpenTemplate={() => setTemplateOpen(true)}
+                onWriteNote={() => onWriteNote({ judgment: true, stageName: selectedStage.name })}
+                onRemoveStage={canManage && selectedStage.removable ? () => handleRemoveStage(selectedStage) : undefined}
+                onOpenMaterials={() => onViewChange("docs")}
+              />
+            )
+          ) : null}
+          <div className="dos-work">
+            <div className="dos-main">
+              <NextActions
+                actions={actions}
+                selectedStage={selectedStage}
+                scope={scope}
+                onScopeChange={setScope}
+                canManage={canManage}
+                waiting={waiting ?? []}
+                onAddTask={procedure && selectedStage ? () => setTaskStage(selectedStage) : undefined}
+              />
+              <CaseLog
+                items={logItems}
+                stages={stages}
+                procedure={procedure}
+                focusStageName={scope === "stage" ? selectedStage?.name ?? null : null}
+                canManage={canManage}
+                onWriteRecord={() => onWriteNote({ judgment: false, stageName: selectedStage?.name })}
+                onWriteJudgment={() => onWriteNote({ judgment: true, stageName: selectedStage?.name })}
+              />
+            </div>
+            {ledgerNode ? <aside className="dos-rail">{ledgerNode}</aside> : null}
           </div>
-          {railSlot ? <aside className="dos-rail">{railSlot}</aside> : null}
         </div>
       ) : null}
 
       {view === "docs" ? (
-        <MaterialsView
-          matterId={matter.id}
-          procedure={procedure}
-          stages={stages}
-          documents={documents}
-          selectedKey={selectedStage?.key ?? null}
-          onSelect={(key) => setSelectedKey(key)}
-          canManage={canManage}
-          onOpenTemplate={() => setTemplateOpen(true)}
-        />
+        <div className="dos-main">
+          <MaterialsView
+            matterId={matter.id}
+            procedure={procedure}
+            stages={stages}
+            documents={documents}
+            selectedKey={selectedStage?.key ?? null}
+            onSelect={(key) => setSelectedKey(key)}
+            canManage={canManage}
+            onOpenTemplate={() => setTemplateOpen(true)}
+          />
+          {evidenceNode}
+        </div>
       ) : null}
-      {view === "evidence" ? evidenceNode : null}
       {view === "money" ? financeNode : null}
-      {view === "file" ? fileNode : null}
 
-      {/* 环节条「上传材料」与页头「上传材料」共用：打开当前选中环节的上传弹窗（列表在材料视图） */}
+      {/* 环节操作条与页头「上传材料」共用：打开当前选中环节的上传弹窗（列表在材料与证据） */}
       {procedure && selectedStage && selectedStage.kind !== "preservation" ? (
         <div hidden>
           <StageMaterialsPanel
@@ -1131,26 +1146,6 @@ function StageGuideBody({ guide }: { guide: StageGuide }) {
   );
 }
 
-function JudgmentNoteRow({ note }: { note: WorkflowNote }) {
-  return (
-    <div className="rec">
-      <div className="rec-ic" style={{ background: "var(--violet-bg)", color: "var(--violet)" }}>
-        <PenLine strokeWidth={2} />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="rec-title">
-          研判笔记
-          {noteStage(note) ? <span className="badge b-white" style={{ fontSize: 9.5, padding: "0 6px", marginLeft: 6 }}>{noteStage(note)}</span> : null}
-          <span className="badge b-violet" style={{ fontSize: 9.5, padding: "0 6px", marginLeft: 6 }}>人工判断</span>
-        </div>
-        <div className="rec-note whitespace-pre-wrap">{note.content}</div>
-        <div className="rec-meta">
-          {note.author.name} · {formatDateTimeShort(note.occurredAt)}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /** 研判笔记归属环节（tags「环节:xxx」） */
 function noteStage(note: WorkflowNote) {
@@ -1183,16 +1178,15 @@ const EVENT_TONE: Record<string, { bg: string; fg: string; icon: typeof FileText
 };
 
 /* ------------------------------------------------------------------ */
-/* 进程主线：一条线画完当前程序的全部环节                               */
+/* 环节线：当前程序的全部环节，末尾是「＋ 添加环节」                     */
 /* ------------------------------------------------------------------ */
 
-function ProcessSpine({
+function StageLine({
   procedure,
   stages,
   selectedKey,
   currentKey,
   onSelect,
-  chainHeader,
   onAddStage
 }: {
   procedure: WorkflowProcedure | null;
@@ -1200,26 +1194,28 @@ function ProcessSpine({
   selectedKey: string | null;
   currentKey: string | null;
   onSelect: (key: string) => void;
-  chainHeader?: React.ReactNode;
   onAddStage?: () => void;
 }) {
+  if (!procedure) {
+    return (
+      <div className="card">
+        <EmptyState compact title="暂无在办程序" description="在上方程序栏点「＋ 新增程序」后，这里会按环节展开办案进程。" />
+      </div>
+    );
+  }
   const currentIndex = stages.findIndex((s) => s.key === currentKey);
-  const label = procedure ? procedure.customLabel ?? procedureTypeLabel[procedure.type] : null;
   const hearingStageKey = (stages.find((s) => /开庭|庭审|询问/.test(s.name)) ?? stages.find((s) => stageGuideFor(s.name).includeHearings))?.key ?? null;
-  const nextHearing = procedure
-    ? [...procedure.hearings].filter((h) => daysUntil(h.startsAt) >= 0).sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())[0] ?? null
-    : null;
-  const doneCount = stages.filter((s) => s.status === "done").length;
+  const nextHearing = [...procedure.hearings].filter((h) => daysUntil(h.startsAt) >= 0).sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())[0] ?? null;
 
   function flagFor(stage: WorkflowStage): { text: string; tone: "red" | "amber" | "blue" } | null {
-    if (!procedure) return null;
     const guide = stageGuideFor(stage.name);
-    const overdueTasks = stage.tasks.filter((t) => !t.completed && t.dueAt && daysUntil(t.dueAt) < 0).length;
-    const overdueDeadlines = procedure.deadlines.filter((d) => !d.completed && guide.deadlineCategories.includes(d.category) && daysUntil(d.dueAt) < 0).length;
-    if (overdueTasks + overdueDeadlines > 0) return { text: `逾期 ${overdueTasks + overdueDeadlines}`, tone: "red" };
+    const overdue =
+      stage.tasks.filter((t) => !t.completed && t.dueAt && daysUntil(t.dueAt) < 0).length +
+      procedure!.deadlines.filter((d) => !d.completed && guide.deadlineCategories.includes(d.category) && daysUntil(d.dueAt) < 0).length;
+    if (overdue > 0) return { text: `逾期 ${overdue}`, tone: "red" };
     if (stage.kind === "preservation" && stage.badge?.hot) return { text: stage.badge.text.split(" · ")[1] ?? "临期", tone: "amber" };
     if (stage.key === hearingStageKey && nextHearing) return { text: `开庭 ${shortDay(nextHearing.startsAt)}`, tone: "blue" };
-    const soon = procedure.deadlines
+    const soon = procedure!.deadlines
       .filter((d) => !d.completed && guide.deadlineCategories.includes(d.category))
       .map((d) => daysUntil(d.dueAt))
       .filter((n) => n >= 0 && n <= 7);
@@ -1227,58 +1223,52 @@ function ProcessSpine({
     return null;
   }
 
+  const columns = stages.length + (onAddStage ? 1 : 0);
   return (
-    <section className="dos-spine" aria-label="进程主线">
-      <div className="dos-spine-head">
-        <div className="dos-spine-title">
-          {label ? `${label}进程` : "办案进程"}
-          {procedure ? (
-            <small>
-              {currentIndex >= 0 ? `第 ${currentIndex + 1} / ${stages.length} 环节` : `${stages.length} 个环节`} · 已完成 {doneCount}
-              {procedure.caseNumber ? ` · ${procedure.caseNumber}` : ""}
-            </small>
-          ) : null}
-        </div>
-        <div className="dos-tracks">
-          {chainHeader}
-          {onAddStage ? (
-            <button type="button" className="prog-chip" onClick={onAddStage}>
-              + 添加环节
-            </button>
-          ) : null}
-        </div>
+    <section className="card dos-line" aria-label="办案环节">
+      <div className="dos-line-head">
+        <span className="t">办案环节</span>
+        <span className="t-xs t-mute">
+          {currentIndex >= 0 ? `当前第 ${currentIndex + 1} / ${stages.length} 个环节` : `${stages.length} 个环节`} · 已完成 {stages.filter((s) => s.status === "done").length} · 点击环节查看该环节的待办与记录
+        </span>
       </div>
-      {!procedure ? (
-        <p className="dos-spine-empty">暂无在办程序。新增程序后，这里会按环节画出办案进程。</p>
-      ) : stages.length === 0 ? (
-        <p className="dos-spine-empty">当前程序还没有环节。</p>
-      ) : (
-        <div className="dos-rail-scroll">
-          <ol className="dos-rail-track" style={{ gridTemplateColumns: `repeat(${stages.length}, minmax(96px, 1fr))` }}>
-            {stages.map((stage, i) => {
-              const state = stage.status === "done" ? "done" : stage.key === currentKey ? "cur" : stage.status === "risk" ? "risk" : "todo";
-              const flag = flagFor(stage);
-              const date = stageChainDate(stage, procedure);
-              return (
-                <li key={stage.key} className={cn("dos-node", state, stage.key === selectedKey && "sel", i < currentIndex && "passed")}>
-                  <span className="dos-flag-slot">{flag ? <span className={cn("dos-flag", flag.tone)}>{flag.text}</span> : state === "cur" ? <span className="dos-flag now">当前</span> : null}</span>
-                  <button type="button" className="dos-node-btn" onClick={() => onSelect(stage.key)} aria-pressed={stage.key === selectedKey} title={`${stage.name} · ${STAGE_STATUS_TEXT[stage.status]}`}>
-                    <span className="pin" aria-hidden>{state === "done" ? <Check strokeWidth={3} /> : null}</span>
-                    <span className="nm">{stage.name}</span>
-                    <span className="dt">{date ?? "—"}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
-        </div>
-      )}
+      <div className="dos-rail-scroll">
+        <ol className="dos-rail-track" style={{ gridTemplateColumns: `repeat(${columns}, minmax(92px, 1fr))` }}>
+          {stages.map((stage, i) => {
+            const state = stage.status === "done" ? "done" : stage.key === currentKey ? "cur" : stage.status === "risk" ? "risk" : "todo";
+            const flag = flagFor(stage);
+            const date = stageChainDate(stage, procedure);
+            return (
+              <li key={stage.key} className={cn("dos-node", state, stage.key === selectedKey && "sel", i < currentIndex && "passed")}>
+                <span className="dos-flag-slot">{flag ? <span className={cn("dos-flag", flag.tone)}>{flag.text}</span> : state === "cur" ? <span className="dos-flag now">当前</span> : null}</span>
+                <button type="button" className="dos-node-btn" onClick={() => onSelect(stage.key)} aria-pressed={stage.key === selectedKey} title={`${stage.name} · ${STAGE_STATUS_TEXT[stage.status]}`}>
+                  <span className="pin" aria-hidden>{state === "done" ? <Check strokeWidth={3} /> : null}</span>
+                  <span className="nm">{stage.name}</span>
+                  <span className="dt">{date ?? "—"}</span>
+                </button>
+              </li>
+            );
+          })}
+          {onAddStage ? (
+            <li className="dos-node add">
+              <span className="dos-flag-slot" />
+              <button type="button" className="dos-node-btn" onClick={onAddStage}>
+                <span className="pin" aria-hidden>
+                  <Plus strokeWidth={2.6} />
+                </span>
+                <span className="nm">添加环节</span>
+                <span className="dt">可插入任意位置</span>
+              </button>
+            </li>
+          ) : null}
+        </ol>
+      </div>
     </section>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/* 下一步：任务、法定期限、开庭合并按紧迫度排序                         */
+/* 待办：只放未完成的任务、法定期限与开庭                               */
 /* ------------------------------------------------------------------ */
 
 type ActionItem = {
@@ -1294,8 +1284,6 @@ type ActionItem = {
   taskId?: string;
   deadlineId?: string;
   pendingConfirm?: boolean;
-  completed: boolean;
-  completedAt?: Date | null;
 };
 
 function buildActionItems(procedure: WorkflowProcedure | null, stages: WorkflowStage[], users: UserOption[]): ActionItem[] {
@@ -1304,6 +1292,7 @@ function buildActionItems(procedure: WorkflowProcedure | null, stages: WorkflowS
   const items: ActionItem[] = [];
   for (const stage of stages) {
     for (const task of stage.tasks) {
+      if (task.completed) continue;
       const assignee = nameOf(task.assigneeId);
       items.push({
         key: `t-${task.id}`,
@@ -1315,14 +1304,13 @@ function buildActionItems(procedure: WorkflowProcedure | null, stages: WorkflowS
         stageName: stage.name,
         meta: [assignee ? `指派 ${assignee}` : "未指派", task.description?.trim() || null].filter(Boolean).join(" · "),
         priority: task.priority,
-        taskId: task.id,
-        completed: task.completed,
-        completedAt: task.completedAt
+        taskId: task.id
       });
     }
   }
   const stageForDeadline = (category: DeadlineCategory) => stages.find((s) => stageGuideFor(s.name).deadlineCategories.includes(category)) ?? null;
   for (const deadline of procedure.deadlines) {
+    if (deadline.completed) continue;
     const stage = stageForDeadline(deadline.category);
     items.push({
       key: `d-${deadline.id}`,
@@ -1335,8 +1323,7 @@ function buildActionItems(procedure: WorkflowProcedure | null, stages: WorkflowS
       meta: deadline.basis ?? "",
       priority: 2,
       deadlineId: deadline.id,
-      pendingConfirm: deadline.confirmStatus === "PENDING",
-      completed: deadline.completed
+      pendingConfirm: deadline.confirmStatus === "PENDING"
     });
   }
   const hearingStage = stages.find((s) => /开庭|庭审|询问/.test(s.name)) ?? stages.find((s) => stageGuideFor(s.name).includeHearings) ?? null;
@@ -1352,30 +1339,42 @@ function buildActionItems(procedure: WorkflowProcedure | null, stages: WorkflowS
       stageKey: hearingStage?.key ?? null,
       stageName: hearingStage?.name ?? null,
       meta: [hearing.room, hearing.address].filter(Boolean).join(" · "),
-      priority: 1,
-      completed: false
+      priority: 1
     });
   }
-  return items;
+  const byTime = (a: ActionItem, b: ActionItem) => (a.at ? new Date(a.at).getTime() : Infinity) - (b.at ? new Date(b.at).getTime() : Infinity) || b.priority - a.priority;
+  return items.sort(byTime);
+}
+
+function actionWhen(item: ActionItem) {
+  const tone = item.days !== null && item.days < 0 ? "red" : item.kind === "hearing" ? "blue" : item.days !== null && item.days <= 7 ? "amber" : "slate";
+  const main =
+    item.kind === "hearing" && item.at
+      ? shortDay(item.at)
+      : item.days === null
+        ? "无期限"
+        : item.days < 0
+          ? `逾期 ${-item.days} 天`
+          : item.days === 0
+            ? "今天"
+            : `剩 ${item.days} 天`;
+  const sub = item.at ? (item.kind === "hearing" ? shTime(item.at) : `${shortDay(item.at)} 截止`) : "";
+  return { tone, main, sub };
 }
 
 function NextActions({
-  procedure,
-  stages,
+  actions,
   selectedStage,
   scope,
   onScopeChange,
-  users,
   canManage,
   waiting,
   onAddTask
 }: {
-  procedure: WorkflowProcedure | null;
-  stages: WorkflowStage[];
+  actions: ActionItem[];
   selectedStage: WorkflowStage | null;
   scope: "all" | "stage";
   onScopeChange: (scope: "all" | "stage") => void;
-  users: UserOption[];
   canManage: boolean;
   waiting: WaitingItem[];
   onAddTask?: () => void;
@@ -1383,15 +1382,11 @@ function NextActions({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [showLater, setShowLater] = useState(false);
-  const [showDone, setShowDone] = useState(false);
-  const all = buildActionItems(procedure, stages, users);
-  const inScope = scope === "stage" && selectedStage ? all.filter((i) => i.stageKey === selectedStage.key) : all;
-  const open = inScope.filter((i) => !i.completed);
-  const byTime = (a: ActionItem, b: ActionItem) => (a.at ? new Date(a.at).getTime() : Infinity) - (b.at ? new Date(b.at).getTime() : Infinity) || b.priority - a.priority;
-  const overdue = open.filter((i) => i.days !== null && i.days < 0).sort(byTime);
-  const soon = open.filter((i) => i.days !== null && i.days >= 0 && i.days <= 7).sort(byTime);
-  const later = open.filter((i) => i.days === null || i.days > 7).sort(byTime);
-  const done = inScope.filter((i) => i.completed && i.kind === "task");
+  const [adjusting, setAdjusting] = useState<{ id: string; title: string; dueAt: Date } | null>(null);
+  const inScope = scope === "stage" && selectedStage ? actions.filter((i) => i.stageKey === selectedStage.key) : actions;
+  const overdue = inScope.filter((i) => i.days !== null && i.days < 0);
+  const soon = inScope.filter((i) => i.days !== null && i.days >= 0 && i.days <= 7);
+  const later = inScope.filter((i) => i.days === null || i.days > 7);
 
   function run(action: () => Promise<unknown>, ok: string) {
     startTransition(async () => {
@@ -1407,57 +1402,49 @@ function NextActions({
 
   async function completeDeadline(item: ActionItem) {
     if (!item.deadlineId) return;
-    if (!(await confirmDialog({ title: `标记「${item.title}」已完成？`, description: "法定期限完成后不再提醒，可在案件档案的期限台账中查看。", confirmText: "标记完成" }))) return;
+    if (!(await confirmDialog({ title: `标记「${item.title}」已完成？`, description: "法定期限完成后不再提醒，会记入经办记录。", confirmText: "标记完成" }))) return;
     run(() => toggleDeadlineCompleted(item.deadlineId!), "期限已标记完成");
   }
 
   const row = (item: ActionItem) => {
-    const tone = item.completed ? "done" : item.days !== null && item.days < 0 ? "red" : item.kind === "hearing" ? "blue" : item.days !== null && item.days <= 3 ? "amber" : item.days !== null && item.days <= 7 ? "amber" : "slate";
-    const whenMain = item.completed
-      ? "已完成"
-      : item.kind === "hearing" && item.at
-        ? shortDay(item.at)
-        : item.days === null
-          ? "无期限"
-          : item.days < 0
-            ? `逾期 ${-item.days} 天`
-            : item.days === 0
-              ? "今天"
-              : `剩 ${item.days} 天`;
-    const whenSub = item.completed
-      ? item.completedAt ? shortDay(item.completedAt) : ""
-      : item.at
-        ? item.kind === "hearing"
-          ? shTime(item.at)
-          : `${shortDay(item.at)} 截止`
-        : "";
+    const when = actionWhen(item);
     return (
-      <div key={item.key} className={cn("dos-act", tone)}>
+      <div key={item.key} className={cn("dos-act", when.tone)}>
         <i className="sev" aria-hidden />
         <div className="when">
-          <b>{whenMain}</b>
-          <span>{whenSub}</span>
+          <b>{when.main}</b>
+          <span>{when.sub}</span>
         </div>
         <div className="what">
-          <div className={cn("t", item.completed && "line-through text-[var(--t-muted)]")}>
+          <div className="t">
             {item.title}
             {item.kind === "deadline" ? <span className="badge b-outline-red" style={{ fontSize: 10 }}>法定期限</span> : null}
             {item.kind === "hearing" ? <span className="badge b-blue" style={{ fontSize: 10 }}>开庭</span> : null}
-            {item.kind === "task" && item.priority === 2 && !item.completed ? <span className="badge b-red" style={{ fontSize: 10 }}>紧急</span> : null}
+            {item.kind === "task" && item.priority === 2 ? <span className="badge b-red" style={{ fontSize: 10 }}>紧急</span> : null}
             {item.pendingConfirm ? <span className="badge b-amber" style={{ fontSize: 10 }}>期限待确认</span> : null}
           </div>
           <div className="d">{[scope === "all" ? item.stageName : null, item.meta || null].filter(Boolean).join(" · ") || " "}</div>
         </div>
         <div className="op">
           {canManage && item.kind === "task" && item.taskId ? (
-            <button type="button" className={cn("btn btn-sm", !item.completed && tone === "red" ? "btn-primary" : "btn-secondary")} disabled={pending} onClick={() => run(() => toggleTaskCompleted(item.taskId!), item.completed ? "已恢复为未完成" : "任务已完成")}>
-              {item.completed ? "恢复" : "完成"}
-            </button>
-          ) : null}
-          {canManage && item.kind === "deadline" && !item.completed ? (
-            <button type="button" className="btn btn-secondary btn-sm" disabled={pending} onClick={() => completeDeadline(item)}>
+            <button type="button" className={cn("btn btn-sm", when.tone === "red" ? "btn-primary" : "btn-secondary")} disabled={pending} onClick={() => run(() => toggleTaskCompleted(item.taskId!), "任务已完成，已记入经办记录")}>
               完成
             </button>
+          ) : null}
+          {canManage && item.kind === "deadline" && item.deadlineId ? (
+            <>
+              {item.pendingConfirm ? (
+                <button type="button" className="btn btn-secondary btn-sm" disabled={pending} onClick={() => run(() => confirmDeadline({ id: item.deadlineId! }), "期限已确认")}>
+                  确认
+                </button>
+              ) : null}
+              <button type="button" className="btn btn-ghost btn-sm" disabled={pending} onClick={() => item.at && setAdjusting({ id: item.deadlineId!, title: item.title, dueAt: item.at })}>
+                调整
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" disabled={pending} onClick={() => completeDeadline(item)}>
+                完成
+              </button>
+            </>
           ) : null}
         </div>
       </div>
@@ -1467,20 +1454,16 @@ function NextActions({
   const empty = overdue.length + soon.length + later.length === 0;
 
   return (
-    <section className="card" aria-label="下一步">
+    <section className="card" aria-label="待办">
       <div className="panel-head flex-wrap">
         <div className="panel-title">
           <ListChecks className="ic" strokeWidth={1.8} />
-          下一步
-          <span className="t-xs t-mute" style={{ fontWeight: 400 }}>任务、法定期限与开庭按紧迫度排列</span>
+          待办
+          <span className="t-xs t-mute" style={{ fontWeight: 400 }}>未完成的任务、法定期限与开庭，完成后转入经办记录</span>
         </div>
         <div className="flex items-center gap-2">
           {selectedStage ? (
-            <Segmented
-              items={[{ key: "all", label: "全部" }, { key: "stage", label: `本环节 · ${selectedStage.name}` }]}
-              value={scope}
-              onChange={onScopeChange}
-            />
+            <Segmented items={[{ key: "all", label: "全部" }, { key: "stage", label: `本环节 · ${selectedStage.name}` }]} value={scope} onChange={onScopeChange} />
           ) : null}
           {canManage && onAddTask ? (
             <button type="button" className="btn btn-secondary btn-sm" onClick={onAddTask}>
@@ -1492,9 +1475,8 @@ function NextActions({
       </div>
 
       {empty && waiting.length === 0 ? (
-        <EmptyState compact title={scope === "stage" ? "本环节没有待办事项" : "没有待办事项"} description="任务、法定期限与开庭会按紧迫度汇集在这里；逾期任务同时进入工作台「今日行动」。" />
+        <EmptyState compact title={scope === "stage" ? "本环节没有待办" : "没有待办"} description="逾期任务会同时进入工作台「今日行动」。" />
       ) : null}
-
       {overdue.length ? (
         <div className="dos-lane">
           <div className="dos-lane-h red">已逾期 · {overdue.length}</div>
@@ -1540,62 +1522,51 @@ function NextActions({
           ))}
         </div>
       ) : null}
-      {done.length ? (
-        <div className="dos-lane">
-          <button type="button" className="dos-lane-h as-btn" onClick={() => setShowDone((v) => !v)} aria-expanded={showDone}>
-            已完成任务 · {done.length} {showDone ? "（收起）" : "（展开）"}
-          </button>
-          {showDone ? done.map(row) : null}
-        </div>
+      {adjusting ? (
+        <AdjustDeadlineDialog
+          deadline={adjusting}
+          onClose={() => {
+            setAdjusting(null);
+            router.refresh();
+          }}
+        />
       ) : null}
     </section>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/* 经办日志：记录、研判、材料入卷、系统事件——唯一的时间线，按环节分段    */
+/* 经办记录：只放已发生的事——沟通、研判、完成的任务、已开庭、系统事件    */
 /* ------------------------------------------------------------------ */
 
-type LogKind = "talk" | "court" | "note" | "doc" | "sys";
-type LogEntry = { key: string; kind: LogKind; at: Date; stageName: string | null; node: React.ReactNode };
+type LogKind = "talk" | "court" | "note" | "task" | "sys";
+type LogItem = {
+  key: string;
+  kind: LogKind;
+  at: Date;
+  stageName: string | null;
+  title: string;
+  body: string | null;
+  meta: string;
+  channelTone?: "court" | "talk";
+  stageTag?: string | null;
+  eventType?: string;
+};
 
-const LOG_FILTERS: { key: "all" | LogKind; label: string }[] = [
-  { key: "all", label: "全部" },
-  { key: "talk", label: "沟通" },
-  { key: "court", label: "法院" },
-  { key: "note", label: "研判" },
-  { key: "doc", label: "材料" },
-  { key: "sys", label: "系统" }
-];
-
-function CaseLog({
+function buildLogItems({
   procedure,
   stages,
   notes,
   events,
-  documents,
-  focusStageName,
-  focusSignal,
-  canManage,
-  onWriteRecord,
-  onWriteJudgment
+  users
 }: {
   procedure: WorkflowProcedure | null;
   stages: WorkflowStage[];
   notes: WorkflowNote[];
   events: WorkflowTimelineEvent[];
-  documents: WorkflowDocument[];
-  focusStageName: string | null;
-  focusSignal: number;
-  canManage: boolean;
-  onWriteRecord: () => void;
-  onWriteJudgment: () => void;
-}) {
-  const [filter, setFilter] = useState<"all" | LogKind>("all");
-  const [expanded, setExpanded] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  // 时间归段：有开始时间的环节按开始时间升序，记录落在其后最近开始的环节；明确归属（材料外键、研判标签）优先
+  users: UserOption[];
+}): LogItem[] {
+  // 时间归段：记录落在其前最近开始的环节；研判笔记环节标签、任务所属环节优先
   const started = (procedure?.stages ?? [])
     .filter((s) => s.status !== "HIDDEN" && s.startedAt)
     .sort((a, b) => new Date(a.startedAt!).getTime() - new Date(b.startedAt!).getTime());
@@ -1604,91 +1575,157 @@ function CaseLog({
     for (const s of started) if (new Date(s.startedAt!).getTime() <= at.getTime()) hit = s.name;
     return hit;
   };
-  const stageNameById = (id: string | null) => (id ? procedure?.stages.find((s) => s.id === id)?.name ?? null : null);
+  const nameOf = (id: string | null) => (id ? users.find((u) => u.id === id)?.name ?? null : null);
+  const items: LogItem[] = [];
+  const now = Date.now();
 
-  const entries: LogEntry[] = [];
   for (const note of notes) {
     const at = new Date(note.occurredAt);
     const judgment = note.tags.includes(JUDGMENT_NOTE_TAG);
     const kind: LogKind = judgment ? "note" : note.channel === "COURT" ? "court" : "talk";
-    entries.push({
+    items.push({
       key: `n-${note.id}`,
       kind,
       at,
       stageName: noteStage(note) ?? stageByTime(at),
-      node: judgment ? (
-        <JudgmentNoteRow note={note} />
-      ) : (
-        <div className="rec">
-          <div className="rec-ic" style={kind === "court" ? { background: "var(--bronze-bg)", color: "var(--bronze)" } : { background: "var(--teal-soft)", color: "var(--teal-deep)" }}>
-            {kind === "court" ? <Landmark strokeWidth={2} /> : <MessageSquare strokeWidth={2} />}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="rec-title">
-              {NOTE_CHANNEL_LABEL[note.channel] ?? "办案记录"}
-              {note.withWhom ? ` · ${note.withWhom}` : ""}
-            </div>
-            <div className="dos-note-text whitespace-pre-wrap">{note.content}</div>
-            <div className="rec-meta">
-              {note.author.name} · {formatDateTimeShort(at)}
-            </div>
-          </div>
-        </div>
-      )
+      title: judgment ? "研判笔记" : `${NOTE_CHANNEL_LABEL[note.channel] ?? "办案记录"}${note.withWhom ? ` · ${note.withWhom}` : ""}`,
+      body: note.content,
+      meta: `${note.author.name} · ${formatDateTimeShort(at)}`,
+      stageTag: noteStage(note)
+    });
+  }
+  for (const stage of stages) {
+    for (const task of stage.tasks) {
+      if (!task.completed || !task.completedAt) continue;
+      const at = new Date(task.completedAt);
+      const assignee = nameOf(task.assigneeId);
+      items.push({
+        key: `t-${task.id}`,
+        kind: "task",
+        at,
+        stageName: stage.name,
+        title: `完成任务：${task.title}`,
+        body: null,
+        meta: [assignee ? `经办 ${assignee}` : null, formatDateTimeShort(at)].filter(Boolean).join(" · ")
+      });
+    }
+  }
+  const hearingStage = stages.find((s) => /开庭|庭审|询问/.test(s.name))?.name ?? null;
+  for (const hearing of procedure?.hearings ?? []) {
+    const at = new Date(hearing.startsAt);
+    if (at.getTime() > now) continue;
+    // 标题点名了环节（如「庭前会议」）时归该环节，否则归开庭环节
+    const named = stages.find((s) => hearing.title.includes(s.name))?.name ?? null;
+    items.push({
+      key: `h-${hearing.id}`,
+      kind: "court",
+      at,
+      stageName: named ?? hearingStage ?? stageByTime(at),
+      title: `已开庭：${hearing.title}`,
+      body: null,
+      meta: [hearing.room, formatDateTimeShort(at)].filter(Boolean).join(" · "),
+      channelTone: "court"
     });
   }
   for (const event of events) {
-    if (event.eventType === "DOCUMENT_UPLOADED") continue; // 材料以材料本身入日志，避免重复
+    // 材料在「材料与证据」；任务、开庭已按实际结果入记录，避免同一件事出现两次
+    if (["DOCUMENT_UPLOADED", "TASK_ADDED", "HEARING_SCHEDULED", "DEADLINE_ADDED"].includes(event.eventType)) continue;
     const at = new Date(event.occurredAt);
-    const tone = EVENT_TONE[event.eventType] ?? { bg: "var(--slate-bg)", fg: "var(--slate)", icon: ListChecks };
-    const Icon = tone.icon;
-    entries.push({
+    items.push({
       key: `e-${event.id}`,
       kind: "sys",
       at,
       stageName: stageByTime(at),
-      node: (
-        <div className="rec">
-          <div className="rec-ic" style={{ background: tone.bg, color: tone.fg }}>
-            <Icon strokeWidth={2} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="rec-title">{event.title}</div>
-            <div className="rec-meta">
-              {formatDateTimeShort(at)}
-              {event.content ? ` · ${event.content}` : ""}
-            </div>
-          </div>
-        </div>
-      )
+      title: event.title,
+      body: null,
+      meta: [formatDateTimeShort(at), event.content].filter(Boolean).join(" · "),
+      eventType: event.eventType
     });
   }
-  for (const doc of documents) {
-    const at = new Date(doc.createdAt);
-    const matched = doc.stageId ? stageNameById(doc.stageId) : stages.find((s) => s.id && documentMatchesStage(doc, s))?.name ?? null;
-    entries.push({ key: `d-${doc.id}`, kind: "doc", at, stageName: matched ?? stageByTime(at), node: <DocRow doc={doc} compact /> });
-  }
+  return items.sort((a, b) => b.at.getTime() - a.at.getTime());
+}
 
-  const shown = entries.filter((e) => filter === "all" || e.kind === filter);
-  // 段顺序：环节倒序（越晚的环节越靠上），未归段记录最后
+const LOG_FILTERS: { key: "all" | LogKind; label: string }[] = [
+  { key: "all", label: "全部" },
+  { key: "talk", label: "沟通" },
+  { key: "court", label: "法院" },
+  { key: "note", label: "研判" },
+  { key: "task", label: "完成的任务" },
+  { key: "sys", label: "系统" }
+];
+
+function LogRow({ item }: { item: LogItem }) {
+  if (item.kind === "note") {
+    return (
+      <div className="rec">
+        <div className="rec-ic" style={{ background: "var(--violet-bg)", color: "var(--violet)" }}>
+          <PenLine strokeWidth={2} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="rec-title">
+            研判笔记
+            {item.stageTag ? <span className="badge b-white" style={{ fontSize: 9.5, padding: "0 6px", marginLeft: 6 }}>{item.stageTag}</span> : null}
+            <span className="badge b-violet" style={{ fontSize: 9.5, padding: "0 6px", marginLeft: 6 }}>人工判断</span>
+          </div>
+          <div className="rec-note whitespace-pre-wrap">{item.body}</div>
+          <div className="rec-meta">{item.meta}</div>
+        </div>
+      </div>
+    );
+  }
+  const tone =
+    item.kind === "court"
+      ? { bg: "var(--bronze-bg)", fg: "var(--bronze)", icon: Landmark }
+      : item.kind === "talk"
+        ? { bg: "var(--teal-soft)", fg: "var(--teal-deep)", icon: MessageSquare }
+        : item.kind === "task"
+          ? { bg: "var(--green-bg)", fg: "var(--green)", icon: Check }
+          : EVENT_TONE[item.eventType ?? ""] ?? { bg: "var(--slate-bg)", fg: "var(--slate)", icon: ListChecks };
+  const Icon = tone.icon;
+  return (
+    <div className="rec">
+      <div className="rec-ic" style={{ background: tone.bg, color: tone.fg }}>
+        <Icon strokeWidth={2} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="rec-title">{item.title}</div>
+        {item.body ? <div className="dos-note-text whitespace-pre-wrap">{item.body}</div> : null}
+        <div className="rec-meta">{item.meta}</div>
+      </div>
+    </div>
+  );
+}
+
+function CaseLog({
+  items,
+  stages,
+  procedure,
+  focusStageName,
+  canManage,
+  onWriteRecord,
+  onWriteJudgment
+}: {
+  items: LogItem[];
+  stages: WorkflowStage[];
+  procedure: WorkflowProcedure | null;
+  focusStageName: string | null;
+  canManage: boolean;
+  onWriteRecord: () => void;
+  onWriteJudgment: () => void;
+}) {
+  const [filter, setFilter] = useState<"all" | LogKind>("all");
+  const [expanded, setExpanded] = useState(false);
+
+  const scoped = focusStageName ? items.filter((e) => e.stageName === focusStageName) : items;
+  const shown = scoped.filter((e) => filter === "all" || e.kind === filter);
   const order = [...stages.map((s) => s.name)].reverse();
-  const groups = new Map<string, LogEntry[]>();
+  const groups = new Map<string, LogItem[]>();
   for (const e of shown) {
     const key = e.stageName && order.includes(e.stageName) ? e.stageName : "__none";
     groups.set(key, [...(groups.get(key) ?? []), e]);
   }
-  const segs = [...order.filter((n) => groups.has(n)), ...(groups.has("__none") ? ["__none"] : [])].map((name) => ({
-    name,
-    items: (groups.get(name) ?? []).sort((a, b) => b.at.getTime() - a.at.getTime())
-  }));
-  const focusIndex = focusStageName ? segs.findIndex((s) => s.name === focusStageName) : -1;
-  const visibleSegs = expanded || focusIndex >= 3 ? segs : segs.slice(0, 3);
-
-  useEffect(() => {
-    if (!focusSignal || !focusStageName) return;
-    const el = rootRef.current?.querySelector<HTMLElement>(`[data-seg="${CSS.escape(focusStageName)}"]`);
-    el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [focusSignal, focusStageName]);
+  const segs = [...order.filter((n) => groups.has(n)), ...(groups.has("__none") ? ["__none"] : [])].map((name) => ({ name, items: groups.get(name) ?? [] }));
+  const visibleSegs = expanded ? segs : segs.slice(0, 3);
 
   const stageMeta = (name: string) => {
     const stage = stages.find((s) => s.name === name);
@@ -1698,12 +1735,14 @@ function CaseLog({
   };
 
   return (
-    <section className="card" aria-label="经办日志" ref={rootRef}>
+    <section className="card" aria-label="经办记录">
       <div className="panel-head flex-wrap">
         <div className="panel-title">
           <BookOpen className="ic" strokeWidth={1.8} />
-          经办日志
-          <span className="t-xs t-mute" style={{ fontWeight: 400 }}>案件发生过的一切，按环节记在一条线上</span>
+          经办记录
+          <span className="t-xs t-mute" style={{ fontWeight: 400 }}>
+            {focusStageName ? `本环节「${focusStageName}」已发生的事项` : "已发生的事项，按环节分段"}
+          </span>
         </div>
         {canManage ? (
           <div className="flex gap-[7px]">
@@ -1718,9 +1757,9 @@ function CaseLog({
           </div>
         ) : null}
       </div>
-      <div className="dos-log-filters" role="group" aria-label="日志筛选">
+      <div className="dos-log-filters" role="group" aria-label="记录筛选">
         {LOG_FILTERS.map((f) => {
-          const count = f.key === "all" ? entries.length : entries.filter((e) => e.kind === f.key).length;
+          const count = f.key === "all" ? scoped.length : scoped.filter((e) => e.kind === f.key).length;
           return (
             <button key={f.key} type="button" className={cn("dos-filter", filter === f.key && "on")} aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}>
               {f.label}
@@ -1730,12 +1769,12 @@ function CaseLog({
         })}
       </div>
       {segs.length === 0 ? (
-        <EmptyState compact title="暂无经办记录" description="电话、会见、法院沟通、研判笔记与上传的材料都会按时间记在这里。" />
+        <EmptyState compact title={focusStageName ? "本环节暂无记录" : "暂无经办记录"} description="电话、会见、法院沟通、研判笔记、完成的任务都会记在这里。" />
       ) : (
         visibleSegs.map((seg) => {
           const meta = seg.name === "__none" ? { status: "", period: "" } : stageMeta(seg.name);
           return (
-            <div key={seg.name} data-seg={seg.name} className={cn("dos-seg", seg.name === focusStageName && "focus")}>
+            <div key={seg.name} className="dos-seg">
               <div className="dos-seg-h">
                 <span className="nm">{seg.name === "__none" ? "收案及其他" : seg.name}</span>
                 {meta.status ? <span className="st">{meta.status}</span> : null}
@@ -1744,7 +1783,7 @@ function CaseLog({
                 <span className="pd">{seg.items.length} 条</span>
               </div>
               {seg.items.map((e) => (
-                <div key={e.key}>{e.node}</div>
+                <LogRow key={e.key} item={e} />
               ))}
             </div>
           );
@@ -1756,6 +1795,79 @@ function CaseLog({
         </button>
       ) : null}
     </section>
+  );
+}
+
+/** 案件档案右侧提醒：最近待办 + 最近记录，只做提醒，完整内容在办案进程 */
+function ArchiveGlance({
+  actions,
+  logItems,
+  waiting,
+  procedureLabel,
+  onOpenWork
+}: {
+  actions: ActionItem[];
+  logItems: LogItem[];
+  waiting: WaitingItem[];
+  procedureLabel: string | null;
+  onOpenWork: () => void;
+}) {
+  const overdue = actions.filter((a) => a.days !== null && a.days < 0).length;
+  return (
+    <>
+      <div className="card">
+        <div className="rail-sec-head">
+          <ListChecks className="h-[15px] w-[15px] text-[var(--t-muted)]" strokeWidth={1.8} />
+          最近待办
+          {procedureLabel ? <span className="t-xs t-mute" style={{ fontWeight: 400 }}>{procedureLabel}</span> : null}
+          <button type="button" className="link border-0 bg-transparent p-0" onClick={onOpenWork}>
+            全部 {actions.length + waiting.length}
+          </button>
+        </div>
+        {actions.length === 0 && waiting.length === 0 ? (
+          <div className="panel-body t-xs t-mute">没有待办</div>
+        ) : (
+          <>
+            {overdue > 0 ? <div className="dos-glance-alert">已逾期 {overdue} 项</div> : null}
+            {actions.slice(0, 3).map((a) => {
+              const when = actionWhen(a);
+              return (
+                <button key={a.key} type="button" className="dos-glance-row" onClick={onOpenWork}>
+                  <span className={cn("w", when.tone)}>{when.main}</span>
+                  <span className="t">{a.title}</span>
+                </button>
+              );
+            })}
+            {waiting.slice(0, actions.length >= 3 ? 0 : 3 - actions.length).map((w) => (
+              <button key={w.key} type="button" className="dos-glance-row" onClick={w.onOpen ?? onOpenWork}>
+                <span className="w teal">审批中</span>
+                <span className="t">{w.title}</span>
+              </button>
+            ))}
+          </>
+        )}
+      </div>
+      <div className="card">
+        <div className="rail-sec-head">
+          <BookOpen className="h-[15px] w-[15px] text-[var(--t-muted)]" strokeWidth={1.8} />
+          最近记录
+          <button type="button" className="link border-0 bg-transparent p-0" onClick={onOpenWork}>
+            全部 {logItems.length}
+          </button>
+        </div>
+        {logItems.length === 0 ? (
+          <div className="panel-body t-xs t-mute">暂无记录</div>
+        ) : (
+          logItems.slice(0, 3).map((l) => (
+            <button key={l.key} type="button" className="dos-glance-row col" onClick={onOpenWork}>
+              <span className="t">{l.title}</span>
+              {l.body ? <span className="b">{l.body}</span> : null}
+              <span className="m">{l.meta}</span>
+            </button>
+          ))
+        )}
+      </div>
+    </>
   );
 }
 

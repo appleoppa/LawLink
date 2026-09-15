@@ -64,6 +64,7 @@ import { parseExpressLabel } from "@/server/ai/parse-express";
 import { parseSummons } from "@/server/ai/parse-summons";
 import type { ExpressItem } from "./info-extras";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { shDayKey } from "@/lib/ui/sh-time";
 
 type ProcedureWithChildren = MatterProcedure & {
   deadlines: Deadline[];
@@ -77,10 +78,7 @@ type HearingRowItem = Hearing & { procLabel: string };
 type DeadlineRowItem = Deadline & { procLabel: string };
 
 function formatIsoDate(d: Date | string) {
-  const dt = new Date(d);
-  const m = String(dt.getMonth() + 1).padStart(2, "0");
-  const day = String(dt.getDate()).padStart(2, "0");
-  return `${dt.getFullYear()}-${m}-${day}`;
+  return shDayKey(d);
 }
 type MemoRowItem = ProcedureMemo & { procLabel: string };
 type ImportantCategory = "hearing" | "deadline" | "express" | "memo";
@@ -102,24 +100,28 @@ export function ProcedureRemindersAndMemos({
   procedures,
   currentProcedureId,
   expresses,
-  canManage
+  canManage,
+  kinds
 }: {
   matterId: string;
   procedures: ProcedureWithChildren[];
   currentProcedureId: string;
   expresses: ExpressItem[];
   canManage: boolean;
+  /** 只展示部分类别（案卷工作台「办案进程」只放快递与备忘，期限与开庭在待办 / 经办记录） */
+  kinds?: ImportantCategory[];
 }) {
+  const allow = (k: ImportantCategory) => !kinds || kinds.includes(k);
   const multiProc = procedures.length > 1;
   const procOptions = procedures.map((p) => ({ id: p.id, label: procLabelOf(p) }));
 
-  const hearings: HearingRowItem[] = procedures.flatMap((p) =>
+  const hearings: HearingRowItem[] = !allow("hearing") ? [] : procedures.flatMap((p) =>
     p.hearings.map((h) => ({ ...h, procLabel: procLabelOf(p) }))
   );
-  const deadlines: DeadlineRowItem[] = procedures.flatMap((p) =>
+  const deadlines: DeadlineRowItem[] = !allow("deadline") ? [] : procedures.flatMap((p) =>
     p.deadlines.map((d) => ({ ...d, procLabel: procLabelOf(p) }))
   );
-  const memos: MemoRowItem[] = procedures
+  const memos: MemoRowItem[] = !allow("memo") ? [] : procedures
     .flatMap((p) => p.memos.map((m) => ({ ...m, procLabel: procLabelOf(p) })))
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
@@ -128,8 +130,9 @@ export function ProcedureRemindersAndMemos({
       matterId={matterId}
       deadlines={deadlines}
       hearings={hearings}
-      expresses={expresses}
+      expresses={allow("express") ? expresses : []}
       memos={memos}
+      kinds={kinds}
       procedures={procOptions}
       defaultProcedureId={currentProcedureId}
       hearingCounts={Object.fromEntries(procedures.map((p) => [p.id, p.hearings.length]))}
@@ -158,8 +161,10 @@ function ImportantItemsCard({
   hearingCounts,
   proceduresDetail,
   multiProc,
-  canManage
+  canManage,
+  kinds
 }: {
+  kinds?: ImportantCategory[];
   matterId: string;
   deadlines: DeadlineRowItem[];
   hearings: HearingRowItem[];
@@ -253,19 +258,19 @@ function ImportantItemsCard({
 
   const total = hearings.length + deadlines.length + expresses.length + memos.length;
   const allItems = buildAllImportantItems({ hearings, deadlines, expresses, memos });
-  const filters: { value: ImportantFilter; label: string; count: number }[] = [
+  const filters: { value: ImportantFilter; label: string; count: number }[] = ([
     { value: "all", label: "全部", count: total },
     { value: "hearing", label: "开庭", count: hearings.length },
     { value: "deadline", label: "时限", count: deadlines.length },
     { value: "express", label: "快递", count: expresses.length },
     { value: "memo", label: "备忘", count: memos.length }
-  ];
+  ] as { value: ImportantFilter; label: string; count: number }[]).filter((f) => f.value === "all" || !kinds || kinds.includes(f.value as ImportantCategory));
 
   const currentCount = filters.find((f) => f.value === filter)?.count ?? 0;
   const currentLabel = filters.find((f) => f.value === filter)?.label ?? "重要事项";
 
   function openAddDialog() {
-    setAddType(filter === "all" ? "hearing" : filter);
+    setAddType(filter === "all" ? (kinds?.[0] ?? "hearing") : filter);
     setAddOpen(true);
   }
 
@@ -274,7 +279,7 @@ function ImportantItemsCard({
       <header className="panel-head shrink-0 flex-wrap">
         <span className="panel-title">
           <AlertTriangle className="ic" />
-          期限、开庭与备忘
+          {kinds ? kinds.map((k) => ({ hearing: "开庭", deadline: "期限", express: "快递", memo: "备忘" })[k]).join("与") : "期限、开庭与备忘"}
           <span className="mo-count">{total}</span>
         </span>
         <div className="flex flex-wrap items-center gap-2">
@@ -404,7 +409,7 @@ function ImportantItemsCard({
 }
 
 /** v1.x P0-8: 人工调整到期日（写已调整 + 留痕；规则重算不再覆盖）——日期控件 + 必填原因 */
-function AdjustDeadlineDialog({ deadline, onClose }: { deadline: DeadlineRowItem; onClose: () => void }) {
+export function AdjustDeadlineDialog({ deadline, onClose }: { deadline: { id: string; title: string; dueAt: Date }; onClose: () => void }) {
   const [date, setDate] = useState(formatIsoDate(deadline.dueAt));
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
