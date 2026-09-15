@@ -98,6 +98,8 @@ import { documentSourceChip } from "@/lib/ui/moan-tones";
 import type { FolderPayload, TemplateSummary } from "./folder-types";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
 import { useDocActions } from "./doc-actions-context";
+import { EvidencePoints } from "./evidence-panel";
+import { evidenceKindLabel } from "@/lib/enums";
 import { shMonthDay, shMonthDayTime, shTime } from "@/lib/ui/sh-time";
 
 type WorkflowTask = {
@@ -714,8 +716,8 @@ export function ProcedureWorkflowPanel({
   archiveRailTop,
   expresses,
   onAddLedger,
-  renderEvidence,
   materialsExtra,
+  onCaseSearch,
   financeNode,
   sealNode,
   waiting
@@ -742,8 +744,8 @@ export function ProcedureWorkflowPanel({
   expresses?: ExpressItem[];
   /** 经办记录「快递 / 备忘」添加入口 */
   onAddLedger?: (type: "express" | "memo") => void;
-  /** 证据链：按范围内材料过滤（docIds 为 null 表示全部环节，含未挂材料的证据项） */
-  renderEvidence?: (scope: { docIds: string[] | null; stageName: string | null; documents: { id: string; name: string }[] }) => React.ReactNode;
+  /** 类案检索入口（元典已配置时） */
+  onCaseSearch?: () => void;
   /** 全部环节范围下材料之后的补充内容（AI 审查总览） */
   materialsExtra?: React.ReactNode;
   financeNode?: React.ReactNode;
@@ -830,8 +832,6 @@ export function ProcedureWorkflowPanel({
     });
   }
 
-  // 材料与证据的范围
-  const scopedDocs = effectiveScope === "stage" && selectedStage ? documents.filter((d) => documentMatchesStage(d, selectedStage)) : documents;
 
   const VIEWS: { key: DossierView; label: string; show: boolean }[] = [
     { key: "archive", label: "案件档案", show: true },
@@ -882,6 +882,7 @@ export function ProcedureWorkflowPanel({
               onUpload={() => setUploadSignal((n) => n + 1)}
               onOpenTemplate={() => setTemplateOpen(true)}
               onWriteNote={() => onWriteNote({ judgment: true, stageName: selectedStage.name })}
+              onCaseSearch={onCaseSearch}
               onRemoveStage={canManage && selectedStage.removable ? () => handleRemoveStage(selectedStage) : undefined}
             />
           ) : null}
@@ -920,13 +921,6 @@ export function ProcedureWorkflowPanel({
                 canManage={canManage}
                 onOpenTemplate={() => setTemplateOpen(true)}
               />
-              {renderEvidence
-                ? renderEvidence({
-                    docIds: effectiveScope === "stage" && selectedStage ? scopedDocs.map((d) => d.id) : null,
-                    stageName: effectiveScope === "stage" ? selectedStage?.name ?? null : null,
-                    documents: scopedDocs.map((d) => ({ id: d.id, name: d.name }))
-                  })
-                : null}
               {effectiveScope === "all" ? materialsExtra : null}
               <CaseLog
                 items={logItems}
@@ -1064,8 +1058,10 @@ function StageBar({
   onUpload,
   onOpenTemplate,
   onWriteNote,
+  onCaseSearch,
   onRemoveStage
 }: {
+  onCaseSearch?: () => void;
   stage: WorkflowStage;
   procedure: WorkflowProcedure;
   documents: WorkflowDocument[];
@@ -1148,6 +1144,12 @@ function StageBar({
             <PenLine />
             写研判笔记
           </button>
+          {onCaseSearch ? (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={onCaseSearch}>
+              <Scale />
+              类案检索
+            </button>
+          ) : null}
           {onRemoveStage ? (
             <button type="button" className="btn btn-ghost btn-sm ml-auto text-[var(--t-muted)]" onClick={onRemoveStage}>
               移除环节
@@ -2026,6 +2028,7 @@ function MaterialsSection({
   canManage: boolean;
   onOpenTemplate: () => void;
 }) {
+  const { onAddEvidence, unlinkedEvidence } = useDocActions();
   if (!procedure) return null;
   if (stage) {
     return (
@@ -2056,6 +2059,11 @@ function MaterialsSection({
           <span className="badge b-white" style={{ marginLeft: 2 }}>{documents.length}</span>
           <span className="t-xs t-mute" style={{ fontWeight: 400 }}>全部环节，按环节分组；上传请先选择环节</span>
         </div>
+        {onAddEvidence ? (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => onAddEvidence(null)}>
+            ＋证据要点
+          </button>
+        ) : null}
       </div>
       {documents.length === 0 ? <EmptyState compact icon={FileText} title="暂无材料" description="选择环节后上传，材料会归入该环节。" /> : null}
       {stages.map((s) => {
@@ -2082,16 +2090,30 @@ function MaterialsSection({
           {unassigned.map((d) => <DocRow key={d.id} doc={d} />)}
         </div>
       ) : null}
+      {unlinkedEvidence?.length ? (
+        <div className="dos-seg">
+          <div className="dos-seg-h">
+            <span className="nm">未挂材料的证据要点</span>
+            <span className="rule" />
+            <span className="pd">{unlinkedEvidence.length} 条</span>
+          </div>
+          <div className="dos-doc-evbox flat">
+            <EvidencePoints items={unlinkedEvidence} showSource />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
 
 function DocRow({ doc, compact = false }: { doc: WorkflowDocument; compact?: boolean }) {
-  const { onReview } = useDocActions();
+  const { onReview, evidenceByDoc, onAddEvidence } = useDocActions();
+  const [evOpen, setEvOpen] = useState(false);
   const pUrl = documentPreviewUrl(doc);
   const chip = doc.sourceOrigin ? documentSourceChip[doc.sourceOrigin] : null;
   const ext = doc.name.split(".").pop()?.toLowerCase() ?? "";
   const tone = ext === "pdf" ? "red" : ["doc", "docx"].includes(ext) ? "blue" : doc.textSource === "OCR" ? "violet" : "slate";
+  const evidence = evidenceByDoc?.get(doc.id) ?? [];
   const meta: string[] = [];
   if (doc.size) meta.push(formatBytes(doc.size));
   meta.push(`${shortDay(doc.createdAt)} ${doc.templateId ? "从模板生成" : "上传"}`);
@@ -2099,37 +2121,61 @@ function DocRow({ doc, compact = false }: { doc: WorkflowDocument; compact?: boo
   if (!compact && doc.sha256) meta.push(`校验值 ${doc.sha256.slice(0, 4)}…${doc.sha256.slice(-4)}`);
   if (doc.version && doc.version > 1) meta.push(`版本 ${doc.version}`);
   return (
-    <div className="doc-row">
-      <DocIcon tone={tone} />
-      <div className="min-w-0 flex-1">
-        {pUrl ? (
-          <a href={pUrl} target="_blank" rel="noreferrer" className="doc-name block truncate hover:text-[var(--teal-deep)]">
-            {doc.name}
-          </a>
-        ) : (
-          <div className="doc-name truncate">{doc.name}</div>
-        )}
-        <div className="doc-meta truncate">{meta.join(" · ")}</div>
-      </div>
-      {doc.ocrStatus === "FAILED" ? <span className="src-chip" style={{ color: "var(--red)", borderColor: "var(--red-line)", background: "var(--red-bg)" }}>识别失败</span> : null}
-      {doc.textSource === "OCR" && doc.ocrStatus === "READY" ? <SourceChip kind="ai">AI 识别</SourceChip> : null}
-      {chip ? <SourceChip kind={chip.kind}>{chip.label}</SourceChip> : doc.sourceParty ? <SourceChip kind="plain">{doc.sourceParty}</SourceChip> : null}
-      {!compact ? (
-        <>
+    <div className={cn("dos-doc", evOpen && "open")}>
+      <div className="doc-row">
+        <DocIcon tone={tone} />
+        <div className="min-w-0 flex-1">
           {pUrl ? (
-            <a href={pUrl} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">
-              预览
+            <a href={pUrl} target="_blank" rel="noreferrer" className="doc-name block truncate hover:text-[var(--teal-deep)]">
+              {doc.name}
             </a>
-          ) : null}
-          <a href={`/api/documents/${doc.id}/download`} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">
-            下载
-          </a>
-          {onReview && doc.ocrStatus !== "FAILED" ? (
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => onReview(doc.id)} title="AI 审查缺失要素、法律风险与条款问题">
-              AI 审查
-            </button>
-          ) : null}
-        </>
+          ) : (
+            <div className="doc-name truncate">{doc.name}</div>
+          )}
+          {/* 标签行：材料性质 / 来源 / 识别状态 / 证据要点（2026-09-14 证据链并入材料） */}
+          <div className="dos-doc-tags">
+            <span className={cn("dos-doc-cat", doc.category === "EVIDENCE" && "ev")}>{documentCategoryLabel[doc.category]}</span>
+            {chip ? <SourceChip kind={chip.kind}>{chip.label}</SourceChip> : doc.sourceParty ? <SourceChip kind="plain">{doc.sourceParty}</SourceChip> : null}
+            {doc.ocrStatus === "FAILED" ? <span className="src-chip" style={{ color: "var(--red)", borderColor: "var(--red-line)", background: "var(--red-bg)" }}>识别失败</span> : null}
+            {doc.textSource === "OCR" && doc.ocrStatus === "READY" ? <SourceChip kind="ai">AI 识别</SourceChip> : null}
+            {evidence.length ? (
+              <button type="button" className="dos-doc-ev" aria-expanded={evOpen} onClick={() => setEvOpen((v) => !v)}>
+                证据要点 {evidence.length}
+                {[...new Set(evidence.map((e) => evidenceKindLabel[e.kind]))].slice(0, 2).map((k) => (
+                  <span key={k}>· {k}</span>
+                ))}
+              </button>
+            ) : null}
+            <span className="doc-meta truncate">{meta.join(" · ")}</span>
+          </div>
+        </div>
+        {!compact ? (
+          <div className="dos-doc-ops">
+            {onAddEvidence ? (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => onAddEvidence(doc.id)} title="记录这份材料证明的事实、主张或分析">
+                ＋证据要点
+              </button>
+            ) : null}
+            {pUrl ? (
+              <a href={pUrl} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">
+                预览
+              </a>
+            ) : null}
+            <a href={`/api/documents/${doc.id}/download`} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">
+              下载
+            </a>
+            {onReview && doc.ocrStatus !== "FAILED" ? (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => onReview(doc.id)} title="AI 审查缺失要素、法律风险与条款问题">
+                AI 审查
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+      {evOpen && evidence.length ? (
+        <div className="dos-doc-evbox">
+          <EvidencePoints items={evidence} />
+        </div>
       ) : null}
     </div>
   );
@@ -2514,7 +2560,12 @@ function StageMaterialsPanel({
   const isWritten = (d: WorkflowDocument) => Boolean(d.templateId) || d.category === "PLEADING" || d.category === "JUDGMENT";
   const writtenCount = documents.filter(isWritten).length;
   const [writtenOnly, setWrittenOnly] = useState(false);
-  const shownDocs = (originFilter === "ALL" ? documents : documents.filter((d) => d.sourceOrigin === originFilter)).filter((d) => !writtenOnly || isWritten(d));
+  const [evidenceOnly, setEvidenceOnly] = useState(false);
+  const { evidenceByDoc } = useDocActions();
+  const evidenceDocCount = documents.filter((d) => (evidenceByDoc?.get(d.id)?.length ?? 0) > 0).length;
+  const shownDocs = (originFilter === "ALL" ? documents : documents.filter((d) => d.sourceOrigin === originFilter))
+    .filter((d) => !writtenOnly || isWritten(d))
+    .filter((d) => !evidenceOnly || (evidenceByDoc?.get(d.id)?.length ?? 0) > 0);
 
   const originChips = (
   <>
@@ -2551,11 +2602,17 @@ function StageMaterialsPanel({
         ) : (
           <div className="panel-title">
             <FileText className="ic" strokeWidth={1.8} />
-            阶段材料
+            本环节材料
             <span className="badge b-white" style={{ marginLeft: 2 }}>{documents.length}</span>
+            <span className="t-xs t-mute" style={{ fontWeight: 400 }}>证据要点挂在材料上</span>
           </div>
         )}
         <div className="flex flex-wrap items-center gap-[7px]">
+          {!bare && evidenceDocCount > 0 ? (
+            <button type="button" className={cn("src-chip cursor-pointer", evidenceOnly && "self")} aria-pressed={evidenceOnly} onClick={() => setEvidenceOnly((v) => !v)}>
+              <b style={{ fontWeight: 550 }}>有证据要点 {evidenceDocCount}</b>
+            </button>
+          ) : null}
           {!bare ? originChips : null}
           {canManage && onOpenTemplate ? (
             <button type="button" className="btn btn-ghost btn-sm" onClick={onOpenTemplate}>

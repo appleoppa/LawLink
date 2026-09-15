@@ -34,7 +34,7 @@ import { deleteProcedure } from "@/server/procedures/actions";
 import { useRouter } from "next/navigation";
 import { LifecycleActions } from "./lifecycle-actions";
 import { EngagementPanel, type EngagementRow } from "./engagement-panel";
-import { EvidencePanel, type EvidenceItemRow } from "./evidence-panel";
+import { EvidenceItemDialog, type EvidenceItemRow } from "./evidence-panel";
 import { ArchiveStatusBanner } from "./archive-status-banner";
 import { ArchiveWizardDialog } from "./archive-wizard";
 import { TeamEditorDialog } from "./team-editor-dialog";
@@ -209,7 +209,23 @@ export function MatterDetailTabs({
   const [ledgerAdd, setLedgerAdd] = useState<"express" | "memo" | null>(null);
   const [caseSearchOpen, setCaseSearchOpen] = useState(false);
   const [reviewDocId, setReviewDocId] = useState<string | null>(null);
-  const docActions = useMemo(() => (capabilities.aiReview && allowed("documents.write") ? { onReview: (id: string) => setReviewDocId(id) } : {}), [capabilities.aiReview, currentUserRole, rolePermissions]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 证据要点挂在材料行上（2026-09-14 证据链并入材料）
+  const [evidenceDocId, setEvidenceDocId] = useState<string | null | undefined>(undefined);
+  const evidenceByDoc = useMemo(() => {
+    const map = new Map<string, EvidenceItemRow[]>();
+    for (const item of evidenceItems) if (item.sourceDocumentId) map.set(item.sourceDocumentId, [...(map.get(item.sourceDocumentId) ?? []), item]);
+    return map;
+  }, [evidenceItems]);
+  const canAddEvidence = canAssociateThisMatter && matter.status !== "ARCHIVED";
+  const docActions = useMemo(
+    () => ({
+      ...(capabilities.aiReview && allowed("documents.write") ? { onReview: (id: string) => setReviewDocId(id) } : {}),
+      evidenceByDoc,
+      unlinkedEvidence: evidenceItems.filter((it) => !it.sourceDocumentId),
+      ...(canAddEvidence ? { onAddEvidence: (docId: string | null) => setEvidenceDocId(docId) } : {})
+    }),
+    [capabilities.aiReview, currentUserRole, rolePermissions, evidenceByDoc, evidenceItems, canAddEvidence] // eslint-disable-line react-hooks/exhaustive-deps
+  );
   const [progress, setProgress] = useState<{ mode: "record" | "judgment"; stage?: string; stageNames: string[] } | null>(null);
   const [deadlineOpen, setDeadlineOpen] = useState(false);
   const [hearingOpen, setHearingOpen] = useState(false);
@@ -509,27 +525,8 @@ export function MatterDetailTabs({
         archiveRailTop={<TeamRailCard matter={matter} canManage={canOwnThisMatter} onManage={() => setMatterEditorOpen(true)} />}
         expresses={expresses}
         onAddLedger={canAssociateThisMatter && currentProcedure ? (type) => setLedgerAdd(type) : undefined}
-        renderEvidence={({ docIds, stageName, documents: scopeDocs }) =>
-          allowed("matters.read") ? (
-            <EvidencePanel
-              matterId={matter.id}
-              items={docIds ? evidenceItems.filter((it) => it.sourceDocumentId && docIds.includes(it.sourceDocumentId)) : evidenceItems}
-              documents={scopeDocs}
-              canManage={canAssociateThisMatter}
-              subtitle={stageName ? `挂在「${stageName}」材料上的证据项` : "全部环节（含未挂材料的证据项）"}
-              emptyText={stageName ? "本环节材料上还没有证据项" : undefined}
-              extraAction={
-                capabilities.caseSearch && allowed("matters.write") ? (
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCaseSearchOpen(true)}>
-                    <Scale />
-                    类案检索
-                  </button>
-                ) : null
-              }
-            />
-          ) : null
-        }
         materialsExtra={reviewNode}
+        onCaseSearch={capabilities.caseSearch && allowed("matters.write") ? () => setCaseSearchOpen(true) : undefined}
         financeNode={
           <div className="dos-main">
             {allowed("matters.read") ? (
@@ -570,6 +567,15 @@ export function MatterDetailTabs({
           defaultProcedureId={currentProcedure.id}
           hearingCounts={Object.fromEntries(engagedProcedures.map((p) => [p.id, p.hearings.length]))}
           proceduresDetail={Object.fromEntries(engagedProcedures.map((p) => [p.id, { handlingAgency: p.handlingAgency, panel: p.panel, jurisdiction: p.jurisdiction }]))}
+        />
+      ) : null}
+      {evidenceDocId !== undefined ? (
+        <EvidenceItemDialog
+          open
+          onOpenChange={(o) => { if (!o) setEvidenceDocId(undefined); }}
+          matterId={matter.id}
+          documents={documents.map((d: { id: string; name: string }) => ({ id: d.id, name: d.name }))}
+          defaultDocumentId={evidenceDocId}
         />
       ) : null}
       <DocumentReviewDialog open={Boolean(reviewDocId)} documentId={reviewDocId} matterId={matter.id} onOpenChange={(o) => { if (!o) setReviewDocId(null); }} />
