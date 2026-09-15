@@ -857,7 +857,7 @@ export function ProcedureWorkflowPanel({
       {view === "archive" ? archiveNode : null}
 
       {view === "work" ? (
-        <div className="dos-main">
+        <div className="dos-flow">
           <StageLine
             procedure={procedure}
             stages={stages}
@@ -866,6 +866,7 @@ export function ProcedureWorkflowPanel({
             onSelect={selectStage}
             onAddStage={canManage && procedure ? () => setStageCreateOpen(true) : undefined}
           />
+          <div className="dos-main">
           {selectedStage && procedure ? (
             <StageBar
               stage={selectedStage}
@@ -940,6 +941,7 @@ export function ProcedureWorkflowPanel({
             </div>
           </div>
         </div>
+          </div>
       ) : null}
 
       {view === "money" ? financeNode : null}
@@ -1228,9 +1230,12 @@ function StageLine({
 }) {
   if (!procedure) {
     return (
-      <div className="card">
-        <EmptyState compact title="暂无在办程序" description="在上方程序栏点「＋ 新增程序」后，这里会按环节展开办案进程。" />
-      </div>
+      <nav className="card dos-vline" aria-label="办案环节">
+        <div className="dos-vline-head">
+          <span className="t">办案环节</span>
+        </div>
+        <p className="t-xs t-mute" style={{ padding: "4px 14px 14px" }}>暂无在办程序，请在上方程序栏新增程序。</p>
+      </nav>
     );
   }
   const currentIndex = stages.findIndex((s) => s.key === currentKey);
@@ -1243,7 +1248,7 @@ function StageLine({
       stage.tasks.filter((t) => !t.completed && t.dueAt && daysUntil(t.dueAt) < 0).length +
       procedure!.deadlines.filter((d) => !d.completed && guide.deadlineCategories.includes(d.category) && daysUntil(d.dueAt) < 0).length;
     if (overdue > 0) return { text: `逾期 ${overdue}`, tone: "red" };
-    if (stage.kind === "preservation" && stage.badge?.hot) return { text: stage.badge.text.split(" · ")[1] ?? "临期", tone: "amber" };
+    if (stage.kind === "preservation" && stage.badge?.hot) return { text: `${stage.badge.text.split(" · ")[1] ?? "临期"}到期`, tone: "amber" };
     if (stage.key === hearingStageKey && nextHearing) return { text: `开庭 ${shortDay(nextHearing.startsAt)}`, tone: "blue" };
     const soon = procedure!.deadlines
       .filter((d) => !d.completed && guide.deadlineCategories.includes(d.category))
@@ -1253,47 +1258,55 @@ function StageLine({
     return null;
   }
 
-  const columns = stages.length + (onAddStage ? 1 : 0);
   return (
-    <section className="card dos-line" aria-label="办案环节">
-      <div className="dos-line-head">
+    <nav className="card dos-vline" aria-label="办案环节">
+      <div className="dos-vline-head">
         <span className="t">办案环节</span>
         <span className="t-xs t-mute">
-          {currentIndex >= 0 ? `当前第 ${currentIndex + 1} / ${stages.length} 个环节` : `${stages.length} 个环节`} · 已完成 {stages.filter((s) => s.status === "done").length} · 点击环节查看该环节的待办与记录
+          {currentIndex >= 0 ? `第 ${currentIndex + 1}/${stages.length}` : `${stages.length} 个`} · 已完成 {stages.filter((s) => s.status === "done").length}
         </span>
       </div>
-      <div className="dos-rail-scroll">
-        <ol className="dos-rail-track" style={{ gridTemplateColumns: `repeat(${columns}, minmax(74px, 1fr))` }}>
-          {stages.map((stage, i) => {
-            const state = stage.status === "done" ? "done" : stage.key === currentKey ? "cur" : stage.status === "risk" ? "risk" : "todo";
-            const flag = flagFor(stage);
-            const date = stageChainDate(stage, procedure);
-            return (
-              <li key={stage.key} className={cn("dos-node", state, stage.key === selectedKey && "sel", i < currentIndex && "passed")}>
-                <span className="dos-flag-slot">{flag ? <span className={cn("dos-flag", flag.tone)}>{flag.text}</span> : state === "cur" ? <span className="dos-flag now">当前</span> : null}</span>
-                <button type="button" className="dos-node-btn" onClick={() => onSelect(stage.key)} aria-pressed={stage.key === selectedKey} title={`${stage.name} · ${STAGE_STATUS_TEXT[stage.status]}`}>
-                  <span className="pin" aria-hidden>{state === "done" ? <Check strokeWidth={3} /> : null}</span>
-                  <span className="nm">{stage.name}</span>
-                  <span className="dt">{date ?? "—"}</span>
-                </button>
-              </li>
-            );
-          })}
-          {onAddStage ? (
-            <li className="dos-node add">
-              <span className="dos-flag-slot" />
-              <button type="button" className="dos-node-btn" onClick={onAddStage}>
-                <span className="pin" aria-hidden>
-                  <Plus strokeWidth={2.6} />
+      <ol className="dos-vline-list">
+        {stages.map((stage, i) => {
+          const state = stage.status === "done" ? "done" : stage.key === currentKey ? "cur" : stage.status === "risk" ? "risk" : "todo";
+          const flag = flagFor(stage);
+          const date = stageChainDate(stage, procedure);
+          const openTasks = stage.tasks.filter((t) => !t.completed).length;
+          return (
+            <li key={stage.key} className={cn("dos-vnode", state, stage.key === selectedKey && "sel", i < currentIndex && "passed")}>
+              <button type="button" onClick={() => onSelect(stage.key)} aria-current={stage.key === selectedKey ? "step" : undefined} title={`${stage.name} · ${STAGE_STATUS_TEXT[stage.status]}`}>
+                <span className="pin" aria-hidden>{state === "done" ? <Check strokeWidth={3} /> : null}</span>
+                <span className="body">
+                  <span className="nm">
+                    {stage.name}
+                    {state === "cur" ? <span className="now">当前</span> : null}
+                  </span>
+                  <span className="sub">
+                    {flag ? <span className={cn("dos-flag", flag.tone)}>{flag.text}</span> : null}
+                    <span className="dt">{date ?? (openTasks ? `${openTasks} 项待办` : "—")}</span>
+                  </span>
                 </span>
-                <span className="nm">添加环节</span>
-                <span className="dt">可插入</span>
               </button>
             </li>
-          ) : null}
-        </ol>
-      </div>
-    </section>
+          );
+        })}
+        {onAddStage ? (
+          <li className="dos-vnode add">
+            <button type="button" onClick={onAddStage}>
+              <span className="pin" aria-hidden>
+                <Plus strokeWidth={2.6} />
+              </span>
+              <span className="body">
+                <span className="nm">添加环节</span>
+                <span className="sub">
+                  <span className="dt">可插入任意位置</span>
+                </span>
+              </span>
+            </button>
+          </li>
+        ) : null}
+      </ol>
+    </nav>
   );
 }
 
