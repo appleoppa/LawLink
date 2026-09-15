@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import type { CustomFieldDef } from "@prisma/client";
 import { Pencil, ListChecks } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { FieldGrid, FieldItem } from "@/components/patterns/moan";
+import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -43,29 +45,27 @@ export function CustomFieldsPanel({
 
   return (
     <section className="card">
-      <header className="flex items-center justify-between border-b border-[var(--bd-hair)] px-4 py-3">
-        <span className="panel-title">
-          <ListChecks className="h-3.5 w-3.5 text-primary" />
+      <div className="panel-head">
+        <div className="panel-title">
+          <ListChecks className="ic" strokeWidth={1.8} />
           自定义信息
-        </span>
+        </div>
         {canEdit && (
-          <Button variant="ghost" size="sm" className="h-7 gap-1" onClick={() => setEditOpen(true)}>
-            <Pencil className="h-3 w-3" />
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditOpen(true)}>
+            <Pencil />
             编辑
-          </Button>
+          </button>
         )}
-      </header>
-
-      <dl className="grid grid-cols-1 gap-x-8 gap-y-2 px-4 py-3 text-[13px] sm:grid-cols-2">
-        {defs.map((d) => (
-          <div key={d.id} className="flex items-baseline gap-2">
-            <dt className="shrink-0 text-muted-foreground">{d.label}</dt>
-            <dd className="min-w-0 flex-1 truncate text-foreground/90">
-              {values[d.key]?.trim() ? values[d.key] : <span className="text-muted-foreground/50">—</span>}
-            </dd>
-          </div>
-        ))}
-      </dl>
+      </div>
+      <div className="panel-body">
+        <FieldGrid cols={2}>
+          {defs.map((d) => (
+            <FieldItem key={d.id} label={d.label} mono={d.fieldType === "NUMBER" || d.fieldType === "DATE"}>
+              {values[d.key]?.trim() ? values[d.key] : null}
+            </FieldItem>
+          ))}
+        </FieldGrid>
+      </div>
 
       {canEdit && (
         <EditDialog
@@ -94,6 +94,7 @@ function EditDialog({
   defs: FieldDef[];
   values: Record<string, string>;
 }) {
+  const router = useRouter();
   const [draft, setDraft] = useState<Record<string, string>>({ ...values });
   const [pending, startTransition] = useTransition();
 
@@ -107,6 +108,7 @@ function EditDialog({
         await saveMatterCustomValues(matterId, draft);
         toast.success("已保存");
         onClose();
+        router.refresh();
       } catch (err) {
         toast.error("保存失败", { description: err instanceof Error ? err.message : "" });
       }
