@@ -1211,3 +1211,11 @@
 .mo-dossier .dos-seg-h .nm { font-size: 13px; font-weight: 650; }
 .mo-dossier .dos-party-group-h { font-size: 11.5px; font-weight: 650; letter-spacing: .08em; color: var(--t-muted); }
 .mo-dossier .dos-vline-head .t { font-size: 13.5px; font-weight: 650; }
+
+/* 环节竖列首项「总览」：与环节同样式，不接入环节连线 */
+.mo-dossier .dos-vnode.overview::before { display: none; }
+.mo-dossier .dos-vnode.overview { margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px dashed var(--bd-hair); }
+.mo-dossier .dos-vnode.overview .pin { border-radius: 5px; border-color: var(--t-muted); color: var(--t-muted); }
+.mo-dossier .dos-vnode.overview .pin svg { width: 10px; height: 10px; }
+.mo-dossier .dos-vnode.overview.sel .pin { border-color: var(--teal); background: var(--teal); color: #fff; }
+@media (max-width: 1100px) { .mo-dossier .dos-vnode.overview { border-bottom: 0; border-right: 1px dashed var(--bd-hair); margin: 0 4px 0 0; padding: 0 4px 0 0; } }

@@ -14,6 +14,7 @@ import {
   FolderOpen,
   Gavel,
   Landmark,
+  LayoutList,
   Lightbulb,
   ListChecks,
   Loader2,
@@ -94,7 +95,7 @@ import {
 import { TemplatePickerDialog } from "./template-picker-dialog";
 import { AdjustDeadlineDialog } from "./procedure-content";
 import { confirmDeadline } from "@/server/deadlines/confirm";
-import { DocIcon, EmptyState, Segmented, SourceChip } from "@/components/patterns/moan";
+import { DocIcon, EmptyState, SourceChip } from "@/components/patterns/moan";
 import { documentSourceChip } from "@/lib/ui/moan-tones";
 import type { FolderPayload, TemplateSummary } from "./folder-types";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
@@ -693,7 +694,7 @@ export type WaitingItem = { key: string; title: string; meta: string; onOpen?: (
 /**
  * 案卷工作台（程序栏之下）：页签 → 各视图。
  * - 案件档案：案件页注入的档案主栏 + 侧栏（承办团队 + 最近待办 / 最近记录）
- * - 办案进程：环节线 + 环节操作条（统一切换本环节 / 全部环节）+ 待办 + 材料与证据 + 经办记录，侧栏快递与备忘
+ * - 办案进程：环节竖列（顶部「全部环节」总览）+ 环节操作条 + 待办 + 材料（含证据要点）+ 经办记录（含快递与备忘）
  * - 委托与财务、审批用印：案件页注入
  * 同一份数据只在一处展示：未完成事项只在待办，已发生事项只在经办记录，材料与证据链只在办案进程。
  */
@@ -869,18 +870,19 @@ export function ProcedureWorkflowPanel({
             selectedKey={effectiveScope === "stage" ? selectedStage?.key ?? null : null}
             currentKey={currentStage?.key ?? null}
             onSelect={selectStage}
+            overviewActive={effectiveScope === "all"}
+            onOverview={() => setScope("all")}
+            openCount={actions.length}
             onAddStage={canManage && procedure ? () => setStageCreateOpen(true) : undefined}
           />
           <div className="dos-main">
-          {selectedStage && procedure ? (
+          {selectedStage && procedure && effectiveScope === "stage" ? (
             <StageBar
               stage={selectedStage}
               procedure={procedure}
               documents={documents}
               notes={notes}
               isCurrent={selectedStage.key === currentStage?.key}
-              scope={effectiveScope}
-              onScopeChange={setScope}
               canManage={canManage}
               onAddTask={() => setTaskStage(selectedStage)}
               onAddDeadline={() => setDeadlineOpen(true)}
@@ -1055,8 +1057,6 @@ function StageBar({
   documents,
   notes,
   isCurrent,
-  scope,
-  onScopeChange,
   canManage,
   onAddTask,
   onAddDeadline,
@@ -1072,8 +1072,6 @@ function StageBar({
   documents: WorkflowDocument[];
   notes: WorkflowNote[];
   isCurrent: boolean;
-  scope: "all" | "stage";
-  onScopeChange: (scope: "all" | "stage") => void;
   canManage: boolean;
   onAddTask: () => void;
   onAddDeadline: () => void;
@@ -1117,11 +1115,6 @@ function StageBar({
             {` · 材料 ${docCount} 份`}
           </div>
         </div>
-        <Segmented
-          items={[{ key: "stage", label: "本环节" }, { key: "all", label: "全部环节" }]}
-          value={scope}
-          onChange={onScopeChange}
-        />
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => setGuideOpen((v) => !v)} aria-expanded={guideOpen}>
           {guideOpen ? "收起说明" : "环节说明"}
         </button>
@@ -1226,6 +1219,9 @@ function StageLine({
   selectedKey,
   currentKey,
   onSelect,
+  overviewActive,
+  onOverview,
+  openCount,
   onAddStage
 }: {
   procedure: WorkflowProcedure | null;
@@ -1233,6 +1229,10 @@ function StageLine({
   selectedKey: string | null;
   currentKey: string | null;
   onSelect: (key: string) => void;
+  /** 「全部环节（总览）」入口：替代原来的本环节 / 全部环节切换按钮（2026-09-14） */
+  overviewActive: boolean;
+  onOverview: () => void;
+  openCount: number;
   onAddStage?: () => void;
 }) {
   if (!procedure) {
@@ -1274,6 +1274,20 @@ function StageLine({
         </span>
       </div>
       <ol className="dos-vline-list">
+        {/* 总览：与环节同样式的首项，查看全部待办、材料与记录（替代本环节 / 全部环节切换） */}
+        <li className={cn("dos-vnode overview", overviewActive && "sel")}>
+          <button type="button" onClick={onOverview} aria-current={overviewActive ? "step" : undefined}>
+            <span className="pin" aria-hidden>
+              <LayoutList strokeWidth={2.4} />
+            </span>
+            <span className="body">
+              <span className="nm">总览</span>
+              <span className="sub">
+                <span className="dt">{openCount ? `全部待办 ${openCount}` : "全部环节"}</span>
+              </span>
+            </span>
+          </button>
+        </li>
         {stages.map((stage, i) => {
           const state = stage.status === "done" ? "done" : stage.key === currentKey ? "cur" : stage.status === "risk" ? "risk" : "todo";
           const flag = flagFor(stage);
