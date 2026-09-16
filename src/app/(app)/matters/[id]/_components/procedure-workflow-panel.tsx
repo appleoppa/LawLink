@@ -953,6 +953,8 @@ export function ProcedureWorkflowPanel({
         </div>
         <aside className="dos-rail">
           {archiveRailTop}
+          {/* 办案进程的主栏已有完整待办与经办记录，侧栏不再重复（2026-09-16 用户反馈） */}
+          {view === "work" ? null : (
           <ArchiveGlance
             actions={actions}
             logItems={logItems}
@@ -963,6 +965,7 @@ export function ProcedureWorkflowPanel({
               onViewChange("work");
             }}
           />
+          )}
         </aside>
       </div>
 
