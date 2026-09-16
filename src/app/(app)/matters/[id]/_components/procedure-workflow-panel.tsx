@@ -885,12 +885,6 @@ export function ProcedureWorkflowPanel({
               notes={notes}
               isCurrent={selectedStage.key === currentStage?.key}
               canManage={canManage}
-              onAddTask={() => setTaskStage(selectedStage)}
-              onAddDeadline={() => setDeadlineOpen(true)}
-              onAddHearing={onAddLedger ? () => onAddLedger("hearing") : undefined}
-              onUpload={() => setUploadSignal((n) => n + 1)}
-              onOpenTemplate={() => setTemplateOpen(true)}
-              onCaseSearch={onCaseSearch}
               onRemoveStage={canManage && selectedStage.removable ? () => handleRemoveStage(selectedStage) : undefined}
             />
           ) : null}
@@ -941,6 +935,7 @@ export function ProcedureWorkflowPanel({
                 onWriteRecord={() => onWriteNote({ judgment: false, stageName: selectedStage?.name })}
                 onWriteJudgment={() => onWriteNote({ judgment: true, stageName: selectedStage?.name })}
                 onAddLedger={canManage && onAddLedger ? () => onAddLedger("express") : undefined}
+                onCaseSearch={onCaseSearch}
               />
             </div>
           </div>
@@ -1064,26 +1059,14 @@ function StageBar({
   notes,
   isCurrent,
   canManage,
-  onAddTask,
-  onAddDeadline,
-  onAddHearing,
-  onUpload,
-  onOpenTemplate,
-  onCaseSearch,
   onRemoveStage
 }: {
-  onCaseSearch?: () => void;
   stage: WorkflowStage;
   procedure: WorkflowProcedure;
   documents: WorkflowDocument[];
   notes: WorkflowNote[];
   isCurrent: boolean;
   canManage: boolean;
-  onAddTask: () => void;
-  onAddDeadline: () => void;
-  onAddHearing?: () => void;
-  onUpload: () => void;
-  onOpenTemplate: () => void;
   onRemoveStage?: () => void;
 }) {
   const [guideOpen, setGuideOpen] = useState(false);
@@ -1126,35 +1109,11 @@ function StageBar({
         </button>
       </div>
       {guideOpen ? <StageGuideBody guide={guide} /> : <p className="dos-stage-summary">{guide.summary}</p>}
-      {canManage ? (
+      {canManage && onRemoveStage ? (
         <div className="dos-stage-acts">
-          <AddMenu
-            label="事项"
-            items={[
-              { key: "task", label: "任务", hint: `归入「${stage.name}」，可指派与设截止日`, icon: ListChecks, onSelect: onAddTask },
-              { key: "deadline", label: "期限", hint: "法定或约定期限，带起算依据", icon: Scale, onSelect: onAddDeadline },
-              ...(onAddHearing ? [{ key: "hearing", label: "开庭", hint: "时间、法庭与地址，同时进日程", icon: Landmark, onSelect: onAddHearing }] : [])
-            ]}
-          />
-          <button type="button" className="btn btn-ghost btn-sm" onClick={onUpload}>
-            <Upload />
-            上传到本环节
+          <button type="button" className="btn btn-ghost btn-sm text-[var(--t-muted)]" onClick={onRemoveStage}>
+            移除环节
           </button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={onOpenTemplate}>
-            <Sparkles />
-            从模板生成
-          </button>
-          {onCaseSearch ? (
-            <button type="button" className="btn btn-ghost btn-sm" onClick={onCaseSearch}>
-              <Scale />
-              类案检索
-            </button>
-          ) : null}
-          {onRemoveStage ? (
-            <button type="button" className="btn btn-ghost btn-sm ml-auto text-[var(--t-muted)]" onClick={onRemoveStage}>
-              移除环节
-            </button>
-          ) : null}
         </div>
       ) : null}
     </section>
@@ -1528,7 +1487,7 @@ function NextActions({
 
   async function completeDeadline(item: ActionItem) {
     if (!item.deadlineId) return;
-    if (!(await confirmDialog({ title: `标记「${item.title}」已完成？`, description: "法定期限完成后不再提醒，会记入经办记录。", confirmText: "标记完成" }))) return;
+    if (!(await confirmDialog({ title: `标记「${item.title}」已完成？`, description: "法定期限完成后不再提醒，会记入记录。", confirmText: "标记完成" }))) return;
     run(() => toggleDeadlineCompleted(item.deadlineId!), "期限已标记完成");
   }
 
@@ -1554,13 +1513,13 @@ function NextActions({
         </div>
         <div className="op">
           {canManage && item.kind === "task" && item.taskId ? (
-            <button type="button" className={cn("btn btn-sm", when.tone === "red" ? "btn-primary" : "btn-secondary")} disabled={pending} onClick={() => run(() => toggleTaskCompleted(item.taskId!), "任务已完成，已记入经办记录")}>
+            <button type="button" className={cn("btn btn-sm", when.tone === "red" ? "btn-primary" : "btn-secondary")} disabled={pending} onClick={() => run(() => toggleTaskCompleted(item.taskId!), "任务已完成，已记入记录")}>
               完成
             </button>
           ) : null}
           {canManage && item.kind === "memo" && item.memoId ? (
             <>
-              <button type="button" className="btn btn-secondary btn-sm" disabled={pending} onClick={() => run(() => toggleProcedureMemo(item.memoId!), "已办结，转入经办记录")}>
+              <button type="button" className="btn btn-secondary btn-sm" disabled={pending} onClick={() => run(() => toggleProcedureMemo(item.memoId!), "已办结，转入记录")}>
                 办结
               </button>
               <button
@@ -1604,13 +1563,12 @@ function NextActions({
         <div className="panel-title">
           <ListChecks className="ic" strokeWidth={1.8} />
           待办
-          <span className="t-xs t-mute" style={{ fontWeight: 400 }}>{scope === "stage" && selectedStage ? `「${selectedStage.name}」未完成的任务、期限与开庭` : "全部环节未完成的任务、期限与开庭"}，完成后转入经办记录</span>
+          <span className="t-xs t-mute" style={{ fontWeight: 400 }}>{scope === "stage" && selectedStage ? `「${selectedStage.name}」未完成的任务、期限与开庭` : "全部环节未完成的任务、期限与开庭"}，完成后转入记录</span>
         </div>
         <div className="flex items-center gap-2">
           {canManage ? (
             <AddMenu
               label="事项"
-              primary
               items={[
                 ...(onAddTask ? [{ key: "task", label: "任务", hint: "要做的事，可指派负责人与截止日", icon: ListChecks, onSelect: onAddTask }] : []),
                 ...(onAddDeadline ? [{ key: "deadline", label: "期限", hint: "法定或约定期限，带起算依据与确认", icon: Scale, onSelect: onAddDeadline }] : []),
@@ -1927,9 +1885,11 @@ function CaseLog({
   canManage,
   onWriteRecord,
   onWriteJudgment,
-  onAddLedger
+  onAddLedger,
+  onCaseSearch
 }: {
   onAddLedger?: (type: "express") => void;
+  onCaseSearch?: () => void;
   items: LogItem[];
   stages: WorkflowStage[];
   procedure: WorkflowProcedure | null;
@@ -1960,15 +1920,22 @@ function CaseLog({
   };
 
   return (
-    <section className="card" aria-label="经办记录">
+    <section className="card" aria-label="记录">
       <div className="panel-head flex-wrap">
         <div className="panel-title">
           <BookOpen className="ic" strokeWidth={1.8} />
-          经办记录
+          记录
           <span className="t-xs t-mute" style={{ fontWeight: 400 }}>
             {focusStageName ? `本环节「${focusStageName}」已发生的事项` : "已发生的事项，按环节分段"}
           </span>
         </div>
+        <div className="flex items-center gap-[7px]">
+        {onCaseSearch ? (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onCaseSearch}>
+            <Scale />
+            类案检索
+          </button>
+        ) : null}
         {canManage ? (
           <AddMenu
             label="记录"
@@ -1979,6 +1946,7 @@ function CaseLog({
             ]}
           />
         ) : null}
+        </div>
       </div>
       <div className="dos-log-filters" role="group" aria-label="记录筛选">
         {LOG_FILTERS.map((f) => {
@@ -1992,7 +1960,7 @@ function CaseLog({
         })}
       </div>
       {segs.length === 0 ? (
-        <EmptyState compact title={focusStageName ? "本环节暂无记录" : "暂无经办记录"} description="电话、会见、法院沟通、研判笔记、完成的任务、快递与备忘都会记在这里。" />
+        <EmptyState compact title={focusStageName ? "本环节暂无记录" : "暂无记录"} description="电话、会见、法院沟通、研判笔记、完成的任务、快递与备忘都会记在这里。" />
       ) : (
         visibleSegs.map((seg) => {
           const meta = seg.name === "__none" ? { status: "", period: "" } : stageMeta(seg.name);
@@ -2678,7 +2646,7 @@ function StageMaterialsPanel({
       <div className={cn("panel-head", bare && "!border-b-0 !pb-1")}>
         <div className="panel-title min-w-0">
           <FileText className="ic" strokeWidth={1.8} />
-          {bare ? "材料" : "本环节材料"}
+          材料
           <span className="badge b-white" style={{ marginLeft: 2 }}>{documents.length}</span>
           <span className="t-xs t-mute hidden sm:inline" style={{ fontWeight: 400 }}>证据要点挂在材料上</span>
         </div>
