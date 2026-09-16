@@ -1233,6 +1233,7 @@
 .mo-dossier .dos-bill .m { font-size: 11px; color: var(--t-muted); }
 .mo-dossier .dos-bill .link-inline { font-size: 12px; margin-left: auto; }
 .mo-dossier .dos-bill:has(.v) .m { flex-basis: 100%; }
+.mo-dossier .dos-bill-div { padding: 5px 12px; background: #FAFBFB; border-top: 1px solid var(--bd-hair); font-size: 10.5px; font-weight: 650; letter-spacing: .06em; color: var(--t-faint); }
 
 
 /* 案件档案密度（2026-09-16 用户反馈页面偏空）：当事人两列、合同与材料两列、自定义字段并入基本信息 */

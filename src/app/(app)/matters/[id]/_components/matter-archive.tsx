@@ -332,13 +332,13 @@ export function MatterArchive({
                 </FieldItem>
               ) : null}
             </FieldGrid>
-            {canReadFinance ? (
-              <div className="dos-bill-list">
-                <div className="dos-sub-h">
-                  合同与补充协议
-                  <span>{billings.length}</span>
-                </div>
-                {billings.length === 0 ? (
+            <div className="dos-bill-list">
+              <div className="dos-sub-h">
+                合同与材料
+                <span>{(canReadFinance ? billings.length : 0) + contractDocs.length}</span>
+              </div>
+              {canReadFinance ? (
+                billings.length === 0 ? (
                   <p className="t-xs t-mute">尚未登记合同金额</p>
                 ) : (
                   billings.map((b) => (
@@ -351,26 +351,25 @@ export function MatterArchive({
                       <span className="m">{[b.signedAt ? `${formatDate(b.signedAt)} 签署` : null, b.schedule].filter(Boolean).join(" · ")}</span>
                     </div>
                   ))
-                )}
-              </div>
-            ) : null}
-            <div className="dos-bill-list">
-              <div className="dos-sub-h">
-                委托代理合同等材料
-                <span>{contractDocs.length}</span>
-              </div>
-              {contractDocs.length === 0 ? (
-                <p className="t-xs t-mute">未找到合同类材料</p>
+                )
+              ) : null}
+              {contractDocs.length ? (
+                <>
+                  <div className="dos-bill-div">合同扫描件</div>
+                  {contractDocs.map((d) => (
+                    <div key={d.id} className="dos-bill">
+                      <span className="t">{d.name}</span>
+                      <span className="m">{formatDate(d.createdAt)}</span>
+                      <a className="link-inline" href={`/api/documents/${d.id}/download`} target="_blank" rel="noreferrer">
+                        下载
+                      </a>
+                    </div>
+                  ))}
+                </>
               ) : (
-                contractDocs.map((d) => (
-                  <div key={d.id} className="dos-bill">
-                    <span className="t">{d.name}</span>
-                    <span className="m">{formatDate(d.createdAt)}</span>
-                    <a className="link-inline" href={`/api/documents/${d.id}/download`} target="_blank" rel="noreferrer">
-                      下载
-                    </a>
-                  </div>
-                ))
+                <div className="dos-bill">
+                  <span className="m">未找到合同扫描件；收案时上传的合同会自动归入本案材料。</span>
+                </div>
               )}
             </div>
             <p className="dos-foot-note">一案一签：变更收费或增加代理程序时，在「收付与开票」新增一条补充协议，原合同保留。</p>
