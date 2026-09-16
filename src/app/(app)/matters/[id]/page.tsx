@@ -17,7 +17,6 @@ import { nullableDecimalToNumber, serializeDecimals } from "@/lib/decimal";
 import { MatterDetailTabs } from "./_components/matter-detail-tabs";
 import { listNotes } from "@/server/notes/actions";
 import { ReviewSummaryCard } from "./_components/review-summary-card";
-import { listEngagementsForMatter } from "@/server/engagements/actions";
 import { listEvidenceItems } from "@/server/evidence/actions";
 
 type PageProps = {
@@ -48,7 +47,10 @@ export default async function MatterDetailPage({ params }: PageProps) {
   const allowed = (key: import("@/lib/roles/catalog").PermissionKey) => hasCustomPermission(session.user, key);
   const matter = {
     ...matterRaw,
-    claimAmount: nullableDecimalToNumber(matterRaw.claimAmount)
+    claimAmount: nullableDecimalToNumber(matterRaw.claimAmount),
+    intake: matterRaw.intake
+      ? { ...matterRaw.intake, feeAmount: nullableDecimalToNumber(matterRaw.intake.feeAmount) }
+      : matterRaw.intake
   };
 
   const [
@@ -165,8 +167,7 @@ export default async function MatterDetailPage({ params }: PageProps) {
   // v0.22: 本案 AI 审查总览（聚合 ReviewRecord）
   const reviewSummary = allowed("documents.read") ? await getMatterReviewSummary(matter.id) : null;
   // v1.x P2: 委托与证据链（详情页区块；read 已在页面入口校验）
-  const [engagements, evidenceItems, notes] = await Promise.all([
-    listEngagementsForMatter(matter.id).catch(() => []),
+  const [evidenceItems, notes] = await Promise.all([
     listEvidenceItems(matter.id).catch(() => []),
     allowed("schedule.read") ? listNotes(matter.id).catch(() => []) : Promise.resolve([])
   ]);
@@ -226,7 +227,6 @@ export default async function MatterDetailPage({ params }: PageProps) {
         latestArchive={latestArchive}
         customFieldDefs={customFieldDefs}
         preservationCases={preservationCasesForClient}
-        engagements={engagements}
         evidenceItems={evidenceItems}
         notes={notes}
         capabilities={{

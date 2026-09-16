@@ -5,7 +5,7 @@ import { hasCustomPermission, type RoleGrant } from "@/lib/roles/catalog";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import type { ClientType, Prisma } from "@prisma/client";
-import { Archive, ChevronLeft, CircleDollarSign, Clock3, Gavel, Pencil, Plus, Scale, Stamp, Upload, X } from "lucide-react";
+import { Archive, ChevronLeft, CircleDollarSign, Clock3, FileSignature, Gavel, Pencil, Plus, Scale, Stamp, Upload, X } from "lucide-react";
 import { CaseSearchPanel } from "./case-search-panel";
 import { DocumentReviewDialog } from "./document-review-dialog";
 import { DocActionsContext } from "./doc-actions-context";
@@ -33,7 +33,7 @@ import { AddDeadlineDialog, AddHearingDialog, AddProcedureSheet } from "./proced
 import { deleteProcedure } from "@/server/procedures/actions";
 import { useRouter } from "next/navigation";
 import { LifecycleActions } from "./lifecycle-actions";
-import { EngagementPanel, type EngagementRow } from "./engagement-panel";
+import { AddBillingSheet } from "./finance-forms";
 import { EvidenceItemDialog, type EvidenceItemRow } from "./evidence-panel";
 import { ArchiveStatusBanner } from "./archive-status-banner";
 import { ArchiveWizardDialog } from "./archive-wizard";
@@ -52,7 +52,22 @@ type MatterPayloadBase = Prisma.MatterGetPayload<{
     cause: true;
     parties: true;
     relatedEntities: true;
-    intake: { select: { counterclaim: true; claimDescription: true } };
+    intake: {
+      select: {
+        counterclaim: true;
+        claimDescription: true;
+        description: true;
+        contactName: true;
+        contactPhone: true;
+        receivedAt: true;
+        feeType: true;
+        feeAmount: true;
+        feeSchedule: true;
+        feeNote: true;
+        contingencyTerms: true;
+        createdBy: { select: { name: true } };
+      };
+    };
     linksFrom: {
       include: { relatedMatter: { select: { id: true; internalCode: true; firmCaseNo: true; title: true } } };
     };
@@ -72,7 +87,8 @@ type MatterPayloadBase = Prisma.MatterGetPayload<{
   };
 }>;
 
-type MatterPayload = Omit<MatterPayloadBase, "claimAmount" | "members"> & {
+type MatterPayload = Omit<MatterPayloadBase, "claimAmount" | "members" | "intake"> & {
+  intake: (Omit<NonNullable<MatterPayloadBase["intake"]>, "feeAmount"> & { feeAmount: number | null }) | null;
   claimAmount: number | null;
   members: (MatterPayloadBase["members"][number] & { user: MatterPayloadBase["members"][number]["user"] & { roleName?: string } })[];
 };
@@ -154,7 +170,6 @@ export function MatterDetailTabs({
   latestArchive,
   customFieldDefs,
   preservationCases,
-  engagements,
   evidenceItems,
   notes,
   reviewNode,
@@ -193,7 +208,6 @@ export function MatterDetailTabs({
     required: boolean;
   }[];
   preservationCases: WorkflowPreservationCase[];
-  engagements: EngagementRow[];
   evidenceItems: EvidenceItemRow[];
   notes: WorkflowNote[];
   /** AI 审查总览（服务端渲染节点），归入「信息总览」 */
@@ -514,6 +528,12 @@ export function MatterDetailTabs({
             matter={matter}
             currentProcedure={currentProcedure}
             parties={parties}
+            billings={finance.billings}
+            contractDocs={documents
+              .filter((d: { category: string; deletedAt?: Date | null }) => d.category === "CONTRACT")
+              .map((d: { id: string; name: string; createdAt: Date; mimeType: string | null }) => ({ id: d.id, name: d.name, createdAt: d.createdAt, mimeType: d.mimeType }))}
+            canReadFinance={allowed("finance.read")}
+            onOpenFinance={() => setView("money")}
             customFieldDefs={customFieldDefs}
             customValues={customValues}
             canEdit={canOpenUnifiedEditor}
@@ -530,12 +550,11 @@ export function MatterDetailTabs({
         financeNode={
           <div className="dos-main">
             {allowed("finance.read") ? <FinanceHero stats={finance.stats} /> : null}
-            {allowed("matters.read") ? (
-              <EngagementPanel
+            {allowed("finance.read") ? (
+              <BillingsCard
                 matterId={matter.id}
-                client={matter.primaryClient ? { id: matter.primaryClient.id, name: matter.primaryClient.name } : null}
-                engagements={engagements}
-                canManage={canAssociateThisMatter}
+                billings={finance.billings}
+                canManage={canAssociateThisMatter && !isArchived}
               />
             ) : null}
             {allowed("finance.read") ? (
@@ -700,6 +719,54 @@ function deleteProcedureWarning(procedure: ProcedureItem, label: string): string
 
 const PROC_STATUS_LABEL: Record<string, string> = { PENDING: "未开始", IN_PROGRESS: "进行中", CONCLUDED: "已结" };
 
+
+/**
+ * 合同与补充协议：一案一签（2026-09-16 用户确认取消独立委托模块）。
+ * 中途变更收费、增加代理程序＝新增一条补充协议，原合同保留，合同额自动合计。
+ */
+function BillingsCard({ matterId, billings, canManage }: { matterId: string; billings: FinancePayload["billings"]; canManage: boolean }) {
+  const [addOpen, setAddOpen] = useState(false);
+  const total = billings.reduce((acc, b) => acc + Number(b.contractAmount), 0);
+  return (
+    <section className="card">
+      <div className="panel-head">
+        <div className="panel-title">
+          <FileSignature className="ic" strokeWidth={1.8} />
+          合同与补充协议
+          <span className="badge b-white" style={{ marginLeft: 2 }}>{billings.length}</span>
+          <span className="t-xs t-mute" style={{ fontWeight: 400 }}>变更收费或增加代理程序时新增补充协议，原合同保留</span>
+        </div>
+        {canManage ? (
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setAddOpen(true)}>
+            <Plus />
+            合同 / 补充协议
+          </button>
+        ) : null}
+      </div>
+      {billings.length === 0 ? (
+        <div className="panel-body t-xs t-mute">尚未登记合同金额。收案时填写的收费会在转为案件时生成一条合同。</div>
+      ) : (
+        <>
+          {billings.map((b) => (
+            <div key={b.id} className="dos-bill row">
+              <span className="t">{b.title}</span>
+              <span className={cn("badge", b.status === "ACTIVE" ? "b-teal" : b.status === "CLOSED" ? "b-slate" : "b-white")}>
+                {b.status === "ACTIVE" ? "执行中" : b.status === "CLOSED" ? "已结束" : "草稿"}
+              </span>
+              <span className="v mono">¥{Number(b.contractAmount).toLocaleString("zh-CN")}</span>
+              <span className="m">{[b.signedAt ? `${formatShortDate(b.signedAt)} 签署` : null, b.schedule].filter(Boolean).join(" · ")}</span>
+            </div>
+          ))}
+          <div className="panel-foot flex items-center justify-between">
+            <span className="t-xs t-mute">合同额合计</span>
+            <span className="font-mono text-[14px] font-semibold">¥{total.toLocaleString("zh-CN")}</span>
+          </div>
+        </>
+      )}
+      {canManage ? <AddBillingSheet open={addOpen} onOpenChange={setAddOpen} matterId={matterId} /> : null}
+    </section>
+  );
+}
 
 /** 委托与财务：收费概览（大号数字 + 回款进度） */
 function FinanceHero({ stats }: { stats: FinancePayload["stats"] }) {

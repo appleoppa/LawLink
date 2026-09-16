@@ -752,7 +752,23 @@ export async function getMatterById(id: string) {
       cause: true,
       parties: { orderBy: [{ role: "asc" }, { ordinal: "asc" }] },
       relatedEntities: { orderBy: { createdAt: "asc" } },
-      intake: { select: { counterclaim: true, claimDescription: true } },
+      // 收案登记内容随案件展示（案件详情页要能备查收案时填过的全部信息）
+      intake: {
+        select: {
+          counterclaim: true,
+          claimDescription: true,
+          description: true,
+          contactName: true,
+          contactPhone: true,
+          receivedAt: true,
+          feeType: true,
+          feeAmount: true,
+          feeSchedule: true,
+          feeNote: true,
+          contingencyTerms: true,
+          createdBy: { select: { name: true } }
+        }
+      },
       linksFrom: {
         where: { relatedMatter: { deletedAt: null, ...matterReadVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions) } },
         include: { relatedMatter: { select: { id: true, internalCode: true, firmCaseNo: true, title: true } } }

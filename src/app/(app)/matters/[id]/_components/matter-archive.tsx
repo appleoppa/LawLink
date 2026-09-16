@@ -6,10 +6,10 @@
  */
 import { useState } from "react";
 import Link from "next/link";
-import { FileText, Pencil, UserRound, Users } from "lucide-react";
+import { FileText, Pencil, UserRound, Users, Wallet } from "lucide-react";
 import { FieldGrid, FieldItem, InitialAvatar } from "@/components/patterns/moan";
 import { avatarTone } from "@/lib/ui/moan-tones";
-import { litigationStandingLabel, matterCategoryKind, matterCategoryLabel, partyTypeLabel, procedureTypeLabel } from "@/lib/enums";
+import { feeTypeLabel, litigationStandingLabel, matterCategoryKind, matterCategoryLabel, partyTypeLabel, procedureTypeLabel } from "@/lib/enums";
 import { clientIdTypeLabel } from "@/lib/clients/person-id";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { RelatedMattersField } from "./related-matters-field";
@@ -147,6 +147,10 @@ export function MatterArchive({
   matter,
   currentProcedure,
   parties,
+  billings,
+  contractDocs,
+  canReadFinance,
+  onOpenFinance,
   customFieldDefs,
   customValues,
   canEdit,
@@ -157,6 +161,12 @@ export function MatterArchive({
   matter: MatterPayload;
   currentProcedure: Procedure | null;
   parties: PartyRow[];
+  /** 合同与补充协议（Billing）；一案一签，追加收费＝新增一条补充协议 */
+  billings: { id: string; title: string; contractAmount: number; schedule: string | null; status: string; signedAt: Date | null }[];
+  /** 委托代理合同等合同类材料 */
+  contractDocs: { id: string; name: string; createdAt: Date; mimeType: string | null }[];
+  canReadFinance: boolean;
+  onOpenFinance: () => void;
   customFieldDefs: React.ComponentProps<typeof CustomFieldsPanel>["defs"];
   customValues: Record<string, string>;
   canEdit: boolean;
@@ -253,6 +263,13 @@ export function MatterArchive({
               {kind === "project" ? <FieldItem label="交付成果" wide>{dash(matter.deliverables)}</FieldItem> : null}
             </>
           )}
+          <FieldItem label="联系人">{dash([matter.intake?.contactName, matter.intake?.contactPhone].filter(Boolean).join(" · "))}</FieldItem>
+          <FieldItem label="收案登记">{dash([matter.intake?.receivedAt ? formatDate(matter.intake.receivedAt) : null, matter.intake?.createdBy?.name ? `${matter.intake.createdBy.name} 登记` : null].filter(Boolean).join(" · "))}</FieldItem>
+          {matter.intake?.description?.trim() ? (
+            <FieldItem label="事实摘要" wide>
+              <span className="whitespace-pre-wrap">{matter.intake.description}</span>
+            </FieldItem>
+          ) : null}
           <FieldItem label="关联案件" wide>
             <RelatedMattersField matterId={matter.id} related={related} canManage={canManageRelated} />
           </FieldItem>
@@ -283,6 +300,81 @@ export function MatterArchive({
             })}
           </div>
         )}
+      </Section>
+
+      {/* 委托与收费：收案登记的收费约定 + 合同/补充协议 + 合同材料（取消独立委托模块，2026-09-16 用户确认一案一签） */}
+      <Section
+        icon={Wallet}
+        title="委托与收费"
+        hint="一案一签；中途变更收费或增加代理程序，在此新增补充协议"
+        action={
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onOpenFinance}>
+            收付与开票
+          </button>
+        }
+      >
+        <FieldGrid cols={2}>
+          <FieldItem label="收费方式">{matter.intake?.feeType ? feeTypeLabel[matter.intake.feeType] : null}</FieldItem>
+          {canReadFinance ? (
+            <FieldItem label={matter.intake?.feeType === "CONTINGENCY" ? "基础办案费" : "约定收费"} mono>
+              {matter.intake?.feeAmount ? formatCurrency(Number(matter.intake.feeAmount)) : null}
+            </FieldItem>
+          ) : null}
+          {matter.intake?.feeType === "CONTINGENCY" ? (
+            <FieldItem label="风险代理收费方式" wide>
+              {matter.intake?.contingencyTerms?.trim() ? <span className="whitespace-pre-wrap">{matter.intake.contingencyTerms}</span> : null}
+            </FieldItem>
+          ) : null}
+          <FieldItem label="付款节点" wide>{dash(matter.intake?.feeSchedule)}</FieldItem>
+          {matter.intake?.feeNote?.trim() ? (
+            <FieldItem label="收费说明" wide>
+              <span className="whitespace-pre-wrap">{matter.intake.feeNote}</span>
+            </FieldItem>
+          ) : null}
+        </FieldGrid>
+
+        {canReadFinance ? (
+          <div className="dos-bill-list">
+            <div className="dos-sub-h">
+              合同与补充协议
+              <span>{billings.length}</span>
+            </div>
+            {billings.length === 0 ? (
+              <p className="t-xs t-mute">尚未登记合同金额</p>
+            ) : (
+              billings.map((b) => (
+                <div key={b.id} className="dos-bill">
+                  <span className="t">{b.title}</span>
+                  <span className={cn("badge", b.status === "ACTIVE" ? "b-teal" : b.status === "CLOSED" ? "b-slate" : "b-white")}>
+                    {b.status === "ACTIVE" ? "执行中" : b.status === "CLOSED" ? "已结束" : "草稿"}
+                  </span>
+                  <span className="v mono">{formatCurrency(b.contractAmount)}</span>
+                  <span className="m">{[b.signedAt ? `${formatDate(b.signedAt)} 签署` : null, b.schedule].filter(Boolean).join(" · ")}</span>
+                </div>
+              ))
+            )}
+          </div>
+        ) : null}
+
+        <div className="dos-bill-list">
+          <div className="dos-sub-h">
+            委托代理合同等合同材料
+            <span>{contractDocs.length}</span>
+          </div>
+          {contractDocs.length === 0 ? (
+            <p className="t-xs t-mute">未找到合同类材料；收案时上传的合同会自动归入本案材料。</p>
+          ) : (
+            contractDocs.map((d) => (
+              <div key={d.id} className="dos-bill">
+                <span className="t">{d.name}</span>
+                <span className="m">{formatDate(d.createdAt)}</span>
+                <a className="link-inline" href={`/api/documents/${d.id}/download`} target="_blank" rel="noreferrer">
+                  下载
+                </a>
+              </div>
+            ))
+          )}
+        </div>
       </Section>
 
       {customFieldDefs.length > 0 ? (
