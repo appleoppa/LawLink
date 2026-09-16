@@ -14,6 +14,7 @@ import { approvalTransaction, approvalAudit, assertApprovalItem, approvalContext
 import { revalidatePath } from "next/cache";
 import { Prisma, type ClientIdType, type ClientType, type LitigationStanding, type PartyType, type PartyRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { defaultStageNamesForProcedure } from "@/lib/procedure-stage-defaults";
 import { requireSession } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import { intakeVisibilityFilter, intakeReadVisibilityFilter, teamIntakeFilter } from "@/lib/permissions";
@@ -796,11 +797,17 @@ export async function convertIntakeToMatter(intakeId: string, note?: string) {
       });
     }
 
-    // 把 Intake 上传的合同回填 matterId（保留 intakeId 溯源）
+    // 把 Intake 上传的合同回填 matterId（保留 intakeId 溯源），并归入首程序的第一个环节
+    // （2026-09-16 用户确认：委托代理合同等收案材料应直接出现在「代理授权 / 委托手续」环节，而不是只在总览可见）
     if (intake.documents.length > 0) {
+      const firstStageName = defaultStageNamesForProcedure(firstProcedureType)[0] ?? null;
       await tx.document.updateMany({
         where: { intakeId: intake.id },
-        data: { matterId: m.id }
+        data: {
+          matterId: m.id,
+          procedureId: firstProcedure.id,
+          ...(firstStageName ? { tags: { push: `阶段:${firstStageName}` } } : {})
+        }
       });
     }
 
