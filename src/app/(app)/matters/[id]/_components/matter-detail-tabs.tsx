@@ -206,7 +206,7 @@ export function MatterDetailTabs({
   const [addProcOpen, setAddProcOpen] = useState(false);
   const [matterEditorOpen, setMatterEditorOpen] = useState(false);
   const [view, setView] = useState<DossierView>("archive");
-  const [ledgerAdd, setLedgerAdd] = useState<"express" | "memo" | null>(null);
+  const [ledgerAdd, setLedgerAdd] = useState<"express" | "hearing" | "deadline" | null>(null);
   const [caseSearchOpen, setCaseSearchOpen] = useState(false);
   const [reviewDocId, setReviewDocId] = useState<string | null>(null);
   // 证据要点挂在材料行上（2026-09-14 证据链并入材料）

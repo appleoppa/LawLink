@@ -96,6 +96,7 @@ import { TemplatePickerDialog } from "./template-picker-dialog";
 import { AdjustDeadlineDialog } from "./procedure-content";
 import { confirmDeadline } from "@/server/deadlines/confirm";
 import { DocIcon, EmptyState, SourceChip } from "@/components/patterns/moan";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { documentSourceChip } from "@/lib/ui/moan-tones";
 import type { FolderPayload, TemplateSummary } from "./folder-types";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
@@ -744,8 +745,8 @@ export function ProcedureWorkflowPanel({
   archiveRailTop?: React.ReactNode;
   /** 快递记录（并入经办记录） */
   expresses?: ExpressItem[];
-  /** 经办记录「快递 / 备忘」添加入口 */
-  onAddLedger?: (type: "express" | "memo") => void;
+  /** 「＋记录」中的寄收件、「＋事项」中的开庭（沿用重要事项弹窗） */
+  onAddLedger?: (type: "express" | "hearing" | "deadline") => void;
   /** 类案检索入口（元典已配置时） */
   onCaseSearch?: () => void;
   /** 全部环节范围下材料之后的补充内容（AI 审查总览） */
@@ -886,9 +887,9 @@ export function ProcedureWorkflowPanel({
               canManage={canManage}
               onAddTask={() => setTaskStage(selectedStage)}
               onAddDeadline={() => setDeadlineOpen(true)}
+              onAddHearing={onAddLedger ? () => onAddLedger("hearing") : undefined}
               onUpload={() => setUploadSignal((n) => n + 1)}
               onOpenTemplate={() => setTemplateOpen(true)}
-              onWriteNote={() => onWriteNote({ judgment: true, stageName: selectedStage.name })}
               onCaseSearch={onCaseSearch}
               onRemoveStage={canManage && selectedStage.removable ? () => handleRemoveStage(selectedStage) : undefined}
             />
@@ -918,6 +919,8 @@ export function ProcedureWorkflowPanel({
                 canManage={canManage}
                 waiting={waiting ?? []}
                 onAddTask={procedure && selectedStage ? () => setTaskStage(selectedStage) : undefined}
+                onAddDeadline={procedure ? () => setDeadlineOpen(true) : undefined}
+                onAddHearing={procedure && onAddLedger ? () => onAddLedger("hearing") : undefined}
               />
               <MaterialsSection
                 matterId={matter.id}
@@ -937,7 +940,7 @@ export function ProcedureWorkflowPanel({
                 canManage={canManage}
                 onWriteRecord={() => onWriteNote({ judgment: false, stageName: selectedStage?.name })}
                 onWriteJudgment={() => onWriteNote({ judgment: true, stageName: selectedStage?.name })}
-                onAddLedger={canManage ? onAddLedger : undefined}
+                onAddLedger={canManage && onAddLedger ? () => onAddLedger("express") : undefined}
               />
             </div>
           </div>
@@ -1060,9 +1063,9 @@ function StageBar({
   canManage,
   onAddTask,
   onAddDeadline,
+  onAddHearing,
   onUpload,
   onOpenTemplate,
-  onWriteNote,
   onCaseSearch,
   onRemoveStage
 }: {
@@ -1075,9 +1078,9 @@ function StageBar({
   canManage: boolean;
   onAddTask: () => void;
   onAddDeadline: () => void;
+  onAddHearing?: () => void;
   onUpload: () => void;
   onOpenTemplate: () => void;
-  onWriteNote: () => void;
   onRemoveStage?: () => void;
 }) {
   const [guideOpen, setGuideOpen] = useState(false);
@@ -1122,14 +1125,14 @@ function StageBar({
       {guideOpen ? <StageGuideBody guide={guide} /> : <p className="dos-stage-summary">{guide.summary}</p>}
       {canManage ? (
         <div className="dos-stage-acts">
-          <button type="button" className="btn btn-secondary btn-sm" onClick={onAddTask}>
-            <Plus />
-            添加任务
-          </button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={onAddDeadline}>
-            <Scale />
-            法定期限
-          </button>
+          <AddMenu
+            label="事项"
+            items={[
+              { key: "task", label: "任务", hint: `归入「${stage.name}」，可指派与设截止日`, icon: ListChecks, onSelect: onAddTask },
+              { key: "deadline", label: "期限", hint: "法定或约定期限，带起算依据", icon: Scale, onSelect: onAddDeadline },
+              ...(onAddHearing ? [{ key: "hearing", label: "开庭", hint: "时间、法庭与地址，同时进日程", icon: Landmark, onSelect: onAddHearing }] : [])
+            ]}
+          />
           <button type="button" className="btn btn-ghost btn-sm" onClick={onUpload}>
             <Upload />
             上传到本环节
@@ -1137,10 +1140,6 @@ function StageBar({
           <button type="button" className="btn btn-ghost btn-sm" onClick={onOpenTemplate}>
             <Sparkles />
             从模板生成
-          </button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={onWriteNote}>
-            <PenLine />
-            写研判笔记
           </button>
           {onCaseSearch ? (
             <button type="button" className="btn btn-ghost btn-sm" onClick={onCaseSearch}>
@@ -1331,13 +1330,50 @@ function StageLine({
   );
 }
 
+/** 一个按钮 + 类型菜单：待办用「＋事项」，记录用「＋记录」（2026-09-15 入口合并） */
+function AddMenu({
+  label,
+  primary,
+  items
+}: {
+  label: string;
+  primary?: boolean;
+  items: { key: string; label: string; hint: string; icon: typeof Plus; onSelect: () => void }[];
+}) {
+  if (items.length === 0) return null;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" className={cn("btn btn-sm", primary ? "btn-primary" : "btn-secondary")}>
+          <Plus />
+          {label}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-60">
+        {items.map((item) => {
+          const Icon = item.icon;
+          return (
+            <DropdownMenuItem key={item.key} onSelect={item.onSelect} className="items-start gap-2.5 py-2">
+              <Icon className="mt-0.5 h-4 w-4 text-[var(--t-muted)]" strokeWidth={1.8} />
+              <span className="flex flex-col">
+                <span className="text-[13px] font-medium">{item.label}</span>
+                <span className="text-[11px] text-muted-foreground">{item.hint}</span>
+              </span>
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /* 待办：只放未完成的任务、法定期限与开庭                               */
 /* ------------------------------------------------------------------ */
 
 type ActionItem = {
   key: string;
-  kind: "task" | "deadline" | "hearing";
+  kind: "task" | "deadline" | "hearing" | "memo";
   title: string;
   at: Date | null;
   days: number | null;
@@ -1347,6 +1383,7 @@ type ActionItem = {
   priority: number;
   taskId?: string;
   deadlineId?: string;
+  memoId?: string;
   pendingConfirm?: boolean;
 };
 
@@ -1406,6 +1443,22 @@ function buildActionItems(procedure: WorkflowProcedure | null, stages: WorkflowS
       priority: 1
     });
   }
+  // 历史备忘＝无截止日的事项（2026-09-15 起不再新增）
+  for (const memo of procedure.memos ?? []) {
+    if (memo.done) continue;
+    items.push({
+      key: `m-${memo.id}`,
+      kind: "memo",
+      title: memo.content.split("\n")[0].slice(0, 80),
+      at: null,
+      days: null,
+      stageKey: null,
+      stageName: null,
+      meta: `备忘 · ${shortDay(memo.createdAt)} 记`,
+      priority: 0,
+      memoId: memo.id
+    });
+  }
   const byTime = (a: ActionItem, b: ActionItem) => (a.at ? new Date(a.at).getTime() : Infinity) - (b.at ? new Date(b.at).getTime() : Infinity) || b.priority - a.priority;
   return items.sort(byTime);
 }
@@ -1433,7 +1486,9 @@ function NextActions({
   onShowAll,
   canManage,
   waiting,
-  onAddTask
+  onAddTask,
+  onAddDeadline,
+  onAddHearing
 }: {
   actions: ActionItem[];
   selectedStage: WorkflowStage | null;
@@ -1442,6 +1497,8 @@ function NextActions({
   canManage: boolean;
   waiting: WaitingItem[];
   onAddTask?: () => void;
+  onAddDeadline?: () => void;
+  onAddHearing?: () => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -1487,6 +1544,7 @@ function NextActions({
             {item.kind === "deadline" ? <span className="badge b-outline-red" style={{ fontSize: 10 }}>法定期限</span> : null}
             {item.kind === "hearing" ? <span className="badge b-blue" style={{ fontSize: 10 }}>开庭</span> : null}
             {item.kind === "task" && item.priority === 2 ? <span className="badge b-red" style={{ fontSize: 10 }}>紧急</span> : null}
+            {item.kind === "memo" ? <span className="badge b-slate" style={{ fontSize: 10 }}>备忘</span> : null}
             {item.pendingConfirm ? <span className="badge b-amber" style={{ fontSize: 10 }}>期限待确认</span> : null}
           </div>
           <div className="d">{[scope === "all" ? item.stageName : null, item.meta || null].filter(Boolean).join(" · ") || " "}</div>
@@ -1496,6 +1554,24 @@ function NextActions({
             <button type="button" className={cn("btn btn-sm", when.tone === "red" ? "btn-primary" : "btn-secondary")} disabled={pending} onClick={() => run(() => toggleTaskCompleted(item.taskId!), "任务已完成，已记入经办记录")}>
               完成
             </button>
+          ) : null}
+          {canManage && item.kind === "memo" && item.memoId ? (
+            <>
+              <button type="button" className="btn btn-secondary btn-sm" disabled={pending} onClick={() => run(() => toggleProcedureMemo(item.memoId!), "已办结，转入经办记录")}>
+                办结
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm text-[var(--t-muted)]"
+                disabled={pending}
+                onClick={async () => {
+                  if (!(await confirmDialog({ title: "删除这条备忘？", confirmText: "删除", danger: true }))) return;
+                  run(() => deleteProcedureMemo(item.memoId!), "已删除");
+                }}
+              >
+                删除
+              </button>
+            </>
           ) : null}
           {canManage && item.kind === "deadline" && item.deadlineId ? (
             <>
@@ -1528,11 +1604,16 @@ function NextActions({
           <span className="t-xs t-mute" style={{ fontWeight: 400 }}>{scope === "stage" && selectedStage ? `「${selectedStage.name}」未完成的任务、期限与开庭` : "全部环节未完成的任务、期限与开庭"}，完成后转入经办记录</span>
         </div>
         <div className="flex items-center gap-2">
-          {canManage && onAddTask ? (
-            <button type="button" className="btn btn-secondary btn-sm" onClick={onAddTask}>
-              <Plus />
-              任务
-            </button>
+          {canManage ? (
+            <AddMenu
+              label="事项"
+              primary
+              items={[
+                ...(onAddTask ? [{ key: "task", label: "任务", hint: "要做的事，可指派负责人与截止日", icon: ListChecks, onSelect: onAddTask }] : []),
+                ...(onAddDeadline ? [{ key: "deadline", label: "期限", hint: "法定或约定期限，带起算依据与确认", icon: Scale, onSelect: onAddDeadline }] : []),
+                ...(onAddHearing ? [{ key: "hearing", label: "开庭", hint: "时间、法庭与地址，同时进日程", icon: Landmark, onSelect: onAddHearing }] : [])
+              ]}
+            />
           ) : null}
         </div>
       </div>
@@ -1699,7 +1780,7 @@ function buildLogItems({
       channelTone: "court"
     });
   }
-  for (const memo of procedure?.memos ?? []) {
+  for (const memo of (procedure?.memos ?? []).filter((m) => m.done)) {
     const at = new Date(memo.createdAt);
     items.push({
       key: `m-${memo.id}`,
@@ -1749,9 +1830,8 @@ const LOG_FILTERS: { key: "all" | LogKind; label: string }[] = [
   { key: "talk", label: "沟通" },
   { key: "court", label: "法院" },
   { key: "note", label: "研判" },
-  { key: "task", label: "完成的任务" },
-  { key: "express", label: "快递" },
-  { key: "memo", label: "备忘" },
+  { key: "task", label: "完成的事项" },
+  { key: "express", label: "寄收件" },
   { key: "sys", label: "系统" }
 ];
 
@@ -1846,7 +1926,7 @@ function CaseLog({
   onWriteJudgment,
   onAddLedger
 }: {
-  onAddLedger?: (type: "express" | "memo") => void;
+  onAddLedger?: (type: "express") => void;
   items: LogItem[];
   stages: WorkflowStage[];
   procedure: WorkflowProcedure | null;
@@ -1887,28 +1967,14 @@ function CaseLog({
           </span>
         </div>
         {canManage ? (
-          <div className="flex gap-[7px]">
-            <button type="button" className="btn btn-ghost btn-sm" onClick={onWriteJudgment}>
-              <PenLine />
-              研判笔记
-            </button>
-            {onAddLedger ? (
-              <>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => onAddLedger("express")}>
-                  <Truck />
-                  快递
-                </button>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => onAddLedger("memo")}>
-                  <StickyNote />
-                  备忘
-                </button>
-              </>
-            ) : null}
-            <button type="button" className="btn btn-secondary btn-sm" onClick={onWriteRecord}>
-              <Plus />
-              记一笔
-            </button>
-          </div>
+          <AddMenu
+            label="记录"
+            items={[
+              { key: "talk", label: "沟通", hint: "电话、微信、邮件、会见、法院沟通", icon: MessageSquare, onSelect: onWriteRecord },
+              ...(onAddLedger ? [{ key: "express", label: "寄收件", hint: "填单号，物流状态自动更新", icon: Truck, onSelect: () => onAddLedger("express") }] : []),
+              { key: "judgment", label: "研判", hint: "我的判断与分析，独立样式陈列", icon: PenLine, onSelect: onWriteJudgment }
+            ]}
+          />
         ) : null}
       </div>
       <div className="dos-log-filters" role="group" aria-label="记录筛选">
