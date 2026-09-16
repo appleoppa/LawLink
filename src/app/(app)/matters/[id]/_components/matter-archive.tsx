@@ -100,7 +100,7 @@ function PartyBlock({ party, standings, clientHref }: { party: PartyRow; standin
         <div className="dos-pb-top">
           <span className="dos-pb-name">{party.name || "—"}</span>
           <span className="dos-pb-chip">{partyTypeLabel[party.partyType]}</span>
-          {party.role !== "CLIENT_PARTY" && party.role !== "OPPOSING_PARTY" && !standings.some((st) => litigationStandingLabel[st as keyof typeof litigationStandingLabel] === ROLE_LABEL[party.role]) ? <span className="dos-pb-chip">{ROLE_LABEL[party.role] ?? "当事人"}</span> : null}
+          {!standings.some((st) => litigationStandingLabel[st as keyof typeof litigationStandingLabel] === ROLE_LABEL[party.role]) ? <span className="dos-pb-chip">{ROLE_LABEL[party.role] ?? "当事人"}</span> : null}
           {idValue ? (
             <span className="dos-pb-chip">
               <span className="k">{idLabel}</span>
@@ -270,6 +270,11 @@ export function MatterArchive({
               <span className="whitespace-pre-wrap">{matter.intake.description}</span>
             </FieldItem>
           ) : null}
+          {customFieldDefs.map((def) => (
+            <FieldItem key={def.id} label={def.label} mono={def.fieldType === "NUMBER" || def.fieldType === "DATE"}>
+              {customValues[def.key]?.trim() ? customValues[def.key] : null}
+            </FieldItem>
+          ))}
           <FieldItem label="关联案件" wide>
             <RelatedMattersField matterId={matter.id} related={related} canManage={canManageRelated} />
           </FieldItem>
@@ -280,24 +285,16 @@ export function MatterArchive({
         {parties.length === 0 ? (
           <p className="t-xs t-mute">暂未登记当事人</p>
         ) : (
-          <div className="dos-party-groups">
-            {PARTY_GROUPS.map((group) => {
-              const rows = parties.filter((p) => group.roles.includes(p.role)).sort((a, b) => a.ordinal - b.ordinal);
-              if (!rows.length) return null;
-              return (
-                <div key={group.key} className="dos-party-group">
-                  <div className="dos-party-group-h">
-                    {group.title}
-                    <span>{rows.length}</span>
-                  </div>
-                  <div className="dos-party-list">
-                    {rows.map((p) => (
-                      <PartyBlock key={p.id} party={p} standings={standingsOf(p)} clientHref={p.id.startsWith("client:") ? `/clients/${p.id.slice(7)}` : null} />
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
+          <div className="dos-party-list">
+            {/* 按我方 → 对方 → 其他排序，角色以卡片内标签表达，不再分组占行（2026-09-16 收紧留白） */}
+            {[...parties]
+              .sort((x, y) => {
+                const rank = (p: PartyRow) => PARTY_GROUPS.findIndex((g) => g.roles.includes(p.role));
+                return (rank(x) < 0 ? 9 : rank(x)) - (rank(y) < 0 ? 9 : rank(y)) || x.ordinal - y.ordinal;
+              })
+              .map((p) => (
+                <PartyBlock key={p.id} party={p} standings={standingsOf(p)} clientHref={p.id.startsWith("client:") ? `/clients/${p.id.slice(7)}` : null} />
+              ))}
           </div>
         )}
       </Section>
@@ -333,6 +330,7 @@ export function MatterArchive({
           ) : null}
         </FieldGrid>
 
+        <div className="dos-two-col">
         {canReadFinance ? (
           <div className="dos-bill-list">
             <div className="dos-sub-h">
@@ -375,10 +373,14 @@ export function MatterArchive({
             ))
           )}
         </div>
+        </div>
       </Section>
 
-      {customFieldDefs.length > 0 ? (
-        <CustomFieldsPanel matterId={matter.id} defs={customFieldDefs} values={customValues} canEdit={canEditCustom} />
+      {/* 自定义字段并入基本信息表格；编辑入口留在这里，避免单独一张几乎空白的卡片 */}
+      {customFieldDefs.length > 0 && canEditCustom ? (
+        <div className="dos-custom-edit">
+          <CustomFieldsPanel matterId={matter.id} defs={customFieldDefs} values={customValues} canEdit editOnly />
+        </div>
       ) : null}
     </>
   );

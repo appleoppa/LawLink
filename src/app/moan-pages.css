@@ -1230,3 +1230,11 @@
 .mo-dossier .dos-bill .v { margin-left: auto; font-family: var(--font-mono); font-weight: 650; }
 .mo-dossier .dos-bill .m { flex-basis: 100%; font-size: 11px; color: var(--t-muted); }
 .mo-dossier .dos-bill .link-inline { font-size: 12px; }
+
+/* 案件档案密度（2026-09-16 用户反馈页面偏空）：当事人两列、合同与材料两列、自定义字段并入基本信息 */
+@media (min-width: 1280px) {
+  .mo-dossier .dos-party-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .mo-dossier .dos-two-col { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; }
+}
+.mo-dossier .dos-custom-edit { display: flex; justify-content: flex-end; margin-top: -6px; }
+.mo-dossier .dos-main > .card + .card { margin-top: 0; }

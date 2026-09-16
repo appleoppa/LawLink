@@ -33,15 +33,30 @@ export function CustomFieldsPanel({
   matterId,
   defs,
   values,
-  canEdit
+  canEdit,
+  editOnly = false
 }: {
   matterId: string;
   defs: FieldDef[];
   values: Record<string, string>;
   canEdit: boolean;
+  /** 字段已并入其他表格时，只渲染编辑入口 */
+  editOnly?: boolean;
 }) {
   const [editOpen, setEditOpen] = useState(false);
   if (defs.length === 0) return null;
+
+  if (editOnly) {
+    return (
+      <>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditOpen(true)}>
+          <Pencil />
+          编辑自定义信息
+        </button>
+        <EditDialog key={editOpen ? "open" : "closed"} open={editOpen} onClose={() => setEditOpen(false)} matterId={matterId} defs={defs} values={values} />
+      </>
+    );
+  }
 
   return (
     <section className="card">
