@@ -194,7 +194,7 @@ export function MatterArchive({
   return (
     <>
       {/* 基本信息与当前程序信息合并为一张表（2026-09-14 用户要求） */}
-      <Section icon={FileText} title="基本信息" hint={kind === "litigation" && procLabel ? `程序字段为当前程序「${procLabel}」` : undefined} action={editBtn}>
+      <Section icon={FileText} title="基本信息" hint={kind === "litigation" && procLabel ? procLabel : undefined} action={editBtn}>
         <FieldGrid cols={2}>
           <FieldItem label="案件类别">{matterCategoryLabel[matter.category]}</FieldItem>
           <FieldItem label={isCriminal ? "涉嫌罪名" : kind === "litigation" ? "案由" : kind === "counsel" ? "顾问类型" : "业务类型"}>
@@ -259,7 +259,7 @@ export function MatterArchive({
         </FieldGrid>
       </Section>
 
-      <Section icon={UserRound} title="当事人" hint={`${parties.length} 方 · 诉讼地位按当前程序${procLabel ? `「${procLabel}」` : ""}`} action={editBtn}>
+      <Section icon={UserRound} title="当事人" hint={procLabel ? `共 ${parties.length} 方 · 诉讼地位按「${procLabel}」显示` : `共 ${parties.length} 方`} action={editBtn}>
         {parties.length === 0 ? (
           <p className="t-xs t-mute">暂未登记当事人</p>
         ) : (
