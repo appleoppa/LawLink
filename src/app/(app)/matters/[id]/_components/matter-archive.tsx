@@ -32,18 +32,17 @@ const ROLE_LABEL: Record<string, string> = {
 
 const dash = (v: string | null | undefined) => v?.trim() || null;
 
-function Section({ icon: Icon, title, hint, action, children }: { icon: typeof FileText; title: string; hint?: string; action?: React.ReactNode; children: React.ReactNode }) {
+/** 案件要素卡内部的分区带：小图标 + 标题 + 右侧操作，字段用自适应网格铺满整行 */
+function Group({ icon: Icon, title, hint, action, children }: { icon: typeof FileText; title: string; hint?: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="card" aria-label={title}>
-      <div className="panel-head">
-        <div className="panel-title">
-          <Icon className="ic" strokeWidth={1.8} />
-          {title}
-          {hint ? <span className="t-xs t-mute" style={{ fontWeight: 400 }}>{hint}</span> : null}
-        </div>
-        {action}
+    <section className="dos-group" aria-label={title}>
+      <div className="dos-group-h">
+        <Icon className="ic" strokeWidth={1.9} />
+        <span className="t">{title}</span>
+        {hint ? <span className="h">{hint}</span> : null}
+        {action ? <span className="a">{action}</span> : null}
       </div>
-      <div className="panel-body">{children}</div>
+      <div className="dos-group-b">{children}</div>
     </section>
   );
 }
@@ -244,11 +243,10 @@ export function MatterArchive({
         ) : null}
       </section>
 
-      {/* 二、案件要素：按主题拆成小表，左右两栏高度接近 */}
-      <div className="dos-arch">
-        <div className="dos-arch-col">
-          <Section icon={FileText} title={isCriminal ? "指控与请求" : kind === "litigation" ? "案由与请求" : "服务内容"} action={editBtn}>
-            <FieldGrid cols={1}>
+      {/* 二、案件要素：一张卡片内按主题分区，字段自适应铺满（2026-09-16 重排，避免两栏高度不齐与留白） */}
+      <div className="card dos-facts">
+          <Group icon={FileText} title={isCriminal ? "指控与请求" : kind === "litigation" ? "案由与请求" : "服务内容"} action={editBtn}>
+            <FieldGrid cols={2} className="mo-field-grid-auto">
               <FieldItem label="案件类别">{matterCategoryLabel[matter.category]}</FieldItem>
               <FieldItem label={isCriminal ? "涉嫌罪名" : kind === "litigation" ? "案由" : kind === "counsel" ? "顾问类型" : "业务类型"}>
                 {kind === "litigation" ? dash(matter.cause?.name ?? matter.causeFreeText) : dash(kind === "counsel" ? matter.counselType : matter.businessType)}
@@ -262,7 +260,7 @@ export function MatterArchive({
                   ) : null}
                   <FieldItem label="律协备案">{matter.barFiling && matter.barFiling !== "NONE" ? "已备案" : "未备案"}</FieldItem>
                   {!isCriminal ? (
-                    <FieldItem label={isArbitration ? "仲裁请求" : "诉讼请求"}>
+                    <FieldItem label={isArbitration ? "仲裁请求" : "诉讼请求"} wide>
                       {matter.intake?.claimDescription?.trim() ? <span className="whitespace-pre-wrap">{matter.intake.claimDescription}</span> : null}
                     </FieldItem>
                   ) : null}
@@ -273,16 +271,16 @@ export function MatterArchive({
                     {matter.serviceStart || matter.serviceEnd ? `${matter.serviceStart ? formatDate(matter.serviceStart) : "—"} ~ ${matter.serviceEnd ? formatDate(matter.serviceEnd) : "—"}` : null}
                   </FieldItem>
                   {kind === "project" ? <FieldItem label="项目金额" mono>{money(matter.claimAmount)}</FieldItem> : null}
-                  <FieldItem label="服务范围">{matter.serviceScope?.trim() ? <span className="whitespace-pre-wrap">{matter.serviceScope}</span> : null}</FieldItem>
-                  {kind === "project" ? <FieldItem label="交付成果">{dash(matter.deliverables)}</FieldItem> : null}
+                  <FieldItem label="服务范围" wide>{matter.serviceScope?.trim() ? <span className="whitespace-pre-wrap">{matter.serviceScope}</span> : null}</FieldItem>
+                  {kind === "project" ? <FieldItem label="交付成果" wide>{dash(matter.deliverables)}</FieldItem> : null}
                 </>
               )}
             </FieldGrid>
-          </Section>
+          </Group>
 
           {kind === "litigation" && currentProcedure ? (
-            <Section icon={Landmark} title="管辖与承办" hint={procLabel ?? undefined} action={editBtn}>
-              <FieldGrid cols={1}>
+            <Group icon={Landmark} title="管辖与承办" hint={procLabel ?? undefined} action={editBtn}>
+              <FieldGrid cols={2} className="mo-field-grid-auto">
                 <FieldItem label="案号" mono>{dash(currentProcedure.caseNumber)}</FieldItem>
                 <FieldItem label={isArbitration ? "仲裁机构" : isCriminal ? "办案机关" : "受理机构"}>{dash(currentProcedure.handlingAgency)}</FieldItem>
                 <FieldItem label="管辖地">{dash(currentProcedure.jurisdiction)}</FieldItem>
@@ -303,7 +301,7 @@ export function MatterArchive({
                     </span>
                   ) : null}
                 </FieldItem>
-                {currentProcedure.panel?.trim() ? <FieldItem label={isArbitration ? "仲裁庭" : "合议庭"}>{currentProcedure.panel}</FieldItem> : null}
+                {currentProcedure.panel?.trim() ? <FieldItem label={isArbitration ? "仲裁庭" : "合议庭"} wide>{currentProcedure.panel}</FieldItem> : null}
                 {currentProcedure.concludedAt || outcome ? (
                   <>
                     <FieldItem label="结案时间" mono>{currentProcedure.concludedAt ? formatDate(currentProcedure.concludedAt) : null}</FieldItem>
@@ -311,13 +309,11 @@ export function MatterArchive({
                   </>
                 ) : null}
               </FieldGrid>
-            </Section>
+            </Group>
           ) : null}
-        </div>
 
-        <div className="dos-arch-col">
-          <Section icon={Wallet} title="委托与收费" action={<button type="button" className="btn btn-ghost btn-sm" onClick={onOpenFinance}>收付与开票</button>}>
-            <FieldGrid cols={1}>
+          <Group icon={Wallet} title="委托与收费" action={<button type="button" className="btn btn-ghost btn-sm" onClick={onOpenFinance}>收付与开票</button>}>
+            <FieldGrid cols={2} className="mo-field-grid-auto">
               <FieldItem label="收费方式">{matter.intake?.feeType ? feeTypeLabel[matter.intake.feeType] : null}</FieldItem>
               {canReadFinance ? (
                 <FieldItem label={matter.intake?.feeType === "CONTINGENCY" ? "基础办案费" : "约定收费"} mono>
@@ -325,13 +321,13 @@ export function MatterArchive({
                 </FieldItem>
               ) : null}
               {matter.intake?.feeType === "CONTINGENCY" ? (
-                <FieldItem label="风险代理收费方式">
+                <FieldItem label="风险代理收费方式" wide>
                   {matter.intake?.contingencyTerms?.trim() ? <span className="whitespace-pre-wrap">{matter.intake.contingencyTerms}</span> : null}
                 </FieldItem>
               ) : null}
-              <FieldItem label="付款节点">{dash(matter.intake?.feeSchedule)}</FieldItem>
+              <FieldItem label="付款节点" wide>{dash(matter.intake?.feeSchedule)}</FieldItem>
               {matter.intake?.feeNote?.trim() ? (
-                <FieldItem label="收费说明">
+                <FieldItem label="收费说明" wide>
                   <span className="whitespace-pre-wrap">{matter.intake.feeNote}</span>
                 </FieldItem>
               ) : null}
@@ -378,19 +374,19 @@ export function MatterArchive({
               )}
             </div>
             <p className="dos-foot-note">一案一签：变更收费或增加代理程序时，在「收付与开票」新增一条补充协议，原合同保留。</p>
-          </Section>
+          </Group>
 
-          <Section
+          <Group
             icon={FileText}
             title="收案与登记"
             action={customFieldDefs.length > 0 && canEditCustom ? <CustomFieldsPanel matterId={matter.id} defs={customFieldDefs} values={customValues} canEdit editOnly /> : null}
           >
-            <FieldGrid cols={1}>
+            <FieldGrid cols={2} className="mo-field-grid-auto">
               <FieldItem label="收案日期" mono>{matter.intakeDate ? formatDate(matter.intakeDate) : null}</FieldItem>
               <FieldItem label="登记人">{dash([matter.intake?.receivedAt ? formatDate(matter.intake.receivedAt) : null, matter.intake?.createdBy?.name].filter(Boolean).join(" · "))}</FieldItem>
               <FieldItem label="联系人">{dash([matter.intake?.contactName, matter.intake?.contactPhone].filter(Boolean).join(" · "))}</FieldItem>
               {matter.intake?.description?.trim() ? (
-                <FieldItem label="事实摘要">
+                <FieldItem label="事实摘要" wide>
                   <span className="whitespace-pre-wrap">{matter.intake.description}</span>
                 </FieldItem>
               ) : null}
@@ -399,12 +395,11 @@ export function MatterArchive({
                   {customValues[def.key]?.trim() ? customValues[def.key] : null}
                 </FieldItem>
               ))}
-              <FieldItem label="关联案件">
+              <FieldItem label="关联案件" wide>
                 <RelatedMattersField matterId={matter.id} related={related} canManage={canManageRelated} />
               </FieldItem>
             </FieldGrid>
-          </Section>
-        </div>
+          </Group>
       </div>
     </>
   );

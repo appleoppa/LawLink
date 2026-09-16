@@ -1268,3 +1268,16 @@
 .mo-dossier .dos-foot-note { margin: 12px 0 0; font-size: 11px; line-height: 1.7; color: var(--t-muted); }
 .mo-dossier .dos-bill .m { flex-basis: auto; }
 .mo-dossier .dos-bill:has(.link-inline) .m { margin-right: auto; }
+
+/* 案件要素：一张卡片内按主题分区（2026-09-16 版式重排） */
+.mo-dossier .dos-facts { padding: 0; }
+.mo-dossier .dos-group + .dos-group { border-top: 1px solid var(--bd-hair); }
+.mo-dossier .dos-group-h { display: flex; align-items: center; gap: 8px; padding: 12px 18px 8px; }
+.mo-dossier .dos-group-h .ic { width: 24px; height: 24px; padding: 5px; border-radius: 7px; background: var(--teal-soft); color: var(--teal-deep); flex-shrink: 0; }
+.mo-dossier .dos-group-h .t { font-size: 14px; font-weight: 650; color: var(--t-primary); white-space: nowrap; }
+.mo-dossier .dos-group-h .h { font-size: 11.5px; color: var(--t-muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mo-dossier .dos-group-h .a { margin-left: auto; flex-shrink: 0; }
+.mo-dossier .dos-group-b { padding: 0 18px 14px; }
+.mo-dossier .dos-facts .mo-field-k { width: 88px; }
+.mo-dossier .dos-facts .dos-bill-list { margin-top: 12px; }
+.mo-dossier .dos-facts .dos-two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 24px; }
