@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * 墨案 04「登记进展」/「写研判笔记」：
+ * 案卷工作台「＋记录」：沟通与研判（2026-09-15 入口统一，原「登记进展 / 写研判笔记」）：
  * - 办案记录（事务记录）：沟通、送达、会见等事实登记，按渠道归类；
- * - 研判笔记：人工判断内容，带 `研判笔记` 标签独立陈列，可按环节归档。
+ * - 研判：人工判断内容，带 `研判笔记` 标签（数据标签不变）独立陈列，可按环节归档。
  * 期限、任务、开庭仍走各自的专用表单，本弹窗只提供入口。
  */
 import { useEffect, useState, useTransition } from "react";
@@ -91,7 +91,7 @@ export function ProgressDialog({
           content: content.trim(),
           tags: mode === "judgment" ? [JUDGMENT_NOTE_TAG, ...(stage ? [stageNoteTag(stage)] : [])] : stage ? [stageNoteTag(stage)] : []
         });
-        toast.success(mode === "judgment" ? "研判笔记已保存" : "进展已登记");
+        toast.success(mode === "judgment" ? "研判已保存" : "记录已保存");
         onOpenChange(false);
         router.refresh();
       } catch (err) {
@@ -112,17 +112,17 @@ export function ProgressDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[560px]">
         <DialogHeader>
-          <DialogTitle>{mode === "judgment" ? "写研判笔记" : "登记进展"}</DialogTitle>
+          <DialogTitle>{mode === "judgment" ? "添加记录 · 研判" : "添加记录 · 沟通"}</DialogTitle>
           <DialogDescription>
-            {mode === "judgment" ? "人工判断内容独立陈列，不与事务记录混排；保存后写入审计。" : "登记沟通、送达、会见等办案事实，自动带时间与操作人。"}
+            {mode === "judgment" ? "我的判断与分析，独立陈列，不与事实记录混排；保存后写入审计。" : "记录已发生的沟通、送达、会见等事实，自动带时间与操作人。"}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3.5">
           <Segmented
             items={[
-              { key: "record", label: "办案记录" },
-              { key: "judgment", label: "研判笔记" }
+              { key: "record", label: "沟通" },
+              { key: "judgment", label: "研判" }
             ]}
             value={mode}
             onChange={setMode}

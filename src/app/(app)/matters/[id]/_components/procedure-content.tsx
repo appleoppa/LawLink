@@ -235,7 +235,7 @@ function ImportantItemsCard({
   }
 
   async function handleDeleteExpress(id: string) {
-    if (!(await confirmDialog({ title: "删除这条快递记录？", confirmText: "删除", danger: true }))) return;
+    if (!(await confirmDialog({ title: "删除这条寄收件记录？", confirmText: "删除", danger: true }))) return;
     startTransition(async () => {
       try {
         await deleteExpress({ id });
@@ -261,8 +261,8 @@ function ImportantItemsCard({
   const filters: { value: ImportantFilter; label: string; count: number }[] = ([
     { value: "all", label: "全部", count: total },
     { value: "hearing", label: "开庭", count: hearings.length },
-    { value: "deadline", label: "时限", count: deadlines.length },
-    { value: "express", label: "快递", count: expresses.length },
+    { value: "deadline", label: "期限", count: deadlines.length },
+    { value: "express", label: "寄收件", count: expresses.length },
     { value: "memo", label: "备忘", count: memos.length }
   ] as { value: ImportantFilter; label: string; count: number }[]).filter((f) => f.value === "all" || !kinds || kinds.includes(f.value as ImportantCategory));
 
@@ -279,7 +279,7 @@ function ImportantItemsCard({
       <header className="panel-head shrink-0 flex-wrap">
         <span className="panel-title">
           <AlertTriangle className="ic" />
-          {kinds ? kinds.map((k) => ({ hearing: "开庭", deadline: "期限", express: "快递", memo: "备忘" })[k]).join("与") : "期限、开庭与备忘"}
+          {kinds ? kinds.map((k) => ({ hearing: "开庭", deadline: "期限", express: "寄收件", memo: "备忘" })[k]).join("与") : "期限、开庭与备忘"}
           <span className="mo-count">{total}</span>
         </span>
         <div className="flex flex-wrap items-center gap-2">
@@ -882,8 +882,8 @@ function MemoRow({
 
 const importantTypeMeta: Record<ImportantCategory, { label: string; icon: React.ElementType }> = {
   hearing: { label: "开庭", icon: Gavel },
-  deadline: { label: "时限", icon: AlertTriangle },
-  express: { label: "快递", icon: Package },
+  deadline: { label: "期限", icon: AlertTriangle },
+  express: { label: "寄收件", icon: Package },
   memo: { label: "备忘", icon: StickyNote }
 };
 
@@ -918,12 +918,15 @@ export function ImportantItemDialog({
   procedures,
   defaultProcedureId,
   hearingCounts,
-  proceduresDetail
+  proceduresDetail,
+  types = ["hearing", "deadline", "express"]
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   matterId: string;
   defaultType: ImportantCategory;
+  /** 可选分类；默认不含「备忘」（2026-09-15 起备忘不再新增，等同无截止日的任务） */
+  types?: ImportantCategory[];
   procedures: { id: string; label: string }[];
   defaultProcedureId: string;
   hearingCounts: Record<string, number>;
@@ -1102,7 +1105,7 @@ export function ImportantItemDialog({
       return;
     }
     if (!deadlineTitle.trim()) {
-      toast.error("请填写时限名称");
+      toast.error("请填写期限名称");
       return;
     }
     const dueAt = new Date(`${deadlineDueAt}T00:00:00`);
@@ -1120,7 +1123,7 @@ export function ImportantItemDialog({
           basis: deadlineBasis.trim(),
           remindDays: deadlineRemindDays
         });
-        toast.success("重要时限已添加");
+        toast.success("期限已添加");
         onOpenChange(false);
         router.refresh();
       } catch (err) {
@@ -1151,7 +1154,7 @@ export function ImportantItemDialog({
           recipient: recipient.trim(),
           recipientPhone: recipientPhone.trim()
         });
-        toast.success("快递记录已添加");
+        toast.success("寄收件记录已添加");
         onOpenChange(false);
         router.refresh();
       } catch (err) {
@@ -1204,16 +1207,16 @@ export function ImportantItemDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[88vh] max-w-2xl flex-col gap-0 p-0">
         <DialogHeader className="border-b border-border px-6 py-4">
-          <DialogTitle>添加重要事项</DialogTitle>
+          <DialogTitle>{types.includes("express") && types.length === 1 ? "添加记录 · 寄收件" : "添加事项"}</DialogTitle>
           <DialogDescription className="text-xs">
-            在一个窗口内选择事项分类并填写信息
+            {types.includes("express") && types.length === 1 ? "填写快递单号与用途，物流状态由接口更新" : "选择分类后填写信息；开庭与期限同时进入日程与提醒"}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-hidden">
           <div className="border-b border-border px-6 py-3">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {(Object.keys(importantTypeMeta) as ImportantCategory[]).map((key) => {
+            <div className={cn("grid gap-2", types.length > 2 ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2")}>
+              {types.map((key) => {
                 const Icon = importantTypeMeta[key].icon;
                 return (
                   <button
@@ -1362,7 +1365,7 @@ export function ImportantItemDialog({
                     onChange={setDeadlineProcedureId}
                   />
                 </ImportantField>
-                <ImportantField label="时限名称" required>
+                <ImportantField label="期限名称" required>
                   <Input
                     value={deadlineTitle}
                     onChange={(e) => setDeadlineTitle(e.target.value)}
@@ -1371,7 +1374,7 @@ export function ImportantItemDialog({
                   />
                 </ImportantField>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <ImportantField label="时限类型">
+                  <ImportantField label="期限类型">
                     <Select
                       value={deadlineCategory}
                       onValueChange={(value) =>

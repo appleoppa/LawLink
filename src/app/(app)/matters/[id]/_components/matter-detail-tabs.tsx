@@ -260,12 +260,12 @@ export function MatterDetailTabs({
     canOwnThisMatter ||
     Boolean(currentProcedure && canAssociateThisMatter);
   const isArchived = matter.status === "ARCHIVED";
-  // 已归档案件只读：不再提供登记进展、上传材料与新增程序入口
+  // 已归档案件只读：不再提供添加记录、上传材料与新增程序入口
   const canWriteRecords = canAssociateThisMatter && allowed("schedule.write") && !isArchived;
 
-  // 顶栏主操作 = 登记进展（墨案 04）
+  // 顶栏主操作 = 添加记录（＋记录 · 沟通）
   useTopbarAction(
-    canWriteRecords ? { label: "登记进展", onClick: () => setProgress({ mode: "record", stage: workflowApi.current?.currentStageName ?? undefined, stageNames: workflowApi.current?.stageNames ?? [] }) } : null,
+    canWriteRecords ? { label: "添加记录", onClick: () => setProgress({ mode: "record", stage: workflowApi.current?.currentStageName ?? undefined, stageNames: workflowApi.current?.stageNames ?? [] }) } : null,
     [canWriteRecords]
   );
 
@@ -564,6 +564,7 @@ export function MatterDetailTabs({
           onOpenChange={(o) => { if (!o) setLedgerAdd(null); }}
           matterId={matter.id}
           defaultType={ledgerAdd}
+          types={ledgerAdd === "express" ? ["express"] : ["hearing", "deadline"]}
           procedures={engagedProcedures.map((p) => ({ id: p.id, label: procLabel(p) }))}
           defaultProcedureId={currentProcedure.id}
           hearingCounts={Object.fromEntries(engagedProcedures.map((p) => [p.id, p.hearings.length]))}
