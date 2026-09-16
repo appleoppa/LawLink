@@ -632,7 +632,7 @@ a.seg { text-decoration: none; }
 .mo-field-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .mo-field { display: flex; align-items: stretch; min-width: 0; border-bottom: 1px solid var(--bd-subtle); border-right: 1px solid var(--bd-subtle); }
 .mo-field-wide { grid-column: 1 / -1; }
-.mo-field-k { width: 104px; flex-shrink: 0; margin: 0; padding: 9px 12px; font-size: 12px; line-height: 1.5; color: var(--t-muted); background: #F4F7F6; border-right: 1px solid var(--bd-hair); display: flex; align-items: center; }
+.mo-field-k { width: 104px; flex-shrink: 0; margin: 0; padding: 9px 12px; text-align: justify; text-align-last: justify; font-size: 12px; line-height: 1.5; color: var(--t-muted); background: #F4F7F6; border-right: 1px solid var(--bd-hair); display: block; align-self: center; }
 .mo-field-v { flex: 1; min-width: 0; margin: 0; padding: 9px 14px; font-size: 13px; line-height: 1.5; font-weight: 550; color: var(--t-primary); word-break: break-word; display: flex; align-items: center; flex-wrap: wrap; }
 .mo-field-v.mono { font-family: var(--font-mono); font-weight: 500; font-size: 12.5px; }
 .mo-field-v .t-faint, .mo-field-v .text-muted-foreground { font-weight: 400; }
