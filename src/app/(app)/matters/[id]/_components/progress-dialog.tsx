@@ -179,23 +179,23 @@ export function ProgressDialog({
 
           {mode === "record" && (onAddTask || onAddDeadline || onAddHearing) ? (
             <div className="flex flex-wrap items-center gap-1.5 rounded-[8px] bg-[var(--bg-sunken)] px-2.5 py-2">
-              <span className="t-xs t-mute mr-1">其他进展：</span>
+              <span className="t-xs t-mute mr-1">改记事项：</span>
               {onAddTask ? (
                 <button type="button" className="btn btn-ghost btn-sm" onClick={jump(onAddTask)}>
                   <ListChecks />
-                  添加任务
+                  任务
                 </button>
               ) : null}
               {onAddDeadline ? (
                 <button type="button" className="btn btn-ghost btn-sm" onClick={jump(onAddDeadline)}>
                   <CalendarClock />
-                  登记期限
+                  期限
                 </button>
               ) : null}
               {onAddHearing ? (
                 <button type="button" className="btn btn-ghost btn-sm" onClick={jump(onAddHearing)}>
                   <Landmark />
-                  安排开庭
+                  开庭
                 </button>
               ) : null}
             </div>
