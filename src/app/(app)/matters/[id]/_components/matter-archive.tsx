@@ -6,7 +6,7 @@
  */
 import { useState } from "react";
 import Link from "next/link";
-import { FileText, Pencil, UserRound, Users, Wallet } from "lucide-react";
+import { FileText, Landmark, Pencil, UserRound, Users, Wallet } from "lucide-react";
 import { FieldGrid, FieldItem, InitialAvatar } from "@/components/patterns/moan";
 import { avatarTone } from "@/lib/ui/moan-tones";
 import { feeTypeLabel, litigationStandingLabel, matterCategoryKind, matterCategoryLabel, partyTypeLabel, procedureTypeLabel } from "@/lib/enums";
@@ -29,11 +29,6 @@ const ROLE_LABEL: Record<string, string> = {
   WITNESS: "证人",
   OTHER: "其他参与人"
 };
-const PARTY_GROUPS: { key: string; title: string; roles: string[] }[] = [
-  { key: "ours", title: "委托方", roles: ["CLIENT_PARTY", "CO_LITIGANT"] },
-  { key: "opp", title: "对方当事人", roles: ["OPPOSING_PARTY"] },
-  { key: "other", title: "第三人及其他", roles: ["THIRD_PARTY", "AGENT", "WITNESS", "OTHER"] }
-];
 
 const dash = (v: string | null | undefined) => v?.trim() || null;
 
@@ -201,187 +196,216 @@ export function MatterArchive({
     return party.standing ? [normalize(party.standing)] : [];
   };
 
+  const ours = parties.filter((p) => p.role === "CLIENT_PARTY" || p.role === "CO_LITIGANT").sort((a, b) => a.ordinal - b.ordinal);
+  const opposing = parties.filter((p) => p.role === "OPPOSING_PARTY").sort((a, b) => a.ordinal - b.ordinal);
+  const others = parties.filter((p) => !ours.includes(p) && !opposing.includes(p)).sort((a, b) => a.ordinal - b.ordinal);
+  const partyCard = (p: PartyRow) => (
+    <PartyBlock key={p.id} party={p} standings={standingsOf(p)} clientHref={p.id.startsWith("client:") ? `/clients/${p.id.slice(7)}` : null} />
+  );
+
   return (
     <>
-      {/* 基本信息与当前程序信息合并为一张表（2026-09-14 用户要求） */}
-      <Section icon={FileText} title="基本信息" hint={kind === "litigation" && procLabel ? procLabel : undefined} action={editBtn}>
-        <FieldGrid cols={2}>
-          <FieldItem label="案件类别">{matterCategoryLabel[matter.category]}</FieldItem>
-          <FieldItem label={isCriminal ? "涉嫌罪名" : kind === "litigation" ? "案由" : kind === "counsel" ? "顾问类型" : "业务类型"}>
-            {kind === "litigation" ? dash(matter.cause?.name ?? matter.causeFreeText) : dash(kind === "counsel" ? matter.counselType : matter.businessType)}
-          </FieldItem>
-          <FieldItem label="收案日期" mono>{matter.intakeDate ? formatDate(matter.intakeDate) : null}</FieldItem>
-          <FieldItem label="委托方">{dash(matter.primaryClient?.name ?? matter.clientLinks.map((l) => l.client.name).join("、"))}</FieldItem>
-          {kind === "litigation" ? (
-            <>
-              {!isCriminal ? <FieldItem label="标的额" mono>{money(matter.claimAmount)}</FieldItem> : null}
-              <FieldItem label="我方地位">{standing ? litigationStandingLabel[standing] : null}</FieldItem>
-              {currentProcedure ? (
-                <>
-                  <FieldItem label="案号" mono>{dash(currentProcedure.caseNumber)}</FieldItem>
-                  <FieldItem label={isArbitration ? "仲裁机构" : isCriminal ? "办案机关" : "受理机构"}>{dash(currentProcedure.handlingAgency)}</FieldItem>
-                  <FieldItem label="管辖地">{dash(currentProcedure.jurisdiction)}</FieldItem>
-                  <FieldItem label={isArbitration ? "受理时间" : "立案时间"} mono>{currentProcedure.acceptedAt ? formatDate(currentProcedure.acceptedAt) : null}</FieldItem>
-                  <FieldItem label={contactLabels.lead}>
-                    {currentProcedure.presidingJudge?.trim() ? (
-                      <span>
-                        {currentProcedure.presidingJudge}
-                        {currentProcedure.presidingJudgeContact ? <span className="ml-2 font-mono text-[12px] font-normal text-[var(--t-secondary)]">{currentProcedure.presidingJudgeContact}</span> : null}
-                      </span>
-                    ) : null}
-                  </FieldItem>
-                  <FieldItem label={contactLabels.assistant}>
-                    {currentProcedure.judgeAssistant?.trim() ? (
-                      <span>
-                        {currentProcedure.judgeAssistant}
-                        {currentProcedure.judgeAssistantContact ? <span className="ml-2 font-mono text-[12px] font-normal text-[var(--t-secondary)]">{currentProcedure.judgeAssistantContact}</span> : null}
-                      </span>
-                    ) : null}
-                  </FieldItem>
-                  {currentProcedure.panel?.trim() ? <FieldItem label={isArbitration ? "仲裁庭" : "合议庭"} wide>{currentProcedure.panel}</FieldItem> : null}
-                  {currentProcedure.concludedAt || outcome ? (
-                    <>
-                      <FieldItem label="结案时间" mono>{currentProcedure.concludedAt ? formatDate(currentProcedure.concludedAt) : null}</FieldItem>
-                      <FieldItem label={isCriminal ? "处理结果" : "裁判结果"}>{outcome || null}</FieldItem>
-                    </>
-                  ) : null}
-                </>
-              ) : null}
-              {!isCriminal && matter.category !== "ADMINISTRATIVE" ? (
-                <FieldItem label={isArbitration ? "是否提出反请求" : "是否反诉"}>{matter.intake ? (matter.intake.counterclaim ? "是" : "否") : null}</FieldItem>
-              ) : null}
-              <FieldItem label="律协备案">{matter.barFiling && matter.barFiling !== "NONE" ? "已备案" : "未备案"}</FieldItem>
-              {!isCriminal ? <FieldItem label={isArbitration ? "仲裁请求" : "诉讼请求"} wide>{matter.intake?.claimDescription?.trim() ? <span className="whitespace-pre-wrap">{matter.intake.claimDescription}</span> : null}</FieldItem> : null}
-            </>
-          ) : (
-            <>
-              <FieldItem label={kind === "counsel" ? "顾问期限" : "服务期间"} mono>
-                {matter.serviceStart || matter.serviceEnd ? `${matter.serviceStart ? formatDate(matter.serviceStart) : "—"} ~ ${matter.serviceEnd ? formatDate(matter.serviceEnd) : "—"}` : null}
-              </FieldItem>
-              {kind === "project" ? <FieldItem label="项目金额" mono>{money(matter.claimAmount)}</FieldItem> : null}
-              <FieldItem label="服务范围" wide>{matter.serviceScope?.trim() ? <span className="whitespace-pre-wrap">{matter.serviceScope}</span> : null}</FieldItem>
-              {kind === "project" ? <FieldItem label="交付成果" wide>{dash(matter.deliverables)}</FieldItem> : null}
-            </>
-          )}
-          <FieldItem label="联系人">{dash([matter.intake?.contactName, matter.intake?.contactPhone].filter(Boolean).join(" · "))}</FieldItem>
-          <FieldItem label="收案登记">{dash([matter.intake?.receivedAt ? formatDate(matter.intake.receivedAt) : null, matter.intake?.createdBy?.name ? `${matter.intake.createdBy.name} 登记` : null].filter(Boolean).join(" · "))}</FieldItem>
-          {matter.intake?.description?.trim() ? (
-            <FieldItem label="事实摘要" wide>
-              <span className="whitespace-pre-wrap">{matter.intake.description}</span>
-            </FieldItem>
-          ) : null}
-          {customFieldDefs.map((def) => (
-            <FieldItem key={def.id} label={def.label} mono={def.fieldType === "NUMBER" || def.fieldType === "DATE"}>
-              {customValues[def.key]?.trim() ? customValues[def.key] : null}
-            </FieldItem>
-          ))}
-          <FieldItem label="关联案件" wide>
-            <RelatedMattersField matterId={matter.id} related={related} canManage={canManageRelated} />
-          </FieldItem>
-        </FieldGrid>
-      </Section>
-
-      <Section icon={UserRound} title="当事人" hint={procLabel ? `共 ${parties.length} 方 · 诉讼地位按「${procLabel}」显示` : `共 ${parties.length} 方`} action={editBtn}>
-        {parties.length === 0 ? (
-          <p className="t-xs t-mute">暂未登记当事人</p>
-        ) : (
-          <div className="dos-party-list">
-            {/* 按我方 → 对方 → 其他排序，角色以卡片内标签表达，不再分组占行（2026-09-16 收紧留白） */}
-            {[...parties]
-              .sort((x, y) => {
-                const rank = (p: PartyRow) => PARTY_GROUPS.findIndex((g) => g.roles.includes(p.role));
-                return (rank(x) < 0 ? 9 : rank(x)) - (rank(y) < 0 ? 9 : rank(y)) || x.ordinal - y.ordinal;
-              })
-              .map((p) => (
-                <PartyBlock key={p.id} party={p} standings={standingsOf(p)} clientHref={p.id.startsWith("client:") ? `/clients/${p.id.slice(7)}` : null} />
-              ))}
+      {/* 一、当事人对阵：这页的主视觉——谁告谁、在哪审（2026-09-16 重排） */}
+      <section className="card dos-vs" aria-label="当事人">
+        <div className="panel-head">
+          <div className="panel-title">
+            <UserRound className="ic" strokeWidth={1.8} />
+            当事人
+            <span className="t-xs t-mute" style={{ fontWeight: 400 }}>
+              共 {parties.length} 方{procLabel ? ` · 诉讼地位按「${procLabel}」显示` : ""}
+            </span>
           </div>
-        )}
-      </Section>
-
-      {/* 委托与收费：收案登记的收费约定 + 合同/补充协议 + 合同材料（取消独立委托模块，2026-09-16 用户确认一案一签） */}
-      <Section
-        icon={Wallet}
-        title="委托与收费"
-        hint="一案一签；中途变更收费或增加代理程序，在此新增补充协议"
-        action={
-          <button type="button" className="btn btn-ghost btn-sm" onClick={onOpenFinance}>
-            收付与开票
-          </button>
-        }
-      >
-        <FieldGrid cols={2}>
-          <FieldItem label="收费方式">{matter.intake?.feeType ? feeTypeLabel[matter.intake.feeType] : null}</FieldItem>
-          {canReadFinance ? (
-            <FieldItem label={matter.intake?.feeType === "CONTINGENCY" ? "基础办案费" : "约定收费"} mono>
-              {matter.intake?.feeAmount ? formatCurrency(Number(matter.intake.feeAmount)) : null}
-            </FieldItem>
-          ) : null}
-          {matter.intake?.feeType === "CONTINGENCY" ? (
-            <FieldItem label="风险代理收费方式" wide>
-              {matter.intake?.contingencyTerms?.trim() ? <span className="whitespace-pre-wrap">{matter.intake.contingencyTerms}</span> : null}
-            </FieldItem>
-          ) : null}
-          <FieldItem label="付款节点" wide>{dash(matter.intake?.feeSchedule)}</FieldItem>
-          {matter.intake?.feeNote?.trim() ? (
-            <FieldItem label="收费说明" wide>
-              <span className="whitespace-pre-wrap">{matter.intake.feeNote}</span>
-            </FieldItem>
-          ) : null}
-        </FieldGrid>
-
-        <div className="dos-two-col">
-        {canReadFinance ? (
-          <div className="dos-bill-list">
-            <div className="dos-sub-h">
-              合同与补充协议
-              <span>{billings.length}</span>
-            </div>
-            {billings.length === 0 ? (
-              <p className="t-xs t-mute">尚未登记合同金额</p>
+          {editBtn}
+        </div>
+        <div className="dos-vs-body">
+          <div className="dos-vs-side">
+            <div className="dos-vs-h ours">我方</div>
+            {ours.length ? ours.map(partyCard) : <p className="t-xs t-mute">未登记</p>}
+          </div>
+          <div className="dos-vs-mid" aria-hidden>
+            <span>{isCriminal ? "辩" : kind === "litigation" ? "诉" : "服务"}</span>
+          </div>
+          <div className="dos-vs-side">
+            <div className="dos-vs-h">{isCriminal ? "办案机关" : "对方"}</div>
+            {opposing.length ? (
+              opposing.map(partyCard)
+            ) : isCriminal ? (
+              <p className="t-xs t-mute">{dash(currentProcedure?.handlingAgency) ?? "未登记"}</p>
             ) : (
-              billings.map((b) => (
-                <div key={b.id} className="dos-bill">
-                  <span className="t">{b.title}</span>
-                  <span className={cn("badge", b.status === "ACTIVE" ? "b-teal" : b.status === "CLOSED" ? "b-slate" : "b-white")}>
-                    {b.status === "ACTIVE" ? "执行中" : b.status === "CLOSED" ? "已结束" : "草稿"}
-                  </span>
-                  <span className="v mono">{formatCurrency(b.contractAmount)}</span>
-                  <span className="m">{[b.signedAt ? `${formatDate(b.signedAt)} 签署` : null, b.schedule].filter(Boolean).join(" · ")}</span>
-                </div>
-              ))
+              <p className="t-xs t-mute">未登记</p>
             )}
           </div>
-        ) : null}
-
-        <div className="dos-bill-list">
-          <div className="dos-sub-h">
-            委托代理合同等合同材料
-            <span>{contractDocs.length}</span>
+        </div>
+        {others.length ? (
+          <div className="dos-vs-others">
+            <div className="dos-vs-h">第三人及其他参与人</div>
+            <div className="dos-party-list">{others.map(partyCard)}</div>
           </div>
-          {contractDocs.length === 0 ? (
-            <p className="t-xs t-mute">未找到合同类材料；收案时上传的合同会自动归入本案材料。</p>
-          ) : (
-            contractDocs.map((d) => (
-              <div key={d.id} className="dos-bill">
-                <span className="t">{d.name}</span>
-                <span className="m">{formatDate(d.createdAt)}</span>
-                <a className="link-inline" href={`/api/documents/${d.id}/download`} target="_blank" rel="noreferrer">
-                  下载
-                </a>
-              </div>
-            ))
-          )}
-        </div>
-        </div>
-      </Section>
+        ) : null}
+      </section>
 
-      {/* 自定义字段并入基本信息表格；编辑入口留在这里，避免单独一张几乎空白的卡片 */}
-      {customFieldDefs.length > 0 && canEditCustom ? (
-        <div className="dos-custom-edit">
-          <CustomFieldsPanel matterId={matter.id} defs={customFieldDefs} values={customValues} canEdit editOnly />
+      {/* 二、案件要素：按主题拆成小表，左右两栏高度接近 */}
+      <div className="dos-arch">
+        <div className="dos-arch-col">
+          <Section icon={FileText} title={isCriminal ? "指控与请求" : kind === "litigation" ? "案由与请求" : "服务内容"} action={editBtn}>
+            <FieldGrid cols={1}>
+              <FieldItem label="案件类别">{matterCategoryLabel[matter.category]}</FieldItem>
+              <FieldItem label={isCriminal ? "涉嫌罪名" : kind === "litigation" ? "案由" : kind === "counsel" ? "顾问类型" : "业务类型"}>
+                {kind === "litigation" ? dash(matter.cause?.name ?? matter.causeFreeText) : dash(kind === "counsel" ? matter.counselType : matter.businessType)}
+              </FieldItem>
+              {kind === "litigation" ? (
+                <>
+                  {!isCriminal ? <FieldItem label="标的额" mono>{money(matter.claimAmount)}</FieldItem> : null}
+                  <FieldItem label="我方地位">{standing ? litigationStandingLabel[standing] : null}</FieldItem>
+                  {!isCriminal && matter.category !== "ADMINISTRATIVE" ? (
+                    <FieldItem label={isArbitration ? "是否提出反请求" : "是否反诉"}>{matter.intake ? (matter.intake.counterclaim ? "是" : "否") : null}</FieldItem>
+                  ) : null}
+                  <FieldItem label="律协备案">{matter.barFiling && matter.barFiling !== "NONE" ? "已备案" : "未备案"}</FieldItem>
+                  {!isCriminal ? (
+                    <FieldItem label={isArbitration ? "仲裁请求" : "诉讼请求"}>
+                      {matter.intake?.claimDescription?.trim() ? <span className="whitespace-pre-wrap">{matter.intake.claimDescription}</span> : null}
+                    </FieldItem>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <FieldItem label={kind === "counsel" ? "顾问期限" : "服务期间"} mono>
+                    {matter.serviceStart || matter.serviceEnd ? `${matter.serviceStart ? formatDate(matter.serviceStart) : "—"} ~ ${matter.serviceEnd ? formatDate(matter.serviceEnd) : "—"}` : null}
+                  </FieldItem>
+                  {kind === "project" ? <FieldItem label="项目金额" mono>{money(matter.claimAmount)}</FieldItem> : null}
+                  <FieldItem label="服务范围">{matter.serviceScope?.trim() ? <span className="whitespace-pre-wrap">{matter.serviceScope}</span> : null}</FieldItem>
+                  {kind === "project" ? <FieldItem label="交付成果">{dash(matter.deliverables)}</FieldItem> : null}
+                </>
+              )}
+            </FieldGrid>
+          </Section>
+
+          {kind === "litigation" && currentProcedure ? (
+            <Section icon={Landmark} title="管辖与承办" hint={procLabel ?? undefined} action={editBtn}>
+              <FieldGrid cols={1}>
+                <FieldItem label="案号" mono>{dash(currentProcedure.caseNumber)}</FieldItem>
+                <FieldItem label={isArbitration ? "仲裁机构" : isCriminal ? "办案机关" : "受理机构"}>{dash(currentProcedure.handlingAgency)}</FieldItem>
+                <FieldItem label="管辖地">{dash(currentProcedure.jurisdiction)}</FieldItem>
+                <FieldItem label={isArbitration ? "受理时间" : "立案时间"} mono>{currentProcedure.acceptedAt ? formatDate(currentProcedure.acceptedAt) : null}</FieldItem>
+                <FieldItem label={contactLabels.lead}>
+                  {currentProcedure.presidingJudge?.trim() ? (
+                    <span>
+                      {currentProcedure.presidingJudge}
+                      {currentProcedure.presidingJudgeContact ? <span className="ml-2 font-mono text-[12px] font-normal text-[var(--t-secondary)]">{currentProcedure.presidingJudgeContact}</span> : null}
+                    </span>
+                  ) : null}
+                </FieldItem>
+                <FieldItem label={contactLabels.assistant}>
+                  {currentProcedure.judgeAssistant?.trim() ? (
+                    <span>
+                      {currentProcedure.judgeAssistant}
+                      {currentProcedure.judgeAssistantContact ? <span className="ml-2 font-mono text-[12px] font-normal text-[var(--t-secondary)]">{currentProcedure.judgeAssistantContact}</span> : null}
+                    </span>
+                  ) : null}
+                </FieldItem>
+                {currentProcedure.panel?.trim() ? <FieldItem label={isArbitration ? "仲裁庭" : "合议庭"}>{currentProcedure.panel}</FieldItem> : null}
+                {currentProcedure.concludedAt || outcome ? (
+                  <>
+                    <FieldItem label="结案时间" mono>{currentProcedure.concludedAt ? formatDate(currentProcedure.concludedAt) : null}</FieldItem>
+                    <FieldItem label={isCriminal ? "处理结果" : "裁判结果"}>{outcome || null}</FieldItem>
+                  </>
+                ) : null}
+              </FieldGrid>
+            </Section>
+          ) : null}
         </div>
-      ) : null}
+
+        <div className="dos-arch-col">
+          <Section icon={Wallet} title="委托与收费" action={<button type="button" className="btn btn-ghost btn-sm" onClick={onOpenFinance}>收付与开票</button>}>
+            <FieldGrid cols={1}>
+              <FieldItem label="收费方式">{matter.intake?.feeType ? feeTypeLabel[matter.intake.feeType] : null}</FieldItem>
+              {canReadFinance ? (
+                <FieldItem label={matter.intake?.feeType === "CONTINGENCY" ? "基础办案费" : "约定收费"} mono>
+                  {matter.intake?.feeAmount ? formatCurrency(Number(matter.intake.feeAmount)) : null}
+                </FieldItem>
+              ) : null}
+              {matter.intake?.feeType === "CONTINGENCY" ? (
+                <FieldItem label="风险代理收费方式">
+                  {matter.intake?.contingencyTerms?.trim() ? <span className="whitespace-pre-wrap">{matter.intake.contingencyTerms}</span> : null}
+                </FieldItem>
+              ) : null}
+              <FieldItem label="付款节点">{dash(matter.intake?.feeSchedule)}</FieldItem>
+              {matter.intake?.feeNote?.trim() ? (
+                <FieldItem label="收费说明">
+                  <span className="whitespace-pre-wrap">{matter.intake.feeNote}</span>
+                </FieldItem>
+              ) : null}
+            </FieldGrid>
+            {canReadFinance ? (
+              <div className="dos-bill-list">
+                <div className="dos-sub-h">
+                  合同与补充协议
+                  <span>{billings.length}</span>
+                </div>
+                {billings.length === 0 ? (
+                  <p className="t-xs t-mute">尚未登记合同金额</p>
+                ) : (
+                  billings.map((b) => (
+                    <div key={b.id} className="dos-bill">
+                      <span className="t">{b.title}</span>
+                      <span className={cn("badge", b.status === "ACTIVE" ? "b-teal" : b.status === "CLOSED" ? "b-slate" : "b-white")}>
+                        {b.status === "ACTIVE" ? "执行中" : b.status === "CLOSED" ? "已结束" : "草稿"}
+                      </span>
+                      <span className="v mono">{formatCurrency(b.contractAmount)}</span>
+                      <span className="m">{[b.signedAt ? `${formatDate(b.signedAt)} 签署` : null, b.schedule].filter(Boolean).join(" · ")}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            ) : null}
+            <div className="dos-bill-list">
+              <div className="dos-sub-h">
+                委托代理合同等材料
+                <span>{contractDocs.length}</span>
+              </div>
+              {contractDocs.length === 0 ? (
+                <p className="t-xs t-mute">未找到合同类材料</p>
+              ) : (
+                contractDocs.map((d) => (
+                  <div key={d.id} className="dos-bill">
+                    <span className="t">{d.name}</span>
+                    <span className="m">{formatDate(d.createdAt)}</span>
+                    <a className="link-inline" href={`/api/documents/${d.id}/download`} target="_blank" rel="noreferrer">
+                      下载
+                    </a>
+                  </div>
+                ))
+              )}
+            </div>
+            <p className="dos-foot-note">一案一签：变更收费或增加代理程序时，在「收付与开票」新增一条补充协议，原合同保留。</p>
+          </Section>
+
+          <Section
+            icon={FileText}
+            title="收案与登记"
+            action={customFieldDefs.length > 0 && canEditCustom ? <CustomFieldsPanel matterId={matter.id} defs={customFieldDefs} values={customValues} canEdit editOnly /> : null}
+          >
+            <FieldGrid cols={1}>
+              <FieldItem label="收案日期" mono>{matter.intakeDate ? formatDate(matter.intakeDate) : null}</FieldItem>
+              <FieldItem label="登记人">{dash([matter.intake?.receivedAt ? formatDate(matter.intake.receivedAt) : null, matter.intake?.createdBy?.name].filter(Boolean).join(" · "))}</FieldItem>
+              <FieldItem label="联系人">{dash([matter.intake?.contactName, matter.intake?.contactPhone].filter(Boolean).join(" · "))}</FieldItem>
+              {matter.intake?.description?.trim() ? (
+                <FieldItem label="事实摘要">
+                  <span className="whitespace-pre-wrap">{matter.intake.description}</span>
+                </FieldItem>
+              ) : null}
+              {customFieldDefs.map((def) => (
+                <FieldItem key={def.id} label={def.label} mono={def.fieldType === "NUMBER" || def.fieldType === "DATE"}>
+                  {customValues[def.key]?.trim() ? customValues[def.key] : null}
+                </FieldItem>
+              ))}
+              <FieldItem label="关联案件">
+                <RelatedMattersField matterId={matter.id} related={related} canManage={canManageRelated} />
+              </FieldItem>
+            </FieldGrid>
+          </Section>
+        </div>
+      </div>
     </>
   );
 }

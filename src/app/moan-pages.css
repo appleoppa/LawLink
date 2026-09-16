@@ -1238,3 +1238,33 @@
 }
 .mo-dossier .dos-custom-edit { display: flex; justify-content: flex-end; margin-top: -6px; }
 .mo-dossier .dos-main > .card + .card { margin-top: 0; }
+
+/* 案件档案重排（2026-09-16）：当事人对阵区 + 案件要素两栏小表 */
+.mo-dossier .dos-vs .dos-vs-body { display: grid; grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr); align-items: start; }
+.mo-dossier .dos-vs-side { padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.mo-dossier .dos-vs-mid { align-self: stretch; display: flex; align-items: center; justify-content: center; position: relative; }
+.mo-dossier .dos-vs-mid::before { content: ""; position: absolute; top: 14px; bottom: 14px; left: 50%; width: 1px; background: var(--bd-hair); }
+.mo-dossier .dos-vs-mid span { position: relative; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--bd-subtle); background: var(--bg-card); display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--t-muted); }
+.mo-dossier .dos-vs-h { font-size: 11px; font-weight: 650; letter-spacing: .08em; color: var(--t-muted); }
+.mo-dossier .dos-vs-h.ours { color: var(--teal-deep); }
+.mo-dossier .dos-vs-others { padding: 4px 16px 14px; border-top: 1px dashed var(--bd-hair); display: flex; flex-direction: column; gap: 8px; }
+.mo-dossier .dos-arch { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.mo-dossier .dos-arch-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.mo-dossier .dos-arch .mo-field-k { width: 88px; }
+.mo-dossier .dos-arch .panel-body { padding: 14px 16px; }
+@media (max-width: 1100px) {
+  .mo-dossier .dos-arch { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .mo-dossier .dos-vs .dos-vs-body { grid-template-columns: minmax(0, 1fr); }
+  .mo-dossier .dos-vs-mid { display: none; }
+  .mo-dossier .dos-vs-side + .dos-vs-side { border-top: 1px dashed var(--bd-hair); }
+}
+.mo-dossier .dos-arch .panel-head { flex-wrap: nowrap; gap: 8px; }
+.mo-dossier .dos-arch .panel-head .panel-title { min-width: 0; flex-wrap: nowrap; }
+.mo-dossier .dos-arch .panel-head .panel-title > .t-xs { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mo-dossier .dos-arch .panel-head > *:last-child { flex-shrink: 0; white-space: nowrap; }
+.mo-dossier .dos-arch .panel-title { white-space: nowrap; }
+.mo-dossier .dos-foot-note { margin: 12px 0 0; font-size: 11px; line-height: 1.7; color: var(--t-muted); }
+.mo-dossier .dos-bill .m { flex-basis: auto; }
+.mo-dossier .dos-bill:has(.link-inline) .m { margin-right: auto; }
