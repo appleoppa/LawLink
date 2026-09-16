@@ -1286,3 +1286,22 @@
 .mo-dossier .dos-facts .mo-field-k { width: 88px; }
 .mo-dossier .dos-facts .dos-bill-list { margin-top: 12px; }
 .mo-dossier .dos-facts .dos-two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 24px; }
+
+/* 待办移入侧栏后的紧凑排布（2026-09-16） */
+.mo-dossier .dos-todo-rail .dos-lane { padding: 0 0 4px; }
+.mo-dossier .dos-todo-rail .dos-lane-h { padding: 8px 14px 2px; }
+.mo-dossier .dos-todo-rail .dos-lane-h.red { margin: 8px 0 2px 14px; }
+.mo-dossier .dos-todo-rail .dos-others { width: calc(100% - 28px); margin: 8px 14px 0; font-size: 11.5px; }
+.mo-dossier .dos-act-c { padding: 8px 14px; border-top: 1px solid var(--bd-hair); }
+.mo-dossier .dos-lane-h + .dos-act-c { border-top: 0; }
+.mo-dossier .dos-act-c .top { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.mo-dossier .dos-act-c .w { flex-shrink: 0; padding: 1px 7px; border-radius: 999px; background: var(--bg-sunken); color: var(--t-secondary); font-family: var(--font-mono); font-size: 10.5px; font-weight: 650; line-height: 16px; }
+.mo-dossier .dos-act-c.red .w { background: var(--red-bg); color: var(--red); }
+.mo-dossier .dos-act-c.amber .w { background: var(--amber-bg); color: var(--amber); }
+.mo-dossier .dos-act-c.blue .w { background: var(--blue-bg); color: var(--blue); }
+.mo-dossier .dos-act-c.teal .w { background: var(--teal-soft); color: var(--teal-deep); }
+.mo-dossier .dos-act-c .t { font-size: 12.5px; font-weight: 600; color: var(--t-primary); min-width: 0; }
+.mo-dossier .dos-act-c .bot { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.mo-dossier .dos-act-c .m { flex: 1; min-width: 0; font-size: 11px; color: var(--t-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mo-dossier .dos-act-c .ops { display: flex; gap: 2px; flex-shrink: 0; }
+.mo-dossier .dos-act-c .ops .btn { height: 22px; padding: 0 7px; font-size: 11.5px; }

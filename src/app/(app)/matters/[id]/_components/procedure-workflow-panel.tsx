@@ -905,17 +905,6 @@ export function ProcedureWorkflowPanel({
                   uploadSignal={0}
                 />
               ) : null}
-              <NextActions
-                actions={actions}
-                selectedStage={selectedStage}
-                scope={effectiveScope}
-                onShowAll={() => setScope("all")}
-                canManage={canManage}
-                waiting={waiting ?? []}
-                onAddTask={procedure && selectedStage ? () => setTaskStage(selectedStage) : undefined}
-                onAddDeadline={procedure ? () => setDeadlineOpen(true) : undefined}
-                onAddHearing={procedure && onAddLedger ? () => onAddLedger("hearing") : undefined}
-              />
               <MaterialsSection
                 matterId={matter.id}
                 procedure={procedure}
@@ -948,8 +937,21 @@ export function ProcedureWorkflowPanel({
         </div>
         <aside className="dos-rail">
           {archiveRailTop}
-          {/* 办案进程的主栏已有完整待办与经办记录，侧栏不再重复（2026-09-16 用户反馈） */}
-          {view === "work" ? null : (
+          {/* 待办在侧栏（2026-09-16 用户要求）：主栏留给材料与记录；其余页签显示最近待办与记录摘要 */}
+          {view === "work" ? (
+            <NextActions
+              compact
+              actions={actions}
+              selectedStage={selectedStage}
+              scope={effectiveScope}
+              onShowAll={() => setScope("all")}
+              canManage={canManage}
+              waiting={waiting ?? []}
+              onAddTask={procedure && selectedStage ? () => setTaskStage(selectedStage) : undefined}
+              onAddDeadline={procedure ? () => setDeadlineOpen(true) : undefined}
+              onAddHearing={procedure && onAddLedger ? () => onAddLedger("hearing") : undefined}
+            />
+          ) : (
           <ArchiveGlance
             actions={actions}
             logItems={logItems}
@@ -1442,6 +1444,7 @@ function actionWhen(item: ActionItem) {
 }
 
 function NextActions({
+  compact = false,
   actions,
   selectedStage,
   scope,
@@ -1452,6 +1455,8 @@ function NextActions({
   onAddDeadline,
   onAddHearing
 }: {
+  /** 侧栏紧凑排布（办案进程页签） */
+  compact?: boolean;
   actions: ActionItem[];
   selectedStage: WorkflowStage | null;
   scope: "all" | "stage";
@@ -1493,6 +1498,48 @@ function NextActions({
 
   const row = (item: ActionItem) => {
     const when = actionWhen(item);
+    if (compact) {
+      return (
+        <div key={item.key} className={cn("dos-act-c", when.tone)}>
+          <div className="top">
+            <span className="w">{when.main}</span>
+            <span className="t">{item.title}</span>
+          </div>
+          <div className="bot">
+            <span className="m">
+              {[scope === "all" ? item.stageName : null, when.sub, item.meta || null].filter(Boolean).join(" · ") || "\u00a0"}
+            </span>
+            <span className="ops">
+              {canManage && item.kind === "task" && item.taskId ? (
+                <button type="button" className="btn btn-ghost btn-sm" disabled={pending} onClick={() => run(() => toggleTaskCompleted(item.taskId!), "任务已完成，已记入记录")}>
+                  完成
+                </button>
+              ) : null}
+              {canManage && item.kind === "memo" && item.memoId ? (
+                <button type="button" className="btn btn-ghost btn-sm" disabled={pending} onClick={() => run(() => toggleProcedureMemo(item.memoId!), "已办结，转入记录")}>
+                  办结
+                </button>
+              ) : null}
+              {canManage && item.kind === "deadline" && item.deadlineId ? (
+                <>
+                  {item.pendingConfirm ? (
+                    <button type="button" className="btn btn-ghost btn-sm" disabled={pending} onClick={() => run(() => confirmDeadline({ id: item.deadlineId! }), "期限已确认")}>
+                      确认
+                    </button>
+                  ) : null}
+                  <button type="button" className="btn btn-ghost btn-sm" disabled={pending} onClick={() => item.at && setAdjusting({ id: item.deadlineId!, title: item.title, dueAt: item.at })}>
+                    调整
+                  </button>
+                  <button type="button" className="btn btn-ghost btn-sm" disabled={pending} onClick={() => completeDeadline(item)}>
+                    完成
+                  </button>
+                </>
+              ) : null}
+            </span>
+          </div>
+        </div>
+      );
+    }
     return (
       <div key={item.key} className={cn("dos-act", when.tone)}>
         <i className="sev" aria-hidden />
@@ -1558,12 +1605,16 @@ function NextActions({
   const empty = overdue.length + soon.length + later.length === 0;
 
   return (
-    <section className="card" aria-label="待办">
-      <div className="panel-head flex-wrap">
-        <div className="panel-title">
-          <ListChecks className="ic" strokeWidth={1.8} />
+    <section className={cn("card", compact && "dos-todo-rail")} aria-label="待办">
+      <div className={cn("panel-head flex-wrap", compact && "rail-sec-head")}>
+        <div className={compact ? "flex items-center gap-2" : "panel-title"}>
+          <ListChecks className={compact ? "h-[15px] w-[15px] text-[var(--t-muted)]" : "ic"} strokeWidth={1.8} />
           待办
-          <span className="t-xs t-mute" style={{ fontWeight: 400 }}>{scope === "stage" && selectedStage ? `「${selectedStage.name}」未完成的任务、期限与开庭` : "全部环节未完成的任务、期限与开庭"}，完成后转入记录</span>
+          {compact ? (
+            <span className="t-xs t-mute" style={{ fontWeight: 400 }}>{scope === "stage" && selectedStage ? selectedStage.name : "全部环节"}</span>
+          ) : (
+            <span className="t-xs t-mute" style={{ fontWeight: 400 }}>{scope === "stage" && selectedStage ? `「${selectedStage.name}」未完成的任务、期限与开庭` : "全部环节未完成的任务、期限与开庭"}，完成后转入记录</span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {canManage ? (
@@ -1610,7 +1661,24 @@ function NextActions({
       {waiting.length ? (
         <div className="dos-lane">
           <div className="dos-lane-h">等待他人 · {waiting.length}</div>
-          {waiting.map((w) => (
+          {waiting.map((w) => compact ? (
+            <div key={w.key} className="dos-act-c teal">
+              <div className="top">
+                <span className="w">审批中</span>
+                <span className="t">{w.title}</span>
+              </div>
+              <div className="bot">
+                <span className="m">{w.meta}</span>
+                <span className="ops">
+                  {w.onOpen ? (
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={w.onOpen}>
+                      查看
+                    </button>
+                  ) : null}
+                </span>
+              </div>
+            </div>
+          ) : (
             <div key={w.key} className="dos-act teal">
               <i className="sev" aria-hidden />
               <div className="when">
@@ -2660,7 +2728,7 @@ function StageMaterialsPanel({
           {canManage ? (
             <button type="button" className="btn btn-secondary btn-sm" onClick={openUploadDialog}>
               <Upload />
-              上传材料
+              上传
             </button>
           ) : null}
         </div>
