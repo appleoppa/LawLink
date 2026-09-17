@@ -2788,7 +2788,7 @@ function StageMaterialsPanel({
       ) : null}
 
       {shownDocs.length === 0 ? (
-        <EmptyState compact icon={FileText} title="暂无该阶段材料" description={`上传后自动归入本环节（${stageTag}），并记录来源与校验值。`} />
+        <EmptyState compact icon={FileText} title="本环节暂无材料" description={canManage ? "上传后自动归入本环节，并记录来源与校验值。" : undefined} />
       ) : (
         shownDocs.map((doc) => <DocRow key={doc.id} doc={doc} />)
       )}
