@@ -286,10 +286,10 @@ const PRESERVATION_ACTIONS = [
 ];
 
 const DEFAULT_STAGE_GUIDE: StageGuide = {
-  summary: "记录本阶段的任务、文件和沟通结果，作为当前程序的工作留痕。",
+  summary: "记录本环节的任务、文件和沟通结果，作为当前程序的工作留痕。",
   checklistTitle: "本环节事项",
-  checklist: ["明确阶段目标和交付物", "记录当事人或法院沟通要点", "归集本阶段形成的材料"],
-  actions: ["阶段工作底稿", "补充说明"],
+  checklist: ["明确本环节目标和交付物", "记录当事人或法院沟通要点", "归集本环节形成的材料"],
+  actions: ["工作底稿", "补充说明"],
   deadlineCategories: [],
   materialCategories: [],
   materialPattern: /阶段|说明|记录|底稿|工作/,
@@ -2694,7 +2694,7 @@ function StageMaterialsPanel({
         }
         if (sourceOrigin) fd.set("sourceOrigin", sourceOrigin);
         await uploadDocument(fd);
-        toast.success("阶段材料已上传");
+        toast.success("材料已上传");
         setOpen(false);
         router.refresh();
       } catch (err) {
@@ -2796,9 +2796,9 @@ function StageMaterialsPanel({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>上传阶段材料 · {stageName}</DialogTitle>
+            <DialogTitle>上传材料 · {stageName}</DialogTitle>
             <DialogDescription className="text-xs">
-              文件将关联到当前程序，并自动归入 {stageTag}。
+              文件将关联到当前程序，并自动归入本环节。
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
