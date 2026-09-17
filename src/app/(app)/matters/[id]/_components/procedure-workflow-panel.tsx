@@ -944,7 +944,6 @@ export function ProcedureWorkflowPanel({
               actions={actions}
               selectedStage={selectedStage}
               scope={effectiveScope}
-              onShowAll={() => setScope("all")}
               canManage={canManage}
               waiting={waiting ?? []}
               onAddTask={procedure && selectedStage ? () => setTaskStage(selectedStage) : undefined}
@@ -1448,7 +1447,6 @@ function NextActions({
   actions,
   selectedStage,
   scope,
-  onShowAll,
   canManage,
   waiting,
   onAddTask,
@@ -1460,7 +1458,6 @@ function NextActions({
   actions: ActionItem[];
   selectedStage: WorkflowStage | null;
   scope: "all" | "stage";
-  onShowAll: () => void;
   canManage: boolean;
   waiting: WaitingItem[];
   onAddTask?: () => void;
@@ -1470,6 +1467,7 @@ function NextActions({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [showLater, setShowLater] = useState(false);
+  const [showOthers, setShowOthers] = useState(false);
   const [adjusting, setAdjusting] = useState<{ id: string; title: string; dueAt: Date } | null>(null);
   const inScope = scope === "stage" && selectedStage ? actions.filter((i) => i.stageKey === selectedStage.key) : actions;
   const overdue = inScope.filter((i) => i.days !== null && i.days < 0);
@@ -1496,46 +1494,61 @@ function NextActions({
     run(() => toggleDeadlineCompleted(item.deadlineId!), "期限已标记完成");
   }
 
-  const row = (item: ActionItem) => {
+  const row = (item: ActionItem, other = false) => {
     const when = actionWhen(item);
     if (compact) {
+      const kindMeta =
+        item.kind === "deadline"
+          ? { label: "期限", cls: "k-deadline", Icon: Scale }
+          : item.kind === "hearing"
+            ? { label: "开庭", cls: "k-hearing", Icon: Landmark }
+            : item.kind === "memo"
+              ? { label: "备忘", cls: "k-memo", Icon: StickyNote }
+              : { label: "任务", cls: "k-task", Icon: ListChecks };
+      const KindIcon = kindMeta.Icon;
       return (
-        <div key={item.key} className={cn("dos-act-c", when.tone)}>
-          <div className="top">
-            <span className="w">{when.main}</span>
-            <span className="t">{item.title}</span>
-          </div>
-          <div className="bot">
-            <span className="m">
-              {[scope === "all" ? item.stageName : null, when.sub, item.meta || null].filter(Boolean).join(" · ") || "\u00a0"}
-            </span>
-            <span className="ops">
-              {canManage && item.kind === "task" && item.taskId ? (
-                <button type="button" className="btn btn-ghost btn-sm" disabled={pending} onClick={() => run(() => toggleTaskCompleted(item.taskId!), "任务已完成，已记入记录")}>
-                  完成
-                </button>
-              ) : null}
-              {canManage && item.kind === "memo" && item.memoId ? (
-                <button type="button" className="btn btn-ghost btn-sm" disabled={pending} onClick={() => run(() => toggleProcedureMemo(item.memoId!), "已办结，转入记录")}>
-                  办结
-                </button>
-              ) : null}
-              {canManage && item.kind === "deadline" && item.deadlineId ? (
-                <>
-                  {item.pendingConfirm ? (
-                    <button type="button" className="btn btn-ghost btn-sm" disabled={pending} onClick={() => run(() => confirmDeadline({ id: item.deadlineId! }), "期限已确认")}>
-                      确认
-                    </button>
-                  ) : null}
-                  <button type="button" className="btn btn-ghost btn-sm" disabled={pending} onClick={() => item.at && setAdjusting({ id: item.deadlineId!, title: item.title, dueAt: item.at })}>
-                    调整
-                  </button>
-                  <button type="button" className="btn btn-ghost btn-sm" disabled={pending} onClick={() => completeDeadline(item)}>
+        <div key={item.key} className={cn("dos-act-c", when.tone, other && "other")}>
+          <span className="bar" aria-hidden />
+          <span className={cn("ki", kindMeta.cls)} title={kindMeta.label} aria-label={kindMeta.label}>
+            <KindIcon strokeWidth={2} />
+          </span>
+          <div className="body">
+            <div className="top">
+              <span className="t">{item.title}</span>
+              <span className="w">{when.main}</span>
+            </div>
+            <div className="bot">
+              <span className="m">
+                {[other || scope === "all" ? item.stageName : null, when.sub, item.meta || null].filter(Boolean).join(" · ") || "\u00a0"}
+              </span>
+              <span className="ops">
+                {canManage && item.kind === "task" && item.taskId ? (
+                  <button type="button" className="btn btn-ghost btn-sm" disabled={pending} onClick={() => run(() => toggleTaskCompleted(item.taskId!), "任务已完成，已记入记录")}>
                     完成
                   </button>
-                </>
-              ) : null}
-            </span>
+                ) : null}
+                {canManage && item.kind === "memo" && item.memoId ? (
+                  <button type="button" className="btn btn-ghost btn-sm" disabled={pending} onClick={() => run(() => toggleProcedureMemo(item.memoId!), "已办结，转入记录")}>
+                    办结
+                  </button>
+                ) : null}
+                {canManage && item.kind === "deadline" && item.deadlineId ? (
+                  <>
+                    {item.pendingConfirm ? (
+                      <button type="button" className="btn btn-ghost btn-sm" disabled={pending} onClick={() => run(() => confirmDeadline({ id: item.deadlineId! }), "期限已确认")}>
+                        确认
+                      </button>
+                    ) : null}
+                    <button type="button" className="btn btn-ghost btn-sm" disabled={pending} onClick={() => item.at && setAdjusting({ id: item.deadlineId!, title: item.title, dueAt: item.at })}>
+                      调整
+                    </button>
+                    <button type="button" className="btn btn-ghost btn-sm" disabled={pending} onClick={() => completeDeadline(item)}>
+                      完成
+                    </button>
+                  </>
+                ) : null}
+              </span>
+            </div>
           </div>
         </div>
       );
@@ -1630,42 +1643,57 @@ function NextActions({
         </div>
       </div>
 
-      {others.length ? (
-        <button type="button" className={cn("dos-others", othersOverdue && "hot")} onClick={onShowAll}>
-          其他环节还有 {others.length} 项待办{othersOverdue ? `，其中 ${othersOverdue} 项已逾期` : ""} · 查看全部环节
-        </button>
-      ) : null}
       {empty && waiting.length === 0 ? (
         <EmptyState compact title={scope === "stage" ? "本环节没有待办" : "没有待办"} description="逾期任务会同时进入工作台「今日行动」。" />
       ) : null}
       {overdue.length ? (
         <div className="dos-lane">
-          <div className="dos-lane-h red">已逾期 · {overdue.length}</div>
-          {overdue.map(row)}
+          <div className={cn("dos-lane-h red", compact && "chip")}>已逾期 · {overdue.length}</div>
+          {overdue.map((i) => row(i))}
         </div>
       ) : null}
       {soon.length ? (
         <div className="dos-lane">
-          <div className="dos-lane-h">7 天内 · {soon.length}</div>
-          {soon.map(row)}
+          <div className={cn("dos-lane-h", compact && "chip amber")}>7 天内 · {soon.length}</div>
+          {soon.map((i) => row(i))}
         </div>
       ) : null}
       {later.length ? (
         <div className="dos-lane">
-          <button type="button" className="dos-lane-h as-btn" onClick={() => setShowLater((v) => !v)} aria-expanded={showLater}>
+          <button type="button" className={cn("dos-lane-h as-btn", compact && "chip slate")} onClick={() => setShowLater((v) => !v)} aria-expanded={showLater}>
             之后 · {later.length} {showLater ? "（收起）" : "（展开）"}
           </button>
-          {showLater ? later.map(row) : null}
+          {showLater ? later.map((i) => row(i)) : null}
+        </div>
+      ) : null}
+      {/* 其他环节的待办：同一模块内弱化陈列，默认折叠（2026-09-16 用户要求） */}
+      {others.length ? (
+        <div className="dos-lane others">
+          <div className="dos-others-h">
+            <span className={cn("chip", othersOverdue && "hot")}>
+              其他环节 · {others.length}
+              {othersOverdue ? `（逾期 ${othersOverdue}）` : ""}
+            </span>
+            <button type="button" className="more" onClick={() => setShowOthers((v) => !v)} aria-expanded={showOthers}>
+              {showOthers ? "收起" : "展开"}
+            </button>
+          </div>
+          {showOthers ? others.map((i) => row(i, true)) : null}
         </div>
       ) : null}
       {waiting.length ? (
         <div className="dos-lane">
-          <div className="dos-lane-h">等待他人 · {waiting.length}</div>
+          <div className={cn("dos-lane-h", compact && "chip teal")}>等待他人 · {waiting.length}</div>
           {waiting.map((w) => compact ? (
             <div key={w.key} className="dos-act-c teal">
+              <span className="bar" aria-hidden />
+              <span className="ki k-approval" aria-label="审批">
+                <Stamp strokeWidth={2} />
+              </span>
+              <div className="body">
               <div className="top">
-                <span className="w">审批中</span>
                 <span className="t">{w.title}</span>
+                <span className="w">审批中</span>
               </div>
               <div className="bot">
                 <span className="m">{w.meta}</span>
@@ -1676,6 +1704,7 @@ function NextActions({
                     </button>
                   ) : null}
                 </span>
+              </div>
               </div>
             </div>
           ) : (
