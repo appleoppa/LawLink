@@ -745,7 +745,7 @@ export function ProcedureWorkflowPanel({
   archiveRailTop?: React.ReactNode;
   /** 快递记录（并入经办记录） */
   expresses?: ExpressItem[];
-  /** 「＋记录」中的寄收件、「＋事项」中的开庭（沿用重要事项弹窗） */
+  /** 「＋记录」中的快递、「＋事项」中的开庭（沿用重要事项弹窗） */
   onAddLedger?: (type: "express" | "hearing" | "deadline") => void;
   /** 类案检索入口（元典已配置时） */
   onCaseSearch?: () => void;
@@ -1889,7 +1889,7 @@ const LOG_FILTERS: { key: "all" | LogKind; label: string }[] = [
   { key: "court", label: "法院" },
   { key: "note", label: "研判" },
   { key: "task", label: "完成的事项" },
-  { key: "express", label: "寄收件" },
+  { key: "express", label: "快递" },
   { key: "sys", label: "系统" }
 ];
 
@@ -2038,7 +2038,7 @@ function CaseLog({
             label="记录"
             items={[
               { key: "talk", label: "沟通", hint: "电话、微信、邮件、会见、法院沟通", icon: MessageSquare, onSelect: onWriteRecord },
-              ...(onAddLedger ? [{ key: "express", label: "寄收件", hint: "填单号，物流状态自动更新", icon: Truck, onSelect: () => onAddLedger("express") }] : []),
+              ...(onAddLedger ? [{ key: "express", label: "快递", hint: "填单号，物流状态自动更新", icon: Truck, onSelect: () => onAddLedger("express") }] : []),
               { key: "judgment", label: "研判", hint: "我的判断与分析，独立样式陈列", icon: PenLine, onSelect: onWriteJudgment }
             ]}
           />
