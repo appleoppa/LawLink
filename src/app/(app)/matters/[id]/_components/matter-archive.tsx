@@ -196,7 +196,7 @@ export function MatterArchive({
             <UserRound className="ic" strokeWidth={1.8} />
             当事人
             <span className="t-xs t-mute" style={{ fontWeight: 400 }}>
-              共 {parties.length} 方{procLabel ? ` · 诉讼地位按「${procLabel}」显示` : ""}
+              共 {parties.length} 方{procLabel ? ` · ${procLabel}` : ""}
             </span>
           </div>
           {editBtn}
