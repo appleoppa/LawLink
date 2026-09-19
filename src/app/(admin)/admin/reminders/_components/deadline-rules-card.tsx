@@ -26,6 +26,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { shMonthDay, shTodayCivil } from "@/lib/ui/sh-time";
 
 export type AdminDeadlineRule = {
   id: string; code: string; name: string; description: string | null;
@@ -55,7 +56,8 @@ const EMPTY_FORM: FormState = {
 };
 
 const offsetLabel = (o: number) => (o === 0 ? "T-0" : o < 0 ? `T${o}` : `T+${o}`);
-const mmdd = (d: Date) => `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+// 一律按上海时区格式化：服务端（可能是 UTC）与浏览器渲染必须一致，否则水合失败
+const mmdd = (d: Date) => shMonthDay(d);
 
 function procedureScope(rule: AdminDeadlineRule) {
   const list = rule.applicableProcedures ?? [];
@@ -150,7 +152,7 @@ export function DeadlineRulesCard({ rules, rail, headerActions }: { rules: Admin
   // 推算示例：以今天作为起算事件发生日
   const example = useMemo(() => {
     if (!selected) return null;
-    const trigger = new Date();
+    const trigger = shTodayCivil(); // 起算日取上海当天，避免服务端 UTC 与客户端算出不同日期
     const due = computeDeadlineDate(trigger, selected.periodValue, selected.periodUnit);
     const offsets = deadlineReminderOffsets(selected.remindDays);
     return {

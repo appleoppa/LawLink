@@ -381,6 +381,10 @@ export async function deleteFeeEntry(id: string) {
   if (entry.type === "RECEIVED" && entry.confirmState === "CONFIRMED") {
     throw new Error("该实收已确认到账并已入账，不可删除；如需更正请登记退款 / 冲正");
   }
+  // 待确认实收只能走「退回」：需确认权、填原因、通知登记人；删除会绕过这三条
+  if (entry.type === "RECEIVED" && entry.confirmState === "PENDING") {
+    throw new Error("待确认实收请在财务页用「退回」处理，需填写原因并通知登记人");
+  }
 
   await assertMatterWritable(entry.matterId, { allowFinanceRole: true });
 

@@ -54,6 +54,7 @@ import { CauseRecommendationDialog } from "./cause-recommendation-dialog";
 import { JurisdictionSelect } from "./jurisdiction-select";
 import type { TeamColleague } from "@/lib/teams/colleagues";
 import { ChoiceField } from "@/components/patterns/choice-field";
+import { shDayKey } from "@/lib/ui/sh-time";
 
 const CATEGORIES: MatterCategory[] = ["CIVIL_COMMERCIAL", "LABOR_ARBITRATION", "COMMERCIAL_ARBITRATION", "CRIMINAL", "ADMINISTRATIVE", "NON_LITIGATION", "LEGAL_COUNSEL", "SPECIAL_PROJECT"];
 const FEE_TYPES: FeeType[] = ["FIXED", "CONTINGENCY", "TIMED"];
@@ -125,7 +126,8 @@ function firstFormErrorMessage(value: unknown): string | undefined {
   return undefined;
 }
 
-const dateInput = (v: unknown) => (v ? new Date(v as string).toISOString().split("T")[0] : "");
+// 日期输入框取值一律按上海日历日：toISOString 走 UTC，上海 0-8 点会落成前一天
+const dateInput = (v: unknown) => (v ? shDayKey(v as string) : "");
 
 export function IntakeWizard({
   open,

@@ -13,7 +13,7 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { decryptIdNumber } from "@/lib/clients/id-number-crypto";
-import { intakeVisibilityFilter, matterVisibilityFilter, matterAssociationFilter, teamMatterFilter, teamIntakeFilter } from "@/lib/permissions";
+import { intakeVisibilityFilter, matterAssociationFilter, teamMatterFilter, teamIntakeFilter, isManager } from "@/lib/permissions";
 import {
   barFilingLabel,
   clientTypeLabel,
@@ -384,7 +384,7 @@ function groupRowsByCategory<T extends { category: MatterCategory }>(
 
 function buildIntakeWhere(params: MattersExportParams, user: ExportUser): Prisma.IntakeWhereInput {
   const parts: Prisma.IntakeWhereInput[] = [
-    intakeVisibilityFilter(user.id, user.role === "CUSTOM" ? "LAWYER" : user.role),
+    intakeVisibilityFilter(user.id, isManager(user.role) ? user.role : "LAWYER"),
     params.tab === "revision"
       ? { status: { in: ["NEEDS_REVISION"] } }
       : { status: { in: ["INTAKE", "PENDING_CONFIRMATION"] } }
@@ -419,7 +419,9 @@ function buildIntakeWhere(params: MattersExportParams, user: ExportUser): Prisma
 
 function buildMatterWhere(params: MattersExportParams, user: ExportUser): Prisma.MatterWhereInput {
   const parts: Prisma.MatterWhereInput[] = [
-    (user.role === "CUSTOM" ? matterAssociationFilter(user.id) : matterVisibilityFilter(user.id, user.role)),
+    // 导出口径窄于列表可见口径：只允许本人经办 / 参与的案件，管理岗（主任律师）例外。
+    // 财务岗虽可见全所案件的财务字段，但工作簿含当事人证件与联系方式，不得整所导出。
+    (isManager(user.role) ? {} : matterAssociationFilter(user.id)),
     { deletedAt: null },
     matterStatusWhere(params)
   ];

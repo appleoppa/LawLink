@@ -125,13 +125,22 @@ describe("财务删除守卫（P0-6）", () => {
     });
   });
 
-  it("并发确认后删除落空：受影响行数为 0 时报错，不静默通过", async () => {
+  it("并发期间被开票 / 确认：受影响行数为 0 时报错，不静默通过", async () => {
     db.feeEntry.findUnique.mockResolvedValue({
-      id: "f4", matterId: "m1", invoiceNo: null, type: "RECEIVED", confirmState: "PENDING",
+      id: "f4", matterId: "m1", invoiceNo: null, type: "COST", confirmState: "CONFIRMED",
       commissionChildren: [], billing: { signedAt: null }
     });
     db.feeEntry.deleteMany.mockResolvedValue({ count: 0 });
     await expect(deleteFeeEntry("f4")).rejects.toThrow("不可删除");
+  });
+
+  it("待确认实收不能用删除代替退回（绕过确认权、原因与通知）", async () => {
+    db.feeEntry.findUnique.mockResolvedValue({
+      id: "f5", matterId: "m1", invoiceNo: null, type: "RECEIVED", confirmState: "PENDING",
+      commissionChildren: [], billing: { signedAt: null }
+    });
+    await expect(deleteFeeEntry("f5")).rejects.toThrow("退回");
+    expect(db.feeEntry.deleteMany).not.toHaveBeenCalled();
   });
 });
 

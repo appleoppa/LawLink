@@ -23,7 +23,8 @@ export const feeEntryCreateSchema = z.object({
   matterId: z.string().cuid(),
   billingId: z.string().cuid().optional().or(z.literal("")),
   type: feeEntryTypeSchema,
-  amount: z.coerce.number(),
+  // 金额一律取正数，方向由 type 表达；负数实收会让统计口径与 Payment 对不上（2026-09-19）
+  amount: z.coerce.number().positive("金额必须大于 0").max(99_999_999.99, "金额超出范围"),
   occurredAt: z.coerce.date().default(() => new Date()),
   invoiceNo: z.string().max(50).optional().or(z.literal("")),
   payerOrPayee: z.string().max(80).optional().or(z.literal("")),

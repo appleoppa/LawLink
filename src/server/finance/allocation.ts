@@ -14,6 +14,7 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { auditTx } from "@/server/audit";
 import { assertMatterWritable } from "@/lib/archive/guard";
+import { assertCanAccessMatterFinance } from "@/lib/permissions";
 
 /** Billing 签署时生成应收（在 createBilling 事务内调用） */
 export async function generateReceivableForBilling(
@@ -188,7 +189,8 @@ export async function recordFinanceCorrection(input: z.infer<typeof correctionSc
 /** 案件核销概览（UI 批次用）：应收未核销余额 / 未分配实收 */
 export async function getMatterAllocationSummary(matterId: string) {
   const session = await requireSession("finance.read");
-  void session;
+  // requireSession 对内置角色不设门禁，必须落到案件级授权，否则任意账号可直传 matterId 查他人收付
+  await assertCanAccessMatterFinance(session.user.id, session.user.role, matterId, session.user.rolePermissions);
   const [receivables, payments] = await Promise.all([
     prisma.receivable.findMany({
       where: { matterId, status: { in: ["OPEN", "SETTLED"] } },
