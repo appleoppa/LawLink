@@ -626,17 +626,17 @@ a.seg { text-decoration: none; }
 .mo-empty-desc { font-size: 11.5px; color: var(--t-faint); margin-top: 4px; max-width: 420px; line-height: 1.6; }
 
 /* 字段栅格（卷宗表格式）：浅色标签栏 + 深色加粗取值，外框与细分隔线，标签与内容层级分明（2026-09-14 用户反馈对比度不足） */
-.mo-field-grid { display: grid; gap: 0; margin: 0; border: 1px solid var(--bd-subtle); border-right: none; border-bottom: none; border-radius: 10px; overflow: hidden; background: var(--bg-card); }
+.mo-field-grid { display: grid; gap: 0; margin: 0; border: 1px solid var(--bd-subtle); border-radius: 10px; overflow: hidden; background: var(--bg-card); }
 .mo-field-grid-1 { grid-template-columns: 1fr; }
 .mo-field-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .mo-field-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-/* 自适应列：一行能放几个放几个，末行剩余宽度由行内字段分摊（避免右侧缺格、外框显示不全）；
-   长字段用 .mo-field-wide 占整行，.mo-field-grow 在同一行内占更大比例 */
-.mo-field-grid-auto { display: flex; flex-wrap: wrap; }
-.mo-field-grid-auto > .mo-field { flex: 1 1 260px; }
-.mo-field-grid-auto > .mo-field-wide { flex-basis: 100%; }
-.mo-field-grid-auto > .mo-field-grow { flex-grow: 12; }
-.mo-field { display: flex; align-items: stretch; min-width: 0; border-bottom: 1px solid var(--bd-subtle); border-right: 1px solid var(--bd-subtle); }
+/* 自适应列：一行能放几个放几个，列宽上下一致（真栅格，不用 flex 分摊，否则各行分隔线对不齐）；
+   长字段用 .mo-field-wide 占整行，.mo-field-grow 占两列（本行余下三分之二） */
+.mo-field-grid-auto { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+/* 仅在字段表排到三列的宽度下占两列；两列及单列时按普通一格排，避免同行留空格 */
+@media (min-width: 1360px) { .mo-field-grow { grid-column: span 2; } }
+/* 分隔线用 box-shadow 画：末行未排满时右侧空格不缺边框，外框由容器自身闭合 */
+.mo-field { display: flex; align-items: stretch; min-width: 0; box-shadow: 1px 0 0 var(--bd-subtle), 0 1px 0 var(--bd-subtle); }
 .mo-field-wide { grid-column: 1 / -1; }
 .mo-field-k { width: 104px; flex-shrink: 0; margin: 0; padding: 9px 12px; text-align: justify; text-align-last: justify; font-size: 12px; line-height: 1.5; color: var(--t-muted); background: #F4F7F6; border-right: 1px solid var(--bd-hair); display: block; align-self: center; }
 .mo-field-v { flex: 1; min-width: 0; margin: 0; padding: 9px 14px; font-size: 13px; line-height: 1.5; font-weight: 550; color: var(--t-primary); word-break: break-word; display: flex; align-items: center; flex-wrap: wrap; }

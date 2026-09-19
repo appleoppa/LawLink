@@ -266,7 +266,7 @@ export function MatterArchive({
           {kind === "litigation" && currentProcedure ? (
             <Group icon={Landmark} title="管辖与承办" hint={procLabel ?? undefined} action={editBtn}>
               <FieldGrid cols={2} className="mo-field-grid-auto">
-                <FieldItem label="案号" mono grow>{dash(currentProcedure.caseNumber)}</FieldItem>
+                <FieldItem label="案号" mono>{dash(currentProcedure.caseNumber)}</FieldItem>
                 <FieldItem label={isArbitration ? "仲裁机构" : isCriminal ? "办案机关" : "受理机构"}>{dash(currentProcedure.handlingAgency)}</FieldItem>
                 <FieldItem label="管辖地">{dash(currentProcedure.jurisdiction)}</FieldItem>
                 <FieldItem label={isArbitration ? "受理时间" : "立案时间"} mono>{currentProcedure.acceptedAt ? formatDate(currentProcedure.acceptedAt) : null}</FieldItem>
@@ -305,7 +305,7 @@ export function MatterArchive({
                   {matter.intake?.feeAmount ? formatCurrency(Number(matter.intake.feeAmount)) : null}
                 </FieldItem>
               ) : null}
-              <FieldItem label="付款节点" grow>{dash(matter.intake?.feeSchedule)}</FieldItem>
+              <FieldItem label="付款节点">{dash(matter.intake?.feeSchedule)}</FieldItem>
               {matter.intake?.feeType === "CONTINGENCY" ? (
                 <FieldItem label="风险收费" wide>
                   {matter.intake?.contingencyTerms?.trim() ? <span className="whitespace-pre-wrap">{matter.intake.contingencyTerms}</span> : null}
