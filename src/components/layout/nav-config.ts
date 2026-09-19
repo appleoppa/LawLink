@@ -7,7 +7,6 @@ import {
   Users,
   CreditCard,
   ChartColumn,
-  Inbox,
   Calculator,
   Package,
   FolderArchive,
@@ -26,19 +25,15 @@ export type NavItem = {
 };
 
 /**
- * 侧栏两组（2026-09-18 用户确认）：
- * 「办案」＝跟着具体案件走的动线，「经营」＝跟所、客户、钱走的事。
- * 判断归属看新功能是围绕某一件案件，还是围绕律所整体。工具抽屉「更多应用」不在导航列表里，固定在底部。
+ * 侧栏单列（2026-09-19 用户确认）：条目不多，不再分组，按「工作台 → 案件动线 → 客户与钱」的顺序平铺。
+ * 法院短信是有时效的来件队列而非导航分类，入口在顶栏（与通知铃并排）；
+ * 工具抽屉「更多应用」固定在底部用户卡上方。
  */
-export const caseNav: NavItem[] = [
+export const primaryNav: NavItem[] = [
   { label: "工作台", href: "/", icon: House },
   { label: "案件", href: "/matters", icon: Folder, countKey: "matters" },
   { label: "审批", href: "/approvals", icon: SquareCheck, countKey: "approvals" },
   { label: "日程", href: "/schedule", icon: CalendarDays },
-  { label: "法院短信", href: "/inbox", icon: Inbox }
-];
-
-export const firmNav: NavItem[] = [
   { label: "客户", href: "/clients", icon: Users, countKey: "clients" },
   { label: "财务", href: "/finance", icon: CreditCard },
   { label: "报表", href: "/reports", icon: ChartColumn }

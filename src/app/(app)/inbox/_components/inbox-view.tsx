@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { Inbox, Gavel, Clock, CheckCircle2, Trash2, Link as LinkIcon, Briefcase, ExternalLink, Phone, Loader2, Sparkles, AlertCircle, ArrowRight, CalendarClock, FileCheck2, FileDigit, FileDown, KeyRound } from "lucide-react";
 import { toast } from "sonner";
@@ -42,6 +42,7 @@ import { matterHref } from "@/lib/matters/route";
 import { PageHeader } from "@/components/patterns/moan";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
 import { useTopbarAction } from "@/components/layout/topbar-action";
+import { useSearchParams } from "next/navigation";
 
 type Tab = "unprocessed" | "needsManual" | "processed";
 
@@ -57,7 +58,18 @@ export function InboxView({
   needsManual: SmsRow[];
   matters: MatterOption[];
 }) {
-  const [tab, setTab] = useState<Tab>(unprocessed.length > 0 ? "unprocessed" : "processed");
+  // 顶栏短信入口点「去处理」带 ?focus=<id> 过来：自动切到该条所在页签并高亮滚动到它
+  const focusId = useSearchParams().get("focus");
+  const focusTab: Tab | null = focusId
+    ? unprocessed.some((s) => s.id === focusId)
+      ? "unprocessed"
+      : needsManual.some((s) => s.id === focusId)
+        ? "needsManual"
+        : processed.some((s) => s.id === focusId)
+          ? "processed"
+          : null
+    : null;
+  const [tab, setTab] = useState<Tab>(focusTab ?? (unprocessed.length > 0 ? "unprocessed" : "processed"));
   const [pasteOpen, setPasteOpen] = useState(false);
   const [hearingTarget, setHearingTarget] = useState<{
     sms: SmsRow;
@@ -75,6 +87,16 @@ export function InboxView({
   const rows = tab === "unprocessed" ? unprocessed : tab === "needsManual" ? needsManual : processed;
 
   useTopbarAction({ label: "粘贴短信", onClick: () => setPasteOpen(true) }, []);
+
+  useEffect(() => {
+    if (!focusId) return;
+    const el = document.getElementById(`sms-${focusId}`);
+    if (!el) return;
+    el.scrollIntoView({ block: "center" });
+    el.classList.add("sms-focus");
+    const timer = setTimeout(() => el.classList.remove("sms-focus"), 2400);
+    return () => clearTimeout(timer);
+  }, [focusId, tab]);
 
   return (
     <div className="space-y-5">
@@ -116,6 +138,7 @@ export function InboxView({
           rows.map((sms) => (
             <SmsCard
               key={sms.id}
+              domId={`sms-${sms.id}`}
               sms={sms}
               matters={matters}
               onGenerateHearing={() => {
@@ -204,12 +227,14 @@ function Count({ n, hot }: { n: number; hot?: boolean }) {
 
 function SmsCard({
   sms,
+  domId,
   matters,
   onGenerateHearing,
   onGenerateDeadline,
   onBackfillCaseNumber
 }: {
   sms: SmsRow;
+  domId?: string;
   matters: MatterOption[];
   onGenerateHearing: () => void;
   onGenerateDeadline: () => void;
@@ -271,7 +296,7 @@ function SmsCard({
     });
 
   return (
-    <div className="ll-surface rounded-lg border border-border p-4">
+    <div id={domId} className="ll-surface rounded-lg border border-border p-4">
       {/* 头：类型徽 + 法院 + 案号 + 时间 + 来源标 */}
       <div className="flex flex-wrap items-center gap-2 text-[11px]">
         <span

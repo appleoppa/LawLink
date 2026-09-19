@@ -22,7 +22,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { caseNav, firmNav, APP_ITEMS, type NavItem } from "./nav-config";
+import { primaryNav, APP_ITEMS, type NavItem } from "./nav-config";
 
 /** v0.42 项1: 侧栏品牌（可在管理后台 → 律所信息配置） */
 export type FirmBrand = {
@@ -102,18 +102,7 @@ export function NavContent({ firm, onOpenTools }: { firm: FirmBrand; onOpenTools
   const roleLabel = user?.role ? roleDisplayName(user) : "";
   const systemLabel = user?.systemRole === "SUPER_ADMIN" ? "超级管理员" : "";
 
-  const section = (label: string, items: NavItem[]) => {
-    const list = items.filter(visible);
-    if (list.length === 0) return null;
-    return (
-      <>
-        <div className="nav-section-label">{label}</div>
-        {list.map((item) => (
-          <NavLink key={item.href} item={item} active={isActive(pathname, item.href)} count={countOf(item)} />
-        ))}
-      </>
-    );
-  };
+  const navList = primaryNav.filter(visible);
 
   return (
     <div className="flex h-full w-full flex-col">
@@ -126,8 +115,9 @@ export function NavContent({ firm, onOpenTools }: { firm: FirmBrand; onOpenTools
       </Link>
 
       <nav className="nav overflow-y-auto">
-        {section("办案", caseNav)}
-        {section("经营", firmNav)}
+        {navList.map((item) => (
+          <NavLink key={item.href} item={item} active={isActive(pathname, item.href)} count={countOf(item)} />
+        ))}
       </nav>
 
       {/* 工具抽屉不是导航项：固定在底部用户卡上方 */}

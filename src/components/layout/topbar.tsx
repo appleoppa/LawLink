@@ -19,6 +19,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { NotificationPopover } from "@/components/layout/notification-popover";
+import { SmsPopover } from "@/components/layout/sms-popover";
 import { SearchDialog } from "@/components/layout/search-dialog";
 import { useTopbarActionValue } from "./topbar-action";
 import { hasCustomPermission } from "@/lib/roles/catalog";
@@ -33,6 +34,7 @@ export function Topbar({ onMobileMenuToggle, userAvatar }: { onMobileMenuToggle?
   const roleLabel = user?.role ? roleDisplayName(user) : "";
 
   const canCreateIntake = user ? hasCustomPermission(user as Parameters<typeof hasCustomPermission>[0], "intakes.create") : false;
+  const canReadMatters = user ? hasCustomPermission(user as Parameters<typeof hasCustomPermission>[0], "matters.write") : false;
   const action = pageAction === "none" ? null : pageAction ?? (canCreateIntake ? { label: "新建收案", onClick: () => router.push("/matters?tab=intake&new=1") } : null);
 
   return (
@@ -52,6 +54,7 @@ export function Topbar({ onMobileMenuToggle, userAvatar }: { onMobileMenuToggle?
       <div className="hidden flex-1 sm:block" />
 
       <NotificationPopover />
+      {canReadMatters ? <SmsPopover /> : null}
 
       {/* 收案动线：先预检再建案——预检为次级按钮，与主操作同高、同圆角，靠拢成一组 */}
       {canCreateIntake || action ? (
