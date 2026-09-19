@@ -4,6 +4,7 @@ import { getNotifications, markAllNotificationsRead } from "@/server/notificatio
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/moan";
+import { shMonthDayTime } from "@/lib/ui/sh-time";
 
 const typeLabels: Record<string, string> = {
   PRESERVATION_EXPIRY: "保全到期",
@@ -116,12 +117,5 @@ export default async function NotificationsPage() {
 }
 
 function formatTime(date: Date | string) {
-  const d = new Date(date);
-  return d.toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false
-  });
+  return shMonthDayTime(date);
 }

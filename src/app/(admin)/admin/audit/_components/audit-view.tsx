@@ -14,6 +14,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { AdminPageHeader } from "@/components/layout/admin-page-header";
+import { shMonthDayTime } from "@/lib/ui/sh-time";
 
 type AuditItem = {
   id: string;
@@ -210,12 +211,7 @@ export function AuditView({
                 <div className="text-right text-xs">
                   <div>{it.user?.name ?? "—"}</div>
                   <div className="font-mono text-[10px] text-muted-foreground tabular">
-                    {new Date(it.createdAt).toLocaleString("zh-CN", {
-                      month: "2-digit",
-                      day: "2-digit",
-                      hour: "2-digit",
-                      minute: "2-digit"
-                    })}
+                    {shMonthDayTime(it.createdAt)}
                   </div>
                 </div>
               </li>

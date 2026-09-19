@@ -9,6 +9,7 @@ import { formatCurrency, cn } from "@/lib/utils";
 import { approvalHref } from "@/lib/approvals/workspace";
 import type { InvoiceRequestRow } from "./finance-view";
 import { matterHref } from "@/lib/matters/route";
+import { shMonthDayTime } from "@/lib/ui/sh-time";
 
 const STATUS_TABS: { key: InvoiceRequestStatus | "ALL"; label: string }[] = [
   { key: "PENDING", label: "待处理" },
@@ -121,12 +122,7 @@ export function InvoiceManagementSection({
                     )}
                     <div className="mt-1 text-[11px] text-muted-foreground">
                       申请：{r.requestedBy.name} ·{" "}
-                      {new Date(r.requestedAt).toLocaleString("zh-CN", {
-                        month: "2-digit",
-                        day: "2-digit",
-                        hour: "2-digit",
-                        minute: "2-digit"
-                      })}
+                      {shMonthDayTime(r.requestedAt)}
                       {r.requestNote && <> · 备注：{r.requestNote}</>}
                     </div>
                     {/* v0.42 开票信息（专票六要素供财务直接开票） */}

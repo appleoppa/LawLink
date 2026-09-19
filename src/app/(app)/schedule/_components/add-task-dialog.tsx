@@ -118,7 +118,8 @@ export function AddTaskDialog({
                   year: "numeric",
                   month: "long",
                   day: "numeric",
-                  weekday: "long"
+                  weekday: "long",
+                  timeZone: "Asia/Shanghai"
                 })
               : "—"}
           </DialogDescription>

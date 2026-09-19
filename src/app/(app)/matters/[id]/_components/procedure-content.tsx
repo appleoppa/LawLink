@@ -64,7 +64,7 @@ import { parseExpressLabel } from "@/server/ai/parse-express";
 import { parseSummons } from "@/server/ai/parse-summons";
 import type { ExpressItem } from "./info-extras";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
-import { shDayKey } from "@/lib/ui/sh-time";
+import { shDayKey, shMonthDayTime } from "@/lib/ui/sh-time";
 
 type ProcedureWithChildren = MatterProcedure & {
   deadlines: Deadline[];
@@ -755,12 +755,7 @@ function HearingRow({
           {upcoming ? "未召开" : "已召开"}
         </Badge>
         <span className="font-mono text-[10px] tabular text-muted-foreground">
-          {new Date(h.startsAt).toLocaleString("zh-CN", {
-            month: "2-digit",
-            day: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit"
-          })}
+          {shMonthDayTime(h.startsAt)}
         </span>
       </div>
       {canManage && (
