@@ -62,6 +62,8 @@ type Props = {
     pendingInvoiceCount: number;
   };
   invoiceRequests: InvoiceRequestRow[];
+  /** 全部待确认实收，与流水分页无关 */
+  pendingEntries?: Entry[];
   canApproveInvoice: boolean;
   canExport: boolean;
   canWrite: boolean;
@@ -82,7 +84,7 @@ const TYPE_META: Record<Entry["type"], { label: string; badge: string; sign: str
 const yuan = (n: number, digits = 0) => `¥${n.toLocaleString("zh-CN", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
 const mmdd = (d: Date | string) => shMonthDay(d);
 
-export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests, canApproveInvoice, canExport, canWrite, canConfirmReceipt }: Props) {
+export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests, pendingEntries, canApproveInvoice, canExport, canWrite, canConfirmReceipt }: Props) {
   const params = useSearchParams();
   const initialTab = (["ledger", "invoices", "commission", "aging"] as Tab[]).includes(params.get("tab") as Tab) ? (params.get("tab") as Tab) : "ledger";
   const [tab, setTab] = useState<Tab>(initialTab);
@@ -144,9 +146,10 @@ export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests,
   const worst = aging.worst;
   const pendingInvoices = invoiceRequests.filter((r) => r.status === "PENDING" || r.status === "APPROVED");
   const invoiceRows = [...pendingInvoices, ...invoiceRequests.filter((r) => r.status === "ISSUED")].slice(0, 4);
-  const pendingReceipts = entries.filter((e) => e.type === "RECEIVED" && e.confirmState === "PENDING");
+  // 待确认实收走独立查询（不受流水条数上限影响），旧数据兜底用流水里的 PENDING
+  const pendingReceipts = pendingEntries ?? entries.filter((e) => e.type === "RECEIVED" && e.confirmState === "PENDING");
   // 已开票未收款：已开具的发票号在实收流水里找不到对应登记（登记收付时可从本案发票带出发票号）
-  const receivedInvoiceNos = new Set(entries.filter((e) => e.type === "RECEIVED" && e.invoiceNo).map((e) => e.invoiceNo as string));
+  const receivedInvoiceNos = new Set(entries.filter((e) => e.type === "RECEIVED" && e.confirmState === "CONFIRMED" && e.invoiceNo).map((e) => e.invoiceNo as string));
   const issuedUnpaid = invoiceRequests.filter((r) => r.status === "ISSUED" && !(r.invoiceNo && receivedInvoiceNos.has(r.invoiceNo)));
   const overdueRows = aging.items.filter((r) => (r.overdueDays ?? 0) > 0);
   const commissionEntries = entries.filter((e) => e.type === "COMMISSION");

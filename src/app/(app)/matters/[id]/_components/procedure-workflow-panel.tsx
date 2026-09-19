@@ -1968,7 +1968,8 @@ function CaseLog({
   const [filter, setFilter] = useState<"all" | LogKind>("all");
   const [expanded, setExpanded] = useState(false);
 
-  const scoped = focusStageName ? items.filter((e) => e.stageName === focusStageName) : items;
+  // 去掉「总览」后，未归环节的记录（快递、程序级事件等）若只按环节过滤就再也看不到
+  const scoped = focusStageName ? items.filter((e) => e.stageName === focusStageName || !e.stageName) : items;
   const shown = scoped.filter((e) => filter === "all" || e.kind === filter);
   const order = [...stages.map((s) => s.name)].reverse();
   const groups = new Map<string, LogItem[]>();
@@ -2152,16 +2153,33 @@ function MaterialsSection({
   const { onAddEvidence, unlinkedEvidence } = useDocActions();
   if (!procedure) return null;
   if (stage) {
+    // 去掉「总览」后，任何环节都匹配不上的材料会失去入口，故在环节材料下方常驻一段兜底
+    const orphans = documents.filter((d) => !stages.some((st) => documentMatchesStage(d, st)));
     return (
-      <StageMaterialsPanel
-        key={stage.key}
-        matterId={matterId}
-        procedure={procedure}
-        stage={stage}
-        documents={documents.filter((d) => documentMatchesStage(d, stage))}
-        canManage={canManage}
-        onOpenTemplate={onOpenTemplate}
-      />
+      <>
+        <StageMaterialsPanel
+          key={stage.key}
+          matterId={matterId}
+          procedure={procedure}
+          stage={stage}
+          documents={documents.filter((d) => documentMatchesStage(d, stage))}
+          canManage={canManage}
+          onOpenTemplate={onOpenTemplate}
+        />
+        {orphans.length ? (
+          <div className="card">
+            <div className="panel-head">
+              <div className="panel-title">
+                <FolderOpen className="ic" strokeWidth={1.8} />
+                未归入环节
+                <span className="badge b-white" style={{ marginLeft: 2 }}>{orphans.length}</span>
+                <span className="t-xs t-mute" style={{ fontWeight: 400 }}>本程序内未匹配到任何环节的材料</span>
+              </div>
+            </div>
+            {orphans.map((d) => <DocRow key={d.id} doc={d} />)}
+          </div>
+        ) : null}
+      </>
     );
   }
   // 全部环节下每份材料只出现一次：归到第一个匹配的环节（外键归属优先，模式匹配可能命中多个环节）

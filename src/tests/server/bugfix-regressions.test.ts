@@ -3,7 +3,7 @@ import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
 import { Prisma } from "@prisma/client";
 const { db, notify, webhook, session, writeFile } = vi.hoisted(() => {
   const tables = ["client", "matter", "matterStage", "task", "timelineEvent", "billing", "feeEntry", "commissionPlan", "deadline", "hearing", "notification", "preservationProperty", "auditLog", "document", "invoiceRequest", "systemSetting", "jobQueue", "payment", "receivable", "team", "user"] as const;
-  const methods = ["findMany", "findFirst", "findUnique", "findUniqueOrThrow", "count", "create", "update", "updateMany", "upsert", "createMany", "deleteMany"] as const;
+  const methods = ["findMany", "findFirst", "findUnique", "findUniqueOrThrow", "count", "create", "update", "updateMany", "upsert", "createMany", "delete", "deleteMany"] as const;
   const models = Object.fromEntries(tables.map(table => [table,
     Object.fromEntries(methods.map(method => [method, vi.fn()]))
   ])) as Record<typeof tables[number], Record<typeof methods[number], ReturnType<typeof vi.fn>>>;
@@ -16,7 +16,8 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/server/matters/route", () => ({ revalidateMatter: vi.fn(), matterHrefById: vi.fn(async () => "/matters/example") }));
 vi.mock("@/server/notifications/create", () => ({ createNotification: notify }));
 vi.mock("@/server/settings/webhook", () => ({ sendWebhookText: webhook }));
-vi.mock("@/server/notifications/approval", () => ({ notifyRoleApprovers: vi.fn() }));
+const notifyApprovers = vi.hoisted(() => vi.fn());
+vi.mock("@/server/notifications/approval", () => ({ notifyRoleApprovers: notifyApprovers }));
 vi.mock("@/lib/approvals/service", () => ({
   requireApprovalRoute: vi.fn(), assertApprovalItem: vi.fn(), canExecuteInvoice: vi.fn(async () => true), approvalAudit: vi.fn(),
   approvalTransaction: vi.fn(async (fn: (tx: typeof db) => Promise<unknown>) => fn(db))
@@ -30,7 +31,7 @@ import { createTask, updateTask } from "@/server/tasks/actions";
 import { scanDueReminders } from "@/server/cron/jobs/scan-due-reminders";
 import { runAuditCleanup } from "@/server/cron/jobs/audit-cleanup";
 import { approveInvoiceRequest, createInvoiceRequest as createLegacyInvoice } from "@/server/invoices/actions";
-import { createInvoiceRequest, createFeeEntry, confirmFeeEntry, rejectFeeEntry, setCommissionPlan } from "@/server/finance/actions";
+import { createInvoiceRequest, createFeeEntry, confirmFeeEntry, rejectFeeEntry, deleteFeeEntry, setCommissionPlan } from "@/server/finance/actions";
 import { commissionPlanSetSchema } from "@/server/finance/schemas";
 import { allocateCommissions } from "@/server/finance/commissions";
 import { clientVisibilityFilter, intakeVisibilityFilter, matterReadVisibilityFilter, matterVisibilityFilter } from "@/lib/permissions";
@@ -209,6 +210,18 @@ describe("分成比例及派生金额", () => {
     const res = await createFeeEntry({ matterId: mine, amount: 100, type: "RECEIVED", occurredAt: new Date() });
     expect(res.pendingConfirm).toBe(true);
     expect(db.feeEntry.create.mock.calls[0][0].data.confirmState).toBe("PENDING");
+  });
+  it("通知发送失败不影响已保存的实收登记（重试会重复登记）", async () => {
+    db.commissionPlan.findMany.mockResolvedValue([]);
+    db.feeEntry.create.mockResolvedValue({ id: "receipt" });
+    notifyApprovers.mockRejectedValueOnce(new Error("通知服务不可用"));
+    await expect(createFeeEntry({ matterId: mine, amount: 100, type: "RECEIVED", occurredAt: new Date() })).resolves.toMatchObject({ ok: true, pendingConfirm: true });
+  });
+  it("已确认到账的实收不可物理删除", async () => {
+    session.user.role = "FINANCE";
+    db.feeEntry.findUnique.mockResolvedValue({ id: "receipt", matterId: mine, type: "RECEIVED", confirmState: "CONFIRMED", invoiceNo: null, billing: null, commissionChildren: [] });
+    await expect(deleteFeeEntry("receipt")).rejects.toThrow("不可删除");
+    expect(db.feeEntry.delete).not.toHaveBeenCalled();
   });
   it("主任律师与无确认权的人都不能确认或退回实收", async () => {
     for (const role of ["LAWYER", "PRINCIPAL_LAWYER", "ASSISTANT"]) {

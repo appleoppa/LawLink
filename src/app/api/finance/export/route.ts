@@ -40,13 +40,15 @@ export async function GET(req: Request) {
     const s = v === null || v === undefined ? "" : String(v);
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
-  const header = ["日期", "案件编号", "案件名称", "类型", "金额", "对方户名", "方式", "发票号", "分成受益人", "备注", "经手"];
+  const header = ["日期", "案件编号", "案件名称", "类型", "确认状态", "金额", "对方户名", "方式", "发票号", "分成受益人", "备注", "经手"];
   const lines = rows.map((r) =>
     [
       r.occurredAt.toLocaleDateString("zh-CN", { timeZone: "Asia/Shanghai" }),
       r.matter.internalCode,
       r.matter.title,
       TYPE_LABEL[r.type] ?? r.type,
+      // 待确认实收尚未入账，导出必须标明，不能与已确认实收混在一起统计
+      r.type === "RECEIVED" ? (r.confirmState === "CONFIRMED" ? "已确认" : "待确认") : "—",
       Number(r.amount).toFixed(2),
       r.payerOrPayee,
       r.method,

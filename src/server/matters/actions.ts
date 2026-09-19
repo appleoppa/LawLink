@@ -21,6 +21,7 @@ import {
   assertCanReadMatter,
   hasMatterBusinessAccess,
   assertCanAccessMatter,
+  assertCanAccessMatterFinance,
   assertCanAssociateMatter,
   assertCanLeadMatter,
   assertCanOwnMatter
@@ -811,9 +812,16 @@ export async function getMatterById(id: string) {
     });
   }
   if (!matter) return null;
+  // 收费字段属财务口径：无财务查看权的人（含案件成员）不下发金额与收费约定，
+  // 避免随案件详情整包泄露（前端隐藏不等于没传）。
+  const canFinance = hasCustomPermission(session.user, "finance.read")
+    && await assertCanAccessMatterFinance(session.user.id, session.user.role, id, session.user.rolePermissions).then(() => true).catch(() => false);
+  const safeMatter = canFinance || !matter.intake
+    ? matter
+    : { ...matter, intake: { ...matter.intake, feeType: null, feeAmount: null, feeSchedule: null, feeNote: null, contingencyTerms: null } };
   const people = await withRoleNames([matter.owner, ...matter.members.map(member => member.user)]);
   const byId = new Map(people.map(user => [user.id, user]));
-  return { ...matter, owner: byId.get(matter.owner.id)!, members: matter.members.map(member => ({ ...member, user: byId.get(member.user.id)! })) };
+  return { ...safeMatter, owner: byId.get(matter.owner.id)!, members: matter.members.map(member => ({ ...member, user: byId.get(member.user.id)! })) };
 }
 
 export async function createMatter(input: MatterCreateInput) {

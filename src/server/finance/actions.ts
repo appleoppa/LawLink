@@ -209,6 +209,8 @@ export async function createFeeEntry(input: FeeEntryCreateInput) {
   });
 
   if (pendingConfirm) {
+    // 记录已落库：通知属于事后副作用，失败只记日志，不能把成功的登记报成失败（重试会重复登记）
+    try {
     const matter = await prisma.matter.findUnique({ where: { id: data.matterId }, select: { internalCode: true, title: true } });
     await notifyRoleApprovers({
       roles: ["PRINCIPAL_LAWYER", "FINANCE"],
@@ -220,6 +222,9 @@ export async function createFeeEntry(input: FeeEntryCreateInput) {
       refId: created.id,
       priority: "NORMAL"
     });
+    } catch (err) {
+      console.error("[finance] 待确认实收通知发送失败：", err);
+    }
   }
 
   await revalidateMatter(data.matterId);
@@ -233,7 +238,7 @@ export async function createFeeEntry(input: FeeEntryCreateInput) {
  * 仅限具备「确认实收到账」（finance.confirm）的财务管理人员；确认金额与登记金额一致，需要改额就退回重登。
  */
 export async function confirmFeeEntry(id: string) {
-  const session = await requireSession("finance.write");
+  const session = await requireSession("finance.confirm");
   if (!canConfirmReceipt(session.user)) throw new Error("仅具备「确认实收到账」权限的财务管理人员可确认实收");
   const entry = await prisma.feeEntry.findUnique({ where: { id }, select: { id: true, matterId: true, type: true, amount: true, occurredAt: true, billingId: true, confirmState: true } });
   if (!entry) throw new Error("记录不存在");
@@ -242,7 +247,7 @@ export async function confirmFeeEntry(id: string) {
   await assertMatterWritable(entry.matterId, { allowFinanceRole: true });
 
   await prisma.$transaction(async (tx) => {
-    await checkRoleMutation(tx, session.user, "finance.write");
+    await checkRoleMutation(tx, session.user, "finance.confirm");
     const updated = await tx.feeEntry.updateMany({
       where: { id, confirmState: "PENDING" },
       data: { confirmState: "CONFIRMED", confirmedById: session.user.id, confirmedAt: new Date() }
@@ -294,7 +299,7 @@ export async function confirmFeeEntry(id: string) {
 
 /** 退回待确认实收：删除该条并留审计与通知，登记人按实际到账重新登记 */
 export async function rejectFeeEntry(id: string, reason: string) {
-  const session = await requireSession("finance.write");
+  const session = await requireSession("finance.confirm");
   if (!canConfirmReceipt(session.user)) throw new Error("仅具备「确认实收到账」权限的财务管理人员可退回实收");
   const note = reason.trim();
   if (!note) throw new Error("请填写退回原因");
@@ -304,7 +309,7 @@ export async function rejectFeeEntry(id: string, reason: string) {
   await assertMatterWritable(entry.matterId, { allowFinanceRole: true });
 
   await prisma.$transaction(async (tx) => {
-    await checkRoleMutation(tx, session.user, "finance.write");
+    await checkRoleMutation(tx, session.user, "finance.confirm");
     const removed = await tx.feeEntry.deleteMany({ where: { id, confirmState: "PENDING" } });
     if (removed.count === 0) throw new Error("此笔已被处理，请刷新后重试");
   });
@@ -343,6 +348,11 @@ export async function deleteFeeEntry(id: string) {
   }
   if (entry.invoiceNo) {
     throw new Error("该记录已登记发票号，属于已确认记录，不可删除");
+  }
+  // 已确认的实收在确认时已生成实收 Payment（可能已被核销）与分成条目，
+  // 物理删除会让 FeeEntry 口径与 Payment / 应收核销口径对不上，只能走冲正。
+  if (entry.type === "RECEIVED" && entry.confirmState === "CONFIRMED") {
+    throw new Error("该实收已确认到账并已入账，不可删除；如需更正请登记退款 / 冲正");
   }
 
   await assertMatterWritable(entry.matterId, { allowFinanceRole: true });
@@ -706,6 +716,24 @@ export async function listAllFeeEntries(params: {
       recordedBy: { select: { id: true, name: true } },
       confirmedBy: { select: { id: true, name: true } },
       // P0-6 已确认口径（关联已签署合同或已登记发票号），列表展示用
+      billing: { select: { signedAt: true } }
+    }
+  });
+  return serializeDecimals(rows);
+}
+
+/** 全部待确认实收（不受流水条数上限影响）：财务页「待确认实收」用 */
+export async function listPendingReceipts() {
+  const session = await requireSession("finance.read");
+  const visFilter = matterFinanceVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions);
+  const rows = await prisma.feeEntry.findMany({
+    where: { type: "RECEIVED", confirmState: "PENDING", matter: { deletedAt: null, ...visFilter } },
+    orderBy: { occurredAt: "desc" },
+    include: {
+      matter: { select: { id: true, internalCode: true, title: true } },
+      beneficiaryUser: { select: { id: true, name: true } },
+      recordedBy: { select: { id: true, name: true } },
+      confirmedBy: { select: { id: true, name: true } },
       billing: { select: { signedAt: true } }
     }
   });

@@ -1,6 +1,7 @@
 import { getSession } from "@/lib/auth/session";
 import {
   listAllFeeEntries,
+  listPendingReceipts,
   getMonthlyRevenue,
   getPersonalRevenue
 } from "@/server/finance/actions";
@@ -14,8 +15,9 @@ export default async function FinancePage() {
   const session = await getSession();
   const userId = session!.user.id;
 
-  const [entries, monthly, personal, invoiceRequests, invoiceStats, aging] = await Promise.all([
+  const [entries, pending, monthly, personal, invoiceRequests, invoiceStats, aging] = await Promise.all([
     listAllFeeEntries({ limit: 500 }),
+    listPendingReceipts(),
     getMonthlyRevenue(12),
     getPersonalRevenue(userId),
     listInvoiceRequests(),
@@ -48,6 +50,11 @@ export default async function FinancePage() {
   return (
     <FinanceViewV4
       entries={entries.map((entry) => ({
+        ...entry,
+        amount: Number(entry.amount),
+        confirmed: Boolean(entry.billing?.signedAt || entry.invoiceNo)
+      }))}
+      pendingEntries={pending.map((entry) => ({
         ...entry,
         amount: Number(entry.amount),
         confirmed: Boolean(entry.billing?.signedAt || entry.invoiceNo)

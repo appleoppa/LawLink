@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>方案一 · 宣纸墨线 — LawLink 案件详情页概念稿</title>
+<style>
+  /* ============================================================
+     方案一「宣纸墨线」
+     隐喻：案件即文书。整页是一张排好版的卷宗纸——
+     结构靠细墨线与字体层级，不靠卡片投影；克制的朱砂色只给最急的事。
+     ============================================================ */
+  :root {
+    --paper: #FAF9F5;
+    --paper-deep: #F3F1EA;
+    --ink: #191F26;
+    --ink-2: #4C5761;
+    --ink-3: #7C848D;
+    --hair: #E5E1D6;
+    --hair-strong: #CFC9BB;
+    --vermilion: #B93A2B;
+    --vermilion-soft: #F7E9E5;
+    --teal: #0E766E;
+    --teal-soft: #E4F0EE;
+    --amber: #A05E08;
+    --amber-soft: #F8EEDC;
+    --blue: #1E4FA3;
+    --blue-soft: #E9EEF7;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    --mono: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-font-smoothing: antialiased; }
+  body {
+    font-family: var(--sans); color: var(--ink); background: var(--paper-deep);
+    font-size: 14px; line-height: 1.6;
+    font-feature-settings: "tnum";
+  }
+  button { font-family: inherit; cursor: pointer; border: 0; background: none; color: inherit; }
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  /* ---- 顶部朱砂书口线（全页最上面一条身份线） ---- */
+  .spine-top { height: 3px; background: var(--vermilion); }
+
+  /* ---- 应用顶栏（示意） ---- */
+  .topbar {
+    position: sticky; top: 0; z-index: 50; height: 52px;
+    display: flex; align-items: center; gap: 18px; padding: 0 28px;
+    background: rgba(250,249,245,.92); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--hair);
+  }
+  .topbar .brand { display: flex; align-items: baseline; gap: 8px; font-weight: 800; font-size: 15px; letter-spacing: .02em; }
+  .topbar .brand span { font-family: var(--mono); font-size: 10px; font-weight: 500; color: var(--ink-3); letter-spacing: .14em; }
+  .topbar .crumb { font-size: 12.5px; color: var(--ink-3); }
+  .topbar .crumb b { color: var(--ink); font-weight: 600; }
+  .topbar .search {
+    margin-left: auto; width: 300px; height: 32px; display: flex; align-items: center; gap: 8px;
+    padding: 0 12px; border: 1px solid var(--hair-strong); border-radius: 6px; color: var(--ink-3); font-size: 12.5px;
+  }
+  .topbar .btn-primary {
+    height: 32px; padding: 0 14px; border-radius: 6px; background: var(--ink); color: #FBFAF7;
+    font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;
+  }
+  .topbar .btn-primary:hover { background: #2A3340; }
+
+  /* ---- 卷宗纸面 ---- */
+  .sheet { max-width: 1280px; margin: 0 auto; background: var(--paper); border-left: 1px solid var(--hair); border-right: 1px solid var(--hair); min-height: 1200px; }
+
+  /* ---- 案卷头（纸面排印，无墨底） ---- */
+  .dos-head { padding: 30px 40px 0; }
+  .eyebrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 12px; color: var(--ink-3); }
+  .eyebrow .back { display: inline-flex; align-items: center; gap: 5px; color: var(--ink-2); }
+  .eyebrow .back:hover { color: var(--ink); }
+  .eyebrow .sep { color: var(--hair-strong); }
+  .eyebrow .cat { padding: 1px 8px; border: 1px solid var(--hair-strong); border-radius: 3px; font-size: 11px; letter-spacing: .05em; color: var(--ink-2); }
+
+  .head-main { display: flex; align-items: flex-start; gap: 40px; margin-top: 14px; }
+  .head-title h1 { font-size: 31px; font-weight: 760; letter-spacing: .01em; line-height: 1.4; text-wrap: balance; }
+  .badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px;
+    border: 1px solid var(--hair-strong); border-radius: 3px; font-size: 12px; font-weight: 600; color: var(--ink-2);
+    background: #fff;
+  }
+  .badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--teal); }
+  .badge.red { border-color: var(--vermilion); color: var(--vermilion); background: var(--vermilion-soft); }
+  .badge.red .dot { background: var(--vermilion); }
+  .badge.amber { border-color: #D8A96C; color: var(--amber); background: var(--amber-soft); }
+  .badge.amber .dot { background: var(--amber); }
+
+  .head-money { margin-left: auto; flex-shrink: 0; padding-top: 6px; min-width: 240px; }
+  .head-money .row { display: flex; align-items: baseline; font-size: 12.5px; }
+  .head-money .row + .row { margin-top: 5px; }
+  .head-money .k { color: var(--ink-3); white-space: nowrap; }
+  .head-money .leader { flex: 1; border-bottom: 1px dotted var(--hair-strong); margin: 0 8px; transform: translateY(-3px); }
+  .head-money .v { font-family: var(--mono); font-weight: 650; font-size: 13px; }
+  .head-money .v small { font-weight: 500; color: var(--ink-3); font-size: 11px; margin-left: 2px; }
+  .head-money .v.hl { color: var(--vermilion); }
+  .head-actions { display: flex; gap: 8px; margin-top: 14px; justify-content: flex-end; }
+  .btn { height: 32px; padding: 0 14px; border-radius: 6px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+  .btn.ghost { border: 1px solid var(--hair-strong); background: #fff; color: var(--ink-2); }
+  .btn.ghost:hover { border-color: var(--ink-3); color: var(--ink); }
+  .btn.ink { background: var(--ink); color: #FBFAF7; }
+  .btn.ink:hover { background: #2A3340; }
+
+  /* 对阵行：诉 / 辩 圆章 + 细线延伸 */
+  .versus { display: flex; align-items: center; gap: 14px; margin-top: 20px; padding: 13px 0; border-top: 1px solid var(--hair-strong); border-bottom: 1px solid var(--hair); }
+  .side { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .seal-round {
+    width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700;
+  }
+  .seal-round.su { border: 1.5px solid var(--teal); color: var(--teal); background: var(--teal-soft); }
+  .seal-round.bian { border: 1.5px solid var(--ink-3); color: var(--ink-2); background: #F1EFE9; }
+  .side .who { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .side .role { font-size: 11px; color: var(--ink-3); letter-spacing: .08em; margin-top: 1px; }
+  .side .sub { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+  .versus .rule { flex: 1; min-width: 24px; height: 1px; background: var(--hair-strong); }
+  .versus .vs { font-family: var(--mono); font-size: 11px; color: var(--ink-3); letter-spacing: .3em; padding: 0 10px; flex-shrink: 0; }
+  .versus .court { display: flex; align-items: baseline; gap: 10px; flex-shrink: 0; padding-left: 18px; border-left: 1px solid var(--hair-strong); }
+  .versus .court .k { font-size: 11px; color: var(--ink-3); }
+  .versus .court .v { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+
+  /* ---- 程序栏：一条横排的「程序行」，下划粗墨线表示当前 ---- */
+  .procs { display: flex; align-items: stretch; margin: 0 40px; border-bottom: 1px solid var(--hair-strong); }
+  .procs .label { align-self: center; font-size: 11px; letter-spacing: .2em; color: var(--ink-3); padding-right: 16px; border-right: 1px solid var(--hair); margin-right: 4px; }
+  .proc { padding: 12px 22px 10px; text-align: left; border-bottom: 3px solid transparent; margin-bottom: -1px; }
+  .proc:hover { background: #F5F3ED; }
+  .proc .nm { display: flex; align-items: center; gap: 7px; font-size: 14.5px; font-weight: 650; color: var(--ink-2); }
+  .proc .nm .st { font-size: 10.5px; padding: 1px 6px; border-radius: 3px; background: #EEECE5; color: var(--ink-3); font-weight: 600; }
+  .proc .no { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+  .proc.on { border-bottom-color: var(--vermilion); }
+  .proc.on .nm { color: var(--ink); font-weight: 750; }
+  .proc.on .nm .st { background: var(--teal-soft); color: var(--teal); }
+  .proc.add { display: flex; align-items: center; gap: 6px; color: var(--ink-3); font-size: 13px; padding-left: 26px; }
+  .proc.add:hover { color: var(--vermilion); }
+
+  /* ---- 页签：纸面下划线 ---- */
+  .views { position: sticky; top: 52px; z-index: 40; display: flex; gap: 2px; margin: 0 40px; background: rgba(250,249,245,.95); backdrop-filter: blur(8px); border-bottom: 1px solid var(--hair-strong); }
+  .view { padding: 12px 16px 11px; font-size: 14px; color: var(--ink-3); border-bottom: 2px solid transparent; margin-bottom: -1px; display: flex; align-items: center; gap: 7px; }
+  .view:hover { color: var(--ink); }
+  .view.on { color: var(--ink); font-weight: 700; border-bottom-color: var(--ink); }
+  .view .n { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+  .view .n.hot { color: var(--vermilion); font-weight: 700; }
+  .views .hint { margin-left: auto; font-size: 11.5px; color: var(--ink-3); align-self: center; padding-right: 2px; }
+
+  /* ---- 主布局：环节竖列 | 主栏 | 侧栏 ---- */
+  .work { display: grid; grid-template-columns: 200px minmax(0,1fr) 284px; gap: 0; padding: 0 40px 60px; align-items: start; }
+  .work > * { min-width: 0; }
+
+  /* 环节竖列：汉字序号圆章 + 细墨线 */
+  .stages { position: sticky; top: 105px; padding: 26px 18px 26px 0; }
+  .stages .h { font-size: 11px; letter-spacing: .2em; color: var(--ink-3); margin-bottom: 4px; }
+  .stages .sum { font-size: 11px; color: var(--ink-3); margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--hair); }
+  .stages .sum b { color: var(--ink); font-weight: 650; }
+  .stage-list { list-style: none; position: relative; }
+  .stage-list::before { content: ""; position: absolute; left: 18px; top: 20px; bottom: 26px; width: 1px; background: var(--hair-strong); }
+  .stage { position: relative; display: flex; gap: 12px; padding: 7px 0; width: 100%; text-align: left; border-radius: 6px; }
+  .stage:hover .st-nm { color: var(--ink); }
+  .st-num {
+    width: 37px; height: 37px; border-radius: 50%; flex-shrink: 0; position: relative; z-index: 1;
+    display: flex; align-items: center; justify-content: center;
+    border: 1.5px solid var(--hair-strong); background: var(--paper); color: var(--ink-3);
+    font-size: 14px; font-weight: 650;
+  }
+  .stage .st-body { min-width: 0; padding-top: 2px; }
+  .st-nm { font-size: 13.5px; font-weight: 600; color: var(--ink-2); display: flex; align-items: center; gap: 6px; }
+  .st-meta { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); margin-top: 2px; }
+  .st-flag { display: inline-block; font-size: 10px; font-weight: 650; padding: 0 5px; border-radius: 3px; margin-top: 3px; line-height: 16px; }
+  .st-flag.red { background: var(--vermilion-soft); color: var(--vermilion); }
+  .st-flag.amber { background: var(--amber-soft); color: var(--amber); }
+  .st-flag.blue { background: var(--blue-soft); color: var(--blue); }
+  .stage.done .st-num { background: var(--ink); border-color: var(--ink); color: #FBFAF7; font-size: 15px; }
+  .stage.done .st-nm { color: var(--ink-2); }
+  .stage.risk .st-num { border-color: var(--amber); color: var(--amber); }
+  .stage.cur .st-num { border: 2px solid var(--vermilion); color: var(--vermilion); background: #fff; box-shadow: 0 0 0 4px var(--vermilion-soft); }
+  .stage.cur .st-nm { color: var(--ink); font-weight: 750; }
+  .stage.cur .st-now { font-size: 10px; font-weight: 700; color: var(--vermilion); letter-spacing: .12em; }
+  .stage.add .st-num { border-style: dashed; border-color: var(--ink-3); color: var(--ink-3); font-size: 16px; }
+  .stage.add .st-nm { color: var(--ink-3); font-weight: 550; }
+
+  /* 主栏：编辑排印式分节 */
+  .main { border-left: 1px solid var(--hair); padding: 26px 0 0 34px; }
+  .sec { margin-bottom: 40px; }
+  .sec-h { display: flex; align-items: baseline; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--ink); }
+  .sec-h .idx { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--vermilion); letter-spacing: .08em; }
+  .sec-h .t { font-size: 16.5px; font-weight: 750; letter-spacing: .02em; }
+  .sec-h .rule { flex: 1; }
+  .sec-h .cnt { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); }
+  .sec-h .cnt b { color: var(--vermilion); font-weight: 700; }
+  .sec-h .add { font-size: 12.5px; font-weight: 650; color: var(--ink-2); display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border: 1px solid var(--hair-strong); border-radius: 5px; background: #fff; }
+  .sec-h .add:hover { border-color: var(--ink); color: var(--ink); }
+  .sec-sub { display: flex; align-items: center; gap: 8px; padding: 12px 2px 4px; font-size: 11px; letter-spacing: .16em; color: var(--ink-3); }
+  .sec-sub::after { content: ""; flex: 1; height: 1px; background: var(--hair); }
+
+  /* 待办：台账行 */
+  .todo { display: grid; grid-template-columns: 76px 18px minmax(0,1fr) auto; gap: 14px; align-items: center; padding: 13px 2px; border-bottom: 1px solid var(--hair); }
+  .todo:hover { background: #F6F4EE; }
+  .todo .when { text-align: left; line-height: 1.35; }
+  .todo .when b { display: block; font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--ink-2); }
+  .todo .when span { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+  .todo.red .when b, .todo.red .mark { color: var(--vermilion); }
+  .todo.amber .when b, .todo.amber .mark { color: var(--amber); }
+  .todo.blue .when b, .todo.blue .mark { color: var(--blue); }
+  .mark { width: 8px; height: 8px; transform: rotate(45deg); background: var(--hair-strong); }
+  .todo.red .mark { background: var(--vermilion); }
+  .todo.amber .mark { background: var(--amber); }
+  .todo.blue .mark { background: var(--blue); }
+  .todo.wait .mark { background: none; border: 1px solid var(--ink-3); }
+  .todo .what .t { font-size: 14px; font-weight: 650; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .todo .what .d { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+  .tag { font-size: 10.5px; font-weight: 650; padding: 1px 7px; border-radius: 3px; letter-spacing: .03em; }
+  .tag.deadline { background: var(--vermilion-soft); color: var(--vermilion); }
+  .tag.hearing { background: var(--blue-soft); color: var(--blue); }
+  .tag.task { background: var(--teal-soft); color: var(--teal); }
+  .tag.mono { font-family: var(--mono); font-weight: 600; background: #EEECE5; color: var(--ink-2); }
+  .todo .cd { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--ink-2); white-space: nowrap; text-align: right; }
+  .todo.red .cd { color: var(--vermilion); }
+  .todo.amber .cd { color: var(--amber); }
+  .todo .ops { display: flex; gap: 6px; }
+  .op-ghost { font-size: 12px; font-weight: 600; color: var(--ink-3); padding: 3px 9px; border-radius: 5px; }
+  .op-ghost:hover { color: var(--ink); background: #EFEDE6; }
+  .op-solid { font-size: 12px; font-weight: 700; color: #FBFAF7; background: var(--ink); padding: 3px 11px; border-radius: 5px; }
+  .todo.wait, .todo.dim { color: var(--ink-2); }
+  .todo.dim .what .t { font-weight: 550; }
+
+  /* 材料：表格排印 */
+  .doc-table { width: 100%; border-collapse: collapse; }
+  .doc-table th {
+    text-align: left; font-size: 10.5px; font-weight: 650; letter-spacing: .14em; color: var(--ink-3);
+    padding: 10px 10px 7px; border-bottom: 1px solid var(--ink);
+  }
+  .doc-table td { padding: 11px 10px; border-bottom: 1px solid var(--hair); vertical-align: middle; font-size: 13px; }
+  .doc-table tr:hover td { background: #F6F4EE; }
+  .doc-name { display: flex; align-items: center; gap: 9px; font-weight: 650; }
+  .doc-ic { width: 15px; height: 15px; flex-shrink: 0; color: var(--ink-3); }
+  .doc-ic.ev { color: var(--blue); }
+  .doc-miss { font-size: 10.5px; color: var(--vermilion); font-weight: 650; margin-left: 6px; }
+  .src { font-size: 10.5px; color: var(--ink-2); padding: 1px 7px; border: 1px solid var(--hair-strong); border-radius: 3px; white-space: nowrap; }
+  .ev-points { font-family: var(--mono); font-size: 11.5px; font-weight: 650; color: var(--teal); white-space: nowrap; }
+  .ev-points:hover { text-decoration: underline; }
+  .doc-table .num { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+
+  /* 经办记录：墨线时间轴 */
+  .log { position: relative; padding-left: 5px; }
+  .log::before { content: ""; position: absolute; left: 5px; top: 8px; bottom: 8px; width: 1px; background: var(--hair-strong); }
+  .log-item { position: relative; display: grid; grid-template-columns: 88px 22px minmax(0,1fr); gap: 12px; padding: 11px 0; }
+  .log-item::before {
+    content: ""; position: absolute; left: 1px; top: 19px; width: 9px; height: 9px; transform: rotate(45deg);
+    background: var(--paper); border: 1.5px solid var(--ink-3);
+  }
+  .log-item.talk::before { border-color: var(--teal); background: var(--teal); }
+  .log-item.note::before { border-color: var(--vermilion); border-radius: 50%; }
+  .log-item.exp::before { border-color: var(--blue); transform: none; border-radius: 2px; }
+  .log-item .dt { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); line-height: 1.5; padding-top: 2px; text-align: right; }
+  .log-item .dt b { display: block; color: var(--ink-2); font-weight: 650; font-size: 12.5px; }
+  .log-item .ch { padding-top: 3px; }
+  .ch span { font-size: 10px; font-weight: 700; letter-spacing: .1em; color: var(--ink-3); writing-mode: vertical-rl; }
+  .log-item .bd .t { font-size: 13.5px; font-weight: 650; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .log-item .bd .d { font-size: 12.5px; color: var(--ink-2); margin-top: 2px; line-height: 1.65; }
+  .log-item .bd .m { font-size: 11px; color: var(--ink-3); margin-top: 3px; }
+  .log-item.note .bd { border-left: 2px solid var(--vermilion-soft); padding-left: 12px; }
+
+  /* 侧栏 */
+  .rail { border-left: 1px solid var(--hair); padding: 26px 0 0 28px; position: sticky; top: 105px; }
+  .rail-sec + .rail-sec { margin-top: 30px; }
+  .rail-h { font-size: 11px; letter-spacing: .2em; color: var(--ink-3); padding-bottom: 8px; border-bottom: 1px solid var(--hair-strong); margin-bottom: 4px; display: flex; justify-content: space-between; align-items: baseline; }
+  .rail-h .link { font-size: 11.5px; letter-spacing: 0; color: var(--teal); font-weight: 600; cursor: pointer; }
+  .member { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--hair); }
+  .member .av { width: 30px; height: 30px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
+  .av.t1 { background: var(--teal-soft); color: var(--teal); }
+  .av.t2 { background: #EDEAE2; color: var(--ink-2); }
+  .av.t3 { background: var(--blue-soft); color: var(--blue); }
+  .member .nm { font-size: 13.5px; font-weight: 650; }
+  .member .role { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
+  .member .duty { margin-left: auto; font-size: 10.5px; font-weight: 650; color: var(--ink-3); padding: 1px 7px; border: 1px solid var(--hair-strong); border-radius: 3px; }
+  .money-row { display: flex; align-items: baseline; font-size: 12.5px; padding: 6px 2px; }
+  .money-row .k { color: var(--ink-3); white-space: nowrap; }
+  .money-row .leader { flex: 1; border-bottom: 1px dotted var(--hair-strong); margin: 0 8px; transform: translateY(-3px); }
+  .money-row .v { font-family: var(--mono); font-weight: 650; }
+  .money-row .v.hl { color: var(--vermilion); }
+  .pay-bar { height: 5px; background: #EEECE5; border-radius: 3px; margin: 10px 2px 6px; overflow: hidden; }
+  .pay-bar i { display: block; height: 100%; width: 6.7%; background: var(--ink); }
+  .pay-note { font-size: 11px; color: var(--ink-3); }
+  .rail-wait { display: flex; gap: 10px; padding: 10px 2px; border-bottom: 1px solid var(--hair); font-size: 12.5px; }
+  .rail-wait .k { color: var(--ink-2); font-weight: 600; }
+  .rail-wait .m { font-size: 11px; color: var(--ink-3); margin-top: 1px; }
+
+  @media (max-width: 1180px) {
+    .work { grid-template-columns: 170px minmax(0,1fr); }
+    .rail { display: none; }
+    .head-money { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="spine-top"></div>
+
+<header class="topbar">
+  <div class="brand">LawLink <span>CASE SYSTEM</span></div>
+  <div class="crumb">案件 / <b>王建国与宏远建设集团有限公司建设工程施工合同纠纷</b></div>
+  <div class="search">⌕ 搜索案件、当事人、材料…</div>
+  <button class="btn-primary">＋ 添加记录</button>
+</header>
+
+<div class="sheet">
+
+  <!-- ============ 案卷头 ============ -->
+  <section class="dos-head">
+    <div class="eyebrow">
+      <a class="back">← 案件列表</a>
+      <span class="sep">/</span>
+      <span class="mono">LL-2026-0412</span>
+      <span class="sep">/</span>
+      <span class="mono">(2026)沪0105民初3821号</span>
+      <span class="cat">民事 · 建设工程施工合同纠纷</span>
+    </div>
+
+    <div class="head-main">
+      <div class="head-title">
+        <h1>王建国与宏远建设集团有限公司<br>建设工程施工合同纠纷</h1>
+        <div class="badges">
+          <span class="badge"><i class="dot"></i>办理中</span>
+          <span class="badge red"><i class="dot"></i>逾期 2 项</span>
+          <span class="badge amber"><i class="dot"></i>保全 12-01 到期</span>
+          <span class="badge">一审 · 举证质证</span>
+        </div>
+      </div>
+      <div class="head-money">
+        <div class="row"><span class="k">标的额</span><i class="leader"></i><span class="v">3,860,000<small>元</small></span></div>
+        <div class="row"><span class="k">合同额</span><i class="leader"></i><span class="v">744,800<small>元</small></span></div>
+        <div class="row"><span class="k">已实收</span><i class="leader"></i><span class="v hl">50,000<small>元 · 6.7%</small></span></div>
+        <div class="head-actions">
+          <button class="btn ghost">上传材料</button>
+          <button class="btn ink">编辑档案</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 对阵行 -->
+    <div class="versus">
+      <div class="side">
+        <span class="seal-round su">诉</span>
+        <div>
+          <div class="who">王建国</div>
+          <div class="role">我方 · 原告</div>
+        </div>
+      </div>
+      <i class="rule"></i>
+      <span class="vs">对</span>
+      <i class="rule"></i>
+      <div class="side">
+        <span class="seal-round bian">辩</span>
+        <div>
+          <div class="who">宏远建设集团有限公司</div>
+          <div class="sub">被告 · 法定代表人 周宏远</div>
+        </div>
+      </div>
+      <div class="court">
+        <span class="k">受理</span>
+        <span class="v">上海市长宁区人民法院 · 赵志强</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 程序栏 ============ -->
+  <nav class="procs">
+    <span class="label">程序</span>
+    <button class="proc on">
+      <span class="nm">一审 <span class="st">在办</span></span>
+      <span class="no">(2026)沪0105民初3821号 · 长宁法院</span>
+    </button>
+    <button class="proc">
+      <span class="nm">诉前调解 <span class="st">已结</span></span>
+      <span class="no">(2026)沪0105诉前调882号</span>
+    </button>
+    <button class="proc add">＋ 新增程序</button>
+  </nav>
+
+  <!-- ============ 页签 ============ -->
+  <nav class="views">
+    <button class="view">案件档案</button>
+    <button class="view on">办案进程 <span class="n hot">6</span></button>
+    <button class="view">委托与财务</button>
+    <button class="view">审批用印 <span class="n">1</span></button>
+    <span class="hint">环节范围：举证质证 · 可在左侧切换</span>
+  </nav>
+
+  <!-- ============ 主体 ============ -->
+  <div class="work">
+
+    <!-- 环节竖列 -->
+    <aside class="stages">
+      <div class="h">办案环节</div>
+      <div class="sum">第 <b>3 / 6</b> 环节 · 已完成 <b>1</b></div>
+      <ol class="stage-list">
+        <li><button class="stage done">
+          <span class="st-num">✓</span>
+          <span class="st-body">
+            <span class="st-nm">立案审查</span>
+            <span class="st-meta">08-12 → 08-26</span>
+          </span>
+        </button></li>
+        <li><button class="stage risk">
+          <span class="st-num">二</span>
+          <span class="st-body">
+            <span class="st-nm">财产保全</span>
+            <span class="st-meta">09-02 起 · 在保</span>
+            <span class="st-flag amber">保全至 12-01</span>
+          </span>
+        </button></li>
+        <li><button class="stage cur">
+          <span class="st-num">三</span>
+          <span class="st-body">
+            <span class="st-nm">举证质证</span>
+            <span class="st-now">当前</span>
+            <span class="st-meta">09-16 起 · 4 项待办</span>
+          </span>
+        </button></li>
+        <li><button class="stage">
+          <span class="st-num">四</span>
+          <span class="st-body">
+            <span class="st-nm">开庭审理</span>
+            <span class="st-meta">庭期 10-14</span>
+            <span class="st-flag blue">剩 25 天</span>
+          </span>
+        </button></li>
+        <li><button class="stage">
+          <span class="st-num">五</span>
+          <span class="st-body">
+            <span class="st-nm">裁判</span>
+            <span class="st-meta">未开始</span>
+          </span>
+        </button></li>
+        <li><button class="stage add">
+          <span class="st-num">＋</span>
+          <span class="st-body"><span class="st-nm">添加环节</span></span>
+        </button></li>
+      </ol>
+    </aside>
+
+    <!-- 主栏 -->
+    <main class="main">
+
+      <!-- §01 待办 -->
+      <section class="sec">
+        <div class="sec-h">
+          <span class="idx">§ 01</span>
+          <span class="t">待办</span>
+          <i class="rule"></i>
+          <span class="cnt">本环节 4 · 其他环节 <b>2 逾期</b></span>
+          <button class="add">＋ 事项</button>
+        </div>
+
+        <div class="sec-sub">已逾期</div>
+        <div class="todo red">
+          <div class="when"><b>09-17</b><span>周四</span></div>
+          <i class="mark"></i>
+          <div class="what">
+            <div class="t">调取工程签证单原件 <span class="tag task">任务</span></div>
+            <div class="d">负责人 陈晓 · 原件缺失将影响工程量鉴定质证</div>
+          </div>
+          <div class="ops"><span class="cd">逾期 2 天</span><button class="op-solid">完成</button></div>
+        </div>
+
+        <div class="sec-sub">一周内</div>
+        <div class="todo red">
+          <div class="when"><b>09-22</b><span>周二</span></div>
+          <i class="mark"></i>
+          <div class="what">
+            <div class="t">举证期限截止 <span class="tag deadline">法定期限</span><span class="tag mono">民诉法 §68</span></div>
+            <div class="d">起算 08-28 受理通知 · 已确认 · 关联 6 份证据</div>
+          </div>
+          <div class="ops"><span class="cd">剩 3 天</span><button class="op-ghost">调整</button><button class="op-solid">完成</button></div>
+        </div>
+        <div class="todo amber">
+          <div class="when"><b>09-24</b><span>周四</span></div>
+          <i class="mark"></i>
+          <div class="what">
+            <div class="t">补充代理意见初稿 <span class="tag task">任务</span></div>
+            <div class="d">负责人 叶森 · 针对对方管辖异议驳回后的策略调整</div>
+          </div>
+          <div class="ops"><span class="cd">剩 5 天</span><button class="op-ghost">调整</button><button class="op-solid">完成</button></div>
+        </div>
+
+        <div class="sec-sub">之后</div>
+        <div class="todo blue">
+          <div class="when"><b>10-14</b><span>周二</span></div>
+          <i class="mark"></i>
+          <div class="what">
+            <div class="t">开庭 <span class="tag hearing">第十三法庭</span></div>
+            <div class="d">09:30 · 长宁区人民法院 · 已同步日程</div>
+          </div>
+          <div class="ops"><span class="cd">剩 25 天</span><button class="op-ghost">调整</button></div>
+        </div>
+        <div class="todo">
+          <div class="when"><b>10-08</b><span>周四</span></div>
+          <i class="mark"></i>
+          <div class="what">
+            <div class="t">申请工程造价鉴定 <span class="tag task">任务</span></div>
+            <div class="d">负责人 陈晓</div>
+          </div>
+          <div class="ops"><span class="cd">剩 19 天</span><button class="op-ghost">调整</button><button class="op-ghost">完成</button></div>
+        </div>
+
+        <div class="sec-sub">等待他人</div>
+        <div class="todo wait">
+          <div class="when"><b>09-18</b><span>周五</span></div>
+          <i class="mark"></i>
+          <div class="what">
+            <div class="t">用章 · 调查令申请</div>
+            <div class="d">审批中 · 陈晓提交 · 公章</div>
+          </div>
+          <div class="ops"><button class="op-ghost">查看</button></div>
+        </div>
+      </section>
+
+      <!-- §02 材料 -->
+      <section class="sec">
+        <div class="sec-h">
+          <span class="idx">§ 02</span>
+          <span class="t">材料</span>
+          <i class="rule"></i>
+          <span class="cnt">本环节 7 · 证据 4</span>
+          <button class="add">上传材料</button>
+          <button class="add">从模板生成</button>
+        </div>
+        <table class="doc-table">
+          <thead>
+            <tr><th>名称</th><th>性质</th><th>来源</th><th>证据要点</th><th>日期</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="doc-name"><svg class="doc-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>建设工程施工合同（2019-018）</span></td>
+              <td><span class="tag mono">证据一</span></td>
+              <td><span class="src">当事人提供</span></td>
+              <td><a class="ev-points">3 项要点</a></td>
+              <td class="num">08-14</td>
+            </tr>
+            <tr>
+              <td><span class="doc-name"><svg class="doc-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>付款凭证（12 笔）<span class="doc-miss">原件待补</span></span></td>
+              <td><span class="tag mono">证据二</span></td>
+              <td><span class="src">当事人提供</span></td>
+              <td><a class="ev-points">2 项要点</a></td>
+              <td class="num">08-14</td>
+            </tr>
+            <tr>
+              <td><span class="doc-name"><svg class="doc-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>工程签证单（23 份）</span></td>
+              <td><span class="tag mono">证据三</span></td>
+              <td><span class="src">当事人提供</span></td>
+              <td><a class="ev-points">5 项要点</a></td>
+              <td class="num">08-15</td>
+            </tr>
+            <tr>
+              <td><span class="doc-name"><svg class="doc-ic ev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>司法鉴定意见书（造价）</span></td>
+              <td><span class="tag mono">证据四</span></td>
+              <td><span class="src">法院转递</span></td>
+              <td><a class="ev-points">4 项要点</a></td>
+              <td class="num">09-16</td>
+            </tr>
+            <tr>
+              <td><span class="doc-name"><svg class="doc-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>证据目录（第三版）</span></td>
+              <td><span class="tag mono">程序文件</span></td>
+              <td><span class="src">本所起草</span></td>
+              <td>—</td>
+              <td class="num">09-17</td>
+            </tr>
+            <tr>
+              <td><span class="doc-name"><svg class="doc-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>调解方案测算（AI 草案）</span></td>
+              <td><span class="tag mono">研判文件</span></td>
+              <td><span class="src">AI 生成</span></td>
+              <td>—</td>
+              <td class="num">09-18</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- §03 经办记录 -->
+      <section class="sec">
+        <div class="sec-h">
+          <span class="idx">§ 03</span>
+          <span class="t">经办记录</span>
+          <i class="rule"></i>
+          <span class="cnt">本环节 6 · 全部 18</span>
+          <button class="add">＋ 记录</button>
+          <button class="add">类案检索</button>
+        </div>
+
+        <div class="log" style="margin-top: 8px;">
+          <div class="log-item talk">
+            <div class="dt"><b>09-18</b>16:42</div>
+            <div class="ch"><span>沟通</span></div>
+            <div class="bd">
+              <div class="t">与承办法官电话沟通</div>
+              <div class="d">举证期限可能延长至 09-30，等正式通知后再调整期限事项；对方代理人表示将申请证人出庭。</div>
+              <div class="m">叶森 · 电话</div>
+            </div>
+          </div>
+          <div class="log-item note">
+            <div class="dt"><b>09-16</b>21:07</div>
+            <div class="ch"><span>研判</span></div>
+            <div class="bd">
+              <div class="t">对方抗辩路线预判</div>
+              <div class="d">对方大概率以「工程未竣工验收」主张付款条件未成就。应对：以签证单 + 监理月报证明实际使用超过一年，付款条件视为成就（司法解释〔2004〕14 号第 13 条）。需尽快补签证单原件。</div>
+              <div class="m">叶森</div>
+            </div>
+          </div>
+          <div class="log-item exp">
+            <div class="dt"><b>09-17</b>10:15</div>
+            <div class="ch"><span>寄收</span></div>
+            <div class="bd">
+              <div class="t">向法院寄送证据副本</div>
+              <div class="d">顺丰 SF1383 9221 7786 · <span class="mono">09-18 已签收</span></div>
+              <div class="m">刘敏</div>
+            </div>
+          </div>
+          <div class="log-item talk">
+            <div class="dt"><b>09-12</b>14:30</div>
+            <div class="ch"><span>会见</span></div>
+            <div class="bd">
+              <div class="t">会见委托人</div>
+              <div class="d">确认调解底线 380 万元；对方上月提出的 300 万元方案不予接受。委托人同意推进造价鉴定。</div>
+              <div class="m">叶森、陈晓 · 所内会议室</div>
+            </div>
+          </div>
+        </div>
+        <button class="op-ghost" style="margin-top: 6px; padding: 8px 12px;">展开更早的 2 个环节（12 条）↓</button>
+      </section>
+
+    </main>
+
+    <!-- 侧栏 -->
+    <aside class="rail">
+      <div class="rail-sec">
+        <div class="rail-h"><span>承办团队</span><a class="link">调整</a></div>
+        <div class="member">
+          <span class="av t1">叶</span>
+          <div><div class="nm">叶森</div><div class="role">律师 · 主办</div></div>
+          <span class="duty">主办</span>
+        </div>
+        <div class="member">
+          <span class="av t2">陈</span>
+          <div><div class="nm">陈晓</div><div class="role">律师 · 协办</div></div>
+          <span class="duty">协办</span>
+        </div>
+        <div class="member">
+          <span class="av t3">刘</span>
+          <div><div class="nm">刘敏</div><div class="role">律师助理</div></div>
+          <span class="duty">助理</span>
+        </div>
+      </div>
+
+      <div class="rail-sec">
+        <div class="rail-h"><span>本案金额</span></div>
+        <div class="money-row"><span class="k">标的额</span><i class="leader"></i><span class="v">3,860,000</span></div>
+        <div class="money-row"><span class="k">合同额</span><i class="leader"></i><span class="v">744,800</span></div>
+        <div class="money-row"><span class="k">已开票</span><i class="leader"></i><span class="v">50,000</span></div>
+        <div class="money-row"><span class="k">已实收</span><i class="leader"></i><span class="v hl">50,000</span></div>
+        <div class="pay-bar"><i></i></div>
+        <div class="pay-note">回款进度 6.7% · 风险代理 18% 于执行回款后结算</div>
+      </div>
+
+      <div class="rail-sec">
+        <div class="rail-h"><span>等待审批</span></div>
+        <div class="rail-wait">
+          <div>
+            <div class="k">用章 · 调查令申请</div>
+            <div class="m">公章 · 陈晓 · 09-18 提交</div>
+          </div>
+        </div>
+        <div class="rail-wait" style="border-bottom: 0;">
+          <div>
+            <div class="k">开票 · 基础办案费第二期</div>
+            <div class="m">增值税普票 · 叶森 · 09-15 提交</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+</div>
+</body>
+</html>
