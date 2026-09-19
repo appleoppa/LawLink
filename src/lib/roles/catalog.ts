@@ -12,6 +12,7 @@ export const PERMISSIONS = [
   { key: "schedule.write", label: "维护案件日程与记录", group: "日程", scopes: ["OWN"] },
   { key: "finance.read", label: "查看财务", group: "财务", scopes: ["OWN", "ALL"] },
   { key: "finance.write", label: "维护收付款", group: "财务", scopes: ["OWN", "ALL"] },
+  { key: "finance.confirm", label: "确认实收到账", group: "财务", scopes: ["ALL"] },
   { key: "invoices.process", label: "执行开票", group: "财务", scopes: ["OWN", "ALL"] },
   { key: "archive.read", label: "查看归档", group: "归档与导出", scopes: ["OWN", "TEAM", "ALL"] },
   { key: "archive.submit", label: "提交归档", group: "归档与导出", scopes: ["OWN"] },
@@ -35,7 +36,7 @@ export const BUILTIN_ROLES = [
   { id: "PRINCIPAL_LAWYER", name: "主办律师", description: "沿用现有全所查看与管理权限；审批另按事项授权。" },
   { id: "LAWYER", name: "经办律师", description: "本人经办案件及已有团队查看授权；审批另按事项授权。" },
   { id: "ASSISTANT", name: "助理", description: "参与案件及已有团队查看授权；审批另按事项授权。" },
-  { id: "FINANCE", name: "财务", description: "全所财务；案件正文及材料仍按个人经办关系授权。" },
+  { id: "FINANCE", name: "财务", description: "全所财务，含实收到账确认；案件正文及材料仍按个人经办关系授权。" },
   { id: ADMINISTRATIVE_ROLE_ID, name: "行政", description: "公告、律所公共资料、快递及外部联系人维护；审批另按事项授权。" },
 ] as const;
 export type BuiltinRolePresentation = { id: string; name: string; description: string; version: number };
@@ -65,7 +66,7 @@ export function roleDisplayName(user: RoleUser): string {
 export function copyBuiltinGrants(role: string): RoleGrant[] {
   if (role === ADMINISTRATIVE_ROLE_ID) return ADMINISTRATIVE_GRANTS.map(grant => ({ ...grant }));
   const keys: PermissionKey[] = role === "FINANCE"
-    ? ["finance.read", "finance.write", "invoices.process"]
+    ? ["finance.read", "finance.write", "finance.confirm", "invoices.process"]
     : ["matters.read", "intakes.create", "matters.write", "clients.read", "clients.write", "documents.read", "documents.write", "documents.download", "schedule.read", "schedule.write", "archive.read", "archive.submit", "seals.request"];
   return keys.map(permissionKey => ({ permissionKey, scope: (role === "FINANCE" ? "ALL" : permissionKey === "matters.read" && role === "PRINCIPAL_LAWYER" ? "ALL" : "OWN") as RoleScope }));
 }

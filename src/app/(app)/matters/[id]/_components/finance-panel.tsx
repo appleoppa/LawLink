@@ -111,7 +111,7 @@ export function FinancePanel({
                 {formatCurrency(Number(e.amount))}
               </span>
               {e.confirmState === "PENDING" ? (
-                <span className="badge b-amber shrink-0" title="已登记，等待财务确认到账后才计入已收">待确认</span>
+                <span className="badge b-amber shrink-0" title="已登记，等待财务管理人员确认到账后才计入已收">待确认</span>
               ) : null}
               <span className="min-w-0 flex-1 truncate text-muted-foreground">
                 {e.payerOrPayee && <span>{e.payerOrPayee}</span>}

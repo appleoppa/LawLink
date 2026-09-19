@@ -126,8 +126,9 @@ export async function createFeeEntry(input: FeeEntryCreateInput) {
   const data = feeEntryCreateSchema.parse(input);
   await assertMatterWritable(data.matterId, { allowFinanceRole: true });
 
-  // 律师登记的实收先挂「待财务确认」：不生成实收、不派生分成、不进时间线，也不计入已实收
-  const pendingConfirm = data.type === "RECEIVED" && !canConfirmReceipt(session.user);
+  // 2026-09-19 用户确认：实收一律先挂「待确认」，谁登记的都一样（含主任律师自己收的案件），
+  // 不生成实收、不派生分成、不进时间线，也不计入已实收；须由具「确认实收到账」权限的人确认。
+  const pendingConfirm = data.type === "RECEIVED";
 
   const created = await prisma.$transaction(async (tx) => {
     await checkRoleMutation(tx, session.user, "finance.write");
@@ -143,8 +144,7 @@ export async function createFeeEntry(input: FeeEntryCreateInput) {
         method: data.method || null,
         note: data.note || null,
         recordedById: session.user.id,
-        confirmState: pendingConfirm ? "PENDING" : "CONFIRMED",
-        ...(pendingConfirm ? {} : data.type === "RECEIVED" ? { confirmedById: session.user.id, confirmedAt: new Date() } : {})
+        confirmState: pendingConfirm ? "PENDING" : "CONFIRMED"
       }
     });
 
@@ -229,12 +229,12 @@ export async function createFeeEntry(input: FeeEntryCreateInput) {
 }
 
 /**
- * 财务确认实收（2026-09-18）：确认后才生成实收 Payment、派生分成、写案件时间线并计入统计。
- * 只有具备实收确认权的人可执行；确认金额与登记金额一致，需要改额就退回重登。
+ * 确认实收（2026-09-19 口径）：确认后才生成实收 Payment、派生分成、写案件时间线并计入统计。
+ * 仅限具备「确认实收到账」（finance.confirm）的财务管理人员；确认金额与登记金额一致，需要改额就退回重登。
  */
 export async function confirmFeeEntry(id: string) {
   const session = await requireSession("finance.write");
-  if (!canConfirmReceipt(session.user)) throw new Error("仅财务、主任律师或管理员可确认实收");
+  if (!canConfirmReceipt(session.user)) throw new Error("仅具备「确认实收到账」权限的财务管理人员可确认实收");
   const entry = await prisma.feeEntry.findUnique({ where: { id }, select: { id: true, matterId: true, type: true, amount: true, occurredAt: true, billingId: true, confirmState: true } });
   if (!entry) throw new Error("记录不存在");
   if (entry.type !== "RECEIVED") throw new Error("只有实收需要确认");
@@ -292,10 +292,10 @@ export async function confirmFeeEntry(id: string) {
   return { ok: true };
 }
 
-/** 财务退回待确认实收：删除该条并留审计与通知，登记人按实际到账重新登记 */
+/** 退回待确认实收：删除该条并留审计与通知，登记人按实际到账重新登记 */
 export async function rejectFeeEntry(id: string, reason: string) {
   const session = await requireSession("finance.write");
-  if (!canConfirmReceipt(session.user)) throw new Error("仅财务、主任律师或管理员可退回实收");
+  if (!canConfirmReceipt(session.user)) throw new Error("仅具备「确认实收到账」权限的财务管理人员可退回实收");
   const note = reason.trim();
   if (!note) throw new Error("请填写退回原因");
   const entry = await prisma.feeEntry.findUnique({ where: { id }, select: { id: true, matterId: true, type: true, amount: true, confirmState: true, recordedById: true, matter: { select: { internalCode: true, title: true } } } });

@@ -8,13 +8,13 @@ export function isManager(role: string): boolean {
 }
 
 /**
- * 实收确认权（2026-09-18 用户确认的收款动线）：律师登记的实收先挂「待财务确认」，
- * 只有财务、主任律师、管理员或 finance.write 为全所范围的自定义角色可以确认生效或退回；
- * 这些人自己登记实收时一步到位。
+ * 实收确认权（2026-09-19 用户确认）：任何人登记的实收都先挂「待确认」，包括主任律师
+ * 自己收的案件；只有具备「确认实收到账」（finance.confirm）的财务管理人员才能确认或退回。
+ * 内置角色里仅「财务」自带该权限，其余人员由管理后台的自定义角色授予，人选与范围在后台配置。
  */
 export function canConfirmReceipt(user: { role: string; rolePermissions?: RoleGrant[] | null }): boolean {
-  if (user.role === "CUSTOM") return scopeFor({ role: user.role, rolePermissions: user.rolePermissions ?? undefined }, "finance.write") === "ALL";
-  return user.role === "FINANCE" || isManager(user.role);
+  if (user.role === "CUSTOM") return scopeFor({ role: user.role, rolePermissions: user.rolePermissions ?? undefined }, "finance.confirm") === "ALL";
+  return user.role === "FINANCE";
 }
 
 // ============ 案件可见性 ============

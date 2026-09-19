@@ -3,7 +3,7 @@ import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
 import { Prisma } from "@prisma/client";
 const { db, notify, webhook, session, writeFile } = vi.hoisted(() => {
   const tables = ["client", "matter", "matterStage", "task", "timelineEvent", "billing", "feeEntry", "commissionPlan", "deadline", "hearing", "notification", "preservationProperty", "auditLog", "document", "invoiceRequest", "systemSetting", "jobQueue", "payment", "receivable", "team", "user"] as const;
-  const methods = ["findMany", "findFirst", "findUnique", "findUniqueOrThrow", "count", "create", "update", "upsert", "createMany", "deleteMany"] as const;
+  const methods = ["findMany", "findFirst", "findUnique", "findUniqueOrThrow", "count", "create", "update", "updateMany", "upsert", "createMany", "deleteMany"] as const;
   const models = Object.fromEntries(tables.map(table => [table,
     Object.fromEntries(methods.map(method => [method, vi.fn()]))
   ])) as Record<typeof tables[number], Record<typeof methods[number], ReturnType<typeof vi.fn>>>;
@@ -185,14 +185,15 @@ describe("分成比例及派生金额", () => {
     expect(allocateCommissions(100, [{ userId: user1, percent: new Prisma.Decimal(30) }]).map(p => p.toNumber())).toEqual([30]);
     expect(allocateCommissions(100, [])).toEqual([]);
   });
-  it("派生分成同样拒绝历史超额方案", async () => {
-    session.user.role = "FINANCE"; // 财务自行登记一步到位，当场派生分成
+  it("派生分成在确认实收时同样拒绝历史超额方案", async () => {
+    session.user.role = "FINANCE"; // 具「确认实收到账」权限的人确认时才派生分成
+    db.feeEntry.findUnique.mockResolvedValue({ id: "receipt", matterId: mine, type: "RECEIVED", amount: new Prisma.Decimal(100), occurredAt: new Date(), billingId: null, confirmState: "PENDING" });
+    db.feeEntry.updateMany.mockResolvedValue({ count: 1 });
     db.commissionPlan.findMany.mockResolvedValue([user1, user2].map(userId => ({ userId, percent: new Prisma.Decimal(80) })));
-    db.feeEntry.create.mockResolvedValue({ id: "receipt" });
-    await expect(createFeeEntry({ matterId: mine, amount: 100, type: "RECEIVED", occurredAt: new Date() })).rejects.toThrow("分成方案无效");
+    await expect(confirmFeeEntry("receipt")).rejects.toThrow("分成方案无效");
     expect(db.feeEntry.create.mock.calls.filter(([args]) => args.data.type === "COMMISSION")).toHaveLength(0);
   });
-  it("律师登记的实收先挂待确认：不生成实收、不派生分成", async () => {
+  it("实收一律先挂待确认：不生成实收、不派生分成", async () => {
     db.commissionPlan.findMany.mockResolvedValue([{ userId: user1, percent: new Prisma.Decimal(30) }]);
     db.feeEntry.create.mockResolvedValue({ id: "receipt" });
     const res = await createFeeEntry({ matterId: mine, amount: 100, type: "RECEIVED", occurredAt: new Date() });
@@ -201,17 +202,20 @@ describe("分成比例及派生金额", () => {
     expect(db.feeEntry.create.mock.calls.filter(([args]) => args.data.type === "COMMISSION")).toHaveLength(0);
     expect(db.payment.create).not.toHaveBeenCalled();
   });
-  it("财务自行登记的实收直接生效", async () => {
+  it("财务自己登记的实收同样要确认，不能一步到位", async () => {
     session.user.role = "FINANCE";
     db.commissionPlan.findMany.mockResolvedValue([]);
     db.feeEntry.create.mockResolvedValue({ id: "receipt", amount: new Prisma.Decimal(100) });
     const res = await createFeeEntry({ matterId: mine, amount: 100, type: "RECEIVED", occurredAt: new Date() });
-    expect(res.pendingConfirm).toBe(false);
-    expect(db.feeEntry.create.mock.calls[0][0].data.confirmState).toBe("CONFIRMED");
+    expect(res.pendingConfirm).toBe(true);
+    expect(db.feeEntry.create.mock.calls[0][0].data.confirmState).toBe("PENDING");
   });
-  it("无确认权的人不能确认或退回实收", async () => {
-    await expect(confirmFeeEntry("receipt")).rejects.toThrow("仅财务");
-    await expect(rejectFeeEntry("receipt", "流水未见")).rejects.toThrow("仅财务");
+  it("主任律师与无确认权的人都不能确认或退回实收", async () => {
+    for (const role of ["LAWYER", "PRINCIPAL_LAWYER", "ASSISTANT"]) {
+      session.user.role = role;
+      await expect(confirmFeeEntry("receipt")).rejects.toThrow("确认实收到账");
+      await expect(rejectFeeEntry("receipt", "流水未见")).rejects.toThrow("确认实收到账");
+    }
   });
 });
 

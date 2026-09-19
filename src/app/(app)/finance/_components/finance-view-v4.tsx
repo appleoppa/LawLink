@@ -36,7 +36,7 @@ type Entry = {
   invoiceNo: string | null;
   note: string | null;
   confirmed: boolean;
-  /** 实收确认：律师登记的实收为 PENDING，财务确认后才计入已实收（2026-09-18） */
+  /** 实收确认：任何人登记的实收都先为 PENDING，经「确认实收到账」权限的人确认后才计入已实收（2026-09-19） */
   confirmState: "PENDING" | "CONFIRMED";
   matter: { id: string; internalCode: string; title: string };
   beneficiaryUser: { id: string; name: string } | null;
@@ -289,7 +289,7 @@ export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests,
                               <button type="button" className="btn btn-ghost btn-sm" disabled={busyId === e.id} onClick={() => void rejectOne(e.id)}>退回</button>
                             </div>
                           ) : (
-                            <span className="badge b-amber">待财务确认</span>
+                            <span className="badge b-amber">待确认到账</span>
                           )}
                         </td>
                       </tr>
@@ -351,7 +351,7 @@ export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests,
                           <td className="t-sm truncate whitespace-nowrap">{e.recordedBy.name}</td>
                           <td>
                             {e.type === "RECEIVED" && e.confirmState === "PENDING" ? (
-                              <span className="badge b-amber" title="律师已登记，等待财务确认到账">待确认</span>
+                              <span className="badge b-amber" title="已登记，等待财务管理人员确认到账">待确认</span>
                             ) : e.confirmed ? (
                               <span className="badge b-green" title="关联已签署合同或已登记发票号，不可物理删除">受保护</span>
                             ) : (

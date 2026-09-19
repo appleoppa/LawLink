@@ -132,7 +132,7 @@ export type FinancePayload = {
     contractAmount: number;
     receivable: number;
     received: number;
-    /** 律师已登记、待财务确认的实收，不计入已收 */
+    /** 已登记、待确认到账的实收，不计入已收 */
     pendingReceived: number;
     refund: number;
     cost: number;
