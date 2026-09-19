@@ -362,6 +362,14 @@ enum FeeEntryType {
   COMMISSION
 }
 
+/// 实收确认状态（2026-09-18 用户确认）：律师登记的实收先记 PENDING，
+/// 不生成实收 Payment、不派生分成、不计入已实收；财务确认后才转 CONFIRMED 生效。
+/// 财务/主任/管理员自行登记时直接 CONFIRMED。非 RECEIVED 类型恒为 CONFIRMED。
+enum FeeConfirmState {
+  PENDING
+  CONFIRMED
+}
+
 // v0.8: 文档模板分类
 enum TemplateCategory {
   INTAKE // 收案文书：收案登记表 / 风险告知书 / 质量反馈卡
@@ -464,6 +472,7 @@ model User {
   commissionPlans           CommissionPlan[]
   feeEntriesBeneficiary     FeeEntry[]                    @relation("FeeBeneficiary")
   feeEntriesRecorded        FeeEntry[]                    @relation("FeeRecorder")
+  feeEntriesConfirmed       FeeEntry[]                    @relation("FeeConfirmer")
   authoredNotes             Note[]                        @relation("NoteAuthor")
   uploadedDocuments         Document[]                    @relation("DocumentUploader")
   reviewedDocuments         Document[]                    @relation("DocumentReviewer")
@@ -1568,12 +1577,18 @@ model FeeEntry {
   recordedById String
   recordedBy   User   @relation("FeeRecorder", fields: [recordedById], references: [id])
 
+  confirmState  FeeConfirmState @default(CONFIRMED)
+  confirmedById String?
+  confirmedBy   User?           @relation("FeeConfirmer", fields: [confirmedById], references: [id])
+  confirmedAt   DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([matterId, type, occurredAt])
   @@index([type, occurredAt])
   @@index([beneficiaryUserId, occurredAt])
+  @@index([confirmState, occurredAt])
 }
 
 model CommissionPlan {

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Wallet, Receipt } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { InvoiceRequestSheet } from "./invoice-request-sheet";
 import type { FinancePayload, UserOption } from "./matter-detail-tabs";
 
@@ -94,7 +94,7 @@ export function FinancePanel({
 
       {received.length === 0 ? (
         <p className="py-6 text-center text-xs text-muted-foreground">
-          暂无到账记录（由财务管理人员后台录入）
+          暂无到账记录
         </p>
       ) : (
         <ul className="divide-y divide-border">
@@ -107,9 +107,12 @@ export function FinancePanel({
                   : "flex items-center gap-3 px-4 py-2 text-[12.5px]"
               }
             >
-              <span className="shrink-0 font-mono tabular text-[14px] font-medium text-[var(--green)]">
+              <span className={cn("shrink-0 font-mono tabular text-[14px] font-medium", e.confirmState === "PENDING" ? "text-[var(--amber)]" : "text-[var(--green)]")}>
                 {formatCurrency(Number(e.amount))}
               </span>
+              {e.confirmState === "PENDING" ? (
+                <span className="badge b-amber shrink-0" title="已登记，等待财务确认到账后才计入已收">待确认</span>
+              ) : null}
               <span className="min-w-0 flex-1 truncate text-muted-foreground">
                 {e.payerOrPayee && <span>{e.payerOrPayee}</span>}
                 {e.method && (

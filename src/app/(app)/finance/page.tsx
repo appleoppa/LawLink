@@ -7,6 +7,7 @@ import {
 import { listInvoiceRequests, getInvoiceStats } from "@/server/invoices/actions";
 import { getReceivablesAging } from "@/server/finance/aging";
 import { hasCustomPermission } from "@/lib/roles/catalog";
+import { canConfirmReceipt } from "@/lib/permissions";
 import { FinanceViewV4 } from "./_components/finance-view-v4";
 
 export default async function FinancePage() {
@@ -28,20 +29,20 @@ export default async function FinancePage() {
   const yearStart = new Date(monthStart.getFullYear(), 0, 1);
 
   const monthlyReceived = entries
-    .filter((e) => e.type === "RECEIVED" && new Date(e.occurredAt) >= monthStart)
+    .filter((e) => e.type === "RECEIVED" && e.confirmState === "CONFIRMED" && new Date(e.occurredAt) >= monthStart)
     .reduce((acc, e) => acc + Number(e.amount), 0);
   const monthlyReceivable = entries
     .filter((e) => e.type === "RECEIVABLE" && new Date(e.occurredAt) >= monthStart)
     .reduce((acc, e) => acc + Number(e.amount), 0);
   const lastMonthStart = new Date(monthStart.getFullYear(), monthStart.getMonth() - 1, 1);
   const lastMonthReceived = entries
-    .filter((e) => e.type === "RECEIVED" && new Date(e.occurredAt) >= lastMonthStart && new Date(e.occurredAt) < monthStart)
+    .filter((e) => e.type === "RECEIVED" && e.confirmState === "CONFIRMED" && new Date(e.occurredAt) >= lastMonthStart && new Date(e.occurredAt) < monthStart)
     .reduce((acc, e) => acc + Number(e.amount), 0);
   const yearlyReceivable = entries
     .filter((e) => e.type === "RECEIVABLE" && new Date(e.occurredAt) >= yearStart)
     .reduce((acc, e) => acc + Number(e.amount), 0);
   const yearlyReceived = entries
-    .filter((e) => e.type === "RECEIVED" && new Date(e.occurredAt) >= yearStart)
+    .filter((e) => e.type === "RECEIVED" && e.confirmState === "CONFIRMED" && new Date(e.occurredAt) >= yearStart)
     .reduce((acc, e) => acc + Number(e.amount), 0);
 
   return (
@@ -55,6 +56,7 @@ export default async function FinancePage() {
       aging={aging}
       canExport={hasCustomPermission(session!.user, "reports.export")}
       canWrite={hasCustomPermission(session!.user, "finance.write")}
+      canConfirmReceipt={canConfirmReceipt(session!.user)}
       stats={{
         monthlyReceived,
         monthlyReceivable,

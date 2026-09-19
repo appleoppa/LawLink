@@ -85,6 +85,7 @@ export async function getDashboardKpis(): Promise<KpiItem[]> {
     prisma.feeEntry.aggregate({
       where: {
         type: "RECEIVED",
+        confirmState: "CONFIRMED",
         occurredAt: { gte: monthStart },
         matter: { deletedAt: null, ...matterFinanceVisibilityFilter(userId, role, session.user.rolePermissions) }
       },
@@ -142,6 +143,7 @@ export async function getDashboardRevenueTrend(months = 6) {
   const entries = await prisma.feeEntry.findMany({
     where: {
       type: { in: ["RECEIVABLE", "RECEIVED"] },
+      confirmState: "CONFIRMED",
       occurredAt: { gte: start },
       matter: { deletedAt: null, ...visFilter }
     },

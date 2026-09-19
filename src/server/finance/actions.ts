@@ -17,6 +17,7 @@ import {
   assertCanAccessMatterFinance,
   assertCanAssociateMatter,
   assertCanLeadMatter,
+  canConfirmReceipt,
   isManager,
   matterFinanceVisibilityFilter
 } from "@/lib/permissions";
@@ -29,6 +30,7 @@ import {
   type CommissionPlanSetInput
 } from "./schemas";
 import { notifyRoleApprovers } from "@/server/notifications/approval";
+import { createNotification } from "@/server/notifications/create";
 import {
   invoiceMatterSearchLimit,
   invoiceMatterSearchWhere
@@ -124,6 +126,9 @@ export async function createFeeEntry(input: FeeEntryCreateInput) {
   const data = feeEntryCreateSchema.parse(input);
   await assertMatterWritable(data.matterId, { allowFinanceRole: true });
 
+  // 律师登记的实收先挂「待财务确认」：不生成实收、不派生分成、不进时间线，也不计入已实收
+  const pendingConfirm = data.type === "RECEIVED" && !canConfirmReceipt(session.user);
+
   const created = await prisma.$transaction(async (tx) => {
     await checkRoleMutation(tx, session.user, "finance.write");
     const entry = await tx.feeEntry.create({
@@ -137,10 +142,13 @@ export async function createFeeEntry(input: FeeEntryCreateInput) {
         payerOrPayee: data.payerOrPayee || null,
         method: data.method || null,
         note: data.note || null,
-        recordedById: session.user.id
+        recordedById: session.user.id,
+        confirmState: pendingConfirm ? "PENDING" : "CONFIRMED",
+        ...(pendingConfirm ? {} : data.type === "RECEIVED" ? { confirmedById: session.user.id, confirmedAt: new Date() } : {})
       }
     });
 
+    if (pendingConfirm) return entry;
 
     // v1.x §二：收款登记生成实收（核销分配在实收上进行）
     if (data.type === "RECEIVED" && data.amount > 0) {
@@ -194,16 +202,126 @@ export async function createFeeEntry(input: FeeEntryCreateInput) {
 
   await audit({
     userId: session.user.id,
-    action: "FEE_ENTRY_CREATE",
+    action: pendingConfirm ? "FEE_ENTRY_SUBMIT" : "FEE_ENTRY_CREATE",
     targetType: "FeeEntry",
     targetId: created.id,
-    detail: { matterId: data.matterId, type: data.type, amount: data.amount }
+    detail: { matterId: data.matterId, type: data.type, amount: data.amount, pendingConfirm }
   });
+
+  if (pendingConfirm) {
+    const matter = await prisma.matter.findUnique({ where: { id: data.matterId }, select: { internalCode: true, title: true } });
+    await notifyRoleApprovers({
+      roles: ["PRINCIPAL_LAWYER", "FINANCE"],
+      excludeUserId: session.user.id,
+      title: "有实收待确认",
+      content: `${session.user.name ?? "有用户"} 登记了实收 ¥${data.amount.toLocaleString("zh-CN")}${matter ? `：${matter.internalCode} ${matter.title}` : ""}，请核对到账后确认`,
+      href: "/finance",
+      refType: "FeeEntry",
+      refId: created.id,
+      priority: "NORMAL"
+    });
+  }
 
   await revalidateMatter(data.matterId);
   revalidatePath("/finance");
   revalidatePath("/approvals");
-  return { ok: true, id: created.id };
+  return { ok: true, id: created.id, pendingConfirm };
+}
+
+/**
+ * 财务确认实收（2026-09-18）：确认后才生成实收 Payment、派生分成、写案件时间线并计入统计。
+ * 只有具备实收确认权的人可执行；确认金额与登记金额一致，需要改额就退回重登。
+ */
+export async function confirmFeeEntry(id: string) {
+  const session = await requireSession("finance.write");
+  if (!canConfirmReceipt(session.user)) throw new Error("仅财务、主任律师或管理员可确认实收");
+  const entry = await prisma.feeEntry.findUnique({ where: { id }, select: { id: true, matterId: true, type: true, amount: true, occurredAt: true, billingId: true, confirmState: true } });
+  if (!entry) throw new Error("记录不存在");
+  if (entry.type !== "RECEIVED") throw new Error("只有实收需要确认");
+  if (entry.confirmState === "CONFIRMED") throw new Error("此笔已确认");
+  await assertMatterWritable(entry.matterId, { allowFinanceRole: true });
+
+  await prisma.$transaction(async (tx) => {
+    await checkRoleMutation(tx, session.user, "finance.write");
+    const updated = await tx.feeEntry.updateMany({
+      where: { id, confirmState: "PENDING" },
+      data: { confirmState: "CONFIRMED", confirmedById: session.user.id, confirmedAt: new Date() }
+    });
+    if (updated.count === 0) throw new Error("此笔已被处理，请刷新后重试");
+
+    const amount = Number(entry.amount);
+    if (amount > 0) {
+      await generatePaymentForReceivedEntry(tx, {
+        matterId: entry.matterId,
+        feeEntryId: entry.id,
+        amount: entry.amount,
+        occurredAt: entry.occurredAt,
+        recordedById: session.user.id
+      });
+      const plans = await tx.commissionPlan.findMany({ where: { matterId: entry.matterId, active: true } });
+      const shares = allocateCommissions(amount, plans);
+      for (const [index, plan] of plans.entries()) {
+        const share = shares[index];
+        if (share.lte(0)) continue;
+        await tx.feeEntry.create({
+          data: {
+            matterId: entry.matterId,
+            billingId: entry.billingId,
+            type: "COMMISSION",
+            amount: share,
+            occurredAt: entry.occurredAt,
+            parentFeeEntryId: entry.id,
+            beneficiaryUserId: plan.userId,
+            note: plan.label ? `按方案 [${plan.label}] 自动分成 ${plan.percent}%` : `自动分成 ${plan.percent}%`,
+            recordedById: session.user.id
+          }
+        });
+      }
+    }
+    await recordTimelineEvent(tx, {
+      matterId: entry.matterId,
+      eventType: "FEE_RECEIVED",
+      title: `实收 ¥${Number(entry.amount).toLocaleString("zh-CN")}`,
+      occurredAt: entry.occurredAt
+    });
+  });
+
+  await audit({ userId: session.user.id, action: "FEE_ENTRY_CONFIRM", targetType: "FeeEntry", targetId: id, detail: { matterId: entry.matterId, amount: Number(entry.amount) } });
+  await revalidateMatter(entry.matterId);
+  revalidatePath("/finance");
+  return { ok: true };
+}
+
+/** 财务退回待确认实收：删除该条并留审计与通知，登记人按实际到账重新登记 */
+export async function rejectFeeEntry(id: string, reason: string) {
+  const session = await requireSession("finance.write");
+  if (!canConfirmReceipt(session.user)) throw new Error("仅财务、主任律师或管理员可退回实收");
+  const note = reason.trim();
+  if (!note) throw new Error("请填写退回原因");
+  const entry = await prisma.feeEntry.findUnique({ where: { id }, select: { id: true, matterId: true, type: true, amount: true, confirmState: true, recordedById: true, matter: { select: { internalCode: true, title: true } } } });
+  if (!entry) throw new Error("记录不存在");
+  if (entry.type !== "RECEIVED" || entry.confirmState !== "PENDING") throw new Error("只有待确认的实收可以退回");
+  await assertMatterWritable(entry.matterId, { allowFinanceRole: true });
+
+  await prisma.$transaction(async (tx) => {
+    await checkRoleMutation(tx, session.user, "finance.write");
+    const removed = await tx.feeEntry.deleteMany({ where: { id, confirmState: "PENDING" } });
+    if (removed.count === 0) throw new Error("此笔已被处理，请刷新后重试");
+  });
+
+  await audit({ userId: session.user.id, action: "FEE_ENTRY_REJECT", targetType: "FeeEntry", targetId: id, detail: { matterId: entry.matterId, amount: Number(entry.amount), reason: note } });
+  await createNotification({
+    userId: entry.recordedById,
+    type: "SYSTEM",
+    title: "实收登记被退回",
+    content: `${entry.matter.internalCode} ${entry.matter.title} 的实收 ¥${Number(entry.amount).toLocaleString("zh-CN")} 被退回：${note}`,
+    href: "/finance",
+    refType: "FeeEntry",
+    refId: id
+  });
+  await revalidateMatter(entry.matterId);
+  revalidatePath("/finance");
+  return { ok: true };
 }
 
 export async function deleteFeeEntry(id: string) {
@@ -331,7 +449,8 @@ export async function getMatterFinance(matterId: string) {
   const stats = {
     contractAmount: billings.reduce((acc, b) => acc + Number(b.contractAmount), 0),
     receivable: sum((e) => e.type === "RECEIVABLE"),
-    received: sum((e) => e.type === "RECEIVED"),
+    received: sum((e) => e.type === "RECEIVED" && e.confirmState === "CONFIRMED"),
+    pendingReceived: sum((e) => e.type === "RECEIVED" && e.confirmState === "PENDING"),
     refund: sum((e) => e.type === "REFUND"),
     cost: sum((e) => e.type === "COST"),
     commission: sum((e) => e.type === "COMMISSION"),
@@ -585,6 +704,7 @@ export async function listAllFeeEntries(params: {
       matter: { select: { id: true, internalCode: true, title: true } },
       beneficiaryUser: { select: { id: true, name: true } },
       recordedBy: { select: { id: true, name: true } },
+      confirmedBy: { select: { id: true, name: true } },
       // P0-6 已确认口径（关联已签署合同或已登记发票号），列表展示用
       billing: { select: { signedAt: true } }
     }
@@ -601,6 +721,7 @@ export async function getMonthlyRevenue(months = 6) {
   const entries = await prisma.feeEntry.findMany({
     where: {
       type: { in: ["RECEIVABLE", "RECEIVED"] },
+      confirmState: "CONFIRMED",
       occurredAt: { gte: start },
       matter: { deletedAt: null, ...visFilter }
     },

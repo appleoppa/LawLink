@@ -117,6 +117,8 @@ export type FinancePayload = {
     beneficiaryUserId: string | null;
     beneficiaryUser: { id: string; name: string } | null;
     parentFeeEntry: { id: string; type: string } | null;
+    confirmState: "PENDING" | "CONFIRMED";
+    recordedById: string;
   }[];
   plans: {
     id: string;
@@ -130,6 +132,8 @@ export type FinancePayload = {
     contractAmount: number;
     receivable: number;
     received: number;
+    /** 律师已登记、待财务确认的实收，不计入已收 */
+    pendingReceived: number;
     refund: number;
     cost: number;
     commission: number;
@@ -778,6 +782,7 @@ function FinanceHero({ stats }: { stats: FinancePayload["stats"] }) {
     ["已收", stats.received, "green"],
     ["待收", outstanding, "amber"],
     ["已开票", stats.invoiced, "blue"],
+    ...(stats.pendingReceived > 0 ? [["待确认实收", stats.pendingReceived, "amber"] as [string, number, string]] : []),
     ...(stats.cost > 0 ? [["支出", stats.cost, "red"] as [string, number, string]] : [])
   ];
   return (

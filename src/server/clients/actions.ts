@@ -148,7 +148,7 @@ export async function getClientFinanceSummary(clientId: string) {
       orderBy: { createdAt: "desc" }
     }),
     prisma.feeEntry.findMany({
-      where: { type: { in: ["RECEIVABLE", "RECEIVED"] }, matter: matterWhere },
+      where: { type: { in: ["RECEIVABLE", "RECEIVED"] }, confirmState: "CONFIRMED", matter: matterWhere },
       select: { type: true, amount: true }
     }),
     prisma.matter.count({ where: matterWhere })

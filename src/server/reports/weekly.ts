@@ -66,6 +66,7 @@ export async function getLawyerWeeklyDigest(input: {
     prisma.feeEntry.aggregate({
       where: {
         type: "RECEIVED",
+        confirmState: "CONFIRMED",
         occurredAt: { gte: period.start, lt: period.end },
         matter: { ownerId: input.userId }
       },

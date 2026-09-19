@@ -189,6 +189,7 @@ export async function getReportData(period: ReportPeriod, access: ReportAccess =
   const feeReceivedRaw = await prisma.feeEntry.findMany({
     where: {
       type: "RECEIVED",
+      confirmState: "CONFIRMED",
       occurredAt: { gte: period.start, lt: period.end },
       matter: { deletedAt: null, AND: [access.finance] }
     },
@@ -227,6 +228,7 @@ export async function getReportData(period: ReportPeriod, access: ReportAccess =
   const fees = await prisma.feeEntry.findMany({
     where: {
       type: { in: ["RECEIVABLE", "RECEIVED"] },
+      confirmState: "CONFIRMED",
       occurredAt: { gte: period.start, lt: period.end },
       matter: { deletedAt: null, AND: [access.finance] }
     },

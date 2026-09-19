@@ -30,7 +30,7 @@ import { createTask, updateTask } from "@/server/tasks/actions";
 import { scanDueReminders } from "@/server/cron/jobs/scan-due-reminders";
 import { runAuditCleanup } from "@/server/cron/jobs/audit-cleanup";
 import { approveInvoiceRequest, createInvoiceRequest as createLegacyInvoice } from "@/server/invoices/actions";
-import { createInvoiceRequest, createFeeEntry, setCommissionPlan } from "@/server/finance/actions";
+import { createInvoiceRequest, createFeeEntry, confirmFeeEntry, rejectFeeEntry, setCommissionPlan } from "@/server/finance/actions";
 import { commissionPlanSetSchema } from "@/server/finance/schemas";
 import { allocateCommissions } from "@/server/finance/commissions";
 import { clientVisibilityFilter, intakeVisibilityFilter, matterReadVisibilityFilter, matterVisibilityFilter } from "@/lib/permissions";
@@ -186,10 +186,32 @@ describe("分成比例及派生金额", () => {
     expect(allocateCommissions(100, [])).toEqual([]);
   });
   it("派生分成同样拒绝历史超额方案", async () => {
+    session.user.role = "FINANCE"; // 财务自行登记一步到位，当场派生分成
     db.commissionPlan.findMany.mockResolvedValue([user1, user2].map(userId => ({ userId, percent: new Prisma.Decimal(80) })));
     db.feeEntry.create.mockResolvedValue({ id: "receipt" });
     await expect(createFeeEntry({ matterId: mine, amount: 100, type: "RECEIVED", occurredAt: new Date() })).rejects.toThrow("分成方案无效");
     expect(db.feeEntry.create.mock.calls.filter(([args]) => args.data.type === "COMMISSION")).toHaveLength(0);
+  });
+  it("律师登记的实收先挂待确认：不生成实收、不派生分成", async () => {
+    db.commissionPlan.findMany.mockResolvedValue([{ userId: user1, percent: new Prisma.Decimal(30) }]);
+    db.feeEntry.create.mockResolvedValue({ id: "receipt" });
+    const res = await createFeeEntry({ matterId: mine, amount: 100, type: "RECEIVED", occurredAt: new Date() });
+    expect(res.pendingConfirm).toBe(true);
+    expect(db.feeEntry.create.mock.calls[0][0].data.confirmState).toBe("PENDING");
+    expect(db.feeEntry.create.mock.calls.filter(([args]) => args.data.type === "COMMISSION")).toHaveLength(0);
+    expect(db.payment.create).not.toHaveBeenCalled();
+  });
+  it("财务自行登记的实收直接生效", async () => {
+    session.user.role = "FINANCE";
+    db.commissionPlan.findMany.mockResolvedValue([]);
+    db.feeEntry.create.mockResolvedValue({ id: "receipt", amount: new Prisma.Decimal(100) });
+    const res = await createFeeEntry({ matterId: mine, amount: 100, type: "RECEIVED", occurredAt: new Date() });
+    expect(res.pendingConfirm).toBe(false);
+    expect(db.feeEntry.create.mock.calls[0][0].data.confirmState).toBe("CONFIRMED");
+  });
+  it("无确认权的人不能确认或退回实收", async () => {
+    await expect(confirmFeeEntry("receipt")).rejects.toThrow("仅财务");
+    await expect(rejectFeeEntry("receipt", "流水未见")).rejects.toThrow("仅财务");
   });
 });
 

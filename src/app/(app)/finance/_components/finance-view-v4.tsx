@@ -16,6 +16,10 @@ import { InvoiceCreateDialog } from "./invoice-create-dialog";
 import { RecordFeeLauncher } from "./record-fee-launcher";
 import { MetricCard, PageHeader, Segmented } from "@/components/patterns/moan";
 import { FilterSelect } from "@/components/patterns/filter-select";
+import { confirmFeeEntry, rejectFeeEntry } from "@/server/finance/actions";
+import { promptDialog } from "@/components/patterns/confirm-dialog";
+import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 import { useTopbarAction } from "@/components/layout/topbar-action";
 import { invoiceRequestStatusLabel } from "@/lib/enums";
 import { matterHref } from "@/lib/matters/route";
@@ -32,9 +36,12 @@ type Entry = {
   invoiceNo: string | null;
   note: string | null;
   confirmed: boolean;
+  /** 实收确认：律师登记的实收为 PENDING，财务确认后才计入已实收（2026-09-18） */
+  confirmState: "PENDING" | "CONFIRMED";
   matter: { id: string; internalCode: string; title: string };
   beneficiaryUser: { id: string; name: string } | null;
   recordedBy: { id: string; name: string };
+  confirmedBy: { id: string; name: string } | null;
 };
 
 type Aging = Awaited<ReturnType<typeof getReceivablesAging>>;
@@ -58,6 +65,8 @@ type Props = {
   canApproveInvoice: boolean;
   canExport: boolean;
   canWrite: boolean;
+  /** 能否确认 / 退回律师登记的实收（财务、主任、管理员） */
+  canConfirmReceipt: boolean;
 };
 
 type Tab = "ledger" | "invoices" | "commission" | "aging";
@@ -73,7 +82,7 @@ const TYPE_META: Record<Entry["type"], { label: string; badge: string; sign: str
 const yuan = (n: number, digits = 0) => `¥${n.toLocaleString("zh-CN", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
 const mmdd = (d: Date | string) => shMonthDay(d);
 
-export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests, canApproveInvoice, canExport, canWrite }: Props) {
+export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests, canApproveInvoice, canExport, canWrite, canConfirmReceipt }: Props) {
   const params = useSearchParams();
   const initialTab = (["ledger", "invoices", "commission", "aging"] as Tab[]).includes(params.get("tab") as Tab) ? (params.get("tab") as Tab) : "ledger";
   const [tab, setTab] = useState<Tab>(initialTab);
@@ -82,6 +91,36 @@ export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests,
   const [typeFilter, setTypeFilter] = useState<Entry["type"] | undefined>(undefined);
   const [invoiceCreateOpen, setInvoiceCreateOpen] = useState(false);
   const [recordOpen, setRecordOpen] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const router = useRouter();
+
+  async function confirmOne(id: string) {
+    setBusyId(id);
+    try {
+      await confirmFeeEntry(id);
+      toast.success("已确认到账");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "确认失败");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function rejectOne(id: string) {
+    const reason = await promptDialog({ title: "退回实收登记", description: "退回后该笔登记会被删除，登记人会收到通知并按实际到账重新登记。", label: "退回原因", placeholder: "如：银行流水未见此笔款项", confirmText: "退回", danger: true, required: true });
+    if (!reason) return;
+    setBusyId(id);
+    try {
+      await rejectFeeEntry(id, reason);
+      toast.success("已退回");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "退回失败");
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   useTopbarAction(canWrite ? { label: "登记收付", onClick: () => setRecordOpen(true) } : null, [canWrite]);
 
@@ -100,11 +139,15 @@ export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests,
   const nowSh = shParts(now);
   const monthGrowth = stats.lastMonthReceived > 0 ? Math.round(((stats.monthlyReceived - stats.lastMonthReceived) / stats.lastMonthReceived) * 100) : null;
   const monthReceivedCount = entries.filter((e) => e.type === "RECEIVED" && shParts(e.occurredAt).m === nowSh.m && shParts(e.occurredAt).y === nowSh.y);
-  const unconfirmedReceived = monthReceivedCount.filter((e) => !e.confirmed);
+  const unconfirmedReceived = monthReceivedCount.filter((e) => e.confirmState === "PENDING");
   const yearRate = stats.yearlyReceivable > 0 ? Math.round((stats.yearlyReceived / stats.yearlyReceivable) * 1000) / 10 : null;
   const worst = aging.worst;
   const pendingInvoices = invoiceRequests.filter((r) => r.status === "PENDING" || r.status === "APPROVED");
   const invoiceRows = [...pendingInvoices, ...invoiceRequests.filter((r) => r.status === "ISSUED")].slice(0, 4);
+  const pendingReceipts = entries.filter((e) => e.type === "RECEIVED" && e.confirmState === "PENDING");
+  // 已开票未收款：已开具的发票号在实收流水里找不到对应登记（登记收付时可从本案发票带出发票号）
+  const receivedInvoiceNos = new Set(entries.filter((e) => e.type === "RECEIVED" && e.invoiceNo).map((e) => e.invoiceNo as string));
+  const issuedUnpaid = invoiceRequests.filter((r) => r.status === "ISSUED" && !(r.invoiceNo && receivedInvoiceNos.has(r.invoiceNo)));
   const overdueRows = aging.items.filter((r) => (r.overdueDays ?? 0) > 0);
   const commissionEntries = entries.filter((e) => e.type === "COMMISSION");
 
@@ -125,7 +168,7 @@ export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests,
           label="本月实收"
           value={yuan(stats.monthlyReceived)}
           trend={monthGrowth === null ? null : { tone: monthGrowth >= 0 ? "up" : "down", text: `${monthGrowth >= 0 ? "↑" : "↓"} ${Math.abs(monthGrowth)}%` }}
-          sub={`已确认 ${monthReceivedCount.length - unconfirmedReceived.length} 笔${unconfirmedReceived.length ? ` · ${unconfirmedReceived.length} 笔待确认 ${yuan(unconfirmedReceived.reduce((s, e) => s + e.amount, 0))}` : ""}`}
+          sub={`已确认 ${monthReceivedCount.length - unconfirmedReceived.length} 笔${unconfirmedReceived.length ? ` · 待确认 ${unconfirmedReceived.length} 笔 ${yuan(unconfirmedReceived.reduce((s, e) => s + e.amount, 0))}（未计入）` : ""}`}
         />
         <MetricCard
           label="应收余额"
@@ -203,6 +246,60 @@ export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests,
             </div>
           </div>
 
+          {pendingReceipts.length > 0 ? (
+            <div className="card" style={{ overflow: "hidden" }}>
+              <div className="panel-head flex-wrap">
+                <div className="panel-title">
+                  <Clock3 className="ic" strokeWidth={1.8} />
+                  待确认实收 <span className="mo-count">{pendingReceipts.length}</span>
+                  <span className="t-xs t-mute" style={{ fontWeight: 400 }}>
+                    合计 {yuan(pendingReceipts.reduce((s, e) => s + e.amount, 0))} · 确认后才计入已实收并派生分成
+                  </span>
+                </div>
+              </div>
+              <div className="mo-scroll-x">
+                <table className="mo-table" style={{ minWidth: 880, tableLayout: "fixed" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ width: 76, paddingLeft: 20 }}>日期</th>
+                      <th>案件 / 事项</th>
+                      <th style={{ width: 170 }}>付款方</th>
+                      <th style={{ width: 132 }} className="num">金额</th>
+                      <th style={{ width: 72 }}>登记人</th>
+                      <th style={{ width: canConfirmReceipt ? 150 : 84 }}>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingReceipts.map((e) => (
+                      <tr key={e.id} data-spine="amber">
+                        <td className="mono t-sm whitespace-nowrap" style={{ paddingLeft: 20 }}>{mmdd(e.occurredAt)}</td>
+                        <td className="min-w-0">
+                          <Link href={matterHref(e.matter)} className="block min-w-0 no-underline hover:text-[var(--teal-deep)]">
+                            <div className="fee-matter truncate">{e.matter.title}{e.note ? ` · ${e.note}` : ""}</div>
+                            <div className="fee-meta truncate">{e.matter.internalCode}{e.invoiceNo ? ` · 发票 ${e.invoiceNo}` : ""}{e.method ? ` · ${e.method}` : ""}</div>
+                          </Link>
+                        </td>
+                        <td className="t-sm truncate" title={e.payerOrPayee ?? undefined}>{e.payerOrPayee ?? <span className="t-faint">—</span>}</td>
+                        <td className="num money whitespace-nowrap in">+{yuan(e.amount, 2)}</td>
+                        <td className="t-sm truncate whitespace-nowrap">{e.recordedBy.name}</td>
+                        <td>
+                          {canConfirmReceipt ? (
+                            <div className="flex items-center gap-1.5">
+                              <button type="button" className="btn btn-primary btn-sm" disabled={busyId === e.id} onClick={() => void confirmOne(e.id)}>确认到账</button>
+                              <button type="button" className="btn btn-ghost btn-sm" disabled={busyId === e.id} onClick={() => void rejectOne(e.id)}>退回</button>
+                            </div>
+                          ) : (
+                            <span className="badge b-amber">待财务确认</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+
           <div className="card" style={{ overflow: "hidden" }}>
             <div className="panel-head flex-wrap">
               <div className="panel-title">
@@ -253,7 +350,13 @@ export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests,
                           <td className="t-sm truncate whitespace-nowrap">{e.method ?? <span className="t-faint">—</span>}</td>
                           <td className="t-sm truncate whitespace-nowrap">{e.recordedBy.name}</td>
                           <td>
-                            {e.confirmed ? <span className="badge b-green" title="关联已签署合同或已登记发票号，不可物理删除">已确认</span> : <span className="badge b-white" title="尚未关联已签署合同或发票号">待确认</span>}
+                            {e.type === "RECEIVED" && e.confirmState === "PENDING" ? (
+                              <span className="badge b-amber" title="律师已登记，等待财务确认到账">待确认</span>
+                            ) : e.confirmed ? (
+                              <span className="badge b-green" title="关联已签署合同或已登记发票号，不可物理删除">受保护</span>
+                            ) : (
+                              <span className="badge b-white" title="尚未关联已签署合同或发票号">可更正</span>
+                            )}
                           </td>
                         </tr>
                       );
@@ -281,6 +384,45 @@ export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests,
           </div>
           <div className="panel-body">
             <InvoiceManagementSection requests={invoiceRequests} canApprove={canApproveInvoice} />
+          </div>
+        </div>
+      ) : null}
+
+      {tab === "invoices" && issuedUnpaid.length > 0 ? (
+        <div className="card" style={{ marginTop: 14, overflow: "hidden" }}>
+          <div className="panel-head flex-wrap">
+            <div className="panel-title">
+              <Clock3 className="ic" strokeWidth={1.8} />
+              已开票未收款 <span className="mo-count">{issuedUnpaid.length}</span>
+              <span className="t-xs t-mute" style={{ fontWeight: 400 }}>
+                合计 {yuan(issuedUnpaid.reduce((s, r) => s + r.amount, 0))} · 登记收付时选中本案发票即从此处消除
+              </span>
+            </div>
+          </div>
+          <div className="mo-scroll-x">
+            <table className="mo-table" style={{ minWidth: 820, tableLayout: "fixed" }}>
+              <thead>
+                <tr>
+                  <th style={{ width: 76, paddingLeft: 20 }}>开票日</th>
+                  <th>案件 / 抬头</th>
+                  <th style={{ width: 190 }}>发票号</th>
+                  <th style={{ width: 132 }} className="num">金额</th>
+                </tr>
+              </thead>
+              <tbody>
+                {issuedUnpaid.map((r) => (
+                  <tr key={r.id} data-spine="amber">
+                    <td className="mono t-sm whitespace-nowrap" style={{ paddingLeft: 20 }}>{r.issuedAt ? mmdd(r.issuedAt) : "—"}</td>
+                    <td className="min-w-0">
+                      <div className="fee-matter truncate">{r.matter?.title ?? "非案件事项"}</div>
+                      <div className="fee-meta truncate">{r.buyerName ?? r.title ?? "—"}</div>
+                    </td>
+                    <td className="mono t-sm truncate">{r.invoiceNo ?? <span className="t-faint">未登记号码</span>}</td>
+                    <td className="num money whitespace-nowrap">{yuan(r.amount, 2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       ) : null}

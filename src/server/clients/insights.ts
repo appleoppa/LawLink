@@ -76,7 +76,7 @@ export async function getClientInsights(clientId: string) {
     prisma.contact.findMany({ where: { clientId }, orderBy: { createdAt: "desc" }, take: 3, select: { id: true, name: true, createdAt: true } }),
     canFinance
       ? prisma.feeEntry.findMany({
-          where: { type: "RECEIVED", matter: { deletedAt: null, primaryClientId: clientId, ...matterFinanceVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions) } },
+          where: { type: "RECEIVED", confirmState: "CONFIRMED", matter: { deletedAt: null, primaryClientId: clientId, ...matterFinanceVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions) } },
           orderBy: { occurredAt: "desc" },
           take: 4,
           select: { id: true, amount: true, occurredAt: true, note: true, invoiceNo: true, billing: { select: { signedAt: true } }, recordedBy: { select: { name: true } }, matter: { select: { title: true } } }

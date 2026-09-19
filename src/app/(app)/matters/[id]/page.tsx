@@ -66,7 +66,7 @@ export default async function MatterDetailPage({ params }: PageProps) {
     customFieldDefs,
     preservationCases
   ] = await Promise.all([
-    allowed("finance.read") ? getMatterFinance(matter.id) : Promise.resolve({ billings: [], entries: [], plans: [], stats: { contractAmount: 0, receivable: 0, received: 0, refund: 0, cost: 0, commission: 0, invoiced: 0 } }),
+    allowed("finance.read") ? getMatterFinance(matter.id) : Promise.resolve({ billings: [], entries: [], plans: [], stats: { contractAmount: 0, receivable: 0, received: 0, pendingReceived: 0, refund: 0, cost: 0, commission: 0, invoiced: 0 } }),
     listActiveColleagues(),
     prisma.document.findMany({
       where: { matterId: matter.id, deletedAt: null, ...(!allowed("documents.read") ? { id: { in: [] } } : {}) },

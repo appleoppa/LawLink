@@ -7,6 +7,16 @@ export function isManager(role: string): boolean {
   return role === "PRINCIPAL_LAWYER";
 }
 
+/**
+ * 实收确认权（2026-09-18 用户确认的收款动线）：律师登记的实收先挂「待财务确认」，
+ * 只有财务、主任律师、管理员或 finance.write 为全所范围的自定义角色可以确认生效或退回；
+ * 这些人自己登记实收时一步到位。
+ */
+export function canConfirmReceipt(user: { role: string; rolePermissions?: RoleGrant[] | null }): boolean {
+  if (user.role === "CUSTOM") return scopeFor({ role: user.role, rolePermissions: user.rolePermissions ?? undefined }, "finance.write") === "ALL";
+  return user.role === "FINANCE" || isManager(user.role);
+}
+
 // ============ 案件可见性 ============
 
 /** 列表查询用：返回 Prisma where 片段，AND 到现有 where */

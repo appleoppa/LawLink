@@ -69,6 +69,7 @@ export async function buildReportWorkbook(period: ReportPeriod, access: ReportAc
   const receivedFees = await prisma.feeEntry.findMany({
     where: {
       type: "RECEIVED",
+      confirmState: "CONFIRMED",
       occurredAt: { gte: period.start, lt: period.end },
       matter: { deletedAt: null, AND: [access.finance] }
     },
