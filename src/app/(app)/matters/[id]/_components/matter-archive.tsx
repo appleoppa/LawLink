@@ -206,9 +206,6 @@ export function MatterArchive({
             <div className="dos-vs-h ours">我方</div>
             {ours.length ? ours.map(partyCard) : <p className="t-xs t-mute">未登记</p>}
           </div>
-          <div className="dos-vs-mid" aria-hidden>
-            <span>{isCriminal ? "辩" : kind === "litigation" ? "诉" : "服务"}</span>
-          </div>
           <div className="dos-vs-side">
             <div className="dos-vs-h">{isCriminal ? "办案机关" : "对方"}</div>
             {opposing.length ? (

@@ -830,9 +830,9 @@
 .mo-dossier .dos-party-group-h span { font-family: var(--font-mono); font-weight: 500; color: var(--t-faint); }
 .mo-dossier .dos-party-list { display: flex; flex-direction: column; gap: 6px; }
 /* 当事人紧凑卡片（沿用 v1.3.2） */
-.mo-dossier .dos-pb { display: flex; align-items: flex-start; gap: 12px; padding: 10px 12px; border-radius: 8px; background: #F4F7F6; transition: background .15s; }
+.mo-dossier .dos-pb { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px; background: #F4F7F6; transition: background .15s; }
 .mo-dossier .dos-pb:hover { background: var(--bg-sunken); }
-.mo-dossier .dos-pb-av { width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 8px; border: 1px solid; font-size: 13px; font-weight: 650; }
+.mo-dossier .dos-pb-av { width: 30px; height: 30px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 8px; border: 1px solid; font-size: 13px; font-weight: 650; }
 .mo-dossier .tone-teal { border-color: #B8D8D8; background: #ECF4F4; color: #007B7F; }
 .mo-dossier .tone-amber { border-color: #F0CFC0; background: #FBEDD8; color: #B45309; }
 .mo-dossier .tone-violet { border-color: #D9C5F2; background: #F1E8F8; color: #6B21A8; }
@@ -843,7 +843,7 @@
 .mo-dossier .dos-pb-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 1px 6px; border: 1px solid var(--bd-subtle); border-radius: 4px; background: rgba(255,255,255,0.75); font-size: 10.5px; line-height: 16px; color: var(--t-secondary); }
 .mo-dossier .dos-pb-chip .k { color: var(--t-muted); flex-shrink: 0; }
 .mo-dossier .dos-pb-chip .link-inline { font-size: 10.5px; }
-.mo-dossier .dos-pb-sub { margin-top: 4px; font-size: 11px; line-height: 16px; color: var(--t-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mo-dossier .dos-pb-sub { margin-top: 2px; font-size: 11px; line-height: 16px; color: var(--t-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mo-dossier .dos-pb-standing { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; align-self: center; flex-shrink: 0; }
 .mo-dossier .dos-pb-st { display: inline-flex; align-items: center; justify-content: center; min-width: 42px; min-height: 22px; padding: 1px 9px; border: 1px solid; border-radius: 999px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
 .mo-dossier .dos-eng-list { display: flex; flex-direction: column; gap: 10px; }
@@ -1129,7 +1129,7 @@
 .mo-dossier .dos-rail .rail-sec-head > svg { width: 24px; height: 24px; padding: 5px; border-radius: 7px; background: var(--bg-sunken); color: var(--t-secondary); }
 
 /* 当事人：诉讼地位色条 */
-.mo-dossier .dos-pb { background: var(--bg-card); border: 1px solid var(--bd-hair); border-left-width: 4px; padding: 11px 14px; }
+.mo-dossier .dos-pb { background: var(--bg-card); border: 1px solid var(--bd-hair); border-left-width: 4px; padding: 8px 12px; }
 .mo-dossier .dos-pb:hover { background: #FAFBFB; box-shadow: 0 4px 14px -10px rgba(12, 25, 39, 0.3); }
 .mo-dossier .dos-pb.line-teal { border-left-color: #2C9C9F; }
 .mo-dossier .dos-pb.line-amber { border-left-color: #D98A3A; }
@@ -1245,15 +1245,15 @@
 .mo-dossier .dos-main > .card + .card { margin-top: 0; }
 
 /* 案件档案重排（2026-09-16）：当事人对阵区 + 案件要素两栏小表 */
-/* 我方 / 对方上下排列（2026-09-19 用户确认）：左右分栏时两侧信息量不同会高度不齐，很难看；
-   竖排后每方各占整行，中间用一条带「诉 / 辩」圆标的横线分隔，关系照样一眼可读。 */
+/* 我方 / 对方上下排列（2026-09-19 用户确认）：左右分栏时两侧信息量不同会高度不齐；
+   竖排后每方各占整行。分隔横线与「诉 / 辩」圆标已去掉——我方 / 对方两个小标题
+   本身就说明了关系，横线只占空间（2026-09-19 用户确认）。 */
+.mo-dossier .dos-vs .panel-head { border-bottom: 0; padding-bottom: 4px; }
 .mo-dossier .dos-vs .dos-vs-body { display: flex; flex-direction: column; }
-.mo-dossier .dos-vs-side { padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.mo-dossier .dos-vs-mid { position: relative; height: 1px; margin: 2px 16px 16px; background: var(--bd-hair); }
-.mo-dossier .dos-vs-mid span { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--bd-subtle); background: var(--bg-card); display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--t-muted); }
-.mo-dossier .dos-vs-h { font-size: 11px; font-weight: 650; letter-spacing: .08em; color: var(--t-muted); }
+.mo-dossier .dos-vs-side { padding: 8px 14px 10px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.mo-dossier .dos-vs-h { font-size: 11px; font-weight: 650; letter-spacing: .08em; color: var(--t-muted); line-height: 14px; }
 .mo-dossier .dos-vs-h.ours { color: var(--teal-deep); }
-.mo-dossier .dos-vs-others { padding: 4px 16px 14px; border-top: 1px dashed var(--bd-hair); display: flex; flex-direction: column; gap: 8px; }
+.mo-dossier .dos-vs-others { padding: 6px 14px 10px; border-top: 1px dashed var(--bd-hair); display: flex; flex-direction: column; gap: 6px; }
 .mo-dossier .dos-arch { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
 .mo-dossier .dos-arch-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .mo-dossier .dos-arch .mo-field-k { width: 88px; }

@@ -8,9 +8,10 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Mail } from "lucide-react";
+import { ClipboardPaste, Mail } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { listSmsMessages, markSmsProcessed } from "@/server/sms/actions";
+import { SmsPasteDialog } from "@/app/(app)/inbox/_components/sms-paste-dialog";
 import { shMonthDayTime } from "@/lib/ui/sh-time";
 import { cn } from "@/lib/utils";
 
@@ -43,6 +44,7 @@ export function SmsPopover() {
   const [items, setItems] = useState<Sms[]>([]);
   const [open, setOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [pasteOpen, setPasteOpen] = useState(false);
   const router = useRouter();
 
   const load = useCallback(async () => {
@@ -78,30 +80,34 @@ export function SmsPopover() {
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="btn btn-secondary btn-icon relative"
-          aria-label={count > 0 ? `法院短信（${count} 条未处理）` : "法院短信"}
-          title="法院短信"
+          className="btn btn-secondary tb-sms"
+          aria-label={count > 0 ? `法院短信（${count} 条未处理），可粘贴新短信` : "法院短信，可粘贴新短信"}
+          title="法院短信：粘贴 12368 短信自动解析，生成开庭与期限"
         >
           <Mail strokeWidth={1.8} />
+          <span className="hidden md:inline">法院短信</span>
           {count > 0 ? (
-            <span
-              className={cn(
-                "absolute right-[7px] top-[7px] h-[7px] w-[7px] rounded-full border-[1.5px] border-white",
-                urgent ? "bg-[var(--red)]" : "bg-[var(--amber)]"
-              )}
-              aria-hidden
-            />
+            <span className={cn("tb-sms-n", urgent ? "hot" : undefined)}>{count}</span>
           ) : null}
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[360px] p-0">
-        <div className="flex items-center justify-between border-b px-3 py-2">
-          <span className="text-sm font-medium">法院短信</span>
-          <span className="text-xs text-muted-foreground">{count > 0 ? `未处理 ${count}` : "均已处理"}</span>
+        <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+          <div className="min-w-0">
+            <div className="text-sm font-medium">法院短信</div>
+            <div className="truncate text-[11px] text-muted-foreground">{count > 0 ? `未处理 ${count} 条` : "均已处理"} · 粘贴后自动解析</div>
+          </div>
+          <button type="button" className="btn btn-primary btn-sm shrink-0" onClick={() => { setOpen(false); setPasteOpen(true); }}>
+            <ClipboardPaste strokeWidth={1.9} />
+            粘贴短信
+          </button>
         </div>
 
         {count === 0 ? (
-          <div className="px-3 py-6 text-center text-xs text-muted-foreground">没有未处理的法院短信</div>
+          <div className="px-4 py-6 text-center text-xs leading-relaxed text-muted-foreground">
+            没有未处理的法院短信
+            <div className="mt-1">收到 12368 短信后点右上角「粘贴短信」，系统自动识别案号、法院与开庭时间</div>
+          </div>
         ) : (
           <ul className="max-h-[380px] overflow-y-auto">
             {items.slice(0, 8).map((sms) => (
@@ -151,6 +157,7 @@ export function SmsPopover() {
           </Link>
         </div>
       </PopoverContent>
+      <SmsPasteDialog open={pasteOpen} onOpenChange={(o) => { setPasteOpen(o); if (!o) load(); }} />
     </Popover>
   );
 }
