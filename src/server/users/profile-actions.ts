@@ -23,17 +23,10 @@ export async function getProfileIdentity(targetId?: string) {
   const id = targetId === undefined ? session.user.id : z.string().cuid().parse(targetId);
   return profileTransaction(async db => {
     await assertProfileActor(db, session.user.id, id);
-    return identitySummary(db, id);
-  });
-}
-export async function revealProfileIdentity(targetId?: string) {
-  const session = await requireSession("personal");
-  const id = targetId === undefined ? session.user.id : z.string().cuid().parse(targetId);
-  return profileTransaction(async db => {
-    await assertProfileActor(db, session.user.id, id);
-    const user = await db.user.findUniqueOrThrow({ where: { id }, select: { identityDocumentNumber: true } });
-    await approvalAudit(db, session.user.id, "USER_IDENTITY_VIEW", id);
-    return user.identityDocumentNumber;
+    const summary = await identitySummary(db, id);
+    // 证件号码直接明文展示，查看仍留痕
+    if (summary.number) await approvalAudit(db, session.user.id, "USER_IDENTITY_VIEW", id);
+    return summary;
   });
 }
 export async function bindMyIdentity(input: z.infer<typeof bindIdentitySchema>) {

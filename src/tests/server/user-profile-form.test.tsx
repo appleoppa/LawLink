@@ -10,9 +10,9 @@ import { ProfileBasicsForm } from "@/components/users/profile-basics-form";
 const profile = { name: "表单测试", email: "profile@example.invalid", phone: "13800000000", updatedAt: "2026-09-06T00:00:00.000Z" };
 beforeEach(() => { vi.resetAllMocks(); save.mockResolvedValue({ emailChanged: false }); });
 describe("个人资料表单", () => {
-  it("手机号默认打码；未编辑时不提交手机号", async () => {
+  it("手机号直接展示；未编辑时不提交手机号", async () => {
     render(<ProfileBasicsForm profile={profile} />);
-    expect(screen.getByText("138****0000")).toBeInTheDocument();
+    expect(screen.getByText(profile.phone)).toBeInTheDocument();
     expect(screen.queryByDisplayValue(profile.phone)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "保存基本资料" }));
     await waitFor(() => expect(save).toHaveBeenCalled());
@@ -27,7 +27,7 @@ describe("个人资料表单", () => {
   });
   it("可以主动登记、修改、清空手机号", async () => {
     render(<ProfileBasicsForm profile={profile} />);
-    fireEvent.click(screen.getByRole("button", { name: "查看 / 修改" }));
+    fireEvent.click(screen.getByRole("button", { name: "修改" }));
     fireEvent.change(screen.getByLabelText("手机号"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "保存基本资料" }));
     await waitFor(() => expect(save).toHaveBeenCalled());

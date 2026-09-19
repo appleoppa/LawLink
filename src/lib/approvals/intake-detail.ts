@@ -1,6 +1,6 @@
 import type { ConflictSeverity, PartyRole } from "@prisma/client";
 
-export type IntakeReviewField = { label: string; value: string; sensitive?: boolean };
+export type IntakeReviewField = { label: string; value: string };
 export type IntakeReviewSection = { title: string; note?: string; fields: IntakeReviewField[] };
 export const conflictPartyRoleLabel: Record<PartyRole, string> = {
   CLIENT_PARTY: "委托方", OPPOSING_PARTY: "对方", THIRD_PARTY: "第三人",

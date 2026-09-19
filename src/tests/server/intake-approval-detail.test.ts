@@ -41,9 +41,8 @@ describe("立案审批完整查阅", () => {
     expect(result.intakeDetail!.currentParties).toEqual(queries);
     for (const value of ["一审", "测试法院", "测试管辖地", "返还物品", "事实全文", "共同律师乙", "按回款收费", "回款后付款", "当事人备注", "否", "0"]) expect(fields.some(f => f.value === value)).toBe(true);
     expect(fields.find(f => f.label === "基础办案费（元）")?.value).toBe("0");
-    // 证件号码审批中直接明文；电话、地址、事实摘要仍默认打码
-    expect(fields.filter(f => ["TEST-ID", "TEST-PARTY"].includes(f.value)).every(f => !f.sensitive)).toBe(true);
-    expect(fields.filter(f => ["TEST-PHONE", "当事人地址", "事实全文"].includes(f.value)).every(f => f.sensitive)).toBe(true);
+    // 审批资料一律明文展示，无遮蔽字段
+    for (const value of ["TEST-ID", "TEST-PARTY", "TEST-PHONE", "当事人地址", "事实全文"]) expect(fields.some(f => f.value === value)).toBe(true);
     // 字段联动：诉讼类不展示非诉/顾问字段；自然人当事人不展示信用代码、工商名称、法定代表人
     for (const value of ["服务范围全文", "成果全文", "TEST-CODE", "绑定企业名称", "代表乙", "联系人乙"]) expect(fields.some(f => f.value === value)).toBe(false);
     expect(fields.some(f => f.label === "申请时登记的客户类型")).toBe(false);

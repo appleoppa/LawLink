@@ -6,7 +6,7 @@ process.env.STORAGE_ENCRYPTION_KEY = process.env.STORAGE_ENCRYPTION_KEY || Buffe
 
 import {
   encryptIdNumber, decryptIdNumber, blindIdNumber,
-  maskIdNumber, sealIdNumber, isEncryptedIdNumber
+  sealIdNumber, isEncryptedIdNumber
 } from "@/lib/clients/id-number-crypto";
 import { duplicateWhereInput } from "@/lib/clients/identity";
 
@@ -35,11 +35,6 @@ describe("证件号加密与盲索引（P1 §三）", () => {
     const sealed = sealIdNumber(ID_LOWER_SPACE);
     expect(sealed.idNumberBlind).toBe(blindIdNumber(ID_NORM));
     expect(decryptIdNumber(sealed.idNumber)).toBe(ID_NORM);
-  });
-
-  it("打码：18 位身份证保前 3 后 2；短值保首尾", () => {
-    expect(maskIdNumber(ID)).toBe(`110${"•".repeat(13)}3X`);
-    expect(maskIdNumber("12345678")).toBe("12····78".replace(/·/g, "•"));
   });
 
   it("密文损坏解密返回空串（不抛错）", () => {

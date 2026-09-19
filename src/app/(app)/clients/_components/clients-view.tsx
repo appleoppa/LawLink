@@ -94,7 +94,7 @@ export function ClientsView({ initialData, initialFilters }: Props) {
     <div className="mo-list">
       <PageHeader
         title="客户"
-        sub={<>共 <span className="font-mono">{initialData.total}</span> 位客户 · 证件与电话默认打码，明文查看逐次审计</>}
+        sub={<>共 <span className="font-mono">{initialData.total}</span> 位客户</>}
       />
 
       <Segmented

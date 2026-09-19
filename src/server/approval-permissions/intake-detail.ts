@@ -22,7 +22,7 @@ export async function loadIntakeApprovalDetail(id: string) {
   } });
   const coUsers = r.coUserIds.length ? await prisma.user.findMany({ where: { id: { in: r.coUserIds } }, select: { id: true, name: true } }) : [];
   const names = new Map(coUsers.map(u => [u.id, u.name]));
-  const field = (label: string, value: unknown, sensitive = false): IntakeReviewField => ({ label, value: value == null || value === "" ? "未填写" : value instanceof Date ? formatDate(value) : String(value), sensitive });
+  const field = (label: string, value: unknown): IntakeReviewField => ({ label, value: value == null || value === "" ? "未填写" : value instanceof Date ? formatDate(value) : String(value) });
   // 字段联动：只展示与所选案件类别 / 主体类型 / 收费方式相符的项目（2026-09-14 用户确认）
   const kind = matterCategoryKind(r.category);
   const litigation = kind === "litigation";
@@ -35,7 +35,7 @@ export async function loadIntakeApprovalDetail(id: string) {
       field("案件名称", r.title), field("案件类别", matterCategoryLabel[r.category]), field("收案日期", r.receivedAt),
       field("案由", r.cause?.name ?? r.causeFreeText),
       ...when(Boolean(r.cause && r.causeFreeText && r.causeFreeText !== r.cause.name), field("补充案由", r.causeFreeText)),
-      field("事实摘要", r.description, true),
+      field("事实摘要", r.description),
       field("主办律师", r.ownerUser?.name), field("共同承办律师", r.coUserIds.map(userId => names.get(userId) ?? "历史账号（姓名无法核实）").join("、")),
       ...when(r.status === "NEEDS_REVISION" || r.status === "DECLINED" || Boolean(r.declinedReason), field(r.status === "DECLINED" ? "不接案说明" : "补正说明", r.declinedReason))
     ] },
@@ -57,9 +57,9 @@ export async function loadIntakeApprovalDetail(id: string) {
       // 仅当申请时登记的类型与档案当前类型不一致时才需要提示
       ...when(Boolean(r.client && r.clientType && r.clientType !== r.client.type), field("申请时登记的客户类型", r.clientType && clientTypeLabel[r.clientType])),
       field(clientIsPerson ? personIdLabel(r.client?.idType) : "统一社会信用代码", clientId),
-      field(clientIsPerson ? "住址" : "注册地址", r.client?.address, true),
+      field(clientIsPerson ? "住址" : "注册地址", r.client?.address),
       ...when(!clientIsPerson, field("法定代表人", r.client?.legalRep)),
-      field("联系人", r.contactName), field("联系电话", r.contactPhone, true)
+      field("联系人", r.contactName), field("联系电话", r.contactPhone)
     ] },
     ...r.parties.map((p, i) => {
       const person = p.partyType === "NATURAL_PERSON";
@@ -74,7 +74,7 @@ export async function loadIntakeApprovalDetail(id: string) {
               ...when(Boolean(p.enterpriseName && p.enterpriseName !== p.name), field("工商登记名称", p.enterpriseName)),
               field("法定代表人", p.legalRep)
             ]),
-        field(person ? "住址" : "地址", p.address, true), field("电话", p.phone, true),
+        field(person ? "住址" : "地址", p.address), field("电话", p.phone),
         ...when(!person, field("经办联系人", p.contactName)),
         field("备注", p.notes)
       ] };

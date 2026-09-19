@@ -10,7 +10,7 @@ import { requireSession } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import { clientVisibilityFilter, intakeVisibilityFilter, isManager, matterReadVisibilityFilter } from "@/lib/permissions";
 import { normalizeIdNumber, duplicateWhereInput } from "@/lib/clients/identity";
-import { sealIdNumber, blindIdNumber } from "@/lib/clients/id-number-crypto";
+import { sealIdNumber, blindIdNumber, decryptIdNumber } from "@/lib/clients/id-number-crypto";
 import { generateClientCode } from "./code-generator";
 import {
   clientCreateSchema,
@@ -71,7 +71,8 @@ export async function listClients(input: Partial<ClientListQuery> = {}) {
     prisma.client.count({ where })
   ]);
 
-  return { items, total, page: query.page, pageSize: query.pageSize };
+  // 证件号入库为密文，列表直接展示明文
+  return { items: items.map((c) => ({ ...c, idNumber: decryptIdNumber(c.idNumber) || null })), total, page: query.page, pageSize: query.pageSize };
 }
 
 export async function getClientById(id: string) {

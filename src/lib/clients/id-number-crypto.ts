@@ -53,16 +53,6 @@ export function decryptIdNumber(stored: string | null | undefined): string {
   }
 }
 
-/** 展示打码：18 位身份证保前 3 后 2；信用代码（18 位）保前 3 后 4；其余保首尾各 2 */
-export function maskIdNumber(stored: string | null | undefined): string {
-  const plain = decryptIdNumber(stored);
-  if (!plain) return "";
-  if (plain.length === 18 && /^\d{17}[\dXx]$/.test(plain)) return `${plain.slice(0, 3)}${"•".repeat(13)}${plain.slice(-2)}`;
-  if (plain.length === 18) return `${plain.slice(0, 3)}${"•".repeat(11)}${plain.slice(-4)}`;
-  if (plain.length >= 8) return `${plain.slice(0, 2)}${"•".repeat(plain.length - 4)}${plain.slice(-2)}`;
-  return plain;
-}
-
 /** 入库统一入口：规范化 + 加密 + 盲索引（无号码返回三个 null 字段） */
 export function sealIdNumber(raw: string | null | undefined): {
   idNumber: string | null;

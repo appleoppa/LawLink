@@ -248,7 +248,7 @@ export function ConflictSection({
                     href={`/clients/${c.clientId}`}
                     className="inline-flex items-center gap-1 rounded border border-[var(--amber-line)] bg-[var(--amber-bg)] px-2 py-0.5 text-[11px] text-[var(--amber)] hover:bg-[var(--amber-bg)]"
                   >
-                    {c.name} <span className="font-mono opacity-60">{maskRef(c.idNumber)}</span>
+                    {c.name} <span className="font-mono opacity-60">{c.idNumber}</span>
                     <ExternalLink className="h-2.5 w-2.5" />
                   </Link>
                 ))}
@@ -449,9 +449,3 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-/** 证件号默认打码（与客户列表同口径） */
-function maskRef(v: string | null | undefined) {
-  if (!v) return "";
-  if (v.length >= 8) return `${v.slice(0, 3)}${"•".repeat(Math.max(4, v.length - 5))}${v.slice(-2)}`;
-  return v;
-}

@@ -79,12 +79,6 @@ export const identityDocumentInputSchema = z.object({
   }
 });
 
-export function maskIdentityDocument(value: string | null) {
-  if (!value) return null;
-  if (value.length <= 7) return `${value.slice(0, 1)}${"*".repeat(Math.max(1, value.length - 2))}${value.slice(-1)}`;
-  return `${value.slice(0, 3)}${"*".repeat(Math.max(4, value.length - 7))}${value.slice(-4)}`;
-}
-
 export function identityPageKindsFor(type: IdentityDocumentTypeValue): [IdentityDocumentPageKindValue, IdentityDocumentPageKindValue] {
   return ["PRC_RESIDENT_ID", "HK_MACAO_TAIWAN_RESIDENCE_PERMIT", "FOREIGN_PERMANENT_RESIDENT_ID"].includes(type)
     ? ["PORTRAIT_SIDE", "EMBLEM_SIDE"]

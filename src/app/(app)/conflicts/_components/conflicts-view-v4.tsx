@@ -82,7 +82,6 @@ const SEVERITY_META: Record<ConflictSeverity, { label: string; badge: string; ra
 };
 
 const matchKind = (h: HitResult) => (h.matchedField === "idNumber" ? "证件一致" : h.matchedRatio !== null && h.matchedRatio < 1 ? "名称相似" : "名称相同");
-const mask = (v: string) => (v.length <= 8 ? v.replace(/.(?=.{2})/g, "*") : `${v.slice(0, 4)}${"*".repeat(Math.max(4, v.length - 8))}${v.slice(-4)}`);
 let seq = 0;
 const newKey = () => `q${++seq}`;
 const emptyRow = (role: QueryRole, name = ""): QueryRow => ({ key: newKey(), role, name, idNumber: "", editing: true });
@@ -109,7 +108,6 @@ function groupBySubject(queries: QueryRow[], hits: HitResult[]): SubjectResult[]
 export function ConflictsViewV4({ recent, prefillName = "" }: { recent: Recent; prefillName?: string }) {
   const router = useRouter();
   const [queries, setQueries] = useState<QueryRow[]>(() => [emptyRow("CLIENT_PARTY", prefillName)]);
-  const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [results, setResults] = useState<HitResult[] | null>(null);
   const [checkedAt, setCheckedAt] = useState<Date | null>(null);
   const [searchedQueries, setSearchedQueries] = useState<QueryRow[]>([]);
@@ -185,7 +183,6 @@ export function ConflictsViewV4({ recent, prefillName = "" }: { recent: Recent; 
 
         {queries.map((q) => {
           const meta = roleMeta(q.role);
-          const shown = revealed.has(q.key);
           return (
             <div key={q.key} className="subject">
               <div className="sub-logo" style={{ background: meta.logo }}>{(q.name || "?").trim().charAt(0) || "?"}</div>
@@ -212,12 +209,7 @@ export function ConflictsViewV4({ recent, prefillName = "" }: { recent: Recent; 
                       <div className="sub-field">
                         <span className="k">证件 / 信用代码</span>
                         {q.idNumber ? (
-                          <>
-                            <span className={cn("v", !shown && "mask")}>{shown ? q.idNumber : mask(q.idNumber)}</span>
-                            <button type="button" className="t-xs" style={{ color: "var(--teal-deep)" }} onClick={() => setRevealed((s) => { const n = new Set(s); if (n.has(q.key)) n.delete(q.key); else n.add(q.key); return n; })}>
-                              {shown ? "打码" : "明文"}
-                            </button>
-                          </>
+                          <span className="v">{q.idNumber}</span>
                         ) : (
                           <span className="t-xs t-faint">未填写 · 仅按名称检索，补充证件可精确比对</span>
                         )}
@@ -308,7 +300,7 @@ export function ConflictsViewV4({ recent, prefillName = "" }: { recent: Recent; 
                       <span className="dot dot-slate" />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div className="truncate" style={{ fontSize: 12.5, fontWeight: 600 }}>
-                          {q.name || mask(q.idNumber)}（{roleMeta(q.role).label}）
+                          {q.name || q.idNumber}（{roleMeta(q.role).label}）
                         </div>
                         <div className="t-xs t-mute" style={{ marginTop: 1 }}>历史案件、客户档案与在办收案中均未发现</div>
                       </div>
@@ -382,7 +374,7 @@ function SubjectCard({ subject }: { subject: SubjectResult }) {
         <div className="sub-logo" style={{ background: meta.logo, width: 30, height: 30, fontSize: 13 }}>{q.name.trim().charAt(0) || "?"}</div>
         <div className="min-w-0 flex-1">
           <div className="hit-title flex flex-wrap items-center gap-2">
-            <span className="truncate">{q.name || mask(q.idNumber)}</span>
+            <span className="truncate">{q.name || q.idNumber}</span>
             <span className={cn("badge", meta.badge)}>{meta.label}</span>
           </div>
           <div className="hit-meta">相关记录 {targets.length} 处 · {[...new Set(targets.flatMap((t) => t.hits.map(matchKind)))].join(" / ")}</div>
@@ -412,7 +404,7 @@ function TargetRow({ target }: { target: TargetGroup }) {
         <span className={cn("badge ml-auto shrink-0", sev.badge)}><span className="bdot" />{sev.label}</span>
       </div>
       <div className="mt-1.5 grid grid-cols-1 gap-x-4 gap-y-1 text-[12px] sm:grid-cols-2">
-        <div><span className="t-mute">命中方式　</span>{[...new Set(hits.map(matchKind))].join("、")}{idHit ? <span className="ml-1 font-mono text-[11px] t-mute">{mask(idHit.matchedValue)}</span> : null}</div>
+        <div><span className="t-mute">命中方式　</span>{[...new Set(hits.map(matchKind))].join("、")}{idHit ? <span className="ml-1 font-mono text-[11px] t-mute">{idHit.matchedValue}</span> : null}</div>
         <div><span className="t-mute">命中主体　</span>「{top.matchedName}」在该{m ? "案" : "收案"}中为 <b>{roleText}</b></div>
         {m ? (
           <>

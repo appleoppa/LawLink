@@ -7,14 +7,14 @@ import { ChevronLeft, Folder, Users, CreditCard, UserRound } from "lucide-react"
 import { getClientById, getClientFinanceSummary } from "@/server/clients/actions";
 import { getClientInsights } from "@/server/clients/insights";
 import { isManager } from "@/lib/permissions";
-import { maskIdNumber } from "@/lib/clients/id-number-crypto";
+import { decryptIdNumber } from "@/lib/clients/id-number-crypto";
 import { clientTypeLabel, cooperationStatusLabel, genderLabel, matterCategoryLabel, matterStatusLabel } from "@/lib/enums";
 import { matterHref } from "@/lib/matters/route";
 import { avatarTone, matterSpineTone, matterStatusTone } from "@/lib/ui/moan-tones";
 import { FieldGrid, FieldItem, InitialAvatar } from "@/components/patterns/moan";
 import { TopbarLinkAction } from "@/components/layout/topbar-link-action";
 import { ClientEditButton } from "./_components/client-edit-button";
-import { AddContactButton, MergeBanner, RevealValue } from "./_components/client-detail-parts";
+import { AddContactButton, MergeBanner } from "./_components/client-detail-parts";
 
 const COOP_BADGE: Record<string, string> = { POTENTIAL: "b-slate", NEGOTIATING: "b-amber", SIGNED: "b-teal", TERMINATED: "b-bronze" };
 const ACTIVE = new Set(["PENDING_ACCEPTANCE", "IN_PROGRESS", "ON_HOLD"]);
@@ -23,7 +23,6 @@ const compact = (n: number) => (n >= 1_000_000 ? `¥${(n / 1_000_000).toFixed(2)
 const yuan = (n: number) => `¥${Math.round(n).toLocaleString("zh-CN")}`;
 const ymd = (d: Date | string | null | undefined) => (d ? new Date(d).toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" }) : "—");
 const mmdd = (d: string) => new Date(d).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit", timeZone: "Asia/Shanghai" }).replace("/", "-");
-const maskPhone = (phone: string | null | undefined) => (!phone ? "" : /^\d{11}$/.test(phone) ? `${phone.slice(0, 3)}****${phone.slice(7)}` : phone.length > 4 ? `${phone.slice(0, 2)}****${phone.slice(-2)}` : phone);
 
 export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -40,7 +39,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
 
   const isIndividual = client.type === "INDIVIDUAL";
   const activeCount = insights.matters.filter((m) => ACTIVE.has(m.status)).length;
-  const maskedId = maskIdNumber(client.idNumber);
+  const idNumber = decryptIdNumber(client.idNumber);
   const visibleMatters = insights.matters.slice(0, 6);
   const paidBase = finance ? (finance.receivable > 0 ? finance.receivable : finance.contractTotal) : 0;
   const paidRate = finance && paidBase > 0 ? Math.min(100, Math.round((finance.received / paidBase) * 100)) : 0;
@@ -71,7 +70,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
             <div className="ch-meta">
               <div className="m">
                 <span className="k">{isIndividual ? (!client.idType || client.idType === "ID_CARD" ? "身份证号" : clientIdTypeLabel[client.idType]) : "统一社会信用代码"}</span>
-                {maskedId ? <RevealValue kind="clientId" id={client.id} masked={maskedId} className="v mono" /> : <span className="v t-faint">未登记</span>}
+                {idNumber ? <span className="v mono">{idNumber}</span> : <span className="v t-faint">未登记</span>}
               </div>
               {!isIndividual ? <div className="m"><span className="k">法定代表人</span><span className="v">{client.legalRep || "—"}</span></div> : null}
               <div className="m"><span className="k">建档</span><span className="v mono">{ymd(client.createdAt)}</span></div>
@@ -90,7 +89,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           <Link href={`/conflicts?name=${encodeURIComponent(client.name)}`} className="btn btn-secondary btn-sm">冲突预检</Link>
           {canMerge && insights.suspects.length === 0 ? <MergeBanner keepId={client.id} keepName={client.name} suspects={[]} canMerge={canMerge} /> : null}
           <div style={{ flex: 1 }} />
-          <span className="t-xs t-faint">资料修改与审计同事务留痕 · 证件与电话明文查看逐次审计</span>
+          <span className="t-xs t-faint">资料修改与审计同事务留痕</span>
         </div>
       </div>
 
@@ -149,11 +148,10 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
                       {c.title ? <span className="badge b-white" style={{ fontSize: 10 }}>{c.title}</span> : null}
                     </div>
                     <div className="ct-meta flex flex-wrap items-center gap-x-1.5">
-                      {c.phone ? <RevealValue kind="contactPhone" id={c.id} masked={maskPhone(c.phone)} /> : null}
+                      {c.phone ? <span className="mono">{c.phone}</span> : null}
                       {c.email ? <span>· {c.email}</span> : null}
                     </div>
                   </div>
-                  <span className="t-xs t-faint hidden sm:inline">号码默认打码 · 按需查看</span>
                 </div>
               ))
             )}
@@ -173,7 +171,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
                 <FieldItem label="所属行业">{client.industry || "—"}</FieldItem>
                 {isIndividual ? <FieldItem label="性别">{client.gender ? genderLabel[client.gender] : "—"}</FieldItem> : <FieldItem label="法定代表人">{client.legalRep || "—"}</FieldItem>}
                 {isIndividual ? <FieldItem label="民族">{client.ethnicity || "—"}</FieldItem> : null}
-                <FieldItem label="联系电话" mono>{maskPhone(client.phone) || "—"}</FieldItem>
+                <FieldItem label="联系电话" mono>{client.phone || "—"}</FieldItem>
                 <FieldItem label="邮箱">{client.email || "—"}</FieldItem>
                 <FieldItem label="住所地" wide>{client.address || "—"}</FieldItem>
                 {client.notes ? <FieldItem label="备注" wide><span className="whitespace-pre-wrap">{client.notes}</span></FieldItem> : null}

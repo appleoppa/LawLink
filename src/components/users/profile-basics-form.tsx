@@ -10,7 +10,7 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { myProfileSchema, maskProfilePhone } from "@/server/users/profile-schema";
+import { myProfileSchema } from "@/server/users/profile-schema";
 import { updateMyProfile } from "@/server/users/profile-actions";
 import { updateUserProfile } from "@/server/users/actions";
 
@@ -54,8 +54,8 @@ export function ProfileBasicsForm({ profile, adminTargetId, isSelf = true, onSav
       <div className="space-y-2"><Label htmlFor={`${prefix}-name`}>姓名</Label><Input id={`${prefix}-name`} autoComplete="name" {...register("name")} aria-invalid={!!errors.name} />{errors.name && <p role="alert" className="text-xs text-destructive">{errors.name.message}</p>}</div>
       <div className="space-y-2"><Label htmlFor={`${prefix}-email`}>邮箱（登录账号）</Label><Input id={`${prefix}-email`} type="email" autoComplete="email" {...register("email")} aria-invalid={!!errors.email} />{errors.email && <p role="alert" className="text-xs text-destructive">{errors.email.message}</p>}</div>
       <div className="space-y-2"><Label htmlFor={showPhone ? `${prefix}-phone` : undefined}>手机号</Label>
-        {showPhone ? <><Input id={`${prefix}-phone`} type="tel" autoComplete="tel" {...register("phone")} aria-invalid={!!errors.phone} /><Button type="button" size="sm" variant="ghost" onClick={() => { resetField("phone"); setShowPhone(false); }}>取消手机号修改并隐藏</Button></>
-          : <div className="flex min-h-10 items-center justify-between gap-2 rounded-md border px-3"><span className="font-mono text-sm">{maskProfilePhone(profile.phone) || "未登记"}</span><Button type="button" variant="ghost" size="sm" onClick={() => { setValue("phone", profile.phone ?? ""); setShowPhone(true); }}>{profile.phone ? "查看 / 修改" : "登记手机号"}</Button></div>}
+        {showPhone ? <><Input id={`${prefix}-phone`} type="tel" autoComplete="tel" {...register("phone")} aria-invalid={!!errors.phone} /><Button type="button" size="sm" variant="ghost" onClick={() => { resetField("phone"); setShowPhone(false); }}>取消手机号修改</Button></>
+          : <div className="flex min-h-10 items-center justify-between gap-2 rounded-md border px-3"><span className="font-mono text-sm">{profile.phone || "未登记"}</span><Button type="button" variant="ghost" size="sm" onClick={() => { setValue("phone", profile.phone ?? ""); setShowPhone(true); }}>{profile.phone ? "修改" : "登记手机号"}</Button></div>}
         {errors.phone && <p role="alert" className="text-xs text-destructive">{errors.phone.message}</p>}
       </div>
       {emailChanged && <div className="space-y-2 md:col-span-2">

@@ -8,9 +8,9 @@ vi.mock("@/lib/prisma", () => ({ prisma: db }));
 vi.mock("@/lib/auth/session", () => ({ requireSession: async () => session }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("bcryptjs", () => ({ default: { compare } }));
-import { updateMyProfile, bindMyIdentity, correctUserIdentity, getProfileIdentity, revealProfileIdentity } from "@/server/users/profile-actions";
+import { updateMyProfile, bindMyIdentity, correctUserIdentity, getProfileIdentity } from "@/server/users/profile-actions";
 import { saveBasicProfile } from "@/server/users/profile-service";
-import { idNumberSchema, basicProfileSchema, correctIdentitySchema, maskIdentity, maskProfilePhone } from "@/server/users/profile-schema";
+import { idNumberSchema, basicProfileSchema, correctIdentitySchema } from "@/server/users/profile-schema";
 
 const date = new Date("2026-09-06T00:00:00.000Z");
 const version = date.toISOString();
@@ -30,11 +30,6 @@ beforeEach(() => {
 describe("本人身份号码校验", () => {
   it("规范化首尾空白和小写 x", () => expect(idNumberSchema.parse(` ${specimen.toLowerCase()} `)).toBe(specimen));
   it.each(["", "123", "110105194912310021", "11010519990231002X", "11010520991231002X", "00000019491231002X"])("拒绝无效号码 %s", value => expect(idNumberSchema.safeParse(value).success).toBe(false));
-  it("只显示部分身份证和手机号", () => {
-    expect(maskIdentity(specimen)).toBe("110***********002X");
-    expect(maskProfilePhone("13800000000")).toBe("138****0000");
-    expect(maskProfilePhone("12345")).toBe("*****");
-  });
   it("允许空手机号，拒绝无效手机号和邮箱", () => {
     expect(basicProfileSchema.safeParse(base).success).toBe(true);
     expect(basicProfileSchema.safeParse({ ...base, phone: "不是号码" }).success).toBe(false);
@@ -92,7 +87,6 @@ describe("个人基本资料与身份操作边界", () => {
   it("普通用户不能读取或更正他人身份", async () => {
     const other = "cprofile000000000000000002";
     await expect(getProfileIdentity(other)).rejects.toThrow("管理员");
-    await expect(revealProfileIdentity(other)).rejects.toThrow("管理员");
     await expect(correctUserIdentity({ id: other, ...residentIdentity, reason: "核对原件更正", expectedUpdatedAt: version })).rejects.toThrow("管理员");
     expect(db.user.update).not.toHaveBeenCalled();
   });
@@ -113,11 +107,10 @@ describe("个人基本资料与身份操作边界", () => {
     await expect(bindMyIdentity({ ...residentIdentity, currentPassword: "test-only-password", expectedUpdatedAt: version })).rejects.toThrow("已登记");
     expect(db.user.update).not.toHaveBeenCalled();
   });
-  it("身份摘要不返回完整号码，明文查看记录审计", async () => {
+  it("身份摘要直接返回号码，查看记录审计", async () => {
     db.user.findUniqueOrThrow.mockResolvedValue({ ...own, ...residentIdentity });
     const result = await getProfileIdentity();
-    expect(JSON.stringify(result)).not.toContain(specimen);
-    expect(await revealProfileIdentity()).toBe(specimen);
+    expect(result.number).toBe(specimen);
     expect(db.auditLog.create.mock.calls[0][0].data.action).toBe("USER_IDENTITY_VIEW");
   });
   it("管理员更正记录原因，不修改其他用户关系", async () => {

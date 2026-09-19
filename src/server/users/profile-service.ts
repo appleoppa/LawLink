@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { approvalAudit } from "@/lib/approvals/service";
 import { basicProfileSchema } from "./profile-schema";
-import { identityDocumentTypeLabel, maskIdentityDocument } from "@/lib/identity-documents";
+import { identityDocumentTypeLabel } from "@/lib/identity-documents";
 import type { z } from "zod";
 
 type Db = Prisma.TransactionClient;
@@ -71,7 +71,7 @@ export async function identitySummary(db: Db, id: string) {
     userId: id,
     documentType: user.identityDocumentType,
     documentTypeLabel: user.identityDocumentType ? (user.identityDocumentType === "OTHER" ? user.identityDocumentName || "其他身份证件" : identityDocumentTypeLabel[user.identityDocumentType]) : null,
-    maskedNumber: maskIdentityDocument(user.identityDocumentNumber),
+    number: user.identityDocumentNumber,
     photos: user.identityDocuments,
     updatedAt: user.updatedAt.toISOString()
   };

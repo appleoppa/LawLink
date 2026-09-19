@@ -4,7 +4,6 @@
  * 案卷工作台「案件档案」页签（默认首屏，docs/UI-MATTER-DOSSIER-PLAN.md 第二版）：
  * 基本信息 → 当事人完整卡片 → 本程序信息 → 委托与收费 → 承办团队 → 自定义字段。
  */
-import { useState } from "react";
 import Link from "next/link";
 import { FileText, Landmark, Pencil, UserRound, Users, Wallet } from "lucide-react";
 import { FieldGrid, FieldItem, InitialAvatar } from "@/components/patterns/moan";
@@ -47,20 +46,6 @@ function Group({ icon: Icon, title, hint, action, children }: { icon: typeof Fil
   );
 }
 
-/** 证件号默认打码，点击查看明文（数据已在本页授权范围内） */
-function MaskedId({ value }: { value: string }) {
-  const [shown, setShown] = useState(false);
-  const masked = value.length > 8 ? `${value.slice(0, 3)}${"•".repeat(value.length - 7)}${value.slice(-4)}` : value.replace(/.(?=.{2})/g, "•");
-  return (
-    <>
-      <span className="min-w-0 truncate font-mono tabular-nums">{shown ? value : masked}</span>
-      <button type="button" className="link-inline shrink-0" onClick={() => setShown((v) => !v)}>
-        {shown ? "打码" : "明文"}
-      </button>
-    </>
-  );
-}
-
 const CLAIMANT_STANDINGS = ["PLAINTIFF", "JOINT_PLAINTIFF", "APPELLANT", "RETRIAL_APPLICANT", "ENFORCEMENT_APPLICANT", "ARBITRATION_CLAIMANT", "ADMIN_RECONSIDERATION_APPLICANT", "ADMIN_PLAINTIFF"];
 const RESPONDENT_STANDINGS = ["DEFENDANT", "JOINT_DEFENDANT", "APPELLEE", "RETRIAL_RESPONDENT", "EXECUTED_PERSON", "ARBITRATION_RESPONDENT", "ADMIN_RECONSIDERATION_RESPONDENT", "ADMIN_DEFENDANT"];
 
@@ -98,7 +83,7 @@ function PartyBlock({ party, standings, clientHref }: { party: PartyRow; standin
           {idValue ? (
             <span className="dos-pb-chip">
               <span className="k">{idLabel}</span>
-              <MaskedId value={idValue} />
+              <span className="min-w-0 truncate font-mono tabular-nums">{idValue}</span>
             </span>
           ) : null}
           {isOrg && party.legalRep ? (

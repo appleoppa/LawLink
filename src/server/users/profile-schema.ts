@@ -21,10 +21,3 @@ export const correctIdentitySchema = identityDocumentInputSchema.and(z.object({
     .refine(value => !/[0-9０-９]{7}/.test(value.replace(/[\s\-()（）]/g, "")), "原因中请勿填写完整证件号码或手机号"),
   expectedUpdatedAt: z.string().datetime()
 }));
-export function maskIdentity(value: string | null) {
-  return value ? `${value.slice(0, 3)}***********${value.slice(-4)}` : null;
-}
-export function maskProfilePhone(value: string | null) {
-  if (!value) return "";
-  return value.length > 7 ? `${value.slice(0, 3)}${"*".repeat(value.length - 7)}${value.slice(-4)}` : "*".repeat(value.length);
-}

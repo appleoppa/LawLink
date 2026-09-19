@@ -1,46 +1,16 @@
 "use client";
 
-/** 墨案 10 客户详情的交互零件：明文按需查看（审计）、疑似重复横幅 + 合并向导、添加联系人 */
+/** 墨案 10 客户详情的交互零件：疑似重复横幅 + 合并向导、添加联系人 */
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { GitMerge, Loader2, Plus, ScanSearch } from "lucide-react";
-import { revealClientIdNumber, revealContactPhone } from "@/server/clients/insights";
 import { mergeClientsByCode } from "@/server/clients/dedup";
 import { addContact } from "@/server/clients/actions";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-
-export function RevealValue({ kind, id, masked, className }: { kind: "clientId" | "contactPhone"; id: string; masked: string; className?: string }) {
-  const [plain, setPlain] = useState<string | null>(null);
-  const [pending, start] = useTransition();
-  return (
-    <>
-      <span className={className}>{plain ?? masked}</span>
-      <button
-        type="button"
-        className="t-xs"
-        style={{ color: "var(--teal-deep)" }}
-        disabled={pending}
-        title="查看明文将写入审计日志"
-        onClick={() => {
-          if (plain) return setPlain(null);
-          start(async () => {
-            try {
-              setPlain(kind === "clientId" ? await revealClientIdNumber(id) : await revealContactPhone(id));
-            } catch (e) {
-              toast.error(e instanceof Error ? e.message : "无法查看");
-            }
-          });
-        }}
-      >
-        {pending ? "…" : plain ? "打码" : "明文"}
-      </button>
-    </>
-  );
-}
 
 export function MergeBanner({
   keepId,

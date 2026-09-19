@@ -6,7 +6,7 @@ import { Users, AlertTriangle } from "lucide-react";
 import { getIntakeById } from "@/server/intakes/actions";
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
-import { decryptIdNumber, maskIdNumber } from "@/lib/clients/id-number-crypto";
+import { decryptIdNumber } from "@/lib/clients/id-number-crypto";
 import { FieldGrid, FieldItem, PageHeader, Panel } from "@/components/patterns/moan";
 import {
   matterCategoryLabel,
@@ -210,12 +210,11 @@ export default async function IntakeDetailPage({ params }: PageProps) {
               {intake.client ? <PartyCard name={intake.client.name} sub={clientTypeLabel[intake.client.type]} href={`/clients/${intake.client.id}`} /> : <Empty />}
             </PartyGroup>
             <PartyGroup title="相对方" tone="amber">
-              {opposing.length === 0 ? <Empty /> : opposing.map((p) => <PartyCard key={p.id} name={p.name} sub={maskIdNumber(p.idNumber) || undefined} />)}
+              {opposing.length === 0 ? <Empty /> : opposing.map((p) => <PartyCard key={p.id} name={p.name} sub={p.idNumber || undefined} />)}
             </PartyGroup>
             <PartyGroup title="第三人" tone="violet">
-              {thirdParty.length === 0 ? <Empty /> : thirdParty.map((p) => <PartyCard key={p.id} name={p.name} sub={maskIdNumber(p.idNumber) || undefined} />)}
+              {thirdParty.length === 0 ? <Empty /> : thirdParty.map((p) => <PartyCard key={p.id} name={p.name} sub={p.idNumber || undefined} />)}
             </PartyGroup>
-            <p className="t-xs t-faint">证件号码默认打码展示。</p>
           </div>
         </Panel>
       </div>

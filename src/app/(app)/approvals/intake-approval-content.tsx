@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+
 import { AlertTriangle, FileText, Scale, Users, Wallet, Building2, BriefcaseBusiness, ChevronRight } from "lucide-react";
 import styles from "./intake-approval.module.css";
 import { Badge } from "@/components/ui/badge";
@@ -12,16 +13,10 @@ type Detail = NonNullable<Awaited<ReturnType<typeof getApprovalDetail>>["intakeD
 const dateText = (date: Date | string | null) => date ? formatDateTime(date) : "未记录";
 const roleText = (role: string) => conflictPartyRoleLabel[role as keyof typeof conflictPartyRoleLabel] ?? null;
 
-export function IntakeReviewValue({ label, value, sensitive }: IntakeReviewField) {
-  const [revealed, setRevealed] = useState(false);
-  const masked = sensitive && value !== "未填写" && value !== "未记录" && value !== "";
-  return <span className="whitespace-pre-wrap break-words">
-    {masked && !revealed ? "••••••" : value}
-    {masked && <button type="button" className="ml-1.5 text-[11.5px] font-[550] text-[var(--teal-deep)]" aria-label={`${revealed ? "隐藏" : "显示"}${label}`} aria-pressed={revealed} onClick={() => setRevealed(!revealed)}>{revealed ? "隐藏" : "明文"}</button>}
-  </span>;
+export function IntakeReviewValue({ value }: IntakeReviewField) {
+  return <span className="whitespace-pre-wrap break-words">{value}</span>;
 }
 
-// 长文本字段占满整行，其余两列并排，减少留白（2026-09-14 用户反馈「申请资料太空」）
 const wideFields = new Set(["案件名称", "事实摘要", "共同承办律师", "补正说明", "不接案说明", "非金钱标的", "服务范围", "交付成果", "住址", "注册地址", "地址", "收费说明", "风险代理收费方式"]);
 const isWide = (f: IntakeReviewField) => wideFields.has(f.label) || f.value.length > 26;
 
@@ -137,7 +132,7 @@ function ConflictResults({ hits }: { hits: Detail["checks"][number]["hits"] }) {
       <h4 className={styles.resultHeading}>{group.label}<Badge variant="secondary">{group.hits.length} 条</Badge></h4>
       {group.hits.map(hit => <article key={hit.id} className={styles.hit}>
         <div className={styles.matchComparison}>
-          <div><span>检索条件 · {conflictMatchedFieldLabel[hit.matchedField] ?? "历史匹配字段"}</span><strong><IntakeReviewValue label="命中值" value={hit.matchedValue || "未记录"} sensitive={hit.matchedField !== "name"} /></strong></div>
+          <div><span>检索条件 · {conflictMatchedFieldLabel[hit.matchedField] ?? "历史匹配字段"}</span><strong><IntakeReviewValue label="命中值" value={hit.matchedValue || "未记录"} /></strong></div>
           <div><span>检索命中名称</span><strong>{hit.matchedName || "名称未记录"}</strong></div>
         </div>
         {hit.intake ? <div className={styles.matchedMatter}><span>在办收案（尚未转为案件）</span><strong>{hit.intake.title}</strong><div><p>登记人：{hit.intake.registrant}</p><p>收案状态：{hit.intake.status}</p></div></div> : hit.matter ? <div className={styles.matchedMatter}><span>关联案件 · 当前档案</span><strong>{hit.matter.code} · {hit.matter.title}</strong><div><p>主办律师：{hit.matter.ownerName}</p><p>命中主体在该案的角色：{hit.matter.roles}</p></div></div> : <p className="text-muted-foreground">关联档案无法核实，请根据原命中理由联系经办人员核查。</p>}

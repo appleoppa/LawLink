@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { getProfileIdentity, revealProfileIdentity, bindMyIdentity, correctUserIdentity } from "@/server/users/profile-actions";
+import { getProfileIdentity, bindMyIdentity, correctUserIdentity } from "@/server/users/profile-actions";
 import { correctUserIdentityWithPhotos } from "@/server/identity-documents/actions";
 import { identityDocumentTypeLabel, identityDocumentTypes, type IdentityDocumentTypeValue } from "@/lib/identity-documents";
 
@@ -17,7 +17,6 @@ export function IdentityForm({ adminTargetId }: { adminTargetId?: string }) {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState("");
   const [saveError, setSaveError] = useState("");
-  const [plain, setPlain] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [documentType, setDocumentType] = useState<IdentityDocumentTypeValue>("PRC_RESIDENT_ID");
   const [documentName, setDocumentName] = useState("");
@@ -59,7 +58,7 @@ export function IdentityForm({ adminTargetId }: { adminTargetId?: string }) {
         } else updated = adminTargetId
           ? await correctUserIdentity({ id: adminTargetId, ...identity, reason, expectedUpdatedAt: summary.updatedAt })
           : await bindMyIdentity({ ...identity, currentPassword: password, expectedUpdatedAt: summary.updatedAt });
-        setSummary(updated); setEditing(false); setNumber(""); setDocumentName(""); setPrimaryFile(null); setSecondaryFile(null); setPassword(""); setReason(""); setPlain(null);
+        setSummary(updated); setEditing(false); setNumber(""); setDocumentName(""); setPrimaryFile(null); setSecondaryFile(null); setPassword(""); setReason("");
         toast.success(adminTargetId ? "身份信息已更新并记录核对原因" : "身份证件已登记");
         router.refresh();
       } catch (e) {
@@ -72,15 +71,11 @@ export function IdentityForm({ adminTargetId }: { adminTargetId?: string }) {
   return <section className="space-y-4 border-t pt-5">
     <div><h3 className="text-sm font-semibold">身份信息</h3><p className="mt-1 text-xs leading-relaxed text-muted-foreground">证件类型和号码用于人员核对。登记不代表已完成实名认证；修改联系方式不会影响历史案件归属。</p></div>
     {error ? <div role="alert" className="space-y-2"><p className="text-sm text-destructive">{error}</p><Button type="button" variant="outline" size="sm" onClick={() => void load()}>重新读取</Button></div> : !summary ? <p className="text-sm text-muted-foreground">正在读取身份信息…</p> : <>
-      <div className="flex flex-wrap items-center gap-3"><span className="text-sm">{summary.documentTypeLabel ?? "身份证件"}</span><span className="font-mono text-sm">{plain ?? summary.maskedNumber ?? "未登记"}</span>
-        {summary.maskedNumber && <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => {
-          if (plain) { setPlain(null); return; }
-          start(async () => { try { setPlain(await revealProfileIdentity(adminTargetId)); } catch (e) { toast.error(e instanceof Error ? e.message : "读取失败"); } });
-        }}>{plain ? "隐藏号码" : "查看明文"}</Button>}
-        {(adminTargetId || !summary.maskedNumber) && !editing && <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => { setSaveError(""); setDocumentType(summary.documentType ?? "PRC_RESIDENT_ID"); setDocumentName(summary.documentType === "OTHER" ? summary.documentTypeLabel ?? "" : ""); setEditing(true); }}>{summary.maskedNumber ? "更正身份证件" : "登记身份证件"}</Button>}
+      <div className="flex flex-wrap items-center gap-3"><span className="text-sm">{summary.documentTypeLabel ?? "身份证件"}</span><span className="font-mono text-sm">{summary.number ?? "未登记"}</span>
+        {(adminTargetId || !summary.number) && !editing && <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => { setSaveError(""); setDocumentType(summary.documentType ?? "PRC_RESIDENT_ID"); setDocumentName(summary.documentType === "OTHER" ? summary.documentTypeLabel ?? "" : ""); setEditing(true); }}>{summary.number ? "更正身份证件" : "登记身份证件"}</Button>}
       </div>
       {summary.photos.length > 0 && <div className="flex flex-wrap gap-2">{summary.photos.map((photo, index) => <a key={photo.id} href={`/api/users/${summary.userId}/identity-documents/${photo.id}`} target="_blank" rel="noreferrer" className="text-xs text-primary underline-offset-4 hover:underline">查看证件照片{index + 1}</a>)}</div>}
-      {summary.maskedNumber && !adminTargetId && <p className="text-xs text-muted-foreground">已登记。证件信息如有错误，请联系管理员核对更正。</p>}
+      {summary.number && !adminTargetId && <p className="text-xs text-muted-foreground">已登记。证件信息如有错误，请联系管理员核对更正。</p>}
       {editing && <form noValidate onSubmit={save} className="max-w-xl space-y-3 rounded-lg border bg-background p-4">
         <fieldset disabled={pending} className="space-y-3">
           <div className="space-y-2"><Label>证件类型</Label><Select value={documentType} onValueChange={value => { setDocumentType(value as IdentityDocumentTypeValue); if (value !== "OTHER") setDocumentName(""); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{identityDocumentTypes.map(type => <SelectItem key={type} value={type}>{identityDocumentTypeLabel[type]}</SelectItem>)}</SelectContent></Select></div>
@@ -98,7 +93,7 @@ export function IdentityForm({ adminTargetId }: { adminTargetId?: string }) {
           <div className="flex gap-2"><Button type="submit">{pending ? "正在保存…" : "确认登记"}</Button><Button type="button" variant="ghost" onClick={() => { setEditing(false); setNumber(""); setDocumentName(""); setPrimaryFile(null); setSecondaryFile(null); setPassword(""); setReason(""); }}>取消</Button></div>
         </fieldset>
       </form>}
-      <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => { setPlain(null); void load(); }}>刷新身份信息</Button>
+      <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => { void load(); }}>刷新身份信息</Button>
     </>}
   </section>;
 }

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   identityDocumentInputSchema,
   identityPageKindsFor,
-  maskIdentityDocument,
   normalizeIdentityDocumentNumber,
   readAndValidateIdentityImage
 } from "@/lib/identity-documents";
@@ -34,10 +33,9 @@ describe("身份证件规则", () => {
     expect(identityDocumentInputSchema.safeParse({ identityDocumentType: "OTHER", identityDocumentName: "外交人员证", identityDocumentNumber: "AB-12345" }).success).toBe(true);
   });
 
-  it("按证件形态分配照片页别并进行通用脱敏", () => {
+  it("按证件形态分配照片页别", () => {
     expect(identityPageKindsFor("PRC_RESIDENT_ID")).toEqual(["PORTRAIT_SIDE", "EMBLEM_SIDE"]);
     expect(identityPageKindsFor("PASSPORT")).toEqual(["DATA_PAGE", "SUPPLEMENTARY_PAGE"]);
-    expect(maskIdentityDocument("P1234567")).toBe("P12****4567");
   });
 
   it("号码规范化不混入联系方式变化", () => {

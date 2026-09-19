@@ -5,21 +5,6 @@ import { Building2, User, Briefcase, Pencil, Phone, Mail } from "lucide-react";
 import type { Client, ClientCooperationStatus, ClientType, Contact } from "@prisma/client";
 import { clientTypeLabel, cooperationStatusLabel } from "@/lib/enums";
 
-/** P1 §三：证件号展示打码（client 端纯字符串处理；密文形态直接遮蔽） */
-function maskClientRef(v: string | null | undefined): string {
-  if (!v) return "";
-  if (v.includes(".")) return "••••（已加密，详见档案）";
-  if (v.length >= 8) return `${v.slice(0, 3)}${"•".repeat(Math.max(4, v.length - 5))}${v.slice(-2)}`;
-  return v;
-}
-
-/** 安全底线：电话默认打码，不在列表露出全号 */
-function maskPhoneText(v: string | null | undefined): string {
-  if (!v) return "";
-  if (/^\d{11}$/.test(v)) return `${v.slice(0, 3)}****${v.slice(7)}`;
-  return v.length > 4 ? `${v.slice(0, 2)}****${v.slice(-2)}` : v;
-}
-
 /** 墨案：合作状态 → 徽章 + 案卷脊（teal=签约 / amber=洽谈 / slate=潜在 / bronze=终止） */
 const COOP_META: Record<ClientCooperationStatus, { badge: string; spine: string }> = {
   POTENTIAL: { badge: "b-slate", spine: "slate" },
@@ -93,7 +78,7 @@ export function ClientsTable({
                     <Link href={`/clients/${c.id}`} className="block min-w-0">
                       <div className="truncate font-semibold group-hover:text-[var(--teal-deep)]" style={{ fontSize: 13 }}>{c.name}</div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-[var(--t-muted)]">
-                        {c.idNumber ? <span className="font-mono">{maskClientRef(c.idNumber)}</span> : null}
+                        {c.idNumber ? <span className="font-mono">{c.idNumber}</span> : null}
                         {c.source ? <span className="truncate">来源：{c.source}</span> : null}
                       </div>
                     </Link>
@@ -102,7 +87,7 @@ export function ClientsTable({
                   <td><CoopBadge status={c.cooperationStatus} /></td>
                   <td className="text-[var(--t-secondary)]">
                     <div className="flex flex-col gap-0.5 text-[12px]">
-                      {c.phone ? <span className="flex items-center gap-1.5"><Phone className="h-3 w-3" strokeWidth={1.8} /><span className="font-mono">{maskPhoneText(c.phone)}</span></span> : null}
+                      {c.phone ? <span className="flex items-center gap-1.5"><Phone className="h-3 w-3" strokeWidth={1.8} /><span className="font-mono">{c.phone}</span></span> : null}
                       {c.email ? <span className="flex items-center gap-1.5"><Mail className="h-3 w-3" strokeWidth={1.8} /><span className="truncate">{c.email}</span></span> : null}
                       {!c.phone && !c.email ? <span className="t-faint">—</span> : null}
                     </div>
@@ -111,7 +96,7 @@ export function ClientsTable({
                     {primary ? (
                       <div>
                         <div>{primary.name}</div>
-                        {primary.phone ? <div className="font-mono text-[11px] text-[var(--t-muted)]">{maskPhoneText(primary.phone)}</div> : null}
+                        {primary.phone ? <div className="font-mono text-[11px] text-[var(--t-muted)]">{primary.phone}</div> : null}
                       </div>
                     ) : (
                       <span className="t-faint">—</span>
@@ -148,7 +133,7 @@ export function ClientsTable({
                   </div>
                   {c.idNumber && (
                     <div className="mt-0.5 truncate font-mono text-[10.5px] text-muted-foreground tabular">
-                      {maskClientRef(c.idNumber)}
+                      {c.idNumber}
                     </div>
                   )}
                   {c.source && (
@@ -167,7 +152,7 @@ export function ClientsTable({
                 {c.phone && (
                   <span className="flex items-center gap-1 font-mono tabular">
                     <Phone className="h-3 w-3" strokeWidth={1.8} />
-                    {maskPhoneText(c.phone)}
+                    {c.phone}
                   </span>
                 )}
                 <span className="font-mono tabular">{c._count.matters} 个案件</span>
