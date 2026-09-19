@@ -1,4 +1,3 @@
-import { listMyRecentConflictChecks } from "@/server/conflicts/actions";
 import { ConflictsViewV4 } from "./_components/conflicts-view-v4";
 
 /**
@@ -8,6 +7,5 @@ import { ConflictsViewV4 } from "./_components/conflicts-view-v4";
 export default async function ConflictsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams;
   const prefillName = typeof params.name === "string" ? params.name.slice(0, 100) : "";
-  const recent = await listMyRecentConflictChecks().catch(() => []);
-  return <ConflictsViewV4 recent={recent} prefillName={prefillName} />;
+  return <ConflictsViewV4 prefillName={prefillName} />;
 }

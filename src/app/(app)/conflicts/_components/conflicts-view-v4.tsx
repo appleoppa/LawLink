@@ -15,7 +15,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Briefcase, FileClock, Info, Loader2, Plus, Search, ShieldAlert, ShieldCheck, TriangleAlert, Users, X } from "lucide-react";
 import type { ConflictSeverity, MatterCategory, MatterStatus, PartyRole, LitigationStanding } from "@prisma/client";
-import { runCheckAndSave, type listMyRecentConflictChecks } from "@/server/conflicts/actions";
+import { runCheckAndSave } from "@/server/conflicts/actions";
 import { matterHref } from "@/lib/matters/route";
 import { intakeStatusLabel, litigationStandingLabel, matterCategoryLabel, matterStatusLabel } from "@/lib/enums";
 import { PageHeader } from "@/components/patterns/moan";
@@ -25,7 +25,6 @@ import { shMonthDayTime } from "@/lib/ui/sh-time";
 
 type QueryRole = PartyRole;
 type QueryRow = { key: string; role: QueryRole; name: string; idNumber: string; editing: boolean };
-type Recent = Awaited<ReturnType<typeof listMyRecentConflictChecks>>;
 
 type HitResult = {
   id: string;
@@ -105,7 +104,7 @@ function groupBySubject(queries: QueryRow[], hits: HitResult[]): SubjectResult[]
   });
 }
 
-export function ConflictsViewV4({ recent, prefillName = "" }: { recent: Recent; prefillName?: string }) {
+export function ConflictsViewV4({ prefillName = "" }: { prefillName?: string }) {
   const router = useRouter();
   const [queries, setQueries] = useState<QueryRow[]>(() => [emptyRow("CLIENT_PARTY", prefillName)]);
   const [results, setResults] = useState<HitResult[] | null>(null);
@@ -169,7 +168,6 @@ export function ConflictsViewV4({ recent, prefillName = "" }: { recent: Recent; 
             正式的利益冲突检索在登记收案时自动进行，并随收案审批核查。
           </>
         }
-        actions={<a href="#recent-checks" className="btn btn-secondary btn-sm">预检记录</a>}
       />
 
       {/* 检索主体 */}
@@ -327,28 +325,6 @@ export function ConflictsViewV4({ recent, prefillName = "" }: { recent: Recent; 
               <div className="flex justify-between"><span className="t-mute">检索主体</span><span>{hasRun ? searchedQueries.length : queries.filter((q) => q.name.trim() || q.idNumber.trim()).length} 个</span></div>
               <div className="flex justify-between"><span className="t-mute">填写证件</span><span>{(hasRun ? searchedQueries : queries).filter((q) => q.idNumber.trim()).length} 个</span></div>
               <div className="flex justify-between"><span className="t-mute">相关记录</span><span>{hasRun ? `${hits.length} 条` : "—"}</span></div>
-            </div>
-          </div>
-
-          <div className="card" id="recent-checks">
-            <div className="panel-head">
-              <div className="panel-title" style={{ fontSize: 13 }}>既往预检记录</div>
-              <span className="t-xs t-faint">仅本人发起</span>
-            </div>
-            <div className="panel-body" style={{ paddingTop: 8 }}>
-              {recent.length === 0 ? (
-                <div className="t-xs t-mute py-2">暂无预检记录</div>
-              ) : (
-                recent.map((r, i) => (
-                  <div key={r.id} style={{ display: "flex", gap: 9, padding: "7px 0", borderBottom: i === recent.length - 1 ? undefined : "1px solid var(--bd-hair)" }}>
-                    <span className={cn("dot", r.hitCount ? "dot-amber" : "dot-slate")} style={{ marginTop: 5 }} />
-                    <div className="min-w-0">
-                      <div className="truncate" style={{ fontSize: 12, fontWeight: 550 }}>{r.subjectSummary || "预检"}</div>
-                      <div className="t-xs t-mute">{shMonthDayTime(r.checkedAt)} · {r.hitCount ? `相关记录 ${r.hitCount} 条` : "未发现相关记录"}</div>
-                    </div>
-                  </div>
-                ))
-              )}
             </div>
           </div>
 
