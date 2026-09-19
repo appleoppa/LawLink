@@ -2166,17 +2166,29 @@ function MaterialsSection({
           canManage={canManage}
           onOpenTemplate={onOpenTemplate}
         />
-        {orphans.length ? (
+        {orphans.length || unlinkedEvidence?.length ? (
           <div className="card">
             <div className="panel-head">
               <div className="panel-title">
                 <FolderOpen className="ic" strokeWidth={1.8} />
                 未归入环节
-                <span className="badge b-white" style={{ marginLeft: 2 }}>{orphans.length}</span>
-                <span className="t-xs t-mute" style={{ fontWeight: 400 }}>本程序内未匹配到任何环节的材料</span>
+                <span className="badge b-white" style={{ marginLeft: 2 }}>{orphans.length + (unlinkedEvidence?.length ?? 0)}</span>
+                <span className="t-xs t-mute" style={{ fontWeight: 400 }}>未匹配到环节的材料与未挂材料的证据要点</span>
               </div>
             </div>
             {orphans.map((d) => <DocRow key={d.id} doc={d} />)}
+            {unlinkedEvidence?.length ? (
+              <div className="dos-seg">
+                <div className="dos-seg-h">
+                  <span className="nm">未挂材料的证据要点</span>
+                  <span className="rule" />
+                  <span className="pd">{unlinkedEvidence.length} 条</span>
+                </div>
+                <div className="dos-doc-evbox flat">
+                  <EvidencePoints items={unlinkedEvidence} showSource />
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
       </>

@@ -188,6 +188,7 @@ describe("分成比例及派生金额", () => {
   });
   it("派生分成在确认实收时同样拒绝历史超额方案", async () => {
     session.user.role = "FINANCE"; // 具「确认实收到账」权限的人确认时才派生分成
+    db.matter.count.mockResolvedValue(1); // 案件财务门禁：确认前校验此人能否访问该案财务
     db.feeEntry.findUnique.mockResolvedValue({ id: "receipt", matterId: mine, type: "RECEIVED", amount: new Prisma.Decimal(100), occurredAt: new Date(), billingId: null, confirmState: "PENDING" });
     db.feeEntry.updateMany.mockResolvedValue({ count: 1 });
     db.commissionPlan.findMany.mockResolvedValue([user1, user2].map(userId => ({ userId, percent: new Prisma.Decimal(80) })));
@@ -222,6 +223,13 @@ describe("分成比例及派生金额", () => {
     db.feeEntry.findUnique.mockResolvedValue({ id: "receipt", matterId: mine, type: "RECEIVED", confirmState: "CONFIRMED", invoiceNo: null, billing: null, commissionChildren: [] });
     await expect(deleteFeeEntry("receipt")).rejects.toThrow("不可删除");
     expect(db.feeEntry.delete).not.toHaveBeenCalled();
+  });
+  it("确认实收要过案件财务门禁：不在可见范围内的案件不能确认", async () => {
+    session.user.role = "FINANCE";
+    db.matter.count.mockResolvedValue(0); // 该案不在此人财务可见范围
+    db.feeEntry.findUnique.mockResolvedValue({ id: "receipt", matterId: mine, type: "RECEIVED", amount: new Prisma.Decimal(100), occurredAt: new Date(), billingId: null, confirmState: "PENDING" });
+    await expect(confirmFeeEntry("receipt")).rejects.toThrow("案件不存在");
+    expect(db.feeEntry.updateMany).not.toHaveBeenCalled();
   });
   it("主任律师与无确认权的人都不能确认或退回实收", async () => {
     for (const role of ["LAWYER", "PRINCIPAL_LAWYER", "ASSISTANT"]) {

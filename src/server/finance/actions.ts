@@ -211,17 +211,18 @@ export async function createFeeEntry(input: FeeEntryCreateInput) {
   if (pendingConfirm) {
     // 记录已落库：通知属于事后副作用，失败只记日志，不能把成功的登记报成失败（重试会重复登记）
     try {
-    const matter = await prisma.matter.findUnique({ where: { id: data.matterId }, select: { internalCode: true, title: true } });
-    await notifyRoleApprovers({
-      roles: ["PRINCIPAL_LAWYER", "FINANCE"],
-      excludeUserId: session.user.id,
-      title: "有实收待确认",
-      content: `${session.user.name ?? "有用户"} 登记了实收 ¥${data.amount.toLocaleString("zh-CN")}${matter ? `：${matter.internalCode} ${matter.title}` : ""}，请核对到账后确认`,
-      href: "/finance",
-      refType: "FeeEntry",
-      refId: created.id,
-      priority: "NORMAL"
-    });
+      const matter = await prisma.matter.findUnique({ where: { id: data.matterId }, select: { internalCode: true, title: true } });
+      const receivers = await usersWhoCanConfirmReceipt(session.user.id);
+      await Promise.all(receivers.map((userId) => createNotification({
+        userId,
+        type: "SYSTEM",
+        priority: "NORMAL",
+        title: "有实收待确认",
+        content: `${session.user.name ?? "有用户"} 登记了实收 ¥${data.amount.toLocaleString("zh-CN")}${matter ? `：${matter.internalCode} ${matter.title}` : ""}，请核对到账后确认`,
+        href: "/finance",
+        refType: "FeeEntry",
+        refId: created.id
+      })));
     } catch (err) {
       console.error("[finance] 待确认实收通知发送失败：", err);
     }
@@ -231,6 +232,22 @@ export async function createFeeEntry(input: FeeEntryCreateInput) {
   revalidatePath("/finance");
   revalidatePath("/approvals");
   return { ok: true, id: created.id, pendingConfirm };
+}
+
+/** 持有「确认实收到账」的人：内置财务岗 + 自定义角色里勾了 finance.confirm 的账号 */
+async function usersWhoCanConfirmReceipt(excludeUserId?: string): Promise<string[]> {
+  const rows = await prisma.user.findMany({
+    where: {
+      active: true,
+      ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
+      OR: [
+        { role: "FINANCE" },
+        { role: "CUSTOM", roleDefinition: { active: true, permissions: { some: { permissionKey: "finance.confirm" } } } }
+      ]
+    },
+    select: { id: true }
+  });
+  return rows.map((r) => r.id);
 }
 
 /**
@@ -244,6 +261,7 @@ export async function confirmFeeEntry(id: string) {
   if (!entry) throw new Error("记录不存在");
   if (entry.type !== "RECEIVED") throw new Error("只有实收需要确认");
   if (entry.confirmState === "CONFIRMED") throw new Error("此笔已确认");
+  await assertCanAccessMatterFinance(session.user.id, session.user.role, entry.matterId, session.user.rolePermissions);
   await assertMatterWritable(entry.matterId, { allowFinanceRole: true });
 
   await prisma.$transaction(async (tx) => {
@@ -306,6 +324,7 @@ export async function rejectFeeEntry(id: string, reason: string) {
   const entry = await prisma.feeEntry.findUnique({ where: { id }, select: { id: true, matterId: true, type: true, amount: true, confirmState: true, recordedById: true, matter: { select: { internalCode: true, title: true } } } });
   if (!entry) throw new Error("记录不存在");
   if (entry.type !== "RECEIVED" || entry.confirmState !== "PENDING") throw new Error("只有待确认的实收可以退回");
+  await assertCanAccessMatterFinance(session.user.id, session.user.role, entry.matterId, session.user.rolePermissions);
   await assertMatterWritable(entry.matterId, { allowFinanceRole: true });
 
   await prisma.$transaction(async (tx) => {
@@ -365,7 +384,11 @@ export async function deleteFeeEntry(id: string) {
         where: { id: { in: entry.commissionChildren.map((c) => c.id) } }
       });
     }
-    await tx.feeEntry.delete({ where: { id } });
+    // 条件删除：读取到删除之间可能已被确认到账，按受影响行数判定，避免并发下删掉已入账记录
+    const removed = await tx.feeEntry.deleteMany({
+      where: { id, ...(entry.type === "RECEIVED" ? { confirmState: "PENDING" } : {}) }
+    });
+    if (removed.count === 0) throw new Error("该实收已确认到账并已入账，不可删除；如需更正请登记退款 / 冲正");
   });
 
   await audit({
@@ -720,6 +743,41 @@ export async function listAllFeeEntries(params: {
     }
   });
   return serializeDecimals(rows);
+}
+
+/**
+ * 财务页 KPI：本月 / 上月 / 本年实收与应收合计。
+ * 必须在库里聚合——从「最近 500 条流水」里累加会在流水超限时少算（2026-09-19 修）。
+ * 实收只计已确认到账。
+ */
+export async function getFinanceKpis() {
+  const session = await requireSession("finance.read");
+  const visFilter = matterFinanceVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions);
+  const matterWhere = { deletedAt: null, ...visFilter };
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const yearStart = new Date(now.getFullYear(), 0, 1);
+  const sum = async (type: "RECEIVED" | "RECEIVABLE", gte: Date, lt?: Date) => {
+    const res = await prisma.feeEntry.aggregate({
+      where: {
+        type,
+        ...(type === "RECEIVED" ? { confirmState: "CONFIRMED" as const } : {}),
+        occurredAt: { gte, ...(lt ? { lt } : {}) },
+        matter: matterWhere
+      },
+      _sum: { amount: true }
+    });
+    return Number(res._sum.amount ?? 0);
+  };
+  const [monthlyReceived, monthlyReceivable, lastMonthReceived, yearlyReceived, yearlyReceivable] = await Promise.all([
+    sum("RECEIVED", monthStart),
+    sum("RECEIVABLE", monthStart),
+    sum("RECEIVED", lastMonthStart, monthStart),
+    sum("RECEIVED", yearStart),
+    sum("RECEIVABLE", yearStart)
+  ]);
+  return { monthlyReceived, monthlyReceivable, lastMonthReceived, yearlyReceived, yearlyReceivable };
 }
 
 /** 全部待确认实收（不受流水条数上限影响）：财务页「待确认实收」用 */

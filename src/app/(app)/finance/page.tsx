@@ -2,6 +2,7 @@ import { getSession } from "@/lib/auth/session";
 import {
   listAllFeeEntries,
   listPendingReceipts,
+  getFinanceKpis,
   getMonthlyRevenue,
   getPersonalRevenue
 } from "@/server/finance/actions";
@@ -15,9 +16,10 @@ export default async function FinancePage() {
   const session = await getSession();
   const userId = session!.user.id;
 
-  const [entries, pending, monthly, personal, invoiceRequests, invoiceStats, aging] = await Promise.all([
+  const [entries, pending, kpis, monthly, personal, invoiceRequests, invoiceStats, aging] = await Promise.all([
     listAllFeeEntries({ limit: 500 }),
     listPendingReceipts(),
+    getFinanceKpis(),
     getMonthlyRevenue(12),
     getPersonalRevenue(userId),
     listInvoiceRequests(),
@@ -25,27 +27,7 @@ export default async function FinancePage() {
     getReceivablesAging()
   ]);
 
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
-  const yearStart = new Date(monthStart.getFullYear(), 0, 1);
-
-  const monthlyReceived = entries
-    .filter((e) => e.type === "RECEIVED" && e.confirmState === "CONFIRMED" && new Date(e.occurredAt) >= monthStart)
-    .reduce((acc, e) => acc + Number(e.amount), 0);
-  const monthlyReceivable = entries
-    .filter((e) => e.type === "RECEIVABLE" && new Date(e.occurredAt) >= monthStart)
-    .reduce((acc, e) => acc + Number(e.amount), 0);
-  const lastMonthStart = new Date(monthStart.getFullYear(), monthStart.getMonth() - 1, 1);
-  const lastMonthReceived = entries
-    .filter((e) => e.type === "RECEIVED" && e.confirmState === "CONFIRMED" && new Date(e.occurredAt) >= lastMonthStart && new Date(e.occurredAt) < monthStart)
-    .reduce((acc, e) => acc + Number(e.amount), 0);
-  const yearlyReceivable = entries
-    .filter((e) => e.type === "RECEIVABLE" && new Date(e.occurredAt) >= yearStart)
-    .reduce((acc, e) => acc + Number(e.amount), 0);
-  const yearlyReceived = entries
-    .filter((e) => e.type === "RECEIVED" && e.confirmState === "CONFIRMED" && new Date(e.occurredAt) >= yearStart)
-    .reduce((acc, e) => acc + Number(e.amount), 0);
+  const { monthlyReceived, monthlyReceivable, lastMonthReceived, yearlyReceived, yearlyReceivable } = kpis;
 
   return (
     <FinanceViewV4

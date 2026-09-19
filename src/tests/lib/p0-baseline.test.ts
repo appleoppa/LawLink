@@ -112,12 +112,23 @@ describe("财务删除守卫（P0-6）", () => {
 
   it("普通未确认记录仍可删除并级联分成（行为不回退）", async () => {
     db.feeEntry.findUnique.mockResolvedValue({
-      id: "f3", matterId: "m1", invoiceNo: null,
+      id: "f3", matterId: "m1", invoiceNo: null, type: "COST", confirmState: "CONFIRMED",
       commissionChildren: [{ id: "c1" }, { id: "c2" }], billing: { signedAt: null }
     });
+    db.feeEntry.deleteMany.mockResolvedValue({ count: 1 });
     await expect(deleteFeeEntry("f3")).resolves.toEqual({ ok: true });
-    expect(db.feeEntry.deleteMany).toHaveBeenCalled();
-    expect(db.feeEntry.delete).toHaveBeenCalledWith({ where: { id: "f3" } });
+    // 级联删分成 + 条件删父条目，都走 deleteMany（并发下按受影响行数判定）
+    expect(db.feeEntry.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ["c1", "c2"] } } });
+    expect(db.feeEntry.deleteMany).toHaveBeenLastCalledWith({ where: { id: "f3" } });
+  });
+
+  it("并发确认后删除落空：受影响行数为 0 时报错，不静默通过", async () => {
+    db.feeEntry.findUnique.mockResolvedValue({
+      id: "f4", matterId: "m1", invoiceNo: null, type: "RECEIVED", confirmState: "PENDING",
+      commissionChildren: [], billing: { signedAt: null }
+    });
+    db.feeEntry.deleteMany.mockResolvedValue({ count: 0 });
+    await expect(deleteFeeEntry("f4")).rejects.toThrow("不可删除");
   });
 });
 
