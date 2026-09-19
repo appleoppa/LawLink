@@ -1245,11 +1245,12 @@
 .mo-dossier .dos-main > .card + .card { margin-top: 0; }
 
 /* 案件档案重排（2026-09-16）：当事人对阵区 + 案件要素两栏小表 */
-.mo-dossier .dos-vs .dos-vs-body { display: grid; grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr); align-items: start; }
+/* 我方 / 对方上下排列（2026-09-19 用户确认）：左右分栏时两侧信息量不同会高度不齐，很难看；
+   竖排后每方各占整行，中间用一条带「诉 / 辩」圆标的横线分隔，关系照样一眼可读。 */
+.mo-dossier .dos-vs .dos-vs-body { display: flex; flex-direction: column; }
 .mo-dossier .dos-vs-side { padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.mo-dossier .dos-vs-mid { align-self: stretch; display: flex; align-items: center; justify-content: center; position: relative; }
-.mo-dossier .dos-vs-mid::before { content: ""; position: absolute; top: 14px; bottom: 14px; left: 50%; width: 1px; background: var(--bd-hair); }
-.mo-dossier .dos-vs-mid span { position: relative; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--bd-subtle); background: var(--bg-card); display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--t-muted); }
+.mo-dossier .dos-vs-mid { position: relative; height: 1px; margin: 2px 16px 16px; background: var(--bd-hair); }
+.mo-dossier .dos-vs-mid span { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--bd-subtle); background: var(--bg-card); display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--t-muted); }
 .mo-dossier .dos-vs-h { font-size: 11px; font-weight: 650; letter-spacing: .08em; color: var(--t-muted); }
 .mo-dossier .dos-vs-h.ours { color: var(--teal-deep); }
 .mo-dossier .dos-vs-others { padding: 4px 16px 14px; border-top: 1px dashed var(--bd-hair); display: flex; flex-direction: column; gap: 8px; }
@@ -1261,9 +1262,6 @@
   .mo-dossier .dos-arch { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 760px) {
-  .mo-dossier .dos-vs .dos-vs-body { grid-template-columns: minmax(0, 1fr); }
-  .mo-dossier .dos-vs-mid { display: none; }
-  .mo-dossier .dos-vs-side + .dos-vs-side { border-top: 1px dashed var(--bd-hair); }
 }
 .mo-dossier .dos-arch .panel-head { flex-wrap: nowrap; gap: 8px; }
 .mo-dossier .dos-arch .panel-head .panel-title { min-width: 0; flex-wrap: nowrap; }
