@@ -28,8 +28,6 @@ import {
 } from "./seal-types";
 import { MatterCombobox } from "./matter-combobox";
 
-const PURPOSE_PRESETS = ["委托合同", "法律意见书", "所函", "证明", "其他"] as const;
-type PurposePreset = typeof PURPOSE_PRESETS[number];
 
 function isPdfFile(file: File) {
   return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
@@ -59,8 +57,8 @@ export function SealRequestSheet({
   useEffect(() => { if (open) listActiveSealPurposes().then(setPurposes).catch(() => toast.error("无法读取用章事项，请重新打开申请")); }, [open]);
   const [sealType, setSealType] = useState<string>("");
   const [matterId, setMatterId] = useState<string>("");
-  const [purposePreset, setPurposePreset] = useState<PurposePreset | "">("");
-  const [purposeOther, setPurposeOther] = useState("");
+  /** 本次用印说明：一句话，说明这次为什么盖章；分类由上方「用章事项」承担（2026-09-19 去重） */
+  const [purpose, setPurpose] = useState("");
   const [documentTitle, setDocumentTitle] = useState("");
   const [pageCount, setPageCount] = useState(1);
   const [crossPage, setCrossPage] = useState(false);
@@ -82,8 +80,7 @@ export function SealRequestSheet({
     setSealType("");
     setPurposeConfigId("");
     setMatterId("");
-    setPurposePreset("");
-    setPurposeOther("");
+    setPurpose("");
     setDocumentTitle("");
     setPageCount(1);
     setCrossPage(false);
@@ -94,14 +91,6 @@ export function SealRequestSheet({
     setAlsoLegalRep(false);
   };
 
-  // 拼出实际入库的 purpose 字符串
-  const resolvedPurpose =
-    purposePreset === "其他"
-      ? purposeOther.trim()
-        ? `其他：${purposeOther.trim()}`
-        : ""
-      : purposePreset;
-
   const enabledConfigs = configs.filter((c) => c.enabled);
   const hasExisting = !!preset?.draftDocId;
 
@@ -110,12 +99,8 @@ export function SealRequestSheet({
       toast.error("请选择章种类");
       return;
     }
-    if (!purposePreset) {
-      toast.error("请选择用印事由");
-      return;
-    }
-    if (purposePreset === "其他" && !purposeOther.trim()) {
-      toast.error("请填写「其他」用印事由的具体说明");
+    if (!purpose.trim()) {
+      toast.error("请填写本次用印说明");
       return;
     }
     if (!documentTitle.trim()) {
@@ -135,7 +120,7 @@ export function SealRequestSheet({
     fd.set("sealType", sealType);
     if (purposeConfigId) fd.set("purposeConfigId", purposeConfigId);
     if (matterId) fd.set("matterId", matterId);
-    fd.set("purpose", resolvedPurpose);
+    fd.set("purpose", purpose.trim());
     fd.set("documentTitle", documentTitle.trim());
     fd.set("pageCount", String(pageCount));
     fd.set("requireCrossPageSeal", String(crossPage));
@@ -174,7 +159,7 @@ export function SealRequestSheet({
         <FormDialogBody>
 
         <div className="space-y-6">
-        <FormSection title="用章事项" description="选择印章、关联案件与用印事由">
+        <FormSection title="用章信息" description="选择印章、关联案件与事项，并说明本次用印">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {/* 联动提示 */}
           {hasExisting && (
@@ -246,28 +231,21 @@ export function SealRequestSheet({
           </div>
 
           <div className="md:col-span-2">
-            <Label className="block text-xs">审批事项
+            <Label className="block text-xs">用章事项
               <select className="my-2 h-9 w-full rounded-md border bg-background px-2 text-sm" value={purposeConfigId} onChange={e => setPurposeConfigId(e.target.value)}>
-                <option value="">请选择管理员配置的事项</option>{purposes.filter(p => !sealType || p.allowedSealTypes.some(t => t === sealType)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                <option value="">请选择</option>{purposes.filter(p => !sealType || p.allowedSealTypes.some(t => t === sealType)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </Label>
             {!purposes.length && <p className="mb-2 text-xs text-muted-foreground">尚未配置用章事项；启用按事项审批后需由管理员先配置。</p>}
-            <Label className="text-xs">用印事由 *</Label>
-            <RadioChips
+            <Label className="text-xs" htmlFor="seal-purpose">本次用印说明 *</Label>
+            <Input
+              id="seal-purpose"
               className="mt-2"
-              items={PURPOSE_PRESETS.map((p) => ({ value: p, label: p }))}
-              value={purposePreset || null}
-              onChange={(v) => setPurposePreset(v as PurposePreset)}
+              maxLength={60}
+              value={purpose}
+              onChange={(e) => setPurpose(e.target.value)}
+              placeholder="一句话说明这次为什么盖章，如：向华东置业发送催告履行律师函"
             />
-            {purposePreset === "其他" && (
-              <Textarea
-                value={purposeOther}
-                onChange={(e) => setPurposeOther(e.target.value)}
-                placeholder="请说明具体事由"
-                rows={2}
-                className="mt-2 text-[12px]"
-              />
-            )}
           </div>
 
         </div></FormSection>
