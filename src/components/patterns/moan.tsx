@@ -333,9 +333,9 @@ export function FieldGrid({ children, cols = 2, className }: { children: React.R
   return <dl className={cn("mo-field-grid", `mo-field-grid-${cols}`, className)}>{children}</dl>;
 }
 
-export function FieldItem({ label, children, wide, mono }: { label: React.ReactNode; children: React.ReactNode; wide?: boolean; mono?: boolean }) {
+export function FieldItem({ label, children, wide, grow, mono }: { label: React.ReactNode; children: React.ReactNode; wide?: boolean; /** 同一行内占更大比例（内容通常较长的字段） */ grow?: boolean; mono?: boolean }) {
   return (
-    <div className={cn("mo-field", wide && "mo-field-wide")}>
+    <div className={cn("mo-field", wide && "mo-field-wide", grow && "mo-field-grow")}>
       <dt className="mo-field-k">{label}</dt>
       <dd className={cn("mo-field-v", mono && "mono")}>{children ?? <span className="t-faint">—</span>}</dd>
     </div>

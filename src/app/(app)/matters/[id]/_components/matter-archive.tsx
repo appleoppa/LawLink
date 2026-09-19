@@ -266,7 +266,7 @@ export function MatterArchive({
           {kind === "litigation" && currentProcedure ? (
             <Group icon={Landmark} title="管辖与承办" hint={procLabel ?? undefined} action={editBtn}>
               <FieldGrid cols={2} className="mo-field-grid-auto">
-                <FieldItem label="案号" mono>{dash(currentProcedure.caseNumber)}</FieldItem>
+                <FieldItem label="案号" mono grow>{dash(currentProcedure.caseNumber)}</FieldItem>
                 <FieldItem label={isArbitration ? "仲裁机构" : isCriminal ? "办案机关" : "受理机构"}>{dash(currentProcedure.handlingAgency)}</FieldItem>
                 <FieldItem label="管辖地">{dash(currentProcedure.jurisdiction)}</FieldItem>
                 <FieldItem label={isArbitration ? "受理时间" : "立案时间"} mono>{currentProcedure.acceptedAt ? formatDate(currentProcedure.acceptedAt) : null}</FieldItem>
@@ -290,7 +290,7 @@ export function MatterArchive({
                 {currentProcedure.concludedAt || outcome ? (
                   <>
                     <FieldItem label="结案时间" mono>{currentProcedure.concludedAt ? formatDate(currentProcedure.concludedAt) : null}</FieldItem>
-                    <FieldItem label={isCriminal ? "处理结果" : "裁判结果"}>{outcome || null}</FieldItem>
+                    <FieldItem label={isCriminal ? "处理结果" : "裁判结果"} grow>{outcome || null}</FieldItem>
                   </>
                 ) : null}
               </FieldGrid>
@@ -305,58 +305,51 @@ export function MatterArchive({
                   {matter.intake?.feeAmount ? formatCurrency(Number(matter.intake.feeAmount)) : null}
                 </FieldItem>
               ) : null}
+              <FieldItem label="付款节点" grow>{dash(matter.intake?.feeSchedule)}</FieldItem>
               {matter.intake?.feeType === "CONTINGENCY" ? (
-                <FieldItem label="风险代理收费方式" wide>
+                <FieldItem label="风险收费" wide>
                   {matter.intake?.contingencyTerms?.trim() ? <span className="whitespace-pre-wrap">{matter.intake.contingencyTerms}</span> : null}
                 </FieldItem>
               ) : null}
-              <FieldItem label="付款节点" wide>{dash(matter.intake?.feeSchedule)}</FieldItem>
               {matter.intake?.feeNote?.trim() ? (
                 <FieldItem label="收费说明" wide>
                   <span className="whitespace-pre-wrap">{matter.intake.feeNote}</span>
                 </FieldItem>
               ) : null}
-            </FieldGrid>
-            <div className="dos-bill-list">
-              <div className="dos-sub-h">
-                合同与材料
-                <span>{(canReadFinance ? billings.length : 0) + contractDocs.length}</span>
-              </div>
+              {/* 一案一签：合同与补充协议并入本模块，不再单独成框（2026-09-18 用户确认） */}
               {canReadFinance ? (
-                billings.length === 0 ? (
-                  <p className="t-xs t-mute">尚未登记合同金额</p>
-                ) : (
-                  billings.map((b) => (
-                    <div key={b.id} className="dos-bill">
-                      <span className="t">{b.title}</span>
-                      <span className={cn("badge", b.status === "ACTIVE" ? "b-teal" : b.status === "CLOSED" ? "b-slate" : "b-white")}>
-                        {b.status === "ACTIVE" ? "执行中" : b.status === "CLOSED" ? "已结束" : "草稿"}
-                      </span>
-                      <span className="v mono">{formatCurrency(b.contractAmount)}</span>
-                      <span className="m">{[b.signedAt ? `${formatDate(b.signedAt)} 签署` : null, b.schedule].filter(Boolean).join(" · ")}</span>
-                    </div>
-                  ))
-                )
+                <FieldItem label="委托合同" wide>
+                  {billings.length ? (
+                    <span className="dos-ct">
+                      {billings.map((b) => (
+                        <span key={b.id} className="it">
+                          <span className="nm">{b.title}</span>
+                          <span className={cn("badge", b.status === "ACTIVE" ? "b-teal" : b.status === "CLOSED" ? "b-slate" : "b-white")}>
+                            {b.status === "ACTIVE" ? "执行中" : b.status === "CLOSED" ? "已结束" : "草稿"}
+                          </span>
+                          <span className="amt">{formatCurrency(b.contractAmount)}</span>
+                          {b.signedAt ? <span className="mt">{formatDate(b.signedAt)} 签署</span> : null}
+                          {b.schedule ? <span className="mt">{b.schedule}</span> : null}
+                        </span>
+                      ))}
+                    </span>
+                  ) : null}
+                </FieldItem>
               ) : null}
-              {contractDocs.length ? (
-                <>
-                  <div className="dos-bill-div">合同扫描件</div>
-                  {contractDocs.map((d) => (
-                    <div key={d.id} className="dos-bill">
-                      <span className="t">{d.name}</span>
-                      <span className="m">{formatDate(d.createdAt)}</span>
-                      <a className="link-inline" href={`/api/documents/${d.id}/download`} target="_blank" rel="noreferrer">
-                        下载
+              <FieldItem label="扫描件" wide>
+                {contractDocs.length ? (
+                  <span className="dos-ct">
+                    {contractDocs.map((d) => (
+                      <a key={d.id} href={`/api/documents/${d.id}/download`} target="_blank" rel="noreferrer">
+                        <FileText className="h-3.5 w-3.5" strokeWidth={1.8} />
+                        <span className="nm">{d.name}</span>
+                        <span className="mt">{formatDate(d.createdAt)}</span>
                       </a>
-                    </div>
-                  ))}
-                </>
-              ) : (
-                <div className="dos-bill">
-                  <span className="m">未找到合同扫描件</span>
-                </div>
-              )}
-            </div>
+                    ))}
+                  </span>
+                ) : null}
+              </FieldItem>
+            </FieldGrid>
           </Group>
 
           <Group

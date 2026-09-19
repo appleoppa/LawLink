@@ -1270,6 +1270,14 @@
 .mo-dossier .dos-arch .panel-head .panel-title > .t-xs { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mo-dossier .dos-arch .panel-head > *:last-child { flex-shrink: 0; white-space: nowrap; }
 .mo-dossier .dos-arch .panel-title { white-space: nowrap; }
+/* 委托与收费：合同与扫描件以行内片呈现，并入字段表，不再单独成框 */
+.mo-dossier .dos-ct { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.mo-dossier .dos-ct .it, .mo-dossier .dos-ct a { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; padding: 3px 9px; border: 1px solid var(--bd-subtle); border-radius: 999px; background: #FBFCFC; font-size: 11.5px; font-weight: 500; color: var(--t-secondary); text-decoration: none; }
+.mo-dossier .dos-ct a:hover { border-color: var(--teal); color: var(--teal-deep); background: var(--teal-soft); }
+.mo-dossier .dos-ct .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 600; color: var(--t-primary); }
+.mo-dossier .dos-ct .amt { font-family: var(--font-mono); font-size: 12px; font-weight: 650; color: var(--t-primary); }
+.mo-dossier .dos-ct .mt { font-size: 11px; color: var(--t-muted); }
+.mo-dossier .dos-ct .badge { font-size: 10px; }
 .mo-dossier .dos-foot-note { margin: 12px 0 0; font-size: 11px; line-height: 1.7; color: var(--t-muted); }
 .mo-dossier .dos-bill .m { flex-basis: auto; }
 .mo-dossier .dos-bill:has(.link-inline) .m { margin-right: auto; }
@@ -1283,7 +1291,8 @@
 .mo-dossier .dos-group-h .h { font-size: 11.5px; color: var(--t-muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mo-dossier .dos-group-h .a { margin-left: auto; flex-shrink: 0; }
 .mo-dossier .dos-group-b { padding: 0 18px 14px; }
-.mo-dossier .dos-facts .mo-field-k { width: 88px; }
+.mo-dossier .dos-facts .mo-field-k { width: 80px; padding-left: 10px; padding-right: 10px; }
+.mo-dossier .dos-facts .mo-field-v { padding-left: 12px; padding-right: 12px; }
 .mo-dossier .dos-facts .dos-bill-list { margin-top: 12px; }
 .mo-dossier .dos-facts .dos-two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 24px; }
 
