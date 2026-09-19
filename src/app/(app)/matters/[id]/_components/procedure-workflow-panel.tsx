@@ -14,7 +14,6 @@ import {
   FolderOpen,
   Gavel,
   Landmark,
-  LayoutList,
   Lightbulb,
   ListChecks,
   Loader2,
@@ -695,7 +694,7 @@ export type WaitingItem = { key: string; title: string; meta: string; onOpen?: (
 /**
  * 案卷工作台（程序栏之下）：页签 → 各视图。
  * - 案件档案：案件页注入的档案主栏 + 侧栏（承办团队 + 最近待办 / 最近记录）
- * - 办案进程：环节竖列（顶部「全部环节」总览）+ 环节操作条 + 待办 + 材料（含证据要点）+ 经办记录（含快递与备忘）
+ * - 办案进程：环节竖列 + 环节操作条 + 待办 + 材料（含证据要点）+ 经办记录（含快递与备忘）
  * - 委托与财务、审批用印：案件页注入
  * 同一份数据只在一处展示：未完成事项只在待办，已发生事项只在经办记录，材料与证据链只在办案进程。
  */
@@ -757,7 +756,6 @@ export function ProcedureWorkflowPanel({
 }) {
   const router = useRouter();
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const [scope, setScope] = useState<"all" | "stage">("stage");
   const [templateOpen, setTemplateOpen] = useState(false);
   const [taskStage, setTaskStage] = useState<WorkflowStage | null>(null);
   const [stageCreateOpen, setStageCreateOpen] = useState(false);
@@ -778,14 +776,14 @@ export function ProcedureWorkflowPanel({
     stages[0] ??
     null;
   const selectedStage = stages.find((s) => s.key === selectedKey) ?? currentStage;
-  const effectiveScope = selectedStage ? scope : "all";
+  // 2026-09-19 用户确认去掉「总览」：始终以选中环节为范围；没有环节（尚无程序）时才退回全部
+  const effectiveScope: "all" | "stage" = selectedStage ? "stage" : "all";
   const actions = useMemo(() => buildActionItems(procedure, stages, users), [procedure, stages, users]);
   const logItems = useMemo(() => buildLogItems({ procedure, stages, notes, events: timelineEvents, users, expresses: expresses ?? [] }), [procedure, stages, notes, timelineEvents, users, expresses]);
 
   // 切换程序后回到该程序的当前环节
   useEffect(() => {
     setSelectedKey(null);
-    setScope("stage");
   }, [procedure?.id]);
 
   useEffect(() => {
@@ -809,7 +807,6 @@ export function ProcedureWorkflowPanel({
 
   function selectStage(key: string) {
     setSelectedKey(key);
-    setScope("stage");
   }
 
   async function handleRemoveStage(stage: WorkflowStage) {
@@ -871,9 +868,6 @@ export function ProcedureWorkflowPanel({
             selectedKey={effectiveScope === "stage" ? selectedStage?.key ?? null : null}
             currentKey={currentStage?.key ?? null}
             onSelect={selectStage}
-            overviewActive={effectiveScope === "all"}
-            onOverview={() => setScope("all")}
-            openCount={actions.length}
             onAddStage={canManage && procedure ? () => setStageCreateOpen(true) : undefined}
           />
           <div className="dos-main">
@@ -914,7 +908,7 @@ export function ProcedureWorkflowPanel({
                 canManage={canManage}
                 onOpenTemplate={() => setTemplateOpen(true)}
               />
-              {effectiveScope === "all" ? materialsExtra : null}
+              {materialsExtra}
               <CaseLog
                 items={logItems}
                 stages={stages}
@@ -956,10 +950,7 @@ export function ProcedureWorkflowPanel({
             logItems={logItems}
             waiting={waiting ?? []}
             procedureLabel={procedure ? procedure.customLabel ?? procedureTypeLabel[procedure.type] : null}
-            onOpenWork={() => {
-              setScope("all");
-              onViewChange("work");
-            }}
+            onOpenWork={() => onViewChange("work")}
           />
           )}
         </aside>
@@ -1181,9 +1172,6 @@ function StageLine({
   selectedKey,
   currentKey,
   onSelect,
-  overviewActive,
-  onOverview,
-  openCount,
   onAddStage
 }: {
   procedure: WorkflowProcedure | null;
@@ -1191,10 +1179,6 @@ function StageLine({
   selectedKey: string | null;
   currentKey: string | null;
   onSelect: (key: string) => void;
-  /** 「全部环节（总览）」入口：替代原来的本环节 / 全部环节切换按钮（2026-09-14） */
-  overviewActive: boolean;
-  onOverview: () => void;
-  openCount: number;
   onAddStage?: () => void;
 }) {
   if (!procedure) {
@@ -1236,20 +1220,6 @@ function StageLine({
         </span>
       </div>
       <ol className="dos-vline-list">
-        {/* 总览：与环节同样式的首项，查看全部待办、材料与记录（替代本环节 / 全部环节切换） */}
-        <li className={cn("dos-vnode overview", overviewActive && "sel")}>
-          <button type="button" onClick={onOverview} aria-current={overviewActive ? "step" : undefined}>
-            <span className="pin" aria-hidden>
-              <LayoutList strokeWidth={2.4} />
-            </span>
-            <span className="body">
-              <span className="nm">总览</span>
-              <span className="sub">
-                <span className="dt">{openCount ? `全部待办 ${openCount}` : "全部环节"}</span>
-              </span>
-            </span>
-          </button>
-        </li>
         {stages.map((stage, i) => {
           const state = stage.status === "done" ? "done" : stage.key === currentKey ? "cur" : stage.status === "risk" ? "risk" : "todo";
           const flag = flagFor(stage);
