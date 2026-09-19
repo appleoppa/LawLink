@@ -25,7 +25,11 @@ async function findWritableMatter(
   opts?: Pick<WritableGuardOptions, "allowFinanceRole">
 ) {
   const session = await requireSession("personal");
-  const allowByFinanceRole = opts?.allowFinanceRole && (session.user.role === "FINANCE" || (session.user.role === "CUSTOM" && scopeFor(session.user, "finance.write") === "ALL"));
+  // 自定义角色只要具备全所范围的「维护收付款」或「确认实收到账」之一，即按财务角色放行案件关联校验
+  const allowByFinanceRole = opts?.allowFinanceRole && (
+    session.user.role === "FINANCE" ||
+    (session.user.role === "CUSTOM" && (scopeFor(session.user, "finance.write") === "ALL" || scopeFor(session.user, "finance.confirm") === "ALL"))
+  );
   return prisma.matter.findFirst({
     where: {
       id: matterId,

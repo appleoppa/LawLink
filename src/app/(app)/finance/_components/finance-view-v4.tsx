@@ -60,10 +60,16 @@ type Props = {
     personalYearly: number;
     monthlyIssued: number;
     pendingInvoiceCount: number;
+    /** 本月实收笔数与待确认合计：库内统计，不受流水条数上限影响 */
+    monthConfirmedCount: number;
+    monthPendingCount: number;
+    monthPendingAmount: number;
   };
   invoiceRequests: InvoiceRequestRow[];
   /** 全部待确认实收，与流水分页无关 */
   pendingEntries?: Entry[];
+  /** 分成流水独立查询，避免混在 500 条流水里被截断 */
+  commissionEntries?: Entry[];
   canApproveInvoice: boolean;
   canExport: boolean;
   canWrite: boolean;
@@ -84,7 +90,7 @@ const TYPE_META: Record<Entry["type"], { label: string; badge: string; sign: str
 const yuan = (n: number, digits = 0) => `¥${n.toLocaleString("zh-CN", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
 const mmdd = (d: Date | string) => shMonthDay(d);
 
-export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests, pendingEntries, canApproveInvoice, canExport, canWrite, canConfirmReceipt }: Props) {
+export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests, pendingEntries, commissionEntries: commissionRows, canApproveInvoice, canExport, canWrite, canConfirmReceipt }: Props) {
   const params = useSearchParams();
   const initialTab = (["ledger", "invoices", "commission", "aging"] as Tab[]).includes(params.get("tab") as Tab) ? (params.get("tab") as Tab) : "ledger";
   const [tab, setTab] = useState<Tab>(initialTab);
@@ -140,8 +146,7 @@ export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests,
   const now = new Date();
   const nowSh = shParts(now);
   const monthGrowth = stats.lastMonthReceived > 0 ? Math.round(((stats.monthlyReceived - stats.lastMonthReceived) / stats.lastMonthReceived) * 100) : null;
-  const monthReceivedCount = entries.filter((e) => e.type === "RECEIVED" && shParts(e.occurredAt).m === nowSh.m && shParts(e.occurredAt).y === nowSh.y);
-  const unconfirmedReceived = monthReceivedCount.filter((e) => e.confirmState === "PENDING");
+
   const yearRate = stats.yearlyReceivable > 0 ? Math.round((stats.yearlyReceived / stats.yearlyReceivable) * 1000) / 10 : null;
   const worst = aging.worst;
   const pendingInvoices = invoiceRequests.filter((r) => r.status === "PENDING" || r.status === "APPROVED");
@@ -152,7 +157,7 @@ export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests,
   const receivedInvoiceNos = new Set(entries.filter((e) => e.type === "RECEIVED" && e.confirmState === "CONFIRMED" && e.invoiceNo).map((e) => e.invoiceNo as string));
   const issuedUnpaid = invoiceRequests.filter((r) => r.status === "ISSUED" && !(r.invoiceNo && receivedInvoiceNos.has(r.invoiceNo)));
   const overdueRows = aging.items.filter((r) => (r.overdueDays ?? 0) > 0);
-  const commissionEntries = entries.filter((e) => e.type === "COMMISSION");
+  const commissionEntries = commissionRows ?? entries.filter((e) => e.type === "COMMISSION");
 
   return (
     <div className="mo-finance">
@@ -171,7 +176,7 @@ export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests,
           label="本月实收"
           value={yuan(stats.monthlyReceived)}
           trend={monthGrowth === null ? null : { tone: monthGrowth >= 0 ? "up" : "down", text: `${monthGrowth >= 0 ? "↑" : "↓"} ${Math.abs(monthGrowth)}%` }}
-          sub={`已确认 ${monthReceivedCount.length - unconfirmedReceived.length} 笔${unconfirmedReceived.length ? ` · 待确认 ${unconfirmedReceived.length} 笔 ${yuan(unconfirmedReceived.reduce((s, e) => s + e.amount, 0))}（未计入）` : ""}`}
+          sub={`已确认 ${stats.monthConfirmedCount} 笔${stats.monthPendingCount ? ` · 待确认 ${stats.monthPendingCount} 笔 ${yuan(stats.monthPendingAmount)}（未计入）` : ""}`}
         />
         <MetricCard
           label="应收余额"

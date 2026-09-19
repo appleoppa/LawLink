@@ -119,7 +119,10 @@ describe("财务删除守卫（P0-6）", () => {
     await expect(deleteFeeEntry("f3")).resolves.toEqual({ ok: true });
     // 级联删分成 + 条件删父条目，都走 deleteMany（并发下按受影响行数判定）
     expect(db.feeEntry.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ["c1", "c2"] } } });
-    expect(db.feeEntry.deleteMany).toHaveBeenLastCalledWith({ where: { id: "f3" } });
+    // 条件删除：发票号、合同签署、确认状态一并判定，避免读取后被改动
+    expect(db.feeEntry.deleteMany).toHaveBeenLastCalledWith({
+      where: { id: "f3", invoiceNo: null, OR: [{ billingId: null }, { billing: { is: { signedAt: null } } }] }
+    });
   });
 
   it("并发确认后删除落空：受影响行数为 0 时报错，不静默通过", async () => {

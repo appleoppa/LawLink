@@ -16,9 +16,10 @@ export default async function FinancePage() {
   const session = await getSession();
   const userId = session!.user.id;
 
-  const [entries, pending, kpis, monthly, personal, invoiceRequests, invoiceStats, aging] = await Promise.all([
+  const [entries, pending, commissions, kpis, monthly, personal, invoiceRequests, invoiceStats, aging] = await Promise.all([
     listAllFeeEntries({ limit: 500 }),
     listPendingReceipts(),
+    listAllFeeEntries({ type: "COMMISSION", limit: 500 }),
     getFinanceKpis(),
     getMonthlyRevenue(12),
     getPersonalRevenue(userId),
@@ -27,7 +28,7 @@ export default async function FinancePage() {
     getReceivablesAging()
   ]);
 
-  const { monthlyReceived, monthlyReceivable, lastMonthReceived, yearlyReceived, yearlyReceivable } = kpis;
+  const { monthlyReceived, monthlyReceivable, lastMonthReceived, yearlyReceived, yearlyReceivable, monthConfirmedCount, monthPendingCount, monthPendingAmount } = kpis;
 
   return (
     <FinanceViewV4
@@ -37,6 +38,11 @@ export default async function FinancePage() {
         confirmed: Boolean(entry.billing?.signedAt || entry.invoiceNo)
       }))}
       pendingEntries={pending.map((entry) => ({
+        ...entry,
+        amount: Number(entry.amount),
+        confirmed: Boolean(entry.billing?.signedAt || entry.invoiceNo)
+      }))}
+      commissionEntries={commissions.map((entry) => ({
         ...entry,
         amount: Number(entry.amount),
         confirmed: Boolean(entry.billing?.signedAt || entry.invoiceNo)
@@ -55,7 +61,10 @@ export default async function FinancePage() {
         personalMonthly: personal.monthlyCommission,
         personalYearly: personal.yearlyCommission,
         monthlyIssued: invoiceStats.monthlyIssued,
-        pendingInvoiceCount: invoiceStats.pendingCount
+        pendingInvoiceCount: invoiceStats.pendingCount,
+        monthConfirmedCount,
+        monthPendingCount,
+        monthPendingAmount
       }}
       invoiceRequests={invoiceRequests}
       canApproveInvoice={

@@ -225,6 +225,14 @@ export async function createFeeEntry(input: FeeEntryCreateInput) {
       })));
     } catch (err) {
       console.error("[finance] 待确认实收通知发送失败：", err);
+      // 通知失败不影响登记，但必须留痕，否则「发不出去」会长期没人发现
+      await audit({
+        userId: session.user.id,
+        action: "FEE_ENTRY_NOTIFY_FAILED",
+        targetType: "FeeEntry",
+        targetId: created.id,
+        detail: { matterId: data.matterId, reason: err instanceof Error ? err.message : String(err) }
+      });
     }
   }
 
@@ -384,11 +392,17 @@ export async function deleteFeeEntry(id: string) {
         where: { id: { in: entry.commissionChildren.map((c) => c.id) } }
       });
     }
-    // 条件删除：读取到删除之间可能已被确认到账，按受影响行数判定，避免并发下删掉已入账记录
+    // 条件删除：读取与删除之间，确认状态、发票号、合同签署都可能被改动，
+    // 因此把三项判定一并放进 where，按受影响行数决定成败（0 行即说明期间已入账/已对外）。
     const removed = await tx.feeEntry.deleteMany({
-      where: { id, ...(entry.type === "RECEIVED" ? { confirmState: "PENDING" } : {}) }
+      where: {
+        id,
+        invoiceNo: null,
+        OR: [{ billingId: null }, { billing: { is: { signedAt: null } } }],
+        ...(entry.type === "RECEIVED" ? { confirmState: "PENDING" } : {})
+      }
     });
-    if (removed.count === 0) throw new Error("该实收已确认到账并已入账，不可删除；如需更正请登记退款 / 冲正");
+    if (removed.count === 0) throw new Error("该记录在此期间已确认到账或已对外开票，不可删除；如需更正请登记退款 / 冲正");
   });
 
   await audit({
@@ -770,14 +784,26 @@ export async function getFinanceKpis() {
     });
     return Number(res._sum.amount ?? 0);
   };
-  const [monthlyReceived, monthlyReceivable, lastMonthReceived, yearlyReceived, yearlyReceivable] = await Promise.all([
+  const countBy = async (confirmState: "CONFIRMED" | "PENDING") =>
+    prisma.feeEntry.count({ where: { type: "RECEIVED", confirmState, occurredAt: { gte: monthStart }, matter: matterWhere } });
+  const sumPending = async () => {
+    const res = await prisma.feeEntry.aggregate({
+      where: { type: "RECEIVED", confirmState: "PENDING", occurredAt: { gte: monthStart }, matter: matterWhere },
+      _sum: { amount: true }
+    });
+    return Number(res._sum.amount ?? 0);
+  };
+  const [monthlyReceived, monthlyReceivable, lastMonthReceived, yearlyReceived, yearlyReceivable, monthConfirmedCount, monthPendingCount, monthPendingAmount] = await Promise.all([
     sum("RECEIVED", monthStart),
     sum("RECEIVABLE", monthStart),
     sum("RECEIVED", lastMonthStart, monthStart),
     sum("RECEIVED", yearStart),
-    sum("RECEIVABLE", yearStart)
+    sum("RECEIVABLE", yearStart),
+    countBy("CONFIRMED"),
+    countBy("PENDING"),
+    sumPending()
   ]);
-  return { monthlyReceived, monthlyReceivable, lastMonthReceived, yearlyReceived, yearlyReceivable };
+  return { monthlyReceived, monthlyReceivable, lastMonthReceived, yearlyReceived, yearlyReceivable, monthConfirmedCount, monthPendingCount, monthPendingAmount };
 }
 
 /** 全部待确认实收（不受流水条数上限影响）：财务页「待确认实收」用 */
