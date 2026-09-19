@@ -22,7 +22,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { primaryNav, businessNav, resourceNav, APP_ITEMS, type NavItem } from "./nav-config";
+import { caseNav, firmNav, APP_ITEMS, type NavItem } from "./nav-config";
 
 /** v0.42 项1: 侧栏品牌（可在管理后台 → 律所信息配置） */
 export type FirmBrand = {
@@ -126,12 +126,12 @@ export function NavContent({ firm, onOpenTools }: { firm: FirmBrand; onOpenTools
       </Link>
 
       <nav className="nav overflow-y-auto">
-        {section("工作区", primaryNav)}
-        {section("业务", businessNav)}
-        <div className="nav-section-label">资料</div>
-        {resourceNav.filter(visible).map((item) => (
-          <NavLink key={item.href} item={item} active={isActive(pathname, item.href)} count={null} />
-        ))}
+        {section("办案", caseNav)}
+        {section("经营", firmNav)}
+      </nav>
+
+      {/* 工具抽屉不是导航项：固定在底部用户卡上方 */}
+      <div className="nav-tools">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button type="button" className={cn("nav-item w-full border-0 bg-transparent text-left font-[inherit]", APP_ITEMS.some((a) => a.href && pathname.startsWith(a.href)) && "active")}>
@@ -139,7 +139,7 @@ export function NavContent({ firm, onOpenTools }: { firm: FirmBrand; onOpenTools
               更多应用
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent side="right" align="start" className="w-44">
+          <DropdownMenuContent side="right" align="end" className="w-44">
             {APP_ITEMS.map((it) => {
               const Icon = it.icon;
               if (it.kind === "tools") {
@@ -168,7 +168,7 @@ export function NavContent({ firm, onOpenTools }: { firm: FirmBrand; onOpenTools
             })}
           </DropdownMenuContent>
         </DropdownMenu>
-      </nav>
+      </div>
 
       <div className="nav-bottom">
         <DropdownMenu>

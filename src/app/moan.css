@@ -163,6 +163,7 @@ mark {
 }
 .nav-item.active .count { background: rgba(0,123,127,0.14); color: var(--teal-deep); }
 .nav-item .count.alert { background: var(--red-bg); color: var(--red); }
+.nav-tools { padding: 0 10px 8px; }
 .nav-bottom { padding: 10px 10px 14px; border-top: 1px solid var(--bd-hair); }
 .user-card {
   display: flex; align-items: center; gap: 9px; padding: 8px 9px;

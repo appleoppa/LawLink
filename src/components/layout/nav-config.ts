@@ -25,21 +25,24 @@ export type NavItem = {
   countKey?: keyof NavCounts;
 };
 
-// 墨案 02 效果图侧栏信息架构：工作区 / 业务 / 知识；效果图外的既有入口收在「资料」段
-export const primaryNav: NavItem[] = [
+/**
+ * 侧栏两组（2026-09-18 用户确认）：
+ * 「办案」＝跟着具体案件走的动线，「经营」＝跟所、客户、钱走的事。
+ * 判断归属看新功能是围绕某一件案件，还是围绕律所整体。工具抽屉「更多应用」不在导航列表里，固定在底部。
+ */
+export const caseNav: NavItem[] = [
   { label: "工作台", href: "/", icon: House },
   { label: "案件", href: "/matters", icon: Folder, countKey: "matters" },
   { label: "审批", href: "/approvals", icon: SquareCheck, countKey: "approvals" },
-  { label: "日程", href: "/schedule", icon: CalendarDays }
+  { label: "日程", href: "/schedule", icon: CalendarDays },
+  { label: "法院短信", href: "/inbox", icon: Inbox }
 ];
 
-export const businessNav: NavItem[] = [
+export const firmNav: NavItem[] = [
   { label: "客户", href: "/clients", icon: Users, countKey: "clients" },
   { label: "财务", href: "/finance", icon: CreditCard },
   { label: "报表", href: "/reports", icon: ChartColumn }
 ];
-
-export const resourceNav: NavItem[] = [{ label: "法院短信", href: "/inbox", icon: Inbox }];
 
 // 原顶栏「应用」聚合入口：实务工具=全局弹窗；法律导航=外链；其余为独立页
 export const APP_ITEMS: { label: string; icon: LucideIcon; kind: "tools" | "link" | "external"; href?: string }[] = [
