@@ -7,7 +7,8 @@
  */
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDownUp, ChevronDown, Columns3, Download, Search } from "lucide-react";
+import Link from "next/link";
+import { Archive, ArrowDownUp, ChevronDown, Columns3, Download, Search } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -173,6 +174,12 @@ export function MattersViewV4({
         sub={<>共 <b>{tabCounts?.all ?? total}</b> 件 · 当前范围「{TABS.find((t) => t.key === tab)?.label}」<b>{total}</b> 件 · 每页 {pageSize} 条</>}
         actions={
           <>
+            {tab === "archived" ? (
+              <Link href="/archive" className="btn btn-secondary btn-sm" title="归档号、归档日期、结案原因与卷宗目录">
+                <Archive />
+                归档台账
+              </Link>
+            ) : null}
             {!isIntakeTab ? (
               <a href={exportUrl} title="仅导出本人经办或原有管理权限范围内的案件；团队查看权不含导出" className="btn btn-secondary btn-sm">
                 <Download />

@@ -22,7 +22,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { primaryNav, businessNav, knowledgeNav, resourceNav, APP_ITEMS, type NavItem } from "./nav-config";
+import { primaryNav, businessNav, resourceNav, APP_ITEMS, type NavItem } from "./nav-config";
 
 /** v0.42 项1: 侧栏品牌（可在管理后台 → 律所信息配置） */
 export type FirmBrand = {
@@ -128,7 +128,6 @@ export function NavContent({ firm, onOpenTools }: { firm: FirmBrand; onOpenTools
       <nav className="nav overflow-y-auto">
         {section("工作区", primaryNav)}
         {section("业务", businessNav)}
-        {section("知识", knowledgeNav)}
         <div className="nav-section-label">资料</div>
         {resourceNav.filter(visible).map((item) => (
           <NavLink key={item.href} item={item} active={isActive(pathname, item.href)} count={null} />

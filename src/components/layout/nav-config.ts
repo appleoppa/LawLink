@@ -4,11 +4,9 @@ import {
   Folder,
   ArrowDownToLine,
   SquareCheck,
-  Clock3,
   CalendarDays,
   Users,
   CreditCard,
-  Archive,
   ChartColumn,
   Inbox,
   Calculator,
@@ -34,17 +32,12 @@ export const primaryNav: NavItem[] = [
   { label: "案件", href: "/matters", icon: Folder, countKey: "matters" },
   { label: "收案", href: "/intakes", icon: ArrowDownToLine, countKey: "intakes" },
   { label: "审批", href: "/approvals", icon: SquareCheck, countKey: "approvals" },
-  { label: "冲突预检", href: "/conflicts", icon: Clock3 },
   { label: "日程", href: "/schedule", icon: CalendarDays }
 ];
 
 export const businessNav: NavItem[] = [
   { label: "客户", href: "/clients", icon: Users, countKey: "clients" },
-  { label: "财务", href: "/finance", icon: CreditCard }
-];
-
-export const knowledgeNav: NavItem[] = [
-  { label: "归档", href: "/archive", icon: Archive },
+  { label: "财务", href: "/finance", icon: CreditCard },
   { label: "报表", href: "/reports", icon: ChartColumn }
 ];
 

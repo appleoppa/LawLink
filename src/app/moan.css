@@ -190,6 +190,10 @@ mark {
 }
 .searchbox:hover { background: #E2E7E4; }
 .searchbox .kbd { margin-left: auto; }
+/* 顶栏操作组：次级入口（冲突预检）紧贴主操作（新建收案），同高、间距收紧，读作一条动线 */
+.tb-actions { display: flex; align-items: center; gap: 6px; }
+.tb-actions > .btn-secondary { color: var(--t-secondary); background: transparent; border-color: var(--bd-subtle); }
+.tb-actions > .btn-secondary:hover { color: var(--teal-deep); border-color: var(--teal-line); background: var(--teal-soft); }
 
 /* ============ 按钮 ============ */
 .btn {

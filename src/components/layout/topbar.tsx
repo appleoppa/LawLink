@@ -7,7 +7,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
-import { Search, ChevronDown, Plus, LogOut, User, Settings as SettingsIcon, Menu, ShieldCheck } from "lucide-react";
+import { Search, ChevronDown, Plus, LogOut, User, Settings as SettingsIcon, Menu, ShieldCheck, ScanSearch } from "lucide-react";
 import { roleDisplayName } from "@/lib/roles/catalog";
 import { canEnterAdminWorkspace } from "@/lib/auth/system-role";
 import {
@@ -53,11 +53,22 @@ export function Topbar({ onMobileMenuToggle, userAvatar }: { onMobileMenuToggle?
 
       <NotificationPopover />
 
-      {action ? (
-        <button type="button" onClick={action.onClick} disabled={action.disabled} className="btn btn-primary disabled:opacity-50" aria-label={action.label}>
-          <Plus strokeWidth={2.2} />
-          <span className="hidden sm:inline">{action.label}</span>
-        </button>
+      {/* 收案动线：先预检再建案——预检为次级按钮，与主操作同高、同圆角，靠拢成一组 */}
+      {canCreateIntake || action ? (
+        <div className="tb-actions">
+          {canCreateIntake ? (
+            <Link href="/conflicts" className="btn btn-secondary" title="收案前查一查本所有没有相关记录" aria-label="冲突预检">
+              <ScanSearch strokeWidth={1.9} />
+              <span className="hidden lg:inline">冲突预检</span>
+            </Link>
+          ) : null}
+          {action ? (
+            <button type="button" onClick={action.onClick} disabled={action.disabled} className="btn btn-primary disabled:opacity-50" aria-label={action.label}>
+              <Plus strokeWidth={2.2} />
+              <span className="hidden sm:inline">{action.label}</span>
+            </button>
+          ) : null}
+        </div>
       ) : null}
 
       <DropdownMenu>
