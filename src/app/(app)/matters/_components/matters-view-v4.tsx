@@ -274,7 +274,6 @@ export function MattersViewV4({
           </div>
         ) : null}
       </div>
-      <p className="t-xs t-faint mt-3 text-center">列表即档案架 · 左侧脊线代表案件状态 · 红色仅用于逾期与阻断</p>
 
       <IntakeWizard open={wizardOpen} onOpenChange={closeWizard} clientOptions={clientOptions} colleagues={colleagues} initialClientId={autoOpenIntake ? initialClientId : undefined} />
     </div>

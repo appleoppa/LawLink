@@ -1626,7 +1626,7 @@ function NextActions({
           {compact ? (
             <span className="t-xs t-mute" style={{ fontWeight: 400 }}>{scope === "stage" && selectedStage ? selectedStage.name : "全部环节"}</span>
           ) : (
-            <span className="t-xs t-mute" style={{ fontWeight: 400 }}>{scope === "stage" && selectedStage ? `「${selectedStage.name}」未完成的任务、期限与开庭` : "全部环节未完成的任务、期限与开庭"}，完成后转入记录</span>
+            <span className="t-xs t-mute" style={{ fontWeight: 400 }}>{scope === "stage" && selectedStage ? selectedStage.name : "全部环节"}</span>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -1644,7 +1644,7 @@ function NextActions({
       </div>
 
       {empty && waiting.length === 0 ? (
-        <EmptyState compact title={scope === "stage" ? "本环节没有待办" : "没有待办"} description="逾期任务会同时进入工作台「今日行动」。" />
+        <EmptyState compact title={scope === "stage" ? "本环节没有待办" : "没有待办"} />
       ) : null}
       {overdue.length ? (
         <div className="dos-lane">
@@ -2022,9 +2022,7 @@ function CaseLog({
         <div className="panel-title">
           <BookOpen className="ic" strokeWidth={1.8} />
           记录
-          <span className="t-xs t-mute" style={{ fontWeight: 400 }}>
-            {focusStageName ? `本环节「${focusStageName}」已发生的事项` : "已发生的事项，按环节分段"}
-          </span>
+          <span className="t-xs t-mute" style={{ fontWeight: 400 }}>{focusStageName ?? "全部环节"}</span>
         </div>
         <div className="flex items-center gap-[7px]">
         {onCaseSearch ? (
@@ -2057,7 +2055,7 @@ function CaseLog({
         })}
       </div>
       {segs.length === 0 ? (
-        <EmptyState compact title={focusStageName ? "本环节暂无记录" : "暂无记录"} description="电话、会见、法院沟通、研判笔记、完成的任务、快递与备忘都会记在这里。" />
+        <EmptyState compact title={focusStageName ? "本环节暂无记录" : "暂无记录"} description="沟通、法院、研判、快递都记在这里" />
       ) : (
         visibleSegs.map((seg) => {
           const meta = seg.name === "__none" ? { status: "", period: "" } : stageMeta(seg.name);
@@ -2210,7 +2208,7 @@ function MaterialsSection({
           <FolderOpen className="ic" strokeWidth={1.8} />
           材料
           <span className="badge b-white" style={{ marginLeft: 2 }}>{documents.length}</span>
-          <span className="t-xs t-mute" style={{ fontWeight: 400 }}>全部环节，按环节分组；上传请先选择环节</span>
+          <span className="t-xs t-mute" style={{ fontWeight: 400 }}>全部环节</span>
         </div>
         {onAddEvidence ? (
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => onAddEvidence(null)}>
@@ -2745,7 +2743,6 @@ function StageMaterialsPanel({
           <FileText className="ic" strokeWidth={1.8} />
           材料
           <span className="badge b-white" style={{ marginLeft: 2 }}>{documents.length}</span>
-          <span className="t-xs t-mute hidden sm:inline" style={{ fontWeight: 400 }}>证据要点挂在材料上</span>
         </div>
         <div className="flex shrink-0 items-center gap-[7px]">
           {canManage && onOpenTemplate ? (
@@ -2788,7 +2785,7 @@ function StageMaterialsPanel({
       ) : null}
 
       {shownDocs.length === 0 ? (
-        <EmptyState compact icon={FileText} title="本环节暂无材料" description={canManage ? "上传后自动归入本环节，并记录来源与校验值。" : undefined} />
+        <EmptyState compact icon={FileText} title="本环节暂无材料" description={canManage ? "上传后自动归入本环节" : undefined} />
       ) : (
         shownDocs.map((doc) => <DocRow key={doc.id} doc={doc} />)
       )}

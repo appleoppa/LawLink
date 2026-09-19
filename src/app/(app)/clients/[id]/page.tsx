@@ -216,7 +216,6 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
             ) : (
               <div className="panel-body t-xs t-mute">建档时未登记客户来源，可在「编辑资料」补充。</div>
             )}
-            <div className="panel-foot"><span className="t-xs t-mute">渠道随客户建档留痕，进入所级来源分布报表</span></div>
           </div>
 
           <div className="card">

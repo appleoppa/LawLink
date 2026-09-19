@@ -353,11 +353,10 @@ export function MatterArchive({
                 </>
               ) : (
                 <div className="dos-bill">
-                  <span className="m">未找到合同扫描件；收案时上传的合同会自动归入本案材料。</span>
+                  <span className="m">未找到合同扫描件</span>
                 </div>
               )}
             </div>
-            <p className="dos-foot-note">一案一签：变更收费或增加代理程序时，在「收付与开票」新增一条补充协议，原合同保留。</p>
           </Group>
 
           <Group

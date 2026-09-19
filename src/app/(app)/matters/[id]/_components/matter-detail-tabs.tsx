@@ -439,7 +439,6 @@ export function MatterDetailTabs({
       <section className="dos-procs" aria-label="程序">
         <div className="dos-procs-h">
           <span className="t">程序</span>
-          <span className="t-xs t-mute">办案进程、材料按程序分开；切换程序后下方各页签同步切换</span>
         </div>
         <div className="dos-procs-list" role="tablist">
           {engagedProcedures.map((procedure) => {
@@ -734,7 +733,6 @@ function BillingsCard({ matterId, billings, canManage }: { matterId: string; bil
           <FileSignature className="ic" strokeWidth={1.8} />
           合同与补充协议
           <span className="badge b-white" style={{ marginLeft: 2 }}>{billings.length}</span>
-          <span className="t-xs t-mute" style={{ fontWeight: 400 }}>变更收费或增加代理程序时新增补充协议，原合同保留</span>
         </div>
         {canManage ? (
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => setAddOpen(true)}>
@@ -744,7 +742,7 @@ function BillingsCard({ matterId, billings, canManage }: { matterId: string; bil
         ) : null}
       </div>
       {billings.length === 0 ? (
-        <div className="panel-body t-xs t-mute">尚未登记合同金额。收案时填写的收费会在转为案件时生成一条合同。</div>
+        <div className="panel-body t-xs t-mute">尚未登记合同金额</div>
       ) : (
         <>
           {billings.map((b) => (
