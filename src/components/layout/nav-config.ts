@@ -2,7 +2,6 @@ import type { LucideIcon } from "lucide-react";
 import {
   House,
   Folder,
-  ArrowDownToLine,
   SquareCheck,
   CalendarDays,
   Users,
@@ -30,7 +29,6 @@ export type NavItem = {
 export const primaryNav: NavItem[] = [
   { label: "工作台", href: "/", icon: House },
   { label: "案件", href: "/matters", icon: Folder, countKey: "matters" },
-  { label: "收案", href: "/intakes", icon: ArrowDownToLine, countKey: "intakes" },
   { label: "审批", href: "/approvals", icon: SquareCheck, countKey: "approvals" },
   { label: "日程", href: "/schedule", icon: CalendarDays }
 ];
