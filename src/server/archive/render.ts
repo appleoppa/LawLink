@@ -13,6 +13,7 @@ import { decryptBuffer, encryptBuffer, sha256 } from "@/lib/storage/crypto";
 import { buildContext, renderDocxBuffer, type RenderContext } from "@/lib/template-engine";
 import { suggestFolderByTemplateCategory } from "@/lib/default-folders";
 import { CLOSED_REASON_CN } from "./schemas";
+import { shParts } from "@/lib/ui/sh-time";
 import type { ArchiveClosedReason } from "@prisma/client";
 
 const CATEGORY_CN_DOC: Record<string, string> = {
@@ -26,9 +27,9 @@ const CATEGORY_CN_DOC: Record<string, string> = {
 
 function toCNDate(d: Date): string {
   const cnDigits = "〇一二三四五六七八九";
-  const y = String(d.getFullYear()).split("").map((c) => cnDigits[+c]).join("");
-  const m = d.getMonth() + 1;
-  const day = d.getDate();
+  // 入参为数据库瞬间，年月日按上海日历日取（容器为 UTC 时本地取日会差一天）
+  const { y: yNum, m, d: day } = shParts(d);
+  const y = String(yNum).split("").map((c) => cnDigits[+c]).join("");
   const cnNum = (n: number) => {
     if (n <= 10) return ["〇", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"][n];
     if (n < 20) return "十" + cnDigits[n - 10];

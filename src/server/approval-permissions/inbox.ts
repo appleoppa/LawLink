@@ -75,7 +75,7 @@ export async function getApprovalDetail(input: { action: ApprovalAction; id: str
     verificationIds: string[];
     hasExceptions: boolean;
   } | null = null;
-  function field(label: string, value: unknown) { if (value != null && value !== "") fields.push({ label, value: value instanceof Date ? value.toLocaleDateString("zh-CN") : String(value) }); }
+  function field(label: string, value: unknown) { if (value != null && value !== "") fields.push({ label, value: value instanceof Date ? value.toLocaleDateString("zh-CN", { timeZone: "Asia/Shanghai" }) : String(value) }); }
   if (action === "INTAKE_APPROVE") {
     intakeDetail = await loadIntakeApprovalDetail(id);
     if(!task&&!isSystemAdmin(session.user)&&row.requesterId!==session.user.id&&row.intakeOwnerId!==session.user.id){

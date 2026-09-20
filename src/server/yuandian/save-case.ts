@@ -15,6 +15,7 @@ import { sha256 } from "@/lib/storage/crypto";
 import { audit } from "@/server/audit";
 import type { CaseSearchHit, VectorCaseHit } from "./cases";
 import { revalidateMatter } from "@/server/matters/route";
+import { shDayKey, shTime } from "@/lib/ui/sh-time";
 
 export type SaveCaseInput = {
   matterId: string;
@@ -40,7 +41,7 @@ function safeFileName(ah: string): string {
 }
 
 function buildMarkdown(c: SaveCaseInput["caseHit"]): string {
-  const now = new Date().toLocaleString("zh-CN");
+  const now = `${shDayKey(new Date())} ${shTime(new Date())}`;
   return [
     `# 类案存档：${c.title}`,
     "",
@@ -148,7 +149,7 @@ function formatJaDate(n: number | undefined | null): string {
 }
 
 function buildVectorMarkdown(c: SaveVectorCaseInput["caseHit"]): string {
-  const now = new Date().toLocaleString("zh-CN");
+  const now = `${shDayKey(new Date())} ${shTime(new Date())}`;
   // 案由：优先 anyou（名字），否则 ay code 兜底
   const ay =
     (c.anyou && c.anyou.length ? c.anyou : c.ay)?.join("、") || "（无案由信息）";

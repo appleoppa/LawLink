@@ -10,6 +10,7 @@
  */
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
+import { shParts, shDayKey } from "@/lib/ui/sh-time";
 import { prisma } from "./prisma";
 
 const FIRM_NAME_KEY = "firmName";
@@ -95,9 +96,9 @@ const CATEGORY_CN: Record<string, string> = {
 
 function toCNDate(d: Date): string {
   const cnDigits = "〇一二三四五六七八九";
-  const y = String(d.getFullYear()).split("").map((c) => cnDigits[+c]).join("");
-  const m = d.getMonth() + 1;
-  const day = d.getDate();
+  // 入参为瞬间（当前时刻），年月日按上海日历日取（容器为 UTC 时本地取日会差一天）
+  const { y: yNum, m, d: day } = shParts(d);
+  const y = String(yNum).split("").map((c) => cnDigits[+c]).join("");
   const cnNum = (n: number) => {
     if (n <= 10) return ["〇", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"][n];
     if (n < 20) return "十" + cnDigits[n - 10];
@@ -198,7 +199,7 @@ export async function buildContext(opts: {
   if (!opts.matterId) {
     return {
       firm,
-      today: today.toISOString().slice(0, 10),
+      today: shDayKey(today),
       todayCN: toCNDate(today),
       lawyer: { name: user?.name ?? "", phone: user?.phone ?? "" },
       matter: {
@@ -268,7 +269,7 @@ export async function buildContext(opts: {
       title: matter.title,
       category: CATEGORY_CN[matter.category] ?? matter.category,
       causeText,
-      intakeDate: matter.intakeDate ? matter.intakeDate.toISOString().slice(0, 10) : "",
+      intakeDate: matter.intakeDate ? shDayKey(matter.intakeDate) : "",
       claimAmount: matter.claimAmount ? `${matter.claimAmount} 元` : "—",
       ourStanding: matter.ourStanding ? STANDING_CN[matter.ourStanding] ?? matter.ourStanding : ""
     },

@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { matterFinanceVisibilityFilter, matterReadVisibilityFilter, intakeReadVisibilityFilter } from "@/lib/permissions";
 import { matterCategoryColor, matterCategoryLabel, matterCategoryShort, procedureTypeLabel } from "@/lib/enums";
+import { shDayKey } from "@/lib/ui/sh-time";
 import { matterHref } from "@/lib/matters/route";
 
 // ============ Types ============
@@ -348,7 +349,8 @@ export async function getDashboardHeroData(): Promise<HeroData> {
   if (session.user.role === "CUSTOM") visFilter.AND = [matterReadVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions), customMatterFilter(session.user.id, session.user.rolePermissions, "schedule.read", true)];
 
   const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  // 日界按上海日历日取（容器为 UTC 时本地取日会差一天），期限多存为上海午夜瞬间
+  const todayStart = new Date(`${shDayKey(now)}T00:00:00+08:00`);
   const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
   const weekEnd = new Date(todayStart.getTime() + 7 * 24 * 60 * 60 * 1000);
   const in7d = new Date(todayStart.getTime() + 7 * 24 * 60 * 60 * 1000);

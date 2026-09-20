@@ -5,18 +5,19 @@ import { getFinanceFacts, periodReceipts, sumAmounts } from "@/server/finance/fa
  * 周定义：周一 00:00:00 → 下周一 00:00:00（半开区间）
  */
 import { prisma } from "@/lib/prisma";
+import { shDayKey, civilFromKey, civilKey } from "@/lib/ui/sh-time";
 import type { ReportPeriod } from "./queries";
 
 export function weekPeriod(now = new Date()): ReportPeriod {
-  // 周一 = 0
-  const dow = (now.getDay() + 6) % 7;
-  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow);
-  const nextMonday = new Date(monday);
-  nextMonday.setDate(monday.getDate() + 7);
-  const fmt = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  // 周一 = 0；周界按上海日历日取（容器为 UTC 时本地取日会差一天），半开区间
+  const mondayCivil = civilFromKey(shDayKey(now));
+  mondayCivil.setDate(mondayCivil.getDate() - (mondayCivil.getDay() + 6) % 7);
+  const nextMondayCivil = new Date(mondayCivil);
+  nextMondayCivil.setDate(mondayCivil.getDate() + 7);
+  const monday = new Date(`${civilKey(mondayCivil)}T00:00:00+08:00`);
+  const nextMonday = new Date(`${civilKey(nextMondayCivil)}T00:00:00+08:00`);
   return {
-    label: `${fmt(monday)} ~ ${fmt(new Date(nextMonday.getTime() - 86400_000))}`,
+    label: `${civilKey(mondayCivil)} ~ ${civilKey(new Date(nextMondayCivil.getTime() - 86_400_000))}`,
     start: monday,
     end: nextMonday
   };

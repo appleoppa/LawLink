@@ -10,6 +10,7 @@ import { assertCanHandleMatter } from "@/lib/permissions";
 import { storage } from "@/lib/storage";
 import { sha256 } from "@/lib/storage/crypto";
 import { audit } from "@/server/audit";
+import { shDayKey, shTime } from "@/lib/ui/sh-time";
 import type {
   ReviewItem,
   ReviewType,
@@ -38,7 +39,7 @@ function buildMarkdown(
   reviewedDocName: string,
   items: ReviewItem[]
 ): string {
-  const now = new Date().toLocaleString("zh-CN");
+  const now = `${shDayKey(new Date())} ${shTime(new Date())}`;
   const lines: string[] = [
     `# AI 审查结果：${reviewedDocName}`,
     "",

@@ -1,4 +1,5 @@
 import type { RoleGrant } from "@/lib/roles/catalog";
+import { shDayKey, shTime } from "@/lib/ui/sh-time";
 import ExcelJS from "exceljs";
 import {
   MatterCategory,
@@ -1039,16 +1040,12 @@ function resolveDateBoundary(input: string | undefined, endOfDay: boolean) {
 
 function formatDate(date: Date | null | undefined) {
   if (!date) return "";
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0")
-  ].join("-");
+  return shDayKey(date);
 }
 
 function formatDateTime(date: Date | null | undefined) {
   if (!date) return "";
-  return `${formatDate(date)} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  return `${shDayKey(date)} ${shTime(date)}`;
 }
 
 function decimalNumber(value: Prisma.Decimal | number | null | undefined) {

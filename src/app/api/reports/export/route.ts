@@ -7,6 +7,7 @@ import { authOptions } from "@/lib/auth/options";
 import { audit } from "@/server/audit";
 import { buildReportWorkbook } from "@/server/reports/export-xlsx";
 import { resolveReportPeriod } from "@/server/reports/resolve-period";
+import { shDayKey } from "@/lib/ui/sh-time";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,7 +48,7 @@ export async function GET(req: Request) {
     detail: { periodLabel: period.label, periodKey, bytes: buf.byteLength }
   });
 
-  const startTag = `${period.start.getFullYear()}-${String(period.start.getMonth() + 1).padStart(2, "0")}-${String(period.start.getDate()).padStart(2, "0")}`;
+  const startTag = shDayKey(period.start);
   const filename = `lawlink-report-${periodKey}-${startTag}.xlsx`;
   const arr = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
   return new NextResponse(arr, {
