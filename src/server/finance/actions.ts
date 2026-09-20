@@ -1,4 +1,10 @@
 "use server";
+import {insertFinanceRowTx} from "@/server/finance/allocation-internals";
+import { financeLedgerReady } from "./ledger-storage";
+import type { MoneyKind } from "@/lib/finance/ledger-labels";
+import { confirmReceiptTx,rejectReceiptTx,deleteBillingDraftTx } from "./ledger-registration";
+import { commissionPositions } from "./ledger-corrections";
+import { getFinanceFacts, periodReceipts, sumAmounts, shMonthStart, shYearStart, financeTrend } from "./facts";
 import { roleMutation, checkRoleMutation } from "@/lib/roles/service";
 import { scopeFor } from "@/lib/roles/catalog";
 import { canReadDocument } from "@/lib/approvals/documents";
@@ -9,9 +15,9 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { decryptIdNumber } from "@/lib/clients/id-number-crypto";
 import { requireSession } from "@/lib/auth/session";
-import { audit } from "@/server/audit";
+import { audit,auditTx } from "@/server/audit";
 import { assertMatterWritable } from "@/lib/archive/guard";
-import { generateReceivableForBilling, generatePaymentForReceivedEntry } from "@/server/finance/allocation";
+import { generateReceivableForBilling, generatePaymentForReceivedEntry } from "@/server/finance/allocation-internals";
 import { serializeDecimals } from "@/lib/decimal";
 import {
   assertCanAccessMatterFinance,
@@ -43,22 +49,21 @@ import { recordTimelineEvent } from "@/server/timeline/record";
 
 export async function createBilling(input: BillingCreateInput) {
   const session = await requireSession("finance.write");
+  if(await financeLedgerReady(prisma))throw new Error("请在应收与收款分配页面登记收费及分期");
   const data = billingCreateSchema.parse(input);
   await assertMatterWritable(data.matterId, { allowFinanceRole: true });
 
   // v1.x §二：合同与应收同事务创建（签署即确认收费安排 → 应收立项）
   const created = await prisma.$transaction(async tx => {
     await checkRoleMutation(tx, session.user, "finance.write");
-    const billing = await tx.billing.create({
-      data: {
+    const billing = await insertFinanceRowTx(tx,'Billing',{
         matterId: data.matterId,
         title: data.title,
         contractAmount: new Prisma.Decimal(data.contractAmount),
         schedule: data.schedule || null,
         status: data.status,
         signedAt: data.signedAt
-      }
-    });
+      });
     if (billing.signedAt) {
       await generateReceivableForBilling(tx, {
         matterId: data.matterId,
@@ -84,6 +89,11 @@ export async function createBilling(input: BillingCreateInput) {
 
 export async function deleteBilling(id: string) {
   const session = await requireSession("finance.write");
+  if(await financeLedgerReady(prisma)) {
+    const result=await prisma.$transaction(tx=>deleteBillingDraftTx(tx,session.user.id,id),{isolationLevel:"Serializable"});
+    await revalidateMatter(result.matterId);revalidatePath("/finance/reconciliation");
+    return {ok:true};
+  }
   const billing = await prisma.billing.findUnique({
     where: { id },
     select: { matterId: true, signedAt: true, title: true }
@@ -118,11 +128,12 @@ export async function deleteBilling(id: string) {
 
 /**
  * 创建一条收付记录。
- * - 创建 RECEIVED 时自动按 CommissionPlan 派生 COMMISSION 子条目（每位受益人一条）
+ * - RECEIVED 一律先挂「待确认」，确认（confirmFeeEntry）时才生成实收、派生 COMMISSION 子条目并写时间线
  * - parent / children 通过 parentFeeEntryId 关联
  */
 export async function createFeeEntry(input: FeeEntryCreateInput) {
   const session = await requireSession("finance.write");
+  if(await financeLedgerReady(prisma))throw new Error("请在应收与收款分配页面登记收款；退款须通过财务更正处理");
   const data = feeEntryCreateSchema.parse(input);
   await assertMatterWritable(data.matterId, { allowFinanceRole: true });
 
@@ -132,8 +143,7 @@ export async function createFeeEntry(input: FeeEntryCreateInput) {
 
   const created = await prisma.$transaction(async (tx) => {
     await checkRoleMutation(tx, session.user, "finance.write");
-    const entry = await tx.feeEntry.create({
-      data: {
+    const entry = await insertFinanceRowTx(tx,'FeeEntry',{
         matterId: data.matterId,
         billingId: data.billingId || null,
         type: data.type,
@@ -145,57 +155,9 @@ export async function createFeeEntry(input: FeeEntryCreateInput) {
         note: data.note || null,
         recordedById: session.user.id,
         confirmState: pendingConfirm ? "PENDING" : "CONFIRMED"
-      }
-    });
+      });
 
     if (pendingConfirm) return entry;
-
-    // v1.x §二：收款登记生成实收（核销分配在实收上进行）
-    if (data.type === "RECEIVED" && data.amount > 0) {
-      await generatePaymentForReceivedEntry(tx, {
-        matterId: data.matterId,
-        feeEntryId: entry.id,
-        amount: entry.amount,
-        occurredAt: data.occurredAt,
-        recordedById: session.user.id
-      });
-    }
-
-    // 自动分成
-    if (data.type === "RECEIVED" && data.amount > 0) {
-      const plans = await tx.commissionPlan.findMany({
-        where: { matterId: data.matterId, active: true }
-      });
-      const shares = allocateCommissions(data.amount, plans);
-      for (const [index, plan] of plans.entries()) {
-        const share = shares[index];
-        if (share.lte(0)) continue;
-        await tx.feeEntry.create({
-          data: {
-            matterId: data.matterId,
-            billingId: data.billingId || null,
-            type: "COMMISSION",
-            amount: share,
-            occurredAt: data.occurredAt,
-            parentFeeEntryId: entry.id,
-            beneficiaryUserId: plan.userId,
-            note: plan.label ? `按方案 [${plan.label}] 自动分成 ${plan.percent}%` : `自动分成 ${plan.percent}%`,
-            recordedById: session.user.id
-          }
-        });
-      }
-    }
-
-    // 实收事件入时间线
-    if (data.type === "RECEIVED") {
-      await recordTimelineEvent(tx, {
-          matterId: data.matterId,
-          eventType: "FEE_RECEIVED",
-          title: `实收 ¥${data.amount.toLocaleString("zh-CN")}`,
-          content: data.note ?? undefined,
-          occurredAt: data.occurredAt
-        });
-    }
 
     return entry;
   });
@@ -250,7 +212,7 @@ async function usersWhoCanConfirmReceipt(excludeUserId?: string): Promise<string
       ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
       OR: [
         { role: "FINANCE" },
-        { role: "CUSTOM", roleDefinition: { active: true, permissions: { some: { permissionKey: "finance.confirm" } } } }
+        { role: "CUSTOM", roleDefinition: { active: true, permissions: { some: { permissionKey: "finance.confirm", scope: "ALL" } } } }
       ]
     },
     select: { id: true }
@@ -265,6 +227,10 @@ async function usersWhoCanConfirmReceipt(excludeUserId?: string): Promise<string
 export async function confirmFeeEntry(id: string) {
   const session = await requireSession("finance.confirm");
   if (!canConfirmReceipt(session.user)) throw new Error("仅具备「确认实收到账」权限的财务管理人员可确认实收");
+  if(await financeLedgerReady(prisma)) {
+    const result=await prisma.$transaction(tx=>confirmReceiptTx(tx,session.user.id,id),{isolationLevel:"Serializable",timeout:20000});
+    await revalidateMatter(result.matterId);revalidatePath("/finance");revalidatePath("/finance/reconciliation");return {ok:true};
+  }
   const entry = await prisma.feeEntry.findUnique({ where: { id }, select: { id: true, matterId: true, type: true, amount: true, occurredAt: true, billingId: true, confirmState: true } });
   if (!entry) throw new Error("记录不存在");
   if (entry.type !== "RECEIVED") throw new Error("只有实收需要确认");
@@ -273,6 +239,8 @@ export async function confirmFeeEntry(id: string) {
   await assertMatterWritable(entry.matterId, { allowFinanceRole: true });
 
   await prisma.$transaction(async (tx) => {
+    // 与 setCommissionPlan / ledger 路径共用同一事务级咨询锁：读取分成方案与整体替换互斥，防止按旧方案派生分成
+    await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(72606101)`;
     await checkRoleMutation(tx, session.user, "finance.confirm");
     const updated = await tx.feeEntry.updateMany({
       where: { id, confirmState: "PENDING" },
@@ -294,8 +262,7 @@ export async function confirmFeeEntry(id: string) {
       for (const [index, plan] of plans.entries()) {
         const share = shares[index];
         if (share.lte(0)) continue;
-        await tx.feeEntry.create({
-          data: {
+        await insertFinanceRowTx(tx,'FeeEntry',{
             matterId: entry.matterId,
             billingId: entry.billingId,
             type: "COMMISSION",
@@ -305,8 +272,7 @@ export async function confirmFeeEntry(id: string) {
             beneficiaryUserId: plan.userId,
             note: plan.label ? `按方案 [${plan.label}] 自动分成 ${plan.percent}%` : `自动分成 ${plan.percent}%`,
             recordedById: session.user.id
-          }
-        });
+          });
       }
     }
     await recordTimelineEvent(tx, {
@@ -327,6 +293,10 @@ export async function confirmFeeEntry(id: string) {
 export async function rejectFeeEntry(id: string, reason: string) {
   const session = await requireSession("finance.confirm");
   if (!canConfirmReceipt(session.user)) throw new Error("仅具备「确认实收到账」权限的财务管理人员可退回实收");
+  if(await financeLedgerReady(prisma)) {
+    const result=await prisma.$transaction(tx=>rejectReceiptTx(tx,session.user.id,id,reason),{isolationLevel:"Serializable",timeout:20000});
+    await revalidateMatter(result.matterId);revalidatePath("/finance");revalidatePath("/finance/reconciliation");return {ok:true};
+  }
   const note = reason.trim();
   if (!note) throw new Error("请填写退回原因");
   const entry = await prisma.feeEntry.findUnique({ where: { id }, select: { id: true, matterId: true, type: true, amount: true, confirmState: true, recordedById: true, matter: { select: { internalCode: true, title: true } } } });
@@ -342,15 +312,27 @@ export async function rejectFeeEntry(id: string, reason: string) {
   });
 
   await audit({ userId: session.user.id, action: "FEE_ENTRY_REJECT", targetType: "FeeEntry", targetId: id, detail: { matterId: entry.matterId, amount: Number(entry.amount), reason: note } });
-  await createNotification({
-    userId: entry.recordedById,
-    type: "SYSTEM",
-    title: "实收登记被退回",
-    content: `${entry.matter.internalCode} ${entry.matter.title} 的实收 ¥${Number(entry.amount).toLocaleString("zh-CN")} 被退回：${note}`,
-    href: "/finance",
-    refType: "FeeEntry",
-    refId: id
-  });
+  // 条目已删除：通知属于事后副作用，失败不能把已成功的退回报成失败（重试只会得到「记录不存在」）
+  try {
+    await createNotification({
+      userId: entry.recordedById,
+      type: "SYSTEM",
+      title: "实收登记被退回",
+      content: `${entry.matter.internalCode} ${entry.matter.title} 的实收 ¥${Number(entry.amount).toLocaleString("zh-CN")} 被退回：${note}`,
+      href: "/finance",
+      refType: "FeeEntry",
+      refId: id
+    });
+  } catch (err) {
+    console.error("[finance] 退回实收通知发送失败：", err);
+    await audit({
+      userId: session.user.id,
+      action: "FEE_ENTRY_NOTIFY_FAILED",
+      targetType: "FeeEntry",
+      targetId: id,
+      detail: { matterId: entry.matterId, stage: "reject", reason: err instanceof Error ? err.message : String(err) }
+    });
+  }
   await revalidateMatter(entry.matterId);
   revalidatePath("/finance");
   return { ok: true };
@@ -358,12 +340,13 @@ export async function rejectFeeEntry(id: string, reason: string) {
 
 export async function deleteFeeEntry(id: string) {
   const session = await requireSession("finance.write");
+  if(await financeLedgerReady(prisma))throw new Error("待确认实收请填写原因退回；已入账收付请通过财务更正处理");
   if (session.user.role !== "CUSTOM" && !isManager(session.user.role) && session.user.role !== "FINANCE") {
     throw new Error("仅管理员、主办律师或财务可删除收付记录");
   }
   const entry = await prisma.feeEntry.findUnique({
     where: { id },
-    include: { commissionChildren: { select: { id: true } }, billing: { select: { signedAt: true } } }
+    select: { matterId: true, type: true, confirmState: true, parentFeeEntryId: true, invoiceNo: true, billing: { select: { signedAt: true } } }
   });
   if (!entry) return { ok: false };
 
@@ -385,28 +368,26 @@ export async function deleteFeeEntry(id: string) {
   if (entry.type === "RECEIVED" && entry.confirmState === "PENDING") {
     throw new Error("待确认实收请在财务页用「退回」处理，需填写原因并通知登记人");
   }
+  // 确认时自动派生的分成与父实收绑定：单独删会让分成合计与父实收对不上，
+  // 只能随父实收整体冲正；无父条目的手工分成不受此限
+  if (entry.type === "COMMISSION" && entry.parentFeeEntryId) {
+    throw new Error("该分成由实收确认时自动派生，不可单独删除；如需更正请登记退款 / 冲正");
+  }
 
   await assertMatterWritable(entry.matterId, { allowFinanceRole: true });
 
-  // 删父条目时同时删除自动派生的分成
+  // 条件删除：读取与删除之间，发票号、合同签署都可能被改动，
+  // 因此把判定一并放进 where，按受影响行数决定成败（0 行即说明期间已对外开票/签合同）。
   await prisma.$transaction(async (tx) => {
     await checkRoleMutation(tx, session.user, "finance.write");
-    if (entry.commissionChildren.length > 0) {
-      await tx.feeEntry.deleteMany({
-        where: { id: { in: entry.commissionChildren.map((c) => c.id) } }
-      });
-    }
-    // 条件删除：读取与删除之间，确认状态、发票号、合同签署都可能被改动，
-    // 因此把三项判定一并放进 where，按受影响行数决定成败（0 行即说明期间已入账/已对外）。
     const removed = await tx.feeEntry.deleteMany({
       where: {
         id,
         invoiceNo: null,
-        OR: [{ billingId: null }, { billing: { is: { signedAt: null } } }],
-        ...(entry.type === "RECEIVED" ? { confirmState: "PENDING" } : {})
+        OR: [{ billingId: null }, { billing: { is: { signedAt: null } } }]
       }
     });
-    if (removed.count === 0) throw new Error("该记录在此期间已确认到账或已对外开票，不可删除；如需更正请登记退款 / 冲正");
+    if (removed.count === 0) throw new Error("该记录在此期间已对外开票或关联已签署合同，不可删除；如需更正请登记退款 / 冲正");
   });
 
   await audit({
@@ -414,10 +395,7 @@ export async function deleteFeeEntry(id: string) {
     action: "FEE_ENTRY_DELETE",
     targetType: "FeeEntry",
     targetId: id,
-    detail: {
-      matterId: entry.matterId,
-      cascadedChildren: entry.commissionChildren.length
-    }
+    detail: { matterId: entry.matterId, type: entry.type }
   });
   await revalidateMatter(entry.matterId);
   revalidatePath("/finance");
@@ -438,6 +416,7 @@ export async function setCommissionPlan(input: CommissionPlanSetInput) {
   await assertCanLeadMatter(session.user.id, data.matterId, "仅案件主办/协办可设置分成方案");
 
   await prisma.$transaction(async db => {
+    await db.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(72606101)`;
     await checkRoleMutation(db, session.user, "finance.write");
     await db.commissionPlan.deleteMany({ where: { matterId: data.matterId } });
     await db.commissionPlan.createMany({
@@ -449,14 +428,13 @@ export async function setCommissionPlan(input: CommissionPlanSetInput) {
         active: true
       }))
     });
-  });
-
-  await audit({
+    await auditTx(db,{
     userId: session.user.id,
     action: "COMMISSION_PLAN_SET",
     targetType: "Matter",
     targetId: data.matterId,
     detail: { itemCount: data.items.length }
+    });
   });
 
   await revalidateMatter(data.matterId);
@@ -487,28 +465,48 @@ export async function getMatterFinance(matterId: string) {
       include: { user: { select: { id: true, name: true, role: true } } },
       orderBy: { createdAt: "asc" }
     }),
-    // 开票金额：已开具发票合计
+    // 开票金额：已开具发票合计（净额口径——扣减红冲/折让/换开调整，与对账页一致）
     prisma.invoiceRequest.findMany({
       where: { matterId, status: "ISSUED" },
-      select: { amount: true }
+      select: { id: true, amount: true }
     })
   ]);
 
   const sum = (filter: (e: (typeof entries)[number]) => boolean) =>
     entries.filter(filter).reduce((acc, e) => acc + Number(e.amount), 0);
 
+  let invoiceAdjustmentTotal = 0;
+  try {
+    const rows = await prisma.invoiceAdjustment.groupBy({
+      by: ["invoiceId"],
+      _sum: { amount: true },
+      where: { invoice: { matterId } }
+    });
+    invoiceAdjustmentTotal = rows.reduce((acc, r) => acc + Number(r._sum.amount ?? 0), 0);
+  } catch {
+    // InvoiceAdjustment 表尚未迁移的库：无红冲能力，净额即票面
+    invoiceAdjustmentTotal = 0;
+  }
+  const facts = await getFinanceFacts({id:matterId});
+  // 旧口径（未升级库）：应收/实收均来自 FeeEntry，无独立「已核销」口径；
+  // 回款进度分子退回已确认实收合计（与 received 同源），使进度 = 已收/应收，与升级前展示一致
+  const legacyReceivable = sum((e) => e.type === "RECEIVABLE");
+  const legacyReceived = sum((e) => e.type === "RECEIVED" && e.confirmState === "CONFIRMED");
   const stats = {
-    contractAmount: billings.reduce((acc, b) => acc + Number(b.contractAmount), 0),
-    receivable: sum((e) => e.type === "RECEIVABLE"),
-    received: sum((e) => e.type === "RECEIVED" && e.confirmState === "CONFIRMED"),
+    outstanding: facts ? Number(facts.lawyerSummary.outstanding) : Math.max(0,legacyReceivable-legacyReceived),
+    allocated: facts ? Number(facts.lawyerSummary.receivable)-Number(facts.lawyerSummary.outstanding) : legacyReceived,
+    clientFunds: facts ? Number(facts.summary.clientFundsReceived) : 0,
+    contractAmount: facts ? sumAmounts(facts.billings.filter(b=>b.signedAt&&b.moneyKind==='LAWYER_FEE').map(b=>({amount:b.contractAmount}))) : billings.filter(b=>b.signedAt).reduce((acc, b) => acc + Number(b.contractAmount), 0),
+    receivable: facts ? Number(facts.lawyerSummary.receivable) : legacyReceivable,
+    received: facts ? Number(facts.lawyerSummary.netReceived) : legacyReceived,
     pendingReceived: sum((e) => e.type === "RECEIVED" && e.confirmState === "PENDING"),
-    refund: sum((e) => e.type === "REFUND"),
-    cost: sum((e) => e.type === "COST"),
-    commission: sum((e) => e.type === "COMMISSION"),
-    invoiced: issuedInvoices.reduce((acc, i) => acc + Number(i.amount), 0)
+    refund: facts ? sumAmounts(facts.refunds) : sum((e) => e.type === "REFUND"),
+    cost: facts ? sumAmounts(facts.expenses.map(e=>({amount:e.amount.minus(e.reversed)}))) : sum((e) => e.type === "COST"),
+    commission: facts ? sumAmounts(facts.commissions.map(c=>({amount:c.accrued}))) : sum((e) => e.type === "COMMISSION"),
+    invoiced: issuedInvoices.reduce((acc, i) => acc + Number(i.amount), 0) - invoiceAdjustmentTotal
   };
 
-  return serializeDecimals({ billings, entries, plans, stats });
+  return serializeDecimals({ billings, entries, plans, stats, ledgerReady:Boolean(facts) });
 }
 
 /**
@@ -669,16 +667,33 @@ export async function createInvoiceRequest(input: {
     if (!input.buyerBankAccount?.trim()) throw new Error("增值税专用发票必须填写银行账号");
   }
   // 关联案件时必须上传开票依据（委托合同等）；无关联案件以原因说明替代，依据可选
-  if (input.matterId && input.evidenceDocIds.length === 0) {
+  if (input.matterId && (input.evidenceDocIds ?? []).length === 0) {
     throw new Error("请上传至少一份开票依据（扫描版委托合同等）");
   }
 
   const isSpecial = input.invoiceType === "SPECIAL";
   const approvalMatter = input.matterId ? await prisma.matter.findUniqueOrThrow({ where: { id: input.matterId }, select: { category: true } }) : null;
   await requireApprovalRoute({ action: "INVOICE_APPROVE", category: approvalMatter?.category ?? null, requesterId: session.user.id });
-  for (const id of input.evidenceDocIds) {
-    const doc = await prisma.document.findUnique({ where: { id } });
-    if (!doc || !await canReadDocument(session.user.id, doc)) throw new Error("开票依据不存在或无权访问");
+  const evidenceDocIds = input.evidenceDocIds ?? [];
+  if (evidenceDocIds.length) {
+    // 开票依据是本案合规证据链（须为同案有效材料），仅"本人可读"不够——跨案材料可读不等于可作本案依据
+    if (input.matterId) {
+      const docs = await prisma.document.findMany({
+        where: { id: { in: evidenceDocIds }, matterId: input.matterId, deletedAt: null },
+        select: { id: true }
+      });
+      if (docs.length !== new Set(evidenceDocIds).size) throw new Error("开票依据必须为本案有效材料");
+    } else {
+      const docs = await prisma.document.findMany({
+        where: { id: { in: evidenceDocIds }, deletedAt: null },
+        select: { id: true }
+      });
+      if (docs.length !== new Set(evidenceDocIds).size) throw new Error("开票依据不存在或已删除");
+    }
+    for (const id of evidenceDocIds) {
+      const doc = await prisma.document.findUnique({ where: { id } });
+      if (!doc || !await canReadDocument(session.user.id, doc)) throw new Error("开票依据不存在或无权访问");
+    }
   }
   const created = await prisma.invoiceRequest.create({
     data: {
@@ -731,11 +746,19 @@ export async function createInvoiceRequest(input: {
 export async function searchMattersForInvoice(q?: string) {
   const session = await requireSession("approval");
   return prisma.matter.findMany({
-    where: invoiceMatterSearchWhere(session.user.id, q),
+    where: invoiceMatterSearchWhere(session.user.id, q, session.user),
     select: { id: true, internalCode: true, title: true },
     orderBy: { createdAt: "desc" },
     take: invoiceMatterSearchLimit(q)
   });
+}
+
+async function withEntryKinds<T extends {id:string}>(rows:T[]) {
+  const kinds=rows.length && await financeLedgerReady(prisma) ? await prisma.$queryRaw<{id:string;matterId:string;moneyKind:MoneyKind}[]>(Prisma.sql`SELECT id,"matterId","moneyKind"::text FROM "FeeEntry" WHERE id IN (${Prisma.join(rows.map(r=>r.id))})`) : [];
+  const byId=new Map(kinds.map(k=>[k.id,k.moneyKind]));
+  const positions=await commissionPositions(prisma,[...new Set(kinds.map(k=>k.matterId))]);
+  const byCommission=new Map(positions.map(p=>[p.id,p]));
+  return rows.map(r=>({...r,moneyKind:byId.get(r.id),commissionAccrued:byCommission.get(r.id)?.accrued.toNumber(),commissionNetPaid:byCommission.get(r.id)?.netPaid.toNumber(),commissionRecoverable:byCommission.get(r.id)?.recoverable.toNumber()}));
 }
 
 export async function listAllFeeEntries(params: {
@@ -760,22 +783,38 @@ export async function listAllFeeEntries(params: {
       billing: { select: { signedAt: true } }
     }
   });
-  return serializeDecimals(rows);
+  return serializeDecimals(await withEntryKinds(rows));
 }
 
 /**
  * 财务页 KPI：本月 / 上月 / 本年实收与应收合计。
  * 必须在库里聚合——从「最近 500 条流水」里累加会在流水超限时少算（2026-09-19 修）。
  * 实收只计已确认到账。
+ * confirmedReceiptInvoiceNos 同理：「已开票未收款」的发票号匹配不能依赖会被截断的流水窗口。
  */
 export async function getFinanceKpis() {
   const session = await requireSession("finance.read");
   const visFilter = matterFinanceVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions);
   const matterWhere = { deletedAt: null, ...visFilter };
+  const facts=await getFinanceFacts(matterWhere);
+  if(facts) {
+    const now=new Date(),month=shMonthStart(now),last=shMonthStart(now,-1),year=shYearStart(now);
+    const ar=(start:Date)=>sumAmounts(facts.receivables.filter(r=>r.moneyKind==='LAWYER_FEE'&&r.createdAt>=start).map(r=>({amount:r.effectiveAmount})));
+    const pending=facts.pending.filter(p=>p.occurredAt>=month);
+    // D 批（2026-09-20）：本期应收核销率＝本期新增律师费应收中已核销额 / 本期新增有效应收额
+    // （同批口径：分子分母同为「期内新建单」，旧账回收额不混入分母；当前核销额会随后续核销累加，
+    // 属当前口径而非历史时点快照，历史回溯按 v3 §7 统计条另行核对逐次记录）。
+    const monthArs=facts.receivables.filter(r=>r.moneyKind==='LAWYER_FEE'&&r.createdAt>=month);
+    const monthArTotal=sumAmounts(monthArs.map(r=>({amount:r.effectiveAmount})));
+    const monthArSettled=sumAmounts(monthArs.map(r=>({amount:r.settledAmount})));
+    const writeOffRate=monthArTotal>0?Math.round(monthArSettled/monthArTotal*1000)/10:null;
+    return {ledgerReady:true,monthlyReceived:sumAmounts(periodReceipts(facts,month)),monthlyReceivable:ar(month),lastMonthReceived:sumAmounts(periodReceipts(facts,last,month)),yearlyReceived:sumAmounts(periodReceipts(facts,year)),yearlyReceivable:ar(year),monthConfirmedCount:periodReceipts(facts,month).filter(p=>p.amount.gt(0)).length,monthPendingCount:pending.length,monthPendingAmount:sumAmounts(pending),writeOffRate,confirmedReceiptInvoiceNos:[] as string[]};
+  }
   const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const yearStart = new Date(now.getFullYear(), 0, 1);
+  // 上海月界/年界：避免 UTC 部署把月初 0-8 点归错月（与 facts 口径一致）
+  const monthStart = shMonthStart();
+  const lastMonthStart = shMonthStart(now, -1);
+  const yearStart = shYearStart(now);
   const sum = async (type: "RECEIVED" | "RECEIVABLE", gte: Date, lt?: Date) => {
     const res = await prisma.feeEntry.aggregate({
       where: {
@@ -797,7 +836,7 @@ export async function getFinanceKpis() {
     });
     return Number(res._sum.amount ?? 0);
   };
-  const [monthlyReceived, monthlyReceivable, lastMonthReceived, yearlyReceived, yearlyReceivable, monthConfirmedCount, monthPendingCount, monthPendingAmount] = await Promise.all([
+  const [monthlyReceived, monthlyReceivable, lastMonthReceived, yearlyReceived, yearlyReceivable, monthConfirmedCount, monthPendingCount, monthPendingAmount, invoiceRows] = await Promise.all([
     sum("RECEIVED", monthStart),
     sum("RECEIVABLE", monthStart),
     sum("RECEIVED", lastMonthStart, monthStart),
@@ -805,9 +844,25 @@ export async function getFinanceKpis() {
     sum("RECEIVABLE", yearStart),
     countBy("CONFIRMED"),
     countBy("PENDING"),
-    sumPending()
+    sumPending(),
+    prisma.feeEntry.findMany({
+      where: { type: "RECEIVED", confirmState: "CONFIRMED", invoiceNo: { not: null }, matter: matterWhere },
+      distinct: ["invoiceNo"],
+      select: { invoiceNo: true }
+    })
   ]);
-  return { monthlyReceived, monthlyReceivable, lastMonthReceived, yearlyReceived, yearlyReceivable, monthConfirmedCount, monthPendingCount, monthPendingAmount };
+  return {
+    ledgerReady:false,
+    monthlyReceived,
+    monthlyReceivable,
+    lastMonthReceived,
+    yearlyReceived,
+    yearlyReceivable,
+    monthConfirmedCount,
+    monthPendingCount,
+    monthPendingAmount,
+    confirmedReceiptInvoiceNos: invoiceRows.map((r) => r.invoiceNo as string)
+  };
 }
 
 /** 全部待确认实收（不受流水条数上限影响）：财务页「待确认实收」用 */
@@ -825,14 +880,16 @@ export async function listPendingReceipts() {
       billing: { select: { signedAt: true } }
     }
   });
-  return serializeDecimals(rows);
+  return serializeDecimals(await withEntryKinds(rows));
 }
 
 export async function getMonthlyRevenue(months = 6) {
   const session = await requireSession("finance.read");
   const visFilter = matterFinanceVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions);
+  const facts=await getFinanceFacts({deletedAt:null,...visFilter});
+  if(facts)return financeTrend(facts,Math.max(1,Math.min(36,Math.floor(months))));
   const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
+  const start = shMonthStart(now, -(months - 1));
 
   const entries = await prisma.feeEntry.findMany({
     where: {
@@ -867,14 +924,18 @@ export async function getMonthlyRevenue(months = 6) {
 
 export async function getPersonalRevenue(userId: string) {
   const session = await requireSession("finance.read");
-  if (!isManager(session.user.role) && session.user.id !== userId) {
+  if (!isManager(session.user) && session.user.id !== userId) {
     throw new Error("只能查看自己的收入数据");
   }
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
-
-  const yearStart = new Date(monthStart.getFullYear(), 0, 1);
+  const monthStart = shMonthStart(), yearStart = shYearStart();
+  if(await financeLedgerReady(prisma)) {
+    const [totals]=await prisma.$queryRaw<{monthly:Prisma.Decimal;yearly:Prisma.Decimal}[]>`
+      SELECT COALESCE(SUM(amount) FILTER (WHERE occurred>=${monthStart}),0) AS monthly, COALESCE(SUM(amount) FILTER (WHERE occurred>=${yearStart}),0) AS yearly FROM (
+        SELECT amount,"occurredAt" AS occurred FROM "FeeEntry" WHERE type='COMMISSION' AND "beneficiaryUserId"=${userId}
+        UNION ALL SELECT e.delta AS amount,c."occurredAt" AS occurred FROM "FinanceCorrectionEffect" e JOIN "FinanceCorrection" c ON c.id=e."correctionId" JOIN "FeeEntry" f ON f.id=e."commissionEntryId" WHERE c.status='CONFIRMED' AND f."beneficiaryUserId"=${userId}
+      ) movements`;
+    return {monthlyCommission:totals.monthly.toNumber(),yearlyCommission:totals.yearly.toNumber()};
+  }
 
   const [monthly, yearly] = await Promise.all([
     prisma.feeEntry.aggregate({

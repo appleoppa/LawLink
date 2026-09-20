@@ -2,9 +2,19 @@ import { scopeFor, type RoleGrant, type PermissionKey } from "@/lib/roles/catalo
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
-/** 主任律师属于业务管理岗位；系统管理身份不扩大业务数据范围。 */
-export function isManager(role: string): boolean {
-  return role === "PRINCIPAL_LAWYER";
+/**
+ * 业务管理判定：合伙人岗位，或获按人授予的业务管理权（User.managerAuthorized，
+ * 2026-09-19 与岗位解耦）。系统管理身份不自动获得业务权限。
+ * 传岗位字符串时仅认合伙人；有用户对象时请整体传入。
+ */
+export function isManager(roleOrUser: string | { role: string; managerAuthorized?: boolean | null }): boolean {
+  if (typeof roleOrUser === "string") return roleOrUser === "PRINCIPAL_LAWYER";
+  return roleOrUser.role === "PRINCIPAL_LAWYER" || roleOrUser.managerAuthorized === true;
+}
+
+/** 内置岗位用户携带全所范围授权（业务管理权合成的 grants）时，按该范围放开可见性。 */
+export function hasAllScope(grants: RoleGrant[] | undefined, key: PermissionKey): boolean {
+  return scopeFor({ role: "CUSTOM", rolePermissions: grants }, key) === "ALL";
 }
 
 /**
@@ -17,6 +27,19 @@ export function canConfirmReceipt(user: { role: string; rolePermissions?: RoleGr
   return user.role === "FINANCE";
 }
 
+/**
+ * 财务岗的案件关联豁免（与 assertMatterWritable({allowFinanceRole:true}) 同一判定）：
+ * 内置财务岗，或自定义角色具全所范围「维护收付款 / 确认实收到账」之一。
+ * 只放开收付登记等场景的案件关联范围（如登记收付时的案件搜索），不改变其他权限语义。
+ */
+export function financeRoleAssociatesAnyMatter(user: { role: string; rolePermissions?: RoleGrant[] | null }): boolean {
+  if (user.role === "FINANCE") return true;
+  if (user.role !== "CUSTOM") return false;
+  const grants = user.rolePermissions ?? undefined;
+  return scopeFor({ role: "CUSTOM", rolePermissions: grants }, "finance.write") === "ALL" ||
+    scopeFor({ role: "CUSTOM", rolePermissions: grants }, "finance.confirm") === "ALL";
+}
+
 // ============ 案件可见性 ============
 
 /** 列表查询用：返回 Prisma where 片段，AND 到现有 where */
@@ -26,8 +49,8 @@ export function matterVisibilityFilter(
   grants?: RoleGrant[]
 ): Prisma.MatterWhereInput {
   if (role === "CUSTOM") return customMatterFilter(userId, grants, "matters.read", false);
-  if (isManager(role) || role === "FINANCE") return {};
-  if (role === "LAWYER") {
+  if (isManager(role) || role === "FINANCE" || hasAllScope(grants, "matters.read")) return {};
+  if (role === "LAWYER" || role === "INDEPENDENT_LAWYER") {
     return {
       OR: [
         { ownerId: userId },
@@ -84,7 +107,7 @@ export function teamIntakeFilter(userId: string, teamId?: string): Prisma.Intake
 
 export function matterReadVisibilityFilter(userId: string, role: string, grants?: RoleGrant[]): Prisma.MatterWhereInput {
   if (role === "CUSTOM") return customMatterFilter(userId, grants, "matters.read", true);
-  if (isManager(role)) return {};
+  if (isManager(role) || hasAllScope(grants, "matters.read")) return {};
   const own = role === "FINANCE" ? matterAssociationFilter(userId) : matterVisibilityFilter(userId, role, grants);
   return { AND: [{ OR: [own, teamMatterFilter(userId)] }] };
 }
@@ -97,7 +120,7 @@ export function intakeReadVisibilityFilter(userId: string, role: string, grants?
     const own = intakeVisibilityFilter(userId, "LAWYER");
     return { AND: [scope === "TEAM" ? { OR: [own, teamIntakeFilter(userId)] } : own] };
   }
-  if (isManager(role)) return {};
+  if (isManager(role) || hasAllScope(grants, "matters.read")) return {};
   return { AND: [{ OR: [intakeVisibilityFilter(userId, role), teamIntakeFilter(userId)] }] };
 }
 
@@ -156,6 +179,22 @@ export async function assertCanAccessMatterFinance(userId: string, role: string,
   await assertCanAccessMatter(userId, role, matterId);
 }
 
+/**
+ * 案件办理/材料操作断言（2026-09-20 A 批 P1-1）：合伙人岗位沿用全所可见口径，
+ * 其余岗位（含 managerAuthorized 业务管理权）须本案经办关联——管理权只放大「可见」
+ * 不放大「写入」。结构性案件编辑（程序当事人信息、证据、材料新版本/归档）统一走此断言，
+ * 不各自调用 assertCanAccessMatter 导致 MANAGER_GRANTS 的 matters.read:ALL 渗入写路径。
+ */
+export async function assertCanHandleMatter(
+  user: { id: string; role: string; rolePermissions?: RoleGrant[] },
+  matterId: string
+): Promise<void> {
+  if (user.role === "PRINCIPAL_LAWYER") {
+    return assertCanAccessMatter(user.id, user.role, matterId, user.rolePermissions);
+  }
+  return assertCanAssociateMatter(user.id, matterId);
+}
+
 /** 操作/关联断言：只允许主办或案件成员，不因管理角色放开 */
 export async function assertCanAssociateMatter(
   userId: string,
@@ -172,21 +211,7 @@ export async function assertCanAssociateMatter(
   if (!row) throw new Error("案件不存在或无权关联");
 }
 
-/** 案件处理断言：只允许主办或案件成员，不因管理角色放开 */
-export async function assertCanHandleMatter(
-  userId: string,
-  matterId: string
-): Promise<void> {
-  const row = await prisma.matter.findFirst({
-    where: {
-      id: matterId,
-      deletedAt: null,
-      ...matterAssociationFilter(userId)
-    },
-    select: { id: true }
-  });
-  if (!row) throw new Error("案件不存在或无权处理");
-}
+/** 案件处理断言（并入 2026-09-20 A 批 assertCanHandleMatter）：合伙人全所、其余须经办。 */
 
 /** 主办/协办断言：用于归档、团队、核心信息、文书生成等较敏感处理 */
 export async function assertCanLeadMatter(
@@ -254,7 +279,7 @@ export function intakeVisibilityFilter(
     if (!scope) return { id: { in: [] } };
     if (scope === "ALL") return {};
   }
-  if (isManager(role)) return {};
+  if (isManager(role) || hasAllScope(grants, "matters.read")) return {};
   return {
     OR: [
       { createdById: userId },
@@ -278,7 +303,7 @@ export function clientVisibilityFilter(
     if (scope === "ALL") return {};
     return { AND: [{ OR: [{ matters: { some: { deletedAt: null, ...matterAssociationFilter(userId) } } }, { intakes: { some: intakeVisibilityFilter(userId, "LAWYER") } }] }] };
   }
-  if (isManager(role) || role === "FINANCE") return {};
+  if (isManager(role) || role === "FINANCE" || hasAllScope(grants, "clients.read")) return {};
   return {
     OR: [
       { matters: { some: { deletedAt: null, ...matterVisibilityFilter(userId, role, grants) } } },
@@ -304,5 +329,7 @@ export function customMatterFilter(userId: string, grants: RoleGrant[] | undefin
   return { AND: [scope === "TEAM" && includeTeam ? { OR: [own, teamMatterFilter(userId)] } : own] };
 }
 export function matterFinanceVisibilityFilter(userId: string, role: string, grants?: RoleGrant[]): Prisma.MatterWhereInput {
-  return role === "CUSTOM" ? customMatterFilter(userId, grants, "finance.read", false) : matterVisibilityFilter(userId, role);
+  if (role === "CUSTOM") return customMatterFilter(userId, grants, "finance.read", false);
+  if (isManager(role) || hasAllScope(grants, "finance.read") || hasAllScope(grants, "matters.read")) return {};
+  return matterVisibilityFilter(userId, role, grants);
 }

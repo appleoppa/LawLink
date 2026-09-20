@@ -1,3 +1,4 @@
+import { getFinanceFacts, periodReceipts, sumAmounts } from "@/server/finance/facts";
 /**
  * v0.21: 律师周报数据聚合（per-user 视角）
  *
@@ -74,6 +75,7 @@ export async function getLawyerWeeklyDigest(input: {
     })
   ]);
 
+  const facts=await getFinanceFacts({ownerId:input.userId,deletedAt:null});
   return {
     userId: input.userId,
     userName: input.userName,
@@ -81,7 +83,7 @@ export async function getLawyerWeeklyDigest(input: {
     newIntake,
     closed,
     archived,
-    receivedAmount: fees._sum.amount ? Number(fees._sum.amount) : 0
+    receivedAmount: facts ? sumAmounts(periodReceipts(facts,period.start,period.end)) : fees._sum.amount ? Number(fees._sum.amount) : 0
   };
 }
 

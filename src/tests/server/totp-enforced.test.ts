@@ -51,6 +51,12 @@ vi.mock("bcryptjs", () => ({ default: { compare: vi.fn(async () => true) } }));
 vi.mock("@/server/auth/totp-actions", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/server/auth/totp-actions")>();
   return {
+    ...actual
+  };
+});
+vi.mock("@/server/auth/totp-login", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/server/auth/totp-login")>();
+  return {
     ...actual,
     verifyLoginSecondFactor: vi.fn(async () => true) // authorize 内部依赖；其余用真实现
   };

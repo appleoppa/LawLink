@@ -12,7 +12,7 @@ import { canReadDocument } from "@/lib/approvals/documents";
 import { blindIdNumber } from "@/lib/clients/id-number-crypto";
 import { normalizeIdNumber } from "@/lib/clients/identity";
 import { matterHref } from "@/lib/matters/route";
-import { customMatterFilter, matterVisibilityFilter } from "@/lib/permissions";
+import { customMatterFilter } from "@/lib/permissions";
 import { clientTypeLabel, deadlineCategoryLabel, intakeStatusLabel, matterStatusLabel } from "@/lib/enums";
 import type { DocumentSourceOrigin } from "@prisma/client";
 
@@ -144,10 +144,11 @@ export async function globalSearch(query: string): Promise<GlobalSearchResult> {
   // 分组各取前 20 条：「全部」范围前端每组展示前几条，切换到单一范围时展示全部
   const limit = 20;
   const canSchedule = hasCustomPermission(session.user, "schedule.read");
-  // 期限与日程页同口径：CUSTOM 走 schedule.read 授权范围，其余角色走案件可见性
+  // 期限与日程页同口径：CUSTOM 走 schedule.read 授权范围，其余角色走站内读取口径——
+  // 此前对内置角色用旧版 matterVisibilityFilter，FINANCE 被放大到全所（P2-8）。
   const deadlineMatterFilter = role === "CUSTOM"
     ? { AND: [customMatterFilter(userId, session.user.rolePermissions, "schedule.read", true), mVis] }
-    : matterVisibilityFilter(userId, role);
+    : matterReadVisibilityFilter(userId, role, session.user.rolePermissions);
 
   const [matters, clients, intakes, documents, deadlines] = await Promise.all([
     prisma.matter.findMany({

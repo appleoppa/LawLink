@@ -12,7 +12,7 @@
  */
 import { scopeFor } from "@/lib/roles/catalog";
 import { requireSession } from "@/lib/auth/session";
-import { matterAssociationFilter } from "@/lib/permissions";
+import { financeRoleAssociatesAnyMatter, matterAssociationFilter } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 
 type WritableGuardOptions = {
@@ -26,10 +26,7 @@ async function findWritableMatter(
 ) {
   const session = await requireSession("personal");
   // 自定义角色只要具备全所范围的「维护收付款」或「确认实收到账」之一，即按财务角色放行案件关联校验
-  const allowByFinanceRole = opts?.allowFinanceRole && (
-    session.user.role === "FINANCE" ||
-    (session.user.role === "CUSTOM" && (scopeFor(session.user, "finance.write") === "ALL" || scopeFor(session.user, "finance.confirm") === "ALL"))
-  );
+  const allowByFinanceRole = opts?.allowFinanceRole && financeRoleAssociatesAnyMatter(session.user);
   return prisma.matter.findFirst({
     where: {
       id: matterId,
@@ -81,6 +78,8 @@ export async function assertDocumentWritable(
   if (!matter) throw new Error("案件不存在或无权处理");
   if (matter.status !== "ARCHIVED") return;
 
+  const session=await requireSession("personal");
+  if(scopeFor(session.user,"archive.supplement")!=="OWN")throw new Error("归档后追加材料须单独授予补充归档权限");
   if (opts.kind === "modify") {
     throw new Error("案件已归档，材料不可修改或删除");
   }

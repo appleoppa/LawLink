@@ -16,6 +16,8 @@ vi.mock("@/lib/prisma", () => ({ prisma: db }));
 vi.mock("@/lib/auth/session", () => ({ requireSession: vi.fn(async () => session) }));
 vi.mock("@/server/audit", () => ({ audit: vi.fn(), auditTx: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+// 本组覆盖未升级库；升级后的并发/金额/权限由 verify-workflow-ledger.ts 真实 PostgreSQL 验证。
+vi.mock("@/server/finance/ledger-storage", () => ({ financeLedgerReady: vi.fn(async () => false) }));
 vi.mock("@/lib/archive/guard", () => ({ assertMatterWritable: vi.fn(async () => {}) }));
 
 import { allocatePayment } from "@/server/finance/allocation";

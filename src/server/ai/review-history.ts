@@ -5,7 +5,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
-import { assertCanAccessMatter } from "@/lib/permissions";
+import { assertCanReadMatter } from "@/lib/permissions";
 import { assertCanReviewDocument } from "@/server/ai/document-access";
 import type {
   ReviewItem,
@@ -94,7 +94,8 @@ export async function getReviewRecord(input: {
     }
   });
   if (!rec) return null;
-  await assertCanAccessMatter(session.user.id, session.user.role, rec.matterId, session.user.rolePermissions);
+  // 审查记录读取走站内窄口径（P2-8 同源）：财务岗不再经旧过滤器放大到全所。
+  await assertCanReadMatter(session.user.id, session.user.role, rec.matterId, session.user.rolePermissions);
   return {
     id: rec.id,
     reviewedAt: rec.reviewedAt,

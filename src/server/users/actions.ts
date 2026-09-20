@@ -1,4 +1,5 @@
 "use server";
+import {responsibilityCounts,recordOffboardingRisk} from "@/server/reminders/offboarding";
 
 import { readBuiltinPresentations } from "@/lib/roles/presentation";
 import { roleTablesReady } from "@/lib/roles/service";
@@ -18,6 +19,7 @@ import { saveBasicProfile } from "./profile-service";
 const userRoleSchema = z.enum([
   "CUSTOM",
   "PRINCIPAL_LAWYER",
+  "INDEPENDENT_LAWYER",
   "LAWYER",
   "ASSISTANT",
   "FINANCE"
@@ -76,6 +78,7 @@ export async function listUsers() {
       email: true,
       role: true,
       systemRole: true,
+      managerAuthorized: true,
       phone: true,
       active: true,
       lastLoginAt: true,
@@ -91,7 +94,8 @@ export async function listUsers() {
   });
   const definitions = await roleTablesReady() ? await prisma.user.findMany({ where: { role: "CUSTOM" }, select: { id: true, roleDefinitionId: true, roleDefinition: { select: { name: true, active: true } } } }) : [];
   const builtinNames = new Map((await readBuiltinPresentations()).map(role => [role.id, role.name]));
-  return users.map(user => { const custom = definitions.find(d => d.id === user.id); return { ...user, roleDefinitionId: custom?.roleDefinitionId ?? null, roleName: custom?.roleDefinition?.name ?? builtinNames.get(user.role), roleActive: custom?.roleDefinition?.active ?? true }; });
+  const responsibilities=await responsibilityCounts(prisma);
+  return users.map(user => { const custom = definitions.find(d => d.id === user.id); return { ...user, openResponsibilityCount:responsibilities.get(user.id)??0, roleDefinitionId: custom?.roleDefinitionId ?? null, roleName: custom?.roleDefinition?.name ?? builtinNames.get(user.role), roleActive: custom?.roleDefinition?.active ?? true }; });
 }
 
 /**
@@ -209,6 +213,7 @@ export async function updateUserRole(input: UserUpdateRoleInput) {
     if ((data.expectedRole && current.role !== data.expectedRole) || (data.expectedRoleDefinitionId !== undefined && current.roleDefinitionId !== data.expectedRoleDefinitionId)) throw new Error("账号角色已变化，请刷新后再修改");
     const assignment = await validateRoleAssignment(db, data);
     await db.user.update({ where: { id: data.id }, data: { ...assignment, sessionVersion: { increment: 1 } } });
+    if(assignment.role==='CUSTOM'&&!await db.rolePermission.count({where:{roleId:assignment.roleDefinitionId!,permissionKey:'matters.write'}}))await recordOffboardingRisk(db,session.user.id,[data.id]);
     await approvalAudit(db, session.user.id, "USER_ROLE_UPDATE", data.id, { before: current.role, beforeRoleDefinitionId: current.roleDefinitionId, after: data.role, afterRoleDefinitionId: data.roleDefinitionId ?? null });
   });
 
@@ -254,6 +259,32 @@ export async function updateUserSystemRole(input: UserUpdateSystemRoleInput) {
   revalidatePath("/admin/users");
   return { ok: true };
 }
+
+const userUpdateManagerSchema = z.object({
+  id: z.string().cuid(),
+  managerAuthorized: z.boolean(),
+  expectedManagerAuthorized: z.boolean()
+});
+
+/**
+ * 业务管理权（2026-09-19 与岗位解耦）：按人授予，等同合伙人的业务可见性与管理资格；
+ * 会话每次请求实时解析，调整即时生效，不撤销在线会话。写入与审计同事务。
+ */
+export async function setUserManagerAuthorized(input: z.infer<typeof userUpdateManagerSchema>) {
+  const session = await requireAdmin();
+  const data = userUpdateManagerSchema.parse(input);
+  await approvalTransaction(async db => {
+    await assertCurrentAdmin(db, session.user.id);
+    const current = await db.user.findUniqueOrThrow({ where: { id: data.id }, select: { managerAuthorized: true } });
+    if (current.managerAuthorized !== data.expectedManagerAuthorized) throw new Error("业务管理权已变化，请刷新后再修改");
+    if (current.managerAuthorized === data.managerAuthorized) return;
+    await db.user.update({ where: { id: data.id }, data: { managerAuthorized: data.managerAuthorized } });
+    await approvalAudit(db, session.user.id, "USER_MANAGER_AUTHORIZATION_UPDATE", data.id, { before: current.managerAuthorized, after: data.managerAuthorized });
+  });
+  revalidatePath("/admin/users");
+  return { ok: true, managerAuthorized: data.managerAuthorized };
+}
+
 export async function setUserActive(input: { id: string; active: boolean }) {
   const session = await requireAdmin();
   const data = z.object({ id: z.string().cuid(), active: z.boolean() }).parse(input);
@@ -264,6 +295,7 @@ export async function setUserActive(input: { id: string; active: boolean }) {
     if (current.active === data.active) return;
     if (current.active && current.systemRole === "SUPER_ADMIN" && !data.active) await protectLastSystemAdmin(db);
     await db.user.update({ where: { id: data.id }, data: { active: data.active, sessionVersion: { increment: 1 } } });
+    if(!data.active)await recordOffboardingRisk(db,session.user.id,[data.id]);
     await approvalAudit(db, session.user.id, data.active ? "USER_ACTIVATE" : "USER_DEACTIVATE", data.id);
   });
   revalidatePath("/admin/users");

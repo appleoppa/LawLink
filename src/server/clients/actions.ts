@@ -1,4 +1,5 @@
 "use server";
+import { getFinanceFacts } from "@/server/finance/facts";
 import { roleMutation, checkRoleMutation } from "@/lib/roles/service";
 
 import { revalidatePath } from "next/cache";
@@ -78,7 +79,7 @@ export async function listClients(input: Partial<ClientListQuery> = {}) {
 export async function getClientById(id: string) {
   const session = await requireSession("clients.read");
   // 权限检查：manager/finance 看全部，其他人需有关联案件
-  if (!isManager(session.user.role) && session.user.role !== "FINANCE") {
+  if (!isManager(session.user) && session.user.role !== "FINANCE") {
     const accessible = await prisma.client.findFirst({
       where: {
         id,
@@ -124,7 +125,7 @@ export async function getClientById(id: string) {
 export async function getClientFinanceSummary(clientId: string) {
   const session = await requireSession("finance.read");
   // 权限：与 getClientById 一致
-  if (!isManager(session.user.role) && session.user.role !== "FINANCE") {
+  if (!isManager(session.user) && session.user.role !== "FINANCE") {
     const accessible = await prisma.client.findFirst({
       where: {
         id: clientId,
@@ -154,7 +155,8 @@ export async function getClientFinanceSummary(clientId: string) {
     prisma.matter.count({ where: matterWhere })
   ]);
 
-  const contractTotal = billings.reduce((s, b) => s + Number(b.contractAmount), 0);
+  const facts=await getFinanceFacts(matterWhere);
+  const contractTotal = billings.filter(b=>b.signedAt).reduce((s, b) => s + Number(b.contractAmount), 0);
   const receivable = fees
     .filter((f) => f.type === "RECEIVABLE")
     .reduce((s, f) => s + Number(f.amount), 0);
@@ -163,10 +165,13 @@ export async function getClientFinanceSummary(clientId: string) {
     .reduce((s, f) => s + Number(f.amount), 0);
 
   return {
-    contractTotal,
-    receivable,
-    received,
-    pending: Math.max(0, receivable - received),
+    contractTotal: facts ? facts.billings.filter(b=>b.signedAt&&b.moneyKind==='LAWYER_FEE').reduce((n,b)=>n+b.contractAmount.toNumber(),0) : contractTotal,
+    receivable: facts?Number(facts.lawyerSummary.receivable):receivable,
+    received: facts?Number(facts.lawyerSummary.netReceived):received,
+    // 已核销/应收口径的回款分子，与案件详情 getMatterFinance 的 allocated 同源；
+    // 旧口径（未升级库）无独立核销概念，退回已确认实收合计（与 received 同源）
+    allocated: facts?Number(facts.lawyerSummary.receivable)-Number(facts.lawyerSummary.outstanding):received,
+    pending: facts?Number(facts.lawyerSummary.outstanding):Math.max(0, receivable - received),
     matterCount,
     billings: billings.map((b) => ({
       id: b.id,
@@ -313,8 +318,8 @@ export async function updateClient(input: ClientUpdateInput) {
 
 export async function softDeleteClient(id: string) {
   const session = await requireSession("clients.write");
-  if (session.user.role !== "CUSTOM" && session.user.role !== "PRINCIPAL_LAWYER") {
-    throw new Error("只有主任律师或获授权岗位可以删除客户");
+  if (session.user.role !== "CUSTOM" && !isManager(session.user.role)) {
+    throw new Error("只有合伙人或获授权岗位可以删除客户");
   }
 
   await assertCustomClientWrite(session.user, id);

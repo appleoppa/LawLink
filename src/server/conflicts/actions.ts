@@ -1,13 +1,24 @@
 "use server";
-import { roleMutation } from "@/lib/roles/service";
+import { approvalTransaction } from "@/lib/approvals/service";
+import { assertIntakeEditor, intakeState, intakeWorkflowReady, currentActor } from "@/server/intakes/workflow";
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
-import { matterAssociationFilter } from "@/lib/permissions";
+import { matterAssociationFilter, intakeVisibilityFilter } from "@/lib/permissions";
+import type { RoleGrant } from "@/lib/roles/catalog";
 import { runConflictCheck, conflictHitKey, type IntakeInfoForHit, type MatterInfoForHit, type QueryItem } from "./algorithm";
+
+/** 收案对象级授权：正式检索与结论只能作用于自己可见的收案，防止向他人收案挂记录、改写他人结论 */
+async function assertCanAccessIntake(userId: string, role: string, intakeId: string, grants?: RoleGrant[] | null) {
+  const row = await prisma.intake.findFirst({
+    where: { id: intakeId, ...intakeVisibilityFilter(userId, role, grants ?? undefined) },
+    select: { id: true }
+  });
+  if (!row) throw new Error("收案不存在或无权访问");
+}
 
 function serializeIntakeInfo(info: IntakeInfoForHit | null | undefined) {
   if (!info) return null;
@@ -82,6 +93,9 @@ const runCheckSchema = z.object({
 export async function runCheckAndSave(input: z.infer<typeof runCheckSchema>) {
   const session = await requireSession("intakes.create");
   const data = runCheckSchema.parse(input);
+  if (data.intakeId) {
+    await assertCanAccessIntake(session.user.id, session.user.role, data.intakeId, session.user.rolePermissions);
+  }
 
   // 清理 query（v0.4: 允许 name 为空，由 idNumber 兜底；role 缺省视为 OPPOSING_PARTY）
   const queries: QueryItem[] = data.queries.map((q) => ({
@@ -90,17 +104,17 @@ export async function runCheckAndSave(input: z.infer<typeof runCheckSchema>) {
     idNumber: q.idNumber?.trim() || undefined
   }));
 
-  const result = await runConflictCheck(queries, { excludeIntakeId: data.intakeId });
   const precheck = !data.intakeId;
-  const noHits = result.hits.length === 0 && !precheck;
-  const matterInfoByHit = new Map(result.hits.map((h) => [conflictHitKey(h), h.matterInfo]));
-  const intakeInfoByHit = new Map(result.hits.map((h) => [conflictHitKey(h), h.intakeInfo]));
-  const openableMatterIds = await getOpenableMatterIds(
-    session.user.id,
-    result.hits.filter((h) => h.targetType === "Matter").map((h) => h.targetId)
-  );
-
-  const check = await roleMutation(session.user, "intakes.create", async roleDb => roleDb.conflictCheck.create({
+  const {result,check}=await approvalTransaction(async db=>{
+    await currentActor(db,session.user.id,'intakes.create');
+    let subjectFingerprint:string|null=null;
+    if(data.intakeId && await intakeWorkflowReady(db)){
+      await assertIntakeEditor(db,session.user.id,data.intakeId,undefined,'intakes.create');
+      const state=await intakeState(db,data.intakeId);queries.splice(0,queries.length,...state.queries);subjectFingerprint=state.subjectFingerprint;
+    }
+    const result=await runConflictCheck(queries,{excludeIntakeId:data.intakeId,db});
+    const noHits=result.hits.length===0&&!precheck;
+    const check=await db.conflictCheck.create({
     data: {
       intakeId: data.intakeId,
       queryPayload: {
@@ -127,7 +141,15 @@ export async function runCheckAndSave(input: z.infer<typeof runCheckSchema>) {
       }
     },
     include: { hits: true }
-  }));
+
+    });
+    if(subjectFingerprint)await db.$executeRaw`UPDATE "ConflictCheck" SET "subjectFingerprint"=${subjectFingerprint} WHERE id=${check.id}`;
+    return {result,check};
+  });
+  const noHits=result.hits.length===0&&!precheck;
+  const matterInfoByHit=new Map(result.hits.map(h=>[conflictHitKey(h),h.matterInfo]));
+  const intakeInfoByHit=new Map(result.hits.map(h=>[conflictHitKey(h),h.intakeInfo]));
+  const openableMatterIds=await getOpenableMatterIds(session.user.id,result.hits.filter(h=>h.targetType==='Matter').map(h=>h.targetId));
 
   await audit({
     userId: session.user.id,
@@ -175,8 +197,20 @@ export async function setConflictConclusion(input: z.infer<typeof conclusionSche
   const target = await prisma.conflictCheck.findUnique({ where: { id: data.checkId }, select: { intakeId: true } });
   if (!target) throw new Error("检索记录不存在");
   if (!target.intakeId) throw new Error("冲突预检仅供了解情况，不出检索结论；正式结论请在收案中给出");
+  // 送审轮次已冻结结论（轮次只追加不覆盖）：PENDING_CONFIRMATION 期间改结论须先撤回
+  await assertCanAccessIntake(session.user.id, session.user.role, target.intakeId, session.user.rolePermissions);
 
-  const updated = await roleMutation(session.user, "intakes.create", async roleDb => roleDb.conflictCheck.update({
+  const updated = await approvalTransaction(async roleDb => {
+    await currentActor(roleDb,session.user.id,'intakes.create');
+    if(await intakeWorkflowReady(roleDb)){
+      await assertIntakeEditor(roleDb,session.user.id,target.intakeId!,['INTAKE','NEEDS_REVISION'],'intakes.create');
+      const state=await intakeState(roleDb,target.intakeId!);
+      const latest=await roleDb.conflictCheck.findFirst({where:{intakeId:target.intakeId},orderBy:{checkedAt:'desc'},select:{id:true}});
+      const [meta]=await roleDb.$queryRaw<{subjectFingerprint:string|null}[]>`SELECT "subjectFingerprint" FROM "ConflictCheck" WHERE id=${data.checkId}`;
+      if(latest?.id!==data.checkId||meta.subjectFingerprint!==state.subjectFingerprint)throw new Error('旧检索已失效，请重新检索');
+      if(data.conclusion==='DIFFERENT'&&!data.note?.trim()&&await roleDb.conflictHit.count({where:{checkId:data.checkId}}))throw new Error('请填写排除冲突的复核理由');
+    }
+    return roleDb.conflictCheck.update({
     where: { id: data.checkId },
     data: {
       conclusion: data.conclusion,
@@ -185,7 +219,8 @@ export async function setConflictConclusion(input: z.infer<typeof conclusionSche
       note: data.note || null
     },
     include: { intake: { select: { id: true } } }
-  }));
+  });
+  });
 
   await audit({
     userId: session.user.id,

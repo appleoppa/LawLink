@@ -13,11 +13,12 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/auth/session";
+import { isManager } from "@/lib/permissions";
 import { audit } from "@/server/audit";
 
 function assertCanManage(user: RoleUser) {
-  if (!customOrLegacy(user, "announcements.manage", user.role === "PRINCIPAL_LAWYER")) {
-    throw new Error("仅主任律师或获授权岗位可发布公告");
+  if (!customOrLegacy(user, "announcements.manage", isManager(user))) {
+    throw new Error("仅合伙人、获业务管理权或获授权岗位可发布公告");
   }
 }
 

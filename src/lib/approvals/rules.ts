@@ -31,7 +31,15 @@ export function matchesApprovalRule(rule: ApprovalRule, context: ApprovalContext
   return true;
 }
 export function mayApproveSelf(userId: string, context: ApprovalContext, allowSelfApproval: boolean) {
-  // 回填为执行动作，不是再次审批；不能由此绕过独立的回填授权。
-  return context.action === "SEAL_STAMP" || (context.requesterId !== null &&
-    (context.requesterId !== userId || allowSelfApproval));
+  if (context.action === "SEAL_STAMP") {
+    // 回填为执行动作，不是再次审批；不能由此绕过独立的回填授权。
+    // 法定代表人章的物理保管人即法定代表人，申请人默认不得自回填（与自确认清单硬排除同口径）；
+    // allowSelfApproval 单人例外开启时解除「本人」操作限制（2026-09-20 A 批 P2-14）——
+    // 否则 1 人所/主任即法定代表代的常态下，本人申请的法人章批准后无人能回填、无法撤销，死锁。
+    // 例外只解除本人限制：canApproveContext 仍核对当前法定代表人身份、事项与印章启用状态。
+    if (context.sealType !== "LEGAL_REP_SEAL") return true;
+    return allowSelfApproval;
+  }
+  return context.requesterId !== null &&
+    (context.requesterId !== userId || allowSelfApproval);
 }

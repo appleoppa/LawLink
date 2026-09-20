@@ -48,11 +48,25 @@ const { db, session } = vi.hoisted(() => {
     // 样例 B：期限确认 + 队列接续共用同一 prisma mock
     deadline: {
       findUnique: vi.fn(async () => ({ id: "cidl000000000000000000001", confirmStatus: db.__deadline.confirmStatus, procedure: { matterId: "m1" }, sourceRuleId: "r1", dueAt: new Date() })),
-      update: vi.fn(async ({ data }: any) => { Object.assign(db.__deadline, data); return db.__deadline; })
+      updateMany: vi.fn(async ({ data }: any) => { Object.assign(db.__deadline, data); return { count: 1 }; })
     },
     jobQueue: {
-      update: vi.fn(async ({ data }: any) => { Object.assign(db.__job, data); return db.__job; })
+      update: vi.fn(async ({ data }: any) => { Object.assign(db.__job, data); return db.__job; }),
+      // completeJob 的条件完成：仅当仍处 RUNNING 才落 SUCCESS（内容被覆盖重排的旧执行不得终结新内容）
+      updateMany: vi.fn(async ({ where, data }: any) => {
+        if (where?.status && db.__job.status !== where.status) return { count: 0 };
+        Object.assign(db.__job, data);
+        return { count: 1 };
+      })
     },
+    // failJob 的原子计数：仅 RUNNING 时递增 attempts 并返回新值
+    $queryRaw: vi.fn(async () => {
+      if (db.__job.status === "RUNNING") {
+        db.__job.attempts += 1;
+        return [{ attempts: db.__job.attempts }];
+      }
+      return [];
+    }),
     $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(db)),
     __state: docState,
     __created: created,
@@ -65,8 +79,9 @@ vi.mock("@/lib/prisma", () => ({ prisma: db }));
 vi.mock("@/lib/auth/session", () => ({ requireSession: vi.fn(async () => session) }));
 vi.mock("@/server/audit", () => ({ audit: vi.fn(), auditTx: vi.fn(), auditStrict: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
-vi.mock("@/lib/archive/guard", () => ({ assertDocumentWritable: vi.fn(async () => {}) }));
-vi.mock("@/lib/permissions", () => ({ assertCanAccessMatter: vi.fn(async () => {}) }));
+vi.mock("@/lib/archive/guard", () => ({ assertDocumentWritable: vi.fn(async () => {}), assertMatterWritable: vi.fn(async () => {}) }));
+vi.mock("@/lib/permissions", () => ({ assertCanAccessMatter: vi.fn(async () => {}), assertCanModifyMatter: vi.fn(async () => {}), assertCanHandleMatter: vi.fn(async () => {}) }));
+vi.mock("@/server/reminders/schedule", () => ({ refreshScheduleReminderAfterSave: vi.fn(), retireScheduleReminders: vi.fn() }));
 vi.mock("@/server/matters/route", () => ({ revalidateMatter: vi.fn() }));
 vi.mock("@/lib/storage", () => ({
   storage: { writeFile: vi.fn(async () => "mock-path") }
@@ -113,13 +128,15 @@ describe("纵向样例 B：确认与队列接续", () => {
   });
 
   it("投递失败退避重排 → 重试成功落 SUCCESS 且幂等", async () => {
-    // 第一次失败：attempts=1，按退避重排 FAILED
-    db.__job.attempts = 1;
-    const outcome1 = await failJob("j1", 1, 5, "webhook timeout");
+    // 第一次失败：真实失败时原子递增计数（attempts 0→1），按退避重排 FAILED
+    Object.assign(db.__job, { status: "RUNNING", attempts: 0 });
+    const outcome1 = await failJob("j1", 5, "webhook timeout");
     expect(outcome1).toBe("RETRY");
     expect(db.__job.status).toBe("FAILED");
+    expect(db.__job.attempts).toBe(1);
     expect(db.__job.runAt!.getTime()).toBeGreaterThan(Date.now() - 1000);
-    // 第二次成功
+    // 第二次成功（真实流程由 claimDueJobs 重新领取置 RUNNING 后才 complete；条件完成只认 RUNNING）
+    Object.assign(db.__job, { status: "RUNNING" });
     await completeJob("j1");
     expect(db.__job.status).toBe("SUCCESS");
     expect(db.__job.deliveredAt).not.toBeNull();

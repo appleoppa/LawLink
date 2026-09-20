@@ -12,6 +12,8 @@
  *       {category}/
  *         {N}_{原文件名}
  */
+import {Prisma} from "@prisma/client";
+import {closureReady} from "./closure";
 import PizZip from "pizzip";
 import { prisma } from "@/lib/prisma";
 import { decryptIdNumber } from "@/lib/clients/id-number-crypto";
@@ -39,12 +41,11 @@ function safeName(s: string): string {
   return s.replace(/[\\/:*?"<>|]/g, "_").trim();
 }
 
-export async function buildArchiveZip(archiveId: string): Promise<ZipResult> {
-  const archive = await prisma.archiveRecord.findUnique({ where: { id: archiveId } });
-  if (!archive || archive.status !== "APPROVED") throw new Error("归档记录不存在或尚未批准");
-  const snapshot = parseArchiveSnapshot(archive.checklistJson);
-  if (!snapshot) throw new Error("该历史归档记录未固定批准材料，不能生成可核验归档包");
-  const matter = await prisma.matter.findUnique({
+export async function buildArchiveManifest(db:Prisma.TransactionClient,archiveId:string){
+ const archive=await db.archiveRecord.findUniqueOrThrow({where:{id:archiveId}});
+ const snapshot=parseArchiveSnapshot(archive.checklistJson);if(!snapshot)throw new Error("归档材料快照缺失");
+ const docs=[...snapshot.documents].sort((a,b)=>a.order-b.order);
+  const matter = await db.matter.findUnique({
     where: { id: archive.matterId },
     include: {
       primaryClient: true,
@@ -67,15 +68,7 @@ export async function buildArchiveZip(archiveId: string): Promise<ZipResult> {
       owner: { select: { id: true, name: true } }
     }
   });
-  if (!matter) throw new Error("案件不存在");
-  await verifyArchivePolicySource(snapshot);
-  const verified = await verifyArchiveSnapshotDocuments(snapshot, matter.id);
-  const docs = [...snapshot.documents].sort((a, b) => a.order - b.order);
-
-  const zip = new PizZip();
-  const root = safeName(archive.archiveNo);
-
-  // ===== manifest.json：结构化数据快照（脱敏：密码、apiKey、authTag 等不导出）
+  if(!matter)throw new Error("案件不存在");
   const manifest = {
     archiveNo: archive.archiveNo,
     archivedAt: archive.archivedAt.toISOString(),
@@ -199,6 +192,30 @@ export async function buildArchiveZip(archiveId: string): Promise<ZipResult> {
       order: d.order
     }))
   };
+  return manifest;
+}
+
+export async function buildArchiveZip(archiveId: string): Promise<ZipResult> {
+  const archive = await prisma.archiveRecord.findUnique({ where: { id: archiveId } });
+  if (!archive || archive.status !== "APPROVED") throw new Error("归档记录不存在或尚未批准");
+  const snapshot = parseArchiveSnapshot(archive.checklistJson);
+  if (!snapshot) throw new Error("该历史归档记录未固定批准材料，不能生成可核验归档包");
+  let manifest:Awaited<ReturnType<typeof buildArchiveManifest>>;
+  if(await closureReady(prisma)){
+    const [fixed]=await prisma.$queryRaw<{frozenManifest:Awaited<ReturnType<typeof buildArchiveManifest>>|null}[]>`SELECT "frozenManifest" FROM "ArchiveRecord" WHERE id=${archiveId}`;
+    if(!fixed?.frozenManifest)throw new Error("批准时未固定卷宗数据，不可生成归档包");
+    manifest=fixed.frozenManifest;
+  }else manifest=await buildArchiveManifest(prisma,archiveId);
+  const matter=manifest.matter;
+  if (!matter) throw new Error("案件不存在");
+  await verifyArchivePolicySource(snapshot);
+  const verified = await verifyArchiveSnapshotDocuments(snapshot, matter.id);
+  const docs = [...snapshot.documents].sort((a, b) => a.order - b.order);
+
+  const zip = new PizZip();
+  const root = safeName(archive.archiveNo);
+
+  // ===== manifest.json：结构化数据快照（脱敏：密码、apiKey、authTag 等不导出）
   zip.file(`${root}/manifest.json`, JSON.stringify(manifest, null, 2));
 
   // ===== README.md
@@ -264,6 +281,7 @@ export async function buildArchiveZip(archiveId: string): Promise<ZipResult> {
     zip.file(`${root}/材料/${dir}/${seq}_${safeName(d.name)}`, buf);
   }
 
+  Object.values(zip.files).forEach(file=>{file.date=new Date(archive.archivedAt);});
   const buffer = zip.generate({ type: "nodebuffer" }) as Buffer;
   return {
     buffer,

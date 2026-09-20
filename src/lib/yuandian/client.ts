@@ -6,6 +6,7 @@
  */
 import { getYuandianSettings, type ResolvedYuandianSettings } from "./settings";
 import { withExternalCallLog } from "@/lib/external-call-log";
+import { assertSafeHttpUrl } from "@/lib/net/safe-url";
 
 export class YuandianNotConfiguredError extends Error {
   constructor() {
@@ -111,6 +112,8 @@ export async function searchPtalCases(
     data?: { total?: number; lst?: PtalCase[] } | null;
   };
   try {
+    // 私网校验（2026-09-19 审计）：管理端可配的 baseUrl 不得指向本机/内网
+    await assertSafeHttpUrl(s.baseUrl.replace(/\/$/, ""));
     const res = await withExternalCallLog({ service: "yuandian" }, () => fetch(url, {
       method: "POST",
       headers: {
@@ -230,6 +233,7 @@ export async function searchCasesByVector(
     extra?: { wenshu?: VectorCase[] };
   };
   try {
+    await assertSafeHttpUrl(s.baseUrl.replace(/\/$/, ""));
     const res = await withExternalCallLog({ service: "yuandian" }, () => fetch(url, {
       method: "POST",
       headers: {

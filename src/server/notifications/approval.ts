@@ -54,7 +54,10 @@ export async function notifyRoleApprovers(input: ApprovalNotificationInput) {
   const users = await prisma.user.findMany({
     where: {
       active: true,
-      role: { in: Array.from(new Set(input.roles)) }
+      OR: [
+        { managerAuthorized: true },
+        { role: { in: Array.from(new Set(input.roles)) } }
+      ]
     },
     select: { id: true }
   });

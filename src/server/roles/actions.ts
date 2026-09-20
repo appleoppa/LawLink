@@ -1,4 +1,6 @@
 "use server";
+import {recordOffboardingRisk} from "@/server/reminders/offboarding";
+import {responsibilityReady} from "@/server/reminders/responsibility";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireSystemAdmin } from "@/lib/auth/session";
@@ -37,6 +39,7 @@ export async function saveRoleDefinition(input: RoleDefinitionInput) {
     if (data.permissions.length) await db.rolePermission.createMany({ data: data.permissions.map(p => ({ ...p, roleId: definition.id })) });
     const affected = await db.user.updateMany({ where: { role: "CUSTOM", roleDefinitionId: definition.id }, data: { sessionVersion: { increment: 1 } } });
     await db.auditLog.create({ data: { userId: session.user.id, action: "ROLE_DEFINITION_SAVE", targetType: "RoleDefinition", targetId: definition.id, detail: { before: old ? { name: old.name, active: old.active, permissions: old.permissions.map(p => ({ permissionKey: p.permissionKey, scope: p.scope })) } : null, after: { ...values, permissions: data.permissions }, affectedUsers: affected.count } } });
+    if(await responsibilityReady(db)&&(!data.active||!data.permissions.some(p=>p.permissionKey==='matters.write'))){const people=await db.user.findMany({where:{roleDefinitionId:definition.id},select:{id:true}});await recordOffboardingRisk(db,session.user.id,people.map(p=>p.id));}
     return { id: definition.id };
   });
   revalidatePath("/", "layout");

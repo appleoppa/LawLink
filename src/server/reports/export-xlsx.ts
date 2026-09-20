@@ -1,3 +1,4 @@
+import { getFinanceFacts, periodReceipts } from "@/server/finance/facts";
 /**
  * v0.20: 律所报表 xlsx 导出
  *
@@ -66,7 +67,8 @@ export async function buildReportWorkbook(period: ReportPeriod, access: ReportAc
   sheetMatters.getRow(1).font = { bold: true };
 
   // Sheet 2: 收款明细
-  const receivedFees = await prisma.feeEntry.findMany({
+  const facts=await getFinanceFacts({deletedAt:null,AND:[access.finance]});
+  const receivedFees = facts ? periodReceipts(facts,period.start,period.end) : await prisma.feeEntry.findMany({
     where: {
       type: "RECEIVED",
       confirmState: "CONFIRMED",
@@ -79,6 +81,7 @@ export async function buildReportWorkbook(period: ReportPeriod, access: ReportAc
       payerOrPayee: true,
       invoiceNo: true,
       method: true,
+      note: true,
       matter: {
         select: {
           internalCode: true,
@@ -92,7 +95,8 @@ export async function buildReportWorkbook(period: ReportPeriod, access: ReportAc
   });
   const sheetFees = wb.addWorksheet("收款明细");
   sheetFees.columns = [
-    { header: "收款日期", key: "occurredAt", width: 12 },
+    { header: "发生日期", key: "occurredAt", width: 12 },
+    { header: "收款或更正说明", key: "note", width: 40 },
     { header: "金额", key: "amount", width: 14 },
     { header: "客户", key: "client", width: 18 },
     { header: "案件编号", key: "matterCode", width: 14 },
@@ -106,6 +110,7 @@ export async function buildReportWorkbook(period: ReportPeriod, access: ReportAc
     sheetFees.addRow({
       occurredAt: f.occurredAt.toISOString().slice(0, 10),
       amount: Number(f.amount),
+      note: f.note ?? "原始收款",
       client: f.matter?.primaryClient?.name ?? "",
       matterCode: f.matter?.internalCode ?? "",
       matterTitle: f.matter?.title ?? "",
@@ -143,7 +148,7 @@ export async function buildReportWorkbook(period: ReportPeriod, access: ReportAc
   sheetClient.columns = [
     { header: "客户", key: "name", width: 24 },
     { header: "应收金额", key: "receivable", width: 14 },
-    { header: "已收金额", key: "received", width: 14 },
+    { header: facts?"已核销金额":"已收金额", key: "received", width: 14 },
     { header: "应收余额", key: "balance", width: 14 }
   ];
   for (const row of data.byClientReceivable) {

@@ -49,6 +49,12 @@ type ExportUser = {
   id: string;
   role: string;
   rolePermissions?: RoleGrant[];
+  /**
+   * 业务管理权按人授予（与岗位解耦）。**导出刻意不随它放大**：
+   * 工作簿含当事人证件号、电话与住址明文，按人授予的管理权只放开只读可见范围，
+   * 导出仍限本人经办 / 参与，合伙人岗位除外（既有口径）。与 MANAGER_GRANTS 注释一致。
+   */
+  managerAuthorized?: boolean | null;
 };
 
 const EXPORT_TABS: MattersExportTab[] = [
@@ -421,6 +427,7 @@ function buildMatterWhere(params: MattersExportParams, user: ExportUser): Prisma
   const parts: Prisma.MatterWhereInput[] = [
     // 导出口径窄于列表可见口径：只允许本人经办 / 参与的案件，管理岗（主任律师）例外。
     // 财务岗虽可见全所案件的财务字段，但工作簿含当事人证件与联系方式，不得整所导出。
+    // 只认合伙人岗位（字符串形式），不传 user 对象——见 ExportUser.managerAuthorized 注释
     (isManager(user.role) ? {} : matterAssociationFilter(user.id)),
     { deletedAt: null },
     matterStatusWhere(params)

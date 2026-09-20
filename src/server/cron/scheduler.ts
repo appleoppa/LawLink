@@ -21,7 +21,7 @@
  * - 失败路径在此处统一捕获 + 写 *_FAILED_CRON audit，避免 cron 静默失败
  */
 import cron from "node-cron";
-import { runWeeklyReportPush } from "@/server/reports/push-weekly";
+import { runWeeklyReportPush } from "@/server/reports/weekly-push-core";
 import { scanArchiveOverdue } from "./jobs/archive-overdue";
 import { runAuditCleanup } from "./jobs/audit-cleanup";
 import { scanDueReminders } from "./jobs/scan-due-reminders";
@@ -29,6 +29,8 @@ import { scanSealBackfillReminders } from "./jobs/scan-seal-backfill-reminders";
 import { runDatabaseBackup, backupCronEnabled } from "./jobs/backup-database";
 import { audit } from "@/server/audit";
 import { processDueJobs } from "./worker";
+import { scanScheduleReminders } from "@/server/reminders/schedule";
+import { shParts } from "@/lib/ui/sh-time";
 import { recoverStaleLeases } from "./queue";
 
 const TIMEZONE = "Asia/Shanghai";
@@ -155,7 +157,13 @@ export function registerCronJobs() {
     "*/2 * * * *",
     () =>
       runWithFailureAudit("队列 worker", "QUEUE_WORKER_FAILED_CRON", () =>
-        processDueJobs(10)
+        (async () => {
+          await recoverStaleLeases();
+          const now = new Date();
+          // 09:00 前补当日紧急项，之后补所有应提醒档；保存后进程中断也不会等到次日。
+          await runWithFailureAudit("日程提醒补扫", "SCHEDULE_REMINDER_CATCHUP_FAILED_CRON", () => scanScheduleReminders(now, shParts(now).hh < 9));
+          return processDueJobs(10);
+        })()
       ),
     { timezone: TIMEZONE }
   );

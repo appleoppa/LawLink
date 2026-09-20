@@ -20,7 +20,7 @@ const { db, session, perms } = vi.hoisted(() => {
   return {
     db,
     session: { user: { id: "clawyer0000000000000000001", role: "LAWYER", rolePermissions: undefined } },
-    perms: { assertCanAccessMatter: vi.fn(async () => {}), assertCanReadMatter: vi.fn(async () => {}) }
+    perms: { assertCanAccessMatter: vi.fn(async () => {}), assertCanReadMatter: vi.fn(async () => {}), assertCanHandleMatter: vi.fn(async () => {}) }
   };
 });
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
@@ -114,8 +114,8 @@ describe("创建证据项", () => {
     expect(db.evidenceItem.create).not.toHaveBeenCalled();
   });
 
-  it("无案件访问权时被权限断言拦截", async () => {
-    perms.assertCanAccessMatter.mockRejectedValue(new Error("案件不存在"));
+  it("无案件办理权时被权限断言拦截（P1-1：证据项创建走经办断言）", async () => {
+    perms.assertCanHandleMatter.mockRejectedValue(new Error("案件不存在"));
     await expect(
       createEvidenceItem({ matterId: MATTER, title: "x", content: "y", kind: "ISSUE" })
     ).rejects.toThrow("案件不存在");

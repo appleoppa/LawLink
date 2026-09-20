@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const { run, create } = vi.hoisted(() => ({ run: vi.fn(), create: vi.fn() }));
-const { findUnique } = vi.hoisted(() => ({ findUnique: vi.fn() }));
-vi.mock("@/lib/prisma", () => ({ prisma: { conflictCheck: { findUnique } } }));
-vi.mock("@/lib/auth/session", () => ({ requireSession: async () => ({ user: { id: "test-user" } }) }));
+const { findUnique, intakeFindFirst } = vi.hoisted(() => ({ findUnique: vi.fn(), intakeFindFirst: vi.fn() }));
+vi.mock("@/lib/prisma", () => ({ prisma: { conflictCheck: { findUnique }, intake: { findFirst: intakeFindFirst } } }));
+vi.mock("@/lib/auth/session", () => ({ requireSession: async () => ({ user: { id: "test-user", role: "LAWYER" } }) }));
+vi.mock("@/lib/approvals/service", () => ({ approvalTransaction: async (fn:(db:unknown)=>unknown) => fn({conflictCheck:{create}}) }));
+vi.mock("@/server/intakes/workflow", () => ({ currentActor:vi.fn(),intakeWorkflowReady:async()=>false }));
 vi.mock("@/lib/roles/service", () => ({ roleMutation: async (_user: unknown, _permission: unknown, fn: (db: unknown) => unknown) => fn({ conflictCheck: { create } }) }));
 vi.mock("@/server/audit", () => ({ audit: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -14,6 +16,8 @@ beforeEach(() => {
   vi.resetAllMocks();
   run.mockResolvedValue({ hits: [], sameNameClients: [], idMatchedClients: [] });
   create.mockResolvedValue({ id: "check", hits: [] });
+  // 收案对象级授权：默认放行（登记人本人可见）
+  intakeFindFirst.mockResolvedValue({ id: "cintake000000000000000001" });
 });
 describe("新收案完整检索条件", () => {
   const intakeId = "cintake000000000000000001";
@@ -42,15 +46,26 @@ describe("新收案完整检索条件", () => {
   it("工作区预检不出结论：未命中也保持待定，不自动记为可承办", async () => {
     await runCheckAndSave({ queries: [{ name: "测试公司" }] });
     expect(create.mock.calls[0][0].data).toMatchObject({ conclusion: "PENDING", decidedById: null, note: null });
-    expect(run.mock.calls[0][1]).toEqual({ excludeIntakeId: undefined });
+    expect(run.mock.calls[0][1]).toMatchObject({ excludeIntakeId: undefined });
   });
   it("收案正式检索未命中仍自动给出未命中结论，并排除收案自身", async () => {
     await runCheckAndSave({ intakeId, queries: [{ role: "OPPOSING_PARTY", name: "测试公司" }] });
     expect(create.mock.calls[0][0].data.conclusion).toBe("DIFFERENT");
-    expect(run.mock.calls[0][1]).toEqual({ excludeIntakeId: intakeId });
+    expect(run.mock.calls[0][1]).toMatchObject({ excludeIntakeId: intakeId });
   });
   it("预检记录不能设置检索结论", async () => {
     findUnique.mockResolvedValue({ intakeId: null });
     await expect(setConflictConclusion({ checkId: "ccheck00000000000000000001", conclusion: "DIFFERENT" })).rejects.toThrow("冲突预检仅供了解情况");
+  });
+  it("不可见收案不能挂正式检索：对象级授权先行，不落检索记录", async () => {
+    intakeFindFirst.mockResolvedValue(null);
+    await expect(runCheckAndSave({ intakeId, queries: [{ role: "OPPOSING_PARTY", name: "测试公司" }] })).rejects.toThrow("收案不存在或无权访问");
+    expect(run).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+  it("不可见收案的检索结论不能被改写", async () => {
+    findUnique.mockResolvedValue({ intakeId: "cintake000000000000000002" });
+    intakeFindFirst.mockResolvedValue(null);
+    await expect(setConflictConclusion({ checkId: "ccheck00000000000000000001", conclusion: "DIFFERENT" })).rejects.toThrow("收案不存在或无权访问");
   });
 });

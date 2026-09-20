@@ -19,7 +19,7 @@ export async function canApproveContext(userId: string, context: ApprovalContext
   if (context.sealType) {
     const config = await db.sealTypeConfig.findUnique({ where: { type: context.sealType } });
     if (!config?.enabled) return false;
-    if (context.action === "SEAL_APPROVE" && (config.requiresLegalRep || context.sealType === "LEGAL_REP_SEAL")) {
+    if ((context.action === "SEAL_APPROVE" || context.action === "SEAL_STAMP") && (config.requiresLegalRep || context.sealType === "LEGAL_REP_SEAL")) {
       const rep = await db.systemSetting.findUnique({ where: { key: "firmLegalRepUserId" } });
       if ((rep?.value as { value?: string } | null)?.value !== userId) return false;
     }

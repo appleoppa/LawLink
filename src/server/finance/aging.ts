@@ -1,4 +1,6 @@
 "use server";
+import { getFinanceFacts } from "./facts";
+import { agingFromFacts } from "./facts-aging";
 
 /**
  * 墨案 08「应收账龄 / 逾期未回款」：基于应收（Receivable）未核销余额，按到期日分档。
@@ -12,6 +14,7 @@ export type AgingRow = {
   id: string;
   title: string;
   outstanding: number;
+  dueState?:string;
   dueDate: string | null;
   overdueDays: number | null;
   matter: { id: string; internalCode: string; title: string; clientName: string | null };
@@ -19,6 +22,8 @@ export type AgingRow = {
 
 export async function getReceivablesAging() {
   const session = await requireSession("finance.read");
+  const facts=await getFinanceFacts({deletedAt:null,...matterFinanceVisibilityFilter(session.user.id,session.user.role,session.user.rolePermissions)});
+  if(facts)return agingFromFacts(facts);
   const rows = await prisma.receivable.findMany({
     where: {
       status: "OPEN",

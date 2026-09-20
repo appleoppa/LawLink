@@ -1,4 +1,5 @@
 "use server";
+import {closureReady} from "@/server/archive/closure";
 import { ApprovalAction } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
@@ -77,6 +78,12 @@ export async function getApprovalDetail(input: { action: ApprovalAction; id: str
   function field(label: string, value: unknown) { if (value != null && value !== "") fields.push({ label, value: value instanceof Date ? value.toLocaleDateString("zh-CN") : String(value) }); }
   if (action === "INTAKE_APPROVE") {
     intakeDetail = await loadIntakeApprovalDetail(id);
+    if(!task&&!isSystemAdmin(session.user)&&row.requesterId!==session.user.id&&row.intakeOwnerId!==session.user.id){
+      const lastOwn=row.history.filter(h=>h.decision&&h.userId===session.user.id).at(-1)?.at;
+      const rounds=lastOwn&&intakeDetail.rounds.length?await prisma.$queryRaw<{round:number}[]>`SELECT round FROM "IntakeRevision" WHERE "intakeId"=${id} AND "submittedAt"<=${lastOwn} ORDER BY round DESC`:[];
+      const permitted=new Set(rounds.map(r=>r.round));
+      intakeDetail={...intakeDetail,sections:[],currentParties:[],checks:[],attachments:[],rounds:intakeDetail.rounds.filter(r=>permitted.has(r.round))};
+    }
     field("冲突审查结论", intakeDetail.checks[0]?.conclusion ?? "尚未核查");
     attachments = intakeDetail.attachments;
   } else if (action === "DOCUMENT_APPROVE") {
@@ -85,6 +92,11 @@ export async function getApprovalDetail(input: { action: ApprovalAction; id: str
   } else if (action === "ARCHIVE_APPROVE") {
     const r = await prisma.archiveRecord.findUniqueOrThrow({ where: { id }, include: { matter: { select: { title: true } } } });
     field("案件名称", r.matter.title); field("归档编号", r.archiveNo); field("归档人", r.archivedBy); field("结案总结", r.summary); field("裁判结果", r.judgmentSummary); field("缺失材料", r.missingItems.join("、") || "无"); field("完成时间", r.completedAt);
+    if(await closureReady(prisma)){
+      const [w]=await prisma.$queryRaw<{parentNo:string|null;workflowSnapshot:{plan:{reason:string;financeOwnerId:string|null;serviceCompletedAt:string};facts:{finance:{outstanding:string;unallocated:string;commissionBalance:string}}}|null}[]>`SELECT a."workflowSnapshot",p."archiveNo" AS "parentNo" FROM "ArchiveRecord" a LEFT JOIN "ArchiveRecord" p ON p.id=a."supplementOfId" WHERE a.id=${id}`;
+      if(w?.parentNo)field('补充归档对应原卷宗',w.parentNo);
+      if(w?.workflowSnapshot){const snap=w.workflowSnapshot;field('服务完成与收尾说明',snap.plan.reason);field('财务未结应收',snap.facts.finance.outstanding);field('未分配收款',snap.facts.finance.unallocated);field('未结分成',snap.facts.finance.commissionBalance);const owner=snap.plan.financeOwnerId?await prisma.user.findUnique({where:{id:snap.plan.financeOwnerId},select:{name:true}}):null;field('指定财务收尾负责人',owner?.name??'无未结财务');}
+    }
     const snapshot = parseArchiveSnapshot(r.checklistJson);
     if (snapshot) {
       field("制度依据", `${snapshot.policy.name}（${snapshot.policy.version}）`);
@@ -127,5 +139,5 @@ export async function getApprovalDetail(input: { action: ApprovalAction; id: str
     return { ...attachment, readable: !!doc && await canReadDocument(session.user.id, doc) };
   }));
   await audit({ userId: session.user.id, action: "APPROVAL_REQUEST_VIEW", targetType: "Approval", targetId: id, detail: { action } });
-  return { fields, intakeDetail: intakeDetail ? { sections: intakeDetail.sections, currentParties: intakeDetail.currentParties, checks: intakeDetail.checks } : null, attachments: checkedAttachments, archiveReview, history: row.history, task, status: row.status, title: row.title, requester: row.requester, submittedAt: row.submittedAt, sealType, canResubmit: ((row.action === "INTAKE_APPROVE" && row.status === "NEEDS_REVISION") || (row.action === "DOCUMENT_APPROVE" && row.status === "DRAFT")) && (row.requesterId === session.user.id || row.intakeOwnerId === session.user.id), canCancel: row.action === "SEAL_APPROVE" && row.status === "PENDING" && row.requesterId === session.user.id };
+  return { fields, intakeDetail: intakeDetail ? { rounds:intakeDetail.rounds, sections: intakeDetail.sections, currentParties: intakeDetail.currentParties, checks: intakeDetail.checks } : null, attachments: checkedAttachments, archiveReview, history: row.history, task, status: row.status, title: row.title, requester: row.requester, submittedAt: row.submittedAt, sealType, canResubmit: ((row.action === "INTAKE_APPROVE" && row.status === "NEEDS_REVISION") || (row.action === "DOCUMENT_APPROVE" && row.status === "DRAFT")) && (row.requesterId === session.user.id || row.intakeOwnerId === session.user.id), canCancel: row.action === "SEAL_APPROVE" && row.status === "PENDING" && row.requesterId === session.user.id };
 }

@@ -1,12 +1,14 @@
 "use server";
+import {insertFinanceRowTx} from "@/server/finance/allocation-internals";
 
 /**
  * 财务核销服务层（P1 §二）。
  *
- * 口径：Billing 签署 → 生成应收；收款登记（FeeEntry RECEIVED）→ 生成实收；
+ * 口径：Billing 签署 → 生成应收；收款确认（FeeEntry RECEIVED 确认时）→ 生成实收；
  * 一次实收可核销多项应收 / 一项应收可分次收清；已确认记录更正走带原因的
  * FinanceCorrection（P0 守卫已禁物理删除，本层提供记录 + 事务审计）。
  * FeeEntry 保留为流水台账，核销余额以本组表为准（报表口径切换随 UI 批次）。
+ * 事务内 helper（generateReceivableForBilling 等）在 allocation-internals.ts，不进 RPC 面。
  */
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
@@ -15,41 +17,12 @@ import { requireSession } from "@/lib/auth/session";
 import { auditTx } from "@/server/audit";
 import { assertMatterWritable } from "@/lib/archive/guard";
 import { assertCanAccessMatterFinance } from "@/lib/permissions";
-
-/** Billing 签署时生成应收（在 createBilling 事务内调用） */
-export async function generateReceivableForBilling(
-  tx: Prisma.TransactionClient,
-  input: { matterId: string; billingId: string; title: string; amount: Prisma.Decimal; dueDate?: Date | null }
-) {
-  await tx.receivable.create({
-    data: {
-      matterId: input.matterId,
-      billingId: input.billingId,
-      title: input.title,
-      amount: input.amount,
-      dueDate: input.dueDate ?? null
-    }
-  });
-}
-
-/** 收款登记生成实收（在 createFeeEntry 事务内调用） */
-export async function generatePaymentForReceivedEntry(
-  tx: Prisma.TransactionClient,
-  input: { matterId: string; feeEntryId: string; amount: Prisma.Decimal; occurredAt: Date; recordedById: string }
-) {
-  await tx.payment.create({
-    data: {
-      matterId: input.matterId,
-      feeEntryId: input.feeEntryId,
-      amount: input.amount,
-      occurredAt: input.occurredAt,
-      recordedById: input.recordedById
-    }
-  });
-}
+import { financeLedgerReady } from "./ledger-storage";
+import { allocateLedger } from "./ledger-actions";
 
 const allocateSchema = z.object({
   paymentId: z.string().cuid(),
+  revision: z.number().int().nonnegative().optional(),
   items: z
     .array(
       z.object({
@@ -68,8 +41,14 @@ const allocateSchema = z.object({
 export async function allocatePayment(input: z.infer<typeof allocateSchema>) {
   const session = await requireSession("finance.write");
   const data = allocateSchema.parse(input);
+  if (await financeLedgerReady(prisma)) {
+    if (data.revision === undefined) throw new Error("请从账务核对与分配页面刷新实收版本后操作");
+    return allocateLedger({ paymentId: data.paymentId, revision: data.revision, kind: "RECEIVABLE", items: data.items.map(i => ({ targetId: i.receivableId, amount: i.amount })) });
+  }
 
   try {
+    // Serializable：无锁的 check-then-write 在并发下会把实收/应收推过余额上限（ReadCommitted 下两个事务都能通过余量检查）；
+    // 冲突事务以 P2034 失败并转中文提示重试。新账本路径（allocateLedgerTx）本身 Serializable+行锁，不受影响。
     return await prisma.$transaction(async tx => {
       const payment = await tx.payment.findUniqueOrThrow({
         where: { id: data.paymentId },
@@ -139,7 +118,7 @@ export async function allocatePayment(input: z.infer<typeof allocateSchema>) {
         detail: { items: data.items, matterId: payment.matterId }
       });
       return { ok: true as const };
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && ["P2034", "P2025"].includes(err.code)) {
       throw new Error("实收或应收状态已变化，请刷新后重新核销");
@@ -161,10 +140,20 @@ const correctionSchema = z.object({
 export async function recordFinanceCorrection(input: z.infer<typeof correctionSchema>) {
   const session = await requireSession("finance.write");
   const data = correctionSchema.parse(input);
+  if (await financeLedgerReady(prisma)) throw new Error("请到“应收与收款分配”的退款与账务更正区提交申请，旧入口不直接更改余额");
 
   return prisma.$transaction(async tx => {
-    const created = await tx.financeCorrection.create({
-      data: {
+    // 冲正必须挂在真实存在的记录上，否则只产出一行悬空审计与更正流水
+    const targetExists =
+      data.targetType === "FeeEntry"
+        ? await tx.feeEntry.findUnique({ where: { id: data.targetId }, select: { id: true, matterId: true } })
+        : data.targetType === "Payment"
+          ? await tx.payment.findUnique({ where: { id: data.targetId }, select: { id: true, matterId: true } })
+          : await tx.receivable.findUnique({ where: { id: data.targetId }, select: { id: true, matterId: true } });
+    if (!targetExists) throw new Error("更正对象不存在或已删除，请刷新后重试");
+    await assertMatterWritable(targetExists.matterId, { allowFinanceRole: true });
+
+    const created = await insertFinanceRowTx(tx,'FinanceCorrection',{
         targetType: data.targetType,
         targetId: data.targetId,
         type: data.type,
@@ -172,9 +161,7 @@ export async function recordFinanceCorrection(input: z.infer<typeof correctionSc
         reason: data.reason,
         relatedDocNo: data.relatedDocNo || null,
         createdById: session.user.id
-      },
-      select: { id: true }
-    });
+      });
     await auditTx(tx, {
       userId: session.user.id,
       action: "FINANCE_CORRECTION",

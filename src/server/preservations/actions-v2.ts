@@ -1,5 +1,6 @@
 "use server";
 import { roleMutation, checkRoleMutation } from "@/lib/roles/service";
+import { isManager } from "@/lib/permissions";
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -197,7 +198,7 @@ export async function updatePreservationCase(input: z.infer<typeof caseUpdateSch
 export async function deletePreservationCase(input: z.infer<typeof deleteSchema>) {
   const session = await requireSession("matters.write");
   const data = deleteSchema.parse(input);
-  if (session.user.role !== "PRINCIPAL_LAWYER") {
+  if (!isManager(session.user)) {
     throw new Error("仅主任律师可删除保全记录");
   }
 
@@ -314,7 +315,7 @@ export async function addProperty(input: z.infer<typeof propertyCreateSchema>) {
 export async function updateProperty(input: z.infer<typeof propertyUpdateSchema>) {
   const session = await requireSession("matters.write");
   const data = propertyUpdateSchema.parse(input);
-  const { id, amount, propertyDetail, ...rest } = data;
+  const { id, amount, propertyDetail } = data;
   const property = await prisma.preservationProperty.findUnique({
     where: { id },
     include: { target: { include: { case: { select: { id: true, matterId: true, ownerId: true } } } } }
@@ -323,12 +324,20 @@ export async function updateProperty(input: z.infer<typeof propertyUpdateSchema>
   await assertCanAccessPreservationCaseRecord(session.user.id, property.target.case);
   if (property.target.case.matterId) await assertMatterWritable(property.target.case.matterId);
 
-  const patch: Prisma.PreservationPropertyUpdateInput = { ...rest };
+  const patch: Prisma.PreservationPropertyUpdateInput = {};
   if (amount !== undefined) patch.amount = amount != null ? new Prisma.Decimal(amount) : null;
   if (propertyDetail !== undefined) patch.propertyDetail = propertyDetail?.trim() || null;
+  if (data.propertyType !== undefined) patch.propertyType = data.propertyType;
 
   await roleMutation(session.user, "matters.write", async roleDb => roleDb.preservationProperty.update({ where: { id }, data: patch }));
 
+  await audit({
+    userId: session.user.id,
+    action: "PRESERVATION_PROPERTY_UPDATE",
+    targetType: "PreservationProperty",
+    targetId: id,
+    detail: { fields: Object.keys(patch) }
+  });
   revalidatePath("/preservation");
   return { ok: true };
 }

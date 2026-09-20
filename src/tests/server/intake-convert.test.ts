@@ -91,6 +91,7 @@ function validConflictChecks() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  txMock.$queryRaw.mockResolvedValue([]);
   // 系统管理身份不提供审批特权，转案仍依赖按事项授权。
   for (const db of [prismaMock, txMock]) {
     db.user.findUnique.mockResolvedValue({ active: true, role: "LAWYER" });

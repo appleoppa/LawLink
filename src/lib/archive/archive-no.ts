@@ -8,7 +8,8 @@
  *
  * 示例：2026-民-0017
  *
- * 并发：依赖 @@unique(archiveNo)。重复时回到查 max 再 +1（最多重试 3 次）。
+ * 并发：依赖 @@unique(archiveNo) 兜底。取号在事务外（封皮/目录渲染先行），
+ * 撞号由调用方捕获 P2002 提示重提；如需彻底消除，可把取号挪进持锁事务。
  */
 import type { MatterCategory } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";

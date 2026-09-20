@@ -6,6 +6,7 @@
  *
  * 不依赖第三方库；纯字符串拼接。
  */
+import { shDayKey } from "@/lib/ui/sh-time";
 
 export interface IcsEvent {
   uid: string;
@@ -30,9 +31,11 @@ function fmtUtc(d: Date): string {
   );
 }
 
-// YYYYMMDD（all-day 用）
+// YYYYMMDD（all-day 用）——按上海日历日取值（P1-6）：库内日历日存在上海午夜/UTC 午夜等
+// 多种落库瞬间，出口统一上海口径后任意瞬间都还原为正确日历日；此前用服务器本地时区取值，
+// 标准 Docker 部署（UTC 容器）下上海午夜的全天事件会提前一天显示。
 function fmtDate(d: Date): string {
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+  return shDayKey(d).replaceAll("-", "");
 }
 
 // ICS 文本要做的转义：\, ; , \n

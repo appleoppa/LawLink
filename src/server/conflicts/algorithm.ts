@@ -169,7 +169,8 @@ function pickSeverity(
 }
 
 /** excludeIntakeId：收案发起的正式检索须排除该收案自身的当事人 */
-export async function runConflictCheck(queries: QueryItem[], options: { excludeIntakeId?: string } = {}): Promise<ConflictCheckResult> {
+export async function runConflictCheck(queries: QueryItem[], options: { excludeIntakeId?: string; excludeMatterId?: string; db?: Prisma.TransactionClient } = {}): Promise<ConflictCheckResult> {
+  const db=options.db??prisma;
   const hits: ConflictHitDraft[] = [];
   const sameNameClients = new Map<string, SameNameClient>();
   const idMatchedClients = new Map<string, IdMatchedClient>();
@@ -186,17 +187,22 @@ export async function runConflictCheck(queries: QueryItem[], options: { excludeI
     // ============ 历史案件 Party 匹配 ============
     const partyWhere: Prisma.PartyWhereInput[] = [];
     if (name) partyWhere.push({ name });
-    // 自然人证件存 idNumber，单位信用代码存 enterpriseSocialCode，两列都要比对
-    if (idNumber) partyWhere.push({ idNumber }, { enterpriseSocialCode: idNumber });
+    // 自然人证件存 idNumber，单位信用代码存 enterpriseSocialCode，两列都要比对；
+    // 历史数据大小写不一（身份证尾号 x、小写信用代码），补规范化（大写）变体，否则同身份不同写法漏检
+    const normId = idNumber ? normalizeIdNumber(idNumber) : null;
+    if (idNumber) {
+      partyWhere.push({ idNumber }, { enterpriseSocialCode: idNumber });
+      if (normId && normId !== idNumber) partyWhere.push({ idNumber: normId }, { enterpriseSocialCode: normId });
+    }
     if (partyWhere.length === 0) continue;
     // 客户档案证件号为密文，只能用盲索引精确比对
     const idBlind = idNumber ? blindIdNumber(normalizeIdNumber(idNumber) ?? idNumber) : null;
 
-    const partiesExact = await prisma.party.findMany({
+    const partiesExact = await db.party.findMany({
       where: {
         OR: partyWhere,
         matterId: { not: null },
-        matter: { deletedAt: null }
+        matter: { deletedAt: null, ...(options.excludeMatterId?{id:{not:options.excludeMatterId}}:{}) }
       },
       select: {
         id: true,
@@ -216,7 +222,7 @@ export async function runConflictCheck(queries: QueryItem[], options: { excludeI
       const matterInfo = toMatterInfo(p.matter, p.role, p.standing);
 
       // 身份证一致 → 在基础严重度上升 1 级
-      if (idNumber && (p.idNumber === idNumber || p.enterpriseSocialCode === idNumber)) {
+      if (idNumber && (p.idNumber === idNumber || p.enterpriseSocialCode === idNumber || (normId && (p.idNumber === normId || p.enterpriseSocialCode === normId)))) {
         const base = pickSeverity(q.role, p.role);
         const sev = bumpSeverity(base);
         hits.push({
@@ -251,10 +257,10 @@ export async function runConflictCheck(queries: QueryItem[], options: { excludeI
 
     // Party 姓名模糊匹配（限 3 字符以上，避免单字大量误命中）
     if (name && name.length >= 3) {
-      const partiesFuzzy = await prisma.party.findMany({
+      const partiesFuzzy = await db.party.findMany({
         where: {
           matterId: { not: null },
-          matter: { deletedAt: null },
+          matter: { deletedAt: null, ...(options.excludeMatterId?{id:{not:options.excludeMatterId}}:{}) },
           name: { contains: name, mode: "insensitive" },
           NOT: { name }
         },
@@ -287,7 +293,7 @@ export async function runConflictCheck(queries: QueryItem[], options: { excludeI
     }
 
     // ============ 在办收案（尚未转为案件）============
-    await collectIntakeHits(hits, q, name, idNumber, options.excludeIntakeId);
+    await collectIntakeHits(hits, q, name, idNumber, options.excludeIntakeId,db);
 
     // ============ v0.43: 客户档案 → 关联案件 检索（修复漏报）============
     // 老案件常只在 Matter.primaryClient / clientLinks 记客户、Party 表为空，
@@ -300,15 +306,15 @@ export async function runConflictCheck(queries: QueryItem[], options: { excludeI
     if (name && name.length >= 3) clientWhere.push({ name: { contains: name, mode: "insensitive" } });
 
     if (clientWhere.length > 0) {
-      const clients = await prisma.client.findMany({
+      const clients = await db.client.findMany({
         where: { deletedAt: null, OR: clientWhere },
         select: {
           id: true,
           name: true,
           idNumberBlind: true,
-          matters: { where: { deletedAt: null }, select: matterInfoSelect },
+          matters: { where: { deletedAt: null, ...(options.excludeMatterId?{id:{not:options.excludeMatterId}}:{}) }, select: matterInfoSelect },
           matterLinks: {
-            where: { matter: { deletedAt: null } },
+            where: { matter: { deletedAt: null, ...(options.excludeMatterId?{id:{not:options.excludeMatterId}}:{}) } },
             select: { matter: { select: matterInfoSelect } }
           }
         }
@@ -399,7 +405,8 @@ async function collectIntakeHits(
   q: QueryItem,
   name: string,
   idNumber: string | null,
-  excludeIntakeId: string | undefined
+  excludeIntakeId: string | undefined,
+  db: Prisma.TransactionClient
 ) {
   const intakeScope: Prisma.IntakeWhereInput = {
     status: { in: [...IN_PROGRESS_INTAKE_STATUSES] },
@@ -424,19 +431,27 @@ async function collectIntakeHits(
     });
   };
 
-  const or: Prisma.PartyWhereInput[] = [];
-  if (name) or.push({ name });
-  if (name && name.length >= 3) or.push({ name: { contains: name, mode: "insensitive" } });
-  if (idNumber) or.push({ idNumber }, { enterpriseSocialCode: idNumber });
-  if (or.length) {
-    const parties = await prisma.party.findMany({
-      where: { intakeId: { not: null }, intake: intakeScope, OR: or },
-      select: { name: true, idNumber: true, enterpriseSocialCode: true, role: true, standing: true, intake: { select: intakeInfoSelect } },
-      take: 50
-    });
+  const normId = idNumber ? normalizeIdNumber(idNumber) : null;
+  const exactOr: Prisma.PartyWhereInput[] = [];
+  if (name) exactOr.push({ name });
+  if (idNumber) {
+    exactOr.push({ idNumber }, { enterpriseSocialCode: idNumber });
+    if (normId && normId !== idNumber) exactOr.push({ idNumber: normId }, { enterpriseSocialCode: normId });
+  }
+  const fuzzyOr: Prisma.PartyWhereInput[] = name && name.length >= 3 ? [{ name: { contains: name, mode: "insensitive" } }] : [];
+  if (exactOr.length || fuzzyOr.length) {
+    // 精确/证件与模糊分两个查询：同名大姓的 contains 命中会把合并查询的 take:50 窗口挤满，
+    // 静默挤掉证件级真命中；拆开后精确命中不受截断影响（与历史案件分支口径一致）
+    const baseSelect = { id: true, name: true, idNumber: true, enterpriseSocialCode: true, role: true, standing: true, intake: { select: intakeInfoSelect } } as const;
+    const parties = [
+      ...await db.party.findMany({ where: { intakeId: { not: null }, intake: intakeScope, OR: exactOr }, select: baseSelect, take: 50 }),
+      ...await db.party.findMany({ where: { intakeId: { not: null }, intake: intakeScope, OR: fuzzyOr }, select: baseSelect, take: 20 })
+    ];
+    const seen = new Set<string>();
     for (const p of parties) {
-      if (!p.intake) continue;
-      if (idNumber && (p.idNumber === idNumber || p.enterpriseSocialCode === idNumber)) push(p.intake, p.name, p.role, p.standing, "idNumber", 1);
+      if (!p.intake || seen.has(p.id)) continue;
+      seen.add(p.id);
+      if (idNumber && (p.idNumber === idNumber || p.enterpriseSocialCode === idNumber || (normId && (p.idNumber === normId || p.enterpriseSocialCode === normId)))) push(p.intake, p.name, p.role, p.standing, "idNumber", 1);
       if (name && p.name === name) push(p.intake, p.name, p.role, p.standing, "name", 1);
       else if (name && name.length >= 3 && p.name.toLowerCase().includes(name.toLowerCase())) push(p.intake, p.name, p.role, p.standing, "name", name.length / p.name.length);
     }
@@ -449,7 +464,7 @@ async function collectIntakeHits(
   const idBlind = idNumber ? blindIdNumber(normalizeIdNumber(idNumber) ?? idNumber) : null;
   if (idBlind) clientOr.push({ idNumberBlind: idBlind });
   if (clientOr.length) {
-    const intakes = await prisma.intake.findMany({
+    const intakes = await db.intake.findMany({
       where: { ...intakeScope, client: { deletedAt: null, OR: clientOr }, parties: { none: { role: "CLIENT_PARTY" } } },
       select: { ...intakeInfoSelect, client: { select: { name: true, idNumberBlind: true } } },
       take: 50

@@ -1,3 +1,5 @@
+vi.mock("@/server/finance/facts",()=>({getFinanceFacts:vi.fn().mockResolvedValue(null)}));
+vi.mock("@/server/finance/ledger-storage", () => ({ financeLedgerReady: vi.fn().mockResolvedValue(false) }));
 // @vitest-environment node
 import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
 import { Prisma } from "@prisma/client";
@@ -7,8 +9,18 @@ const { db, notify, webhook, session, writeFile } = vi.hoisted(() => {
   const models = Object.fromEntries(tables.map(table => [table,
     Object.fromEntries(methods.map(method => [method, vi.fn()]))
   ])) as Record<typeof tables[number], Record<typeof methods[number], ReturnType<typeof vi.fn>>>;
-  return { db: { ...models, $transaction: vi.fn() }, notify: vi.fn(), webhook: vi.fn(), writeFile: vi.fn(), session: { user: { id: "clawyer0000000000000000001", role: "LAWYER" } } };
+  return { db: { ...models, $transaction: vi.fn(), $queryRaw: vi.fn() }, notify: vi.fn(), webhook: vi.fn(), writeFile: vi.fn(), session: { user: { id: "clawyer0000000000000000001", role: "LAWYER" } } };
 });
+vi.mock("@/server/finance/allocation-internals", () => ({
+  generatePaymentForReceivedEntry: vi.fn(),
+  generateReceivableForBilling: vi.fn(),
+  insertFinanceRowTx: async (_tx: unknown, model: string, data: unknown) => {
+    const key = (model[0].toLowerCase() + model.slice(1)) as keyof Pick<typeof db, "billing" | "feeEntry" | "receivable" | "payment">;
+    return (db[key].create as (args: unknown) => Promise<unknown>)({data});
+  }
+}));
+vi.mock("@/server/reminders/responsibility",()=>({responsibilityReady:async()=>false,readWorkRows:async()=>[]}));
+vi.mock("@/server/approval-permissions/termination",()=>({assertExecutionOpen:async()=>{}}));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
 vi.mock("@/lib/auth/session", () => ({ requireSession: vi.fn(async () => session) }));
 vi.mock("@/server/audit", () => ({ audit: vi.fn() }));
@@ -63,6 +75,8 @@ beforeEach(() => {
   db.invoiceRequest.findUnique.mockResolvedValue({ id: "invoice-example", status: "PENDING", matterId: null, updatedAt: new Date(), evidenceDocIds: [], contractScanId: null, invoiceFileId: null });
   db.invoiceRequest.create.mockResolvedValue({ id: "invoice-example" });
   db.document.create.mockResolvedValue({ id: "invoice-document" }); db.document.findUnique.mockResolvedValue({ id: "evidence-example" });
+  // 开票依据同案校验（2026-09-19 体检 P2）：findMany 返回与证据 id 等长的集合表示全部属于本案
+  db.document.findMany.mockResolvedValue([{ id: "evidence-example" }]);
   writeFile.mockResolvedValue("mock-only-no-file-written");
   db.$transaction.mockImplementation(async (fn: (tx: typeof db) => Promise<unknown>) => fn(db));
 });
@@ -132,26 +146,37 @@ describe("事项必须绑定真实案件及阶段", () => {
 
 describe("提醒与审计保留", () => {
   it("提前三天、一天、当天、逾期一天的查询和文案对应，开庭不扫描昨天", async () => {
-    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 8, 6, 9));
-    const matter = { id: mine, internalCode: "TEST", title: "测试案件", ownerId: session.user.id };
-    // 首个 findMany 是 remindDays 并集查询（distinct 调用，无 dueAt 条件），返回默认值 3；
-    // 其余按 dueAt 所在天返回该天的期限行。
-    db.deadline.findMany.mockImplementation(async (args: { distinct?: string[]; where: { dueAt?: { gte: Date } } }) =>
-      args.distinct ? [{ remindDays: 3 }] : [{ id: `d${args.where.dueAt!.gte.getDate()}`, title: "测试期限", dueAt: args.where.dueAt!.gte, remindDays: 3, procedure: { matter } }]);
-    db.hearing.findMany.mockImplementation(async ({ where }) => [{ id: `h${where.startsAt.gte.getDate()}`, title: "测试开庭", startsAt: new Date(new Date(where.startsAt.gte).setHours(10, 30)), procedure: { matter } }]);
+    vi.useFakeTimers(); vi.setSystemTime(new Date("2026-09-06T09:00:00+08:00"));
+    const matter = { id: mine, internalCode: "TEST", title: "测试案件", ownerId: session.user.id, owner: { id: session.user.id, active: true, role: "LAWYER" } };
+    const deadlines = new Map<string, any>();
+    const hearings = new Map<string, any>();
+    db.deadline.findMany.mockImplementation(async (args) => {
+      if (args.distinct) return [{ remindDays: 3 }];
+      return args.where.OR.map(({ dueAt }: any, index: number) => {
+        const row = { id: `d${index}`, updatedAt: new Date(), title: "测试期限", dueAt: dueAt.gte, remindDays: 3, confirmStatus: "CONFIRMED", procedure: { matter } };
+        deadlines.set(row.id, row); return row;
+      });
+    });
+    db.hearing.findMany.mockImplementation(async ({ where }) => where.OR.map(({ startsAt }: any, index: number) => {
+      const row = { id: `h${index}`, updatedAt: new Date(), title: "测试开庭", startsAt: new Date(startsAt.gte.getTime() + 10.5 * 3600000), procedure: { matter } };
+      hearings.set(row.id, row); return row;
+    }));
+    db.deadline.findUnique.mockImplementation(async ({ where }) => deadlines.get(where.id));
+    db.hearing.findUnique.mockImplementation(async ({ where }) => hearings.get(where.id));
+    db.notification.createMany.mockResolvedValue({ count: 1 });
     await scanDueReminders();
-    expect(db.deadline.findMany.mock.calls.map(([args]) => args.where.dueAt?.gte.getDate()).filter(Boolean)).toEqual([9, 7, 6, 5]);
-    expect(db.hearing.findMany.mock.calls.map(([args]) => args.where.startsAt.gte.getDate())).toEqual([9, 7, 6]);
-    const notifications = notify.mock.calls.map(([args]) => args);
+    const notifications = db.notification.createMany.mock.calls.flatMap(([args]) => args.data);
     expect(notifications.filter(n => n.type === "DEADLINE_REMINDER").map(n => [n.title, n.priority])).toEqual([
       ["还有 3 天到期：测试期限", "NORMAL"], ["还有 1 天到期：测试期限", "HIGH"], ["今天到期：测试期限", "HIGH"], ["逾期 1 天：测试期限", "URGENT"]
     ]);
     expect(notifications.filter(n => n.type === "HEARING_REMINDER").map(n => n.title)).toEqual(["3 天后 10:30 开庭：测试开庭", "明天 10:30 开庭：测试开庭", "今天 10:30 开庭：测试开庭"]);
   });
   it("已发送的提醒仍会去重", async () => {
-    db.deadline.findMany.mockResolvedValue([{ id: "d", procedure: { matter: { ownerId: session.user.id } } }]);
-    db.notification.findFirst.mockResolvedValue({ id: "sent" });
-    expect((await scanDueReminders()).suppressed).toBe(4); expect(notify).not.toHaveBeenCalled();
+    db.deadline.findMany.mockImplementation(async (args) => args.distinct ? [{ remindDays: 3 }] : [{ id: "d" }]);
+    db.deadline.findUnique.mockResolvedValue({ id: "d", updatedAt: new Date(), title: "测试期限", dueAt: new Date(), remindDays: 3,
+      procedure: { matter: { id: mine, internalCode: "TEST", ownerId: session.user.id, owner: { id: session.user.id, active: true, role: "LAWYER" } } } });
+    db.notification.createMany.mockResolvedValue({ count: 0 });
+    expect((await scanDueReminders()).suppressed).toBe(1); expect(notify).not.toHaveBeenCalled();
   });
   it.each(["90", "invalid", "-1"])("审计阈值 %s 仅统计，从不物理删除", async days => {
     vi.stubEnv("AUDIT_RETENTION_DAYS", days);

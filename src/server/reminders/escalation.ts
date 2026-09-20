@@ -105,8 +105,9 @@ export async function escalateOverdueDeadlineToTeamLeaders(
       continue;
     }
 
+    // 去重按（接收人, 期限, 当日）：跨团队多负责人时各自都应收到，只按 refId 去重会静默吞掉其余负责人
     const dup = await prisma.notification.findFirst({
-      where: { refType, refId: params.deadlineId, createdAt: { gte: params.todayStart } },
+      where: { userId: leader.id, refType, refId: params.deadlineId, createdAt: { gte: params.todayStart } },
       select: { id: true }
     });
     if (dup) {

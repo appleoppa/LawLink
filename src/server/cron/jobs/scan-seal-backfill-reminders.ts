@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/server/audit";
 import { createNotification } from "@/server/notifications/create";
+import { terminationReady } from "@/server/approval-permissions/termination";
 
 const REMIND_INTERVAL_DAYS = 3;
 const REMINDER_REF_TYPE = "SealBackfillReminder";
@@ -15,7 +16,14 @@ export async function scanSealBackfillReminders(): Promise<SealBackfillReminderS
   const now = new Date();
   const cutoff = new Date(now.getTime() - REMIND_INTERVAL_DAYS * 24 * 60 * 60 * 1000);
 
-  const seals = await prisma.sealRequest.findMany({
+  // 已确认终止执行的用章申请不会再回填，不得无限提醒（2026-09-19 审计）
+  const terminated = new Set<string>();
+  if (await terminationReady(prisma)) {
+    const rows = await prisma.$queryRaw<{ sealId: string }[]>`SELECT "sealId" FROM "ExecutionTermination" WHERE "sealId" IS NOT NULL AND status='CONFIRMED'`;
+    for (const r of rows) terminated.add(r.sealId);
+  }
+
+  const seals = (await prisma.sealRequest.findMany({
     where: {
       status: "APPROVED",
       stampedDocId: null,
@@ -31,7 +39,7 @@ export async function scanSealBackfillReminders(): Promise<SealBackfillReminderS
     },
     orderBy: { approvedAt: "asc" },
     take: 200
-  });
+  })).filter(s => !terminated.has(s.id));
 
   let notified = 0;
   let suppressed = 0;

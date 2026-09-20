@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireSystemAdmin } from "@/lib/auth/session";
+import { requireSession, requireSystemAdmin } from "@/lib/auth/session";
 import {
   ARCHIVE_POLICY_SETTING_KEY,
   UNCONFIGURED_ARCHIVE_POLICY,
@@ -19,6 +19,8 @@ const saveArchivePolicySchema = z.object({
 });
 
 export async function getArchivePolicy(): Promise<ArchivePolicyView> {
+  // 制度元数据对全部登录用户开放（归档申请人须能看到制度依据），但不得未登录可读
+  await requireSession("personal");
   const row = await prisma.systemSetting.findUnique({
     where: { key: ARCHIVE_POLICY_SETTING_KEY },
     select: { value: true }

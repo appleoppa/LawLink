@@ -1,4 +1,5 @@
 "use server";
+import {closureReady,closureFacts} from "@/server/archive/closure";
 import { checkRoleMutation } from "@/lib/roles/service";
 
 import { revalidatePath } from "next/cache";
@@ -26,7 +27,7 @@ export type HoldMatterInput = z.infer<typeof holdMatterSchema>;
 
 /**
  * 结案：把案件状态切到 CLOSED，记录结案小结到 TimelineEvent。
- * 不强制要求所有 procedure 都 concluded，律师自行判断。
+ * 服务结束前核对开放程序、待办、保全和未承接交接；财务独立收尾。
  */
 export async function closeMatter(input: CloseMatterInput) {
   const session = await requireSession("matters.write");
@@ -36,6 +37,7 @@ export async function closeMatter(input: CloseMatterInput) {
 
   await prisma.$transaction(async (tx) => {
     await checkRoleMutation(tx, session.user, "matters.write");
+    if(await closureReady(tx)){const f=await closureFacts(tx,data.id);if(f.snapshot.procedures.length||f.snapshot.work.length||f.snapshot.preservations.length||f.snapshot.handovers.length)throw new Error("结案前须处理开放程序、事项、保全及未承接交接；移交到新案件的须记明处置结果");}
     await tx.matter.update({
       where: { id: data.id },
       data: {

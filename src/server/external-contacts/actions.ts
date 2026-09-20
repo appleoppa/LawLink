@@ -62,7 +62,7 @@ export async function listExternalContacts(
   filter: { category?: (typeof categories)[number] | "ALL"; search?: string } = {}
 ) {
   const session = await requireSession("personal");
-  const canReview = customOrLegacy(session.user, "contacts.review", isManager(session.user.role));
+  const canReview = customOrLegacy(session.user, "contacts.review", isManager(session.user));
   const where: Prisma.ExternalContactWhereInput = {
     archivedAt: null,
     status: canReview ? { in: ["APPROVED", "PENDING_REVIEW"] } : "APPROVED"
@@ -105,14 +105,14 @@ async function notifyRequester(userId: string, input: {
   });
 }
 
-async function assertCanModify(id: string, sessionUserId: string, role: string, grants?: RoleGrant[]) {
+async function assertCanModify(id: string, sessionUserId: string, role: string, grants?: RoleGrant[], managerAuthorized = false) {
   const c = await prisma.externalContact.findUnique({
     where: { id },
     select: { createdById: true }
   });
   if (!c) throw new Error("联系人不存在");
   const allowed =
-    role === "PRINCIPAL_LAWYER" || (role === "CUSTOM" && scopeFor({ role, rolePermissions: grants }, "contacts.manage") === "ALL") || c.createdById === sessionUserId;
+    role === "PRINCIPAL_LAWYER" || managerAuthorized || (role === "CUSTOM" && scopeFor({ role, rolePermissions: grants }, "contacts.manage") === "ALL") || c.createdById === sessionUserId;
   if (!allowed) throw new Error("无权修改此联系人");
 }
 
@@ -122,7 +122,7 @@ export async function createExternalContact(input: z.infer<typeof externalContac
   // v1.0: 审核流默认关闭（小所信任环境，新增直接通过）；可在设置里打开
   const { externalContactReview } = await getWorkflowToggles();
   const status =
-    !externalContactReview || customOrLegacy(session.user, "contacts.review", isManager(session.user.role)) ? "APPROVED" : "PENDING_REVIEW";
+    !externalContactReview || customOrLegacy(session.user, "contacts.review", isManager(session.user)) ? "APPROVED" : "PENDING_REVIEW";
   const created = await roleMutation(session.user, "contacts.manage", async roleDb => roleDb.externalContact.create({
     data: {
       name: data.name.trim(),
@@ -165,7 +165,7 @@ export async function createExternalContact(input: z.infer<typeof externalContac
 export async function updateExternalContact(input: z.infer<typeof externalContactUpdateSchema>) {
   const session = await requireSession("contacts.manage");
   const data = externalContactUpdateSchema.parse(input);
-  await assertCanModify(data.id, session.user.id, session.user.role, session.user.rolePermissions);
+  await assertCanModify(data.id, session.user.id, session.user.role, session.user.rolePermissions, session.user.managerAuthorized === true);
   const updated = await roleMutation(session.user, "contacts.manage", async roleDb => roleDb.externalContact.update({
     where: { id: data.id },
     data: {
@@ -194,7 +194,7 @@ export async function updateExternalContact(input: z.infer<typeof externalContac
 
 export async function approveExternalContact(input: z.infer<typeof externalContactReviewSchema>) {
   const session = await requireSession("contacts.review");
-  if (!customOrLegacy(session.user, "contacts.review", isManager(session.user.role))) throw new Error("仅管理员可审核联系人");
+  if (!customOrLegacy(session.user, "contacts.review", isManager(session.user))) throw new Error("仅管理员可审核联系人");
   const data = externalContactReviewSchema.parse(input);
   const current = await prisma.externalContact.findUnique({
     where: { id: data.id },
@@ -233,7 +233,7 @@ export async function approveExternalContact(input: z.infer<typeof externalConta
 
 export async function rejectExternalContact(input: z.infer<typeof externalContactReviewSchema>) {
   const session = await requireSession("contacts.review");
-  if (!customOrLegacy(session.user, "contacts.review", isManager(session.user.role))) throw new Error("仅管理员可审核联系人");
+  if (!customOrLegacy(session.user, "contacts.review", isManager(session.user))) throw new Error("仅管理员可审核联系人");
   const data = externalContactReviewSchema.parse(input);
   const current = await prisma.externalContact.findUnique({
     where: { id: data.id },
@@ -272,7 +272,7 @@ export async function rejectExternalContact(input: z.infer<typeof externalContac
 
 export async function archiveExternalContact(id: string) {
   const session = await requireSession("contacts.manage");
-  await assertCanModify(id, session.user.id, session.user.role, session.user.rolePermissions);
+  await assertCanModify(id, session.user.id, session.user.role, session.user.rolePermissions, session.user.managerAuthorized === true);
   await roleMutation(session.user, "contacts.manage", async roleDb => roleDb.externalContact.update({
     where: { id },
     data: { archivedAt: new Date() }

@@ -23,6 +23,9 @@ const partsFmt = new Intl.DateTimeFormat("en-CA", {
 
 const WEEK_INDEX: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
+/** 星期中文（0=周日）：与 shParts().w 配套 */
+export const WEEKDAY_CN = ["日", "一", "二", "三", "四", "五", "六"] as const;
+
 export type ShParts = { y: number; m: number; d: number; hh: number; mm: number; w: number };
 
 /** 某一时刻在上海时区的年、月（1-12）、日、时、分、星期（0=周日） */

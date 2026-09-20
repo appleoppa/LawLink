@@ -33,9 +33,13 @@ export type ApprovalContextLike = {
   purposeId?: string | null;
 } & { sealTypeBrand?: never };
 
-/** 允许进入清单的操作（归档/开票/回填在判定处再硬排除兜底） */
+/**
+ * 允许进入清单的操作（归档/开票/回填在判定处再硬排除兜底）。
+ * INTAKE_APPROVE 于 2026-09-20 C 批移出可配清单：接线与收案轮次/转化门禁耦合，
+ * 「可配但不生效」构成配置幻觉——未接线前 UI 与服务端一致禁用（M-2c）；
+ * 存量若已配置该键，sanitize 时被过滤，行为等同未配置。
+ */
 export const SELF_CONFIRM_CONFIGURABLE_ACTIONS: ApprovalAction[] = [
-  "INTAKE_APPROVE",
   "DOCUMENT_APPROVE",
   "SEAL_APPROVE"
 ];

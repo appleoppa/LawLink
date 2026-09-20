@@ -11,7 +11,12 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
-import { audit } from "@/server/audit";
+import { auditTx } from "@/server/audit";
+import { checkRoleMutation } from "@/lib/roles/service";
+import { assertCanModifyMatter } from "@/lib/permissions";
+import { assertMatterWritable } from "@/lib/archive/guard";
+import { refreshScheduleReminderAfterSave, retireScheduleReminders } from "@/server/reminders/schedule";
+import { revalidateMatter } from "@/server/matters/route";
 
 async function loadDeadlineWithGuard(id: string) {
   const deadline = await prisma.deadline.findUnique({
@@ -30,20 +35,24 @@ export async function confirmDeadline(input: z.infer<typeof confirmSchema>) {
   const { id } = confirmSchema.parse(input);
   const deadline = await loadDeadlineWithGuard(id);
 
-  if (deadline.confirmStatus === "CONFIRMED") {
+  await assertCanModifyMatter(session.user.id, session.user.role, deadline.procedure.matterId);
+  await assertMatterWritable(deadline.procedure.matterId);
+  if (deadline.confirmStatus !== "PENDING") {
     throw new Error("该期限已确认");
   }
-  await prisma.deadline.update({
-    where: { id },
-    data: { confirmStatus: "CONFIRMED" }
+  await prisma.$transaction(async (tx) => {
+    await checkRoleMutation(tx, session.user, "schedule.write");
+    const changed = await tx.deadline.updateMany({
+      where: { id, confirmStatus: "PENDING", updatedAt: deadline.updatedAt },
+      data: { confirmStatus: "CONFIRMED" }
+    });
+    if (changed.count !== 1) throw new Error("期限已被其他人处理，请刷新后重试");
+    await retireScheduleReminders(tx, "Deadline", id);
+    await auditTx(tx, { userId: session.user.id, action: "DEADLINE_CONFIRM", targetType: "Deadline", targetId: id,
+      detail: { sourceRuleId: deadline.sourceRuleId, dueAt: deadline.dueAt.toISOString() } });
   });
-  await audit({
-    userId: session.user.id,
-    action: "DEADLINE_CONFIRM",
-    targetType: "Deadline",
-    targetId: id,
-    detail: { sourceRuleId: deadline.sourceRuleId, dueAt: deadline.dueAt.toISOString() }
-  });
+  await refreshScheduleReminderAfterSave("Deadline", id);
+  await revalidateMatter(deadline.procedure.matterId);
   return { ok: true };
 }
 
@@ -59,44 +68,24 @@ export async function adjustDeadline(input: z.infer<typeof adjustSchema>) {
   const data = adjustSchema.parse(input);
   const deadline = await loadDeadlineWithGuard(data.id);
 
+  await assertCanModifyMatter(session.user.id, session.user.role, deadline.procedure.matterId);
+  await assertMatterWritable(deadline.procedure.matterId);
   const previous = deadline.dueAt;
-  await prisma.deadline.update({
-    where: { id: data.id },
-    data: {
-      dueAt: data.dueAt,
-      confirmStatus: "ADJUSTED",
-      adjustedById: session.user.id,
-      adjustedAt: new Date()
-    }
+  await prisma.$transaction(async (tx) => {
+    await checkRoleMutation(tx, session.user, "schedule.write");
+    const changed = await tx.deadline.updateMany({
+      where: { id: data.id, updatedAt: deadline.updatedAt },
+      data: { dueAt: data.dueAt, confirmStatus: "ADJUSTED", adjustedById: session.user.id, adjustedAt: new Date() }
+    });
+    if (changed.count !== 1) throw new Error("期限已被其他人修改，请刷新后重试");
+    await retireScheduleReminders(tx, "Deadline", data.id);
+    await auditTx(tx, { userId: session.user.id, action: "DEADLINE_ADJUST", targetType: "Deadline", targetId: data.id,
+      detail: { previousDueAt: previous.toISOString(), newDueAt: data.dueAt.toISOString(), reason: data.reason, sourceRuleId: deadline.sourceRuleId } });
   });
-  await audit({
-    userId: session.user.id,
-    action: "DEADLINE_ADJUST",
-    targetType: "Deadline",
-    targetId: data.id,
-    detail: {
-      previousDueAt: previous.toISOString(),
-      newDueAt: data.dueAt.toISOString(),
-      reason: data.reason,
-      sourceRuleId: deadline.sourceRuleId
-    }
-  });
+  await refreshScheduleReminderAfterSave("Deadline", data.id);
+  await revalidateMatter(deadline.procedure.matterId);
   return { ok: true };
 }
 
-/**
- * 规则重算可写性守卫：规则侧/批量侧更新只允许作用于 PENDING 期限。
- * CONFIRMED / ADJUSTED 期限由人工确认过——重算结果应另行生成待复核记录，
- * 不得静默覆盖（报告 P0-8 验收门槛）。
- */
-export async function assertDeadlineRecalcWritable(ids: string[]) {
-  const protectedRows = await prisma.deadline.findMany({
-    where: { id: { in: ids }, confirmStatus: { in: ["CONFIRMED", "ADJUSTED"] } },
-    select: { id: true, confirmStatus: true }
-  });
-  if (protectedRows.length > 0) {
-    throw new Error(
-      `有 ${protectedRows.length} 条期限已经人工确认或调整，规则重算不得覆盖；请生成待复核记录`
-    );
-  }
-}
+// 规则重算可写性守卫已移至 ./recalc-guard（无 "use server" 的内部模块）：
+// 断言 helper 在 action 文件里导出会成为可探测状态的无鉴权 RPC 端点。

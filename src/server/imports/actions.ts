@@ -1,5 +1,6 @@
 "use server";
 import { approvalSettings } from "@/lib/approvals/service";
+import { isManager } from "@/lib/permissions";
 
 import { revalidatePath } from "next/cache";
 import ExcelJS from "exceljs";
@@ -26,7 +27,7 @@ import {
 
 async function requireManager() {
   const session = await requireSession();
-  if (!isSystemAdmin(session.user) && session.user.role !== "PRINCIPAL_LAWYER") {
+  if (!isSystemAdmin(session.user) && !isManager(session.user)) {
     throw new Error("仅系统超级管理员 / 主任律师可批量导入案件");
   }
   return session;

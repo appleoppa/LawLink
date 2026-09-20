@@ -1,9 +1,14 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { builtinRoleName } from "./presentation";
-import { validGrants, scopeFor, type PermissionKey, type RoleUser } from "./catalog";
-export async function resolveRoleUser(userId: string, role: string, db: Prisma.TransactionClient = prisma): Promise<RoleUser & { enabled: boolean }> {
-  if (role !== "CUSTOM") return { role, enabled: true, roleName: await builtinRoleName(role, db) };
+import { MANAGER_GRANTS, validGrants, scopeFor, type PermissionKey, type RoleUser } from "./catalog";
+export async function resolveRoleUser(userId: string, role: string, db: Prisma.TransactionClient = prisma): Promise<RoleUser & { enabled: boolean; managerAuthorized?: boolean }> {
+  if (role !== "CUSTOM") {
+    // 业务管理权按人授予，与岗位无关；每次会话解析实时读取
+    const row = await db.user.findUnique({ where: { id: userId }, select: { managerAuthorized: true } });
+    const managerAuthorized = row?.managerAuthorized === true;
+    return { role, enabled: true, roleName: await builtinRoleName(role, db), managerAuthorized, rolePermissions: managerAuthorized ? MANAGER_GRANTS.map(grant => ({ ...grant })) : undefined };
+  }
   const row = await db.user.findUnique({ where: { id: userId }, select: { active: true, role: true, roleDefinition: { include: { permissions: true } } } });
   const definition = row?.roleDefinition;
   if (!row?.active || row.role !== "CUSTOM" || !definition?.active) return { role: "CUSTOM", enabled: false, rolePermissions: [] };

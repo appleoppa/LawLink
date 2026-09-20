@@ -1,5 +1,7 @@
 import { resolveRoleUser } from "@/lib/roles/service";
-import { hasCustomPermission } from "@/lib/roles/catalog";
+import {financeLedgerReady} from "@/server/finance/ledger-storage";
+import { hasCustomPermission,scopeFor } from "@/lib/roles/catalog";
+import { isManager } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { canApproveItem, canExecuteInvoice } from "./service";
 import { hasHandledApproval } from "./history-access";
@@ -8,8 +10,15 @@ export async function canReadDocument(userId: string, doc: { id: string; uploade
   if (!user?.active || doc.deletedAt) return false;
   const access = await resolveRoleUser(userId, user.role);
   if (!access.enabled) return false;
+  if(scopeFor(access,'finance.correct')==='ALL'&&await financeLedgerReady(prisma)){
+    const [basis]=await prisma.$queryRaw<{n:bigint}[]>`SELECT COUNT(*) AS n FROM "BillingAttachment" a JOIN "Billing" b ON b.id=a."billingId" WHERE a."documentId"=${doc.id} AND b.status IN ('DRAFT','ACTIVE')`;
+    if(Number(basis.n))return true;
+    const [adjustment]=await prisma.$queryRaw<{n:bigint}[]>`SELECT COUNT(*) AS n FROM "InvoiceAdjustment" WHERE "documentId"=${doc.id}`;
+    if(Number(adjustment.n))return true;
+  }
   const canReadBusiness = hasCustomPermission(access, "documents.download") && hasCustomPermission(access, "matters.read");
-  if (user.role === "PRINCIPAL_LAWYER") return true;
+  // 仅合伙人岗位直通全所材料；managerAuthorized 按契约只开放「可见」，附件下载不随管理权放大（AGENTS 业务管理权决议）
+  if (isManager(access.role)) return true;
   const seal = await prisma.sealRequest.findFirst({ where: { OR: [{ draftDocId: doc.id }, { stampedDocId: doc.id }] }, select: { id: true, requestedById: true, approvedById: true, stampedById: true, status: true } });
   if (seal) {
     return seal.requestedById === userId || seal.approvedById === userId || seal.stampedById === userId
@@ -17,7 +26,9 @@ export async function canReadDocument(userId: string, doc: { id: string; uploade
       || (seal.status === "APPROVED" && await canApproveItem(userId, "SEAL_STAMP", seal.id))
       || await hasHandledApproval(userId, "SEAL_APPROVE", seal.id, doc.id);
   }
-  if (canReadBusiness && doc.uploadedById === userId && (user.role !== "CUSTOM" || (!doc.matterId && !doc.intakeId))) return true;
+  // 上传者通道只覆盖无归属材料：挂在案件/收案上的材料须经 :29 起的归属分支——
+  // 否则被移出案件的成员凭历史上传关系仍可长期下载该案材料（内置角色同样适用）
+  if (canReadBusiness && doc.uploadedById === userId && !doc.matterId && !doc.intakeId) return true;
   if (canReadBusiness && doc.matterId && await prisma.matter.count({ where: { id: doc.matterId, OR: [{ ownerId: userId }, { members: { some: { userId } } }] } })) return true;
   if (doc.intakeId) {
     const intake = await prisma.intake.findUnique({ where: { id: doc.intakeId }, select: { createdById: true, ownerUserId: true, coUserIds: true, status: true } });

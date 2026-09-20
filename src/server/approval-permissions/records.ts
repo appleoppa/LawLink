@@ -1,3 +1,4 @@
+import {executionTerminations,canResolveTermination} from "./termination";
 import type { ApprovalAction } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { canApproveItem, canExecuteInvoice } from "@/lib/approvals/service";
@@ -67,6 +68,8 @@ export async function loadApprovalRecords(filter?: { action: ApprovalAction; id:
   for (const r of archives) add({ id: r.id, action: "ARCHIVE_APPROVE", title: `${r.matter.title} · ${r.archiveNo}`, status: r.status === "PENDING_REVIEW" ? "PENDING" : r.status === "APPROVED" ? "FILED" : r.status, submittedAt: r.archivedAt, requesterId: r.archivedById, requester: r.archivedBy, matter: r.matter.title }, fallback(r.id, r.status === "REJECTED" ? "驳回归档" : "审批通过并归档", r.reviewedById, r.reviewedAt, r.reviewedById ? reviewerNames.get(r.reviewedById) : null, r.reviewNote));
   for (const r of invoices) add({ id: r.id, action: "INVOICE_APPROVE", title: [r.title ?? "开票申请", `¥${Number(r.amount).toLocaleString("zh-CN")}`, r.buyerName ? `抬头 ${r.buyerName}` : null].filter(Boolean).join(" · "), status: r.status === "APPROVED" ? "WAITING_INVOICE" : r.status, submittedAt: r.requestedAt, requesterId: r.requestedById, requester: r.requestedBy.name, matter: r.matter?.title ?? "非案件事项" }, fallback(r.id, r.status === "ISSUED" ? "完成开票" : r.status === "REJECTED" ? "驳回开票" : "审批通过", r.processedById, r.processedAt, r.processedBy?.name, r.processNote));
   for (const r of seals) add({ id: r.id, action: "SEAL_APPROVE", title: r.documentTitle, status: r.status === "APPROVED" ? "WAITING_STAMP" : r.status, submittedAt: r.requestedAt, requesterId: r.requestedById, requester: r.requestedBy.name, matter: r.matter?.title ?? "非案件事项" }, [...fallback(r.id, r.status === "REJECTED" ? "驳回用章" : "审批通过", r.approvedById, r.approvedAt, r.approvedBy?.name, r.approveNote), ...fallback(r.id, "完成盖章回填", r.stampedById, r.stampedAt, r.stampedByUser?.name)]);
+  const terminations=await executionTerminations(prisma);
+  for(const row of rows){if(!['INVOICE_APPROVE','SEAL_APPROVE'].includes(row.action))continue;const terms=terminations.filter(t=>(row.action==='INVOICE_APPROVE'?t.invoiceId:t.sealId)===row.id);if(terms.some(t=>t.status==='CONFIRMED'))row.status='EXECUTION_TERMINATED';else if(terms.some(t=>t.status==='PENDING'))row.status='TERMINATION_PENDING';}
   return rows;
 }
 
@@ -75,7 +78,9 @@ export async function approvalRecordAccess(user: { id: string; role: string; sys
   if (row.status === "PENDING" && await canApproveItem(user.id, row.action, row.id)) task = "approve";
   if (row.status === "WAITING_INVOICE" && await canExecuteInvoice(user.id, row.id)) task = "issue";
   if (row.status === "WAITING_STAMP" && await canApproveItem(user.id, "SEAL_STAMP", row.id)) task = "stamp";
-  return { task, readable: isSystemAdmin(user) || row.requesterId === user.id || row.intakeOwnerId === user.id || row.participantIds.includes(user.id) || task !== null };
+  const terminationAccess=row.status==='TERMINATION_PENDING'&&await canResolveTermination(prisma,user.id,row.action==='INVOICE_APPROVE'?'INVOICE':'SEAL',row.id);
+  if(terminationAccess)task="terminate";
+  return { task, readable: terminationAccess || isSystemAdmin(user) || row.requesterId === user.id || row.intakeOwnerId === user.id || row.participantIds.includes(user.id) || task !== null };
 }
 
 export async function requireApprovalRecord(user: { id: string; role: string; systemRole: string }, input: { action: ApprovalAction; id: string }) {

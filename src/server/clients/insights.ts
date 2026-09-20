@@ -1,4 +1,5 @@
 "use server";
+import { getFinanceFacts } from "@/server/finance/facts";
 
 /**
  * 墨案 10 客户详情的只读汇总：疑似重复档案、关联案件摘要、最近动态、来源渠道，
@@ -14,7 +15,7 @@ import { procedureTypeLabel } from "@/lib/enums";
 
 async function assertClientVisible(clientId: string) {
   const session = await requireSession("clients.read");
-  if (!isManager(session.user.role) && session.user.role !== "FINANCE") {
+  if (!isManager(session.user) && session.user.role !== "FINANCE") {
     const ok = await prisma.client.findFirst({
       where: { id: clientId, deletedAt: null, ...clientVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions) },
       select: { id: true }
@@ -79,7 +80,7 @@ export async function getClientInsights(clientId: string) {
           where: { type: "RECEIVED", confirmState: "CONFIRMED", matter: { deletedAt: null, primaryClientId: clientId, ...matterFinanceVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions) } },
           orderBy: { occurredAt: "desc" },
           take: 4,
-          select: { id: true, amount: true, occurredAt: true, note: true, invoiceNo: true, billing: { select: { signedAt: true } }, recordedBy: { select: { name: true } }, matter: { select: { title: true } } }
+          select: { id: true, amount: true, occurredAt: true, note: true, recordedBy: { select: { name: true } }, matter: { select: { title: true } } }
         })
       : Promise.resolve([]),
     client.source ? prisma.client.count({ where: { deletedAt: null, source: client.source } }) : Promise.resolve(0),
@@ -87,13 +88,17 @@ export async function getClientInsights(clientId: string) {
   ]);
 
   const billingByMatter = canFinance
-    ? await prisma.billing.groupBy({ by: ["matterId"], where: { matterId: { in: matters.map((m) => m.id) } }, _sum: { contractAmount: true } })
+    ? await prisma.billing.groupBy({ by: ["matterId"], where: { signedAt:{not:null}, matterId: { in: matters.map((m) => m.id) }, matter: matterFinanceVisibilityFilter(session.user.id,session.user.role,session.user.rolePermissions) }, _sum: { contractAmount: true } })
     : [];
   const contractMap = new Map(billingByMatter.map((b) => [b.matterId, Number(b._sum.contractAmount ?? 0)]));
 
+  const facts=canFinance?await getFinanceFacts({primaryClientId:clientId,...matterFinanceVisibilityFilter(session.user.id,session.user.role,session.user.rolePermissions)}):null;
+  if(facts){contractMap.clear();for(const b of facts.billings.filter(b=>b.signedAt&&b.moneyKind==='LAWYER_FEE'))contractMap.set(b.matterId,(contractMap.get(b.matterId)??0)+b.contractAmount.toNumber());}
+
   type Activity = { key: string; at: string; title: string; meta: string; tone: "done" | "current" | "" };
   const activity: Activity[] = [
-    ...fees.map((f) => ({ key: `f-${f.id}`, at: f.occurredAt.toISOString(), title: `到账登记 ¥${Number(f.amount).toLocaleString("zh-CN")}${f.billing?.signedAt || f.invoiceNo ? "" : " · 待确认"}`, meta: `${f.matter.title} · ${f.recordedBy.name}登记`, tone: "done" as const })),
+    // 查询本身只取 confirmState=CONFIRMED 的实收，不再按「有无合同/发票号」补待确认标（两步制下该口径已失效）
+    ...fees.map((f) => ({ key: `f-${f.id}`, at: f.occurredAt.toISOString(), title: `到账 ¥${Number(f.amount).toLocaleString("zh-CN")}`, meta: `${f.matter.title} · ${f.recordedBy.name}登记`, tone: "done" as const })),
     ...intakes.map((i) => ({ key: `i-${i.id}`, at: i.createdAt.toISOString(), title: `新建收案「${i.title}」`, meta: `${i.createdBy?.name ?? ""}${i.status === "CONVERTED" ? " · 已转正式案件" : i.status === "DECLINED" ? " · 未承接" : " · 审批中"}`, tone: (i.status === "CONVERTED" ? "done" : "current") as Activity["tone"] })),
     ...matters.slice(0, 4).map((m) => ({ key: `m-${m.id}`, at: m.createdAt.toISOString(), title: `立案「${m.title}」`, meta: `${m.internalCode} · 主办 ${m.owner?.name ?? "—"}`, tone: "done" as const })),
     ...contacts.map((c) => ({ key: `c-${c.id}`, at: c.createdAt.toISOString(), title: `新增联系人 ${c.name}`, meta: "客户档案维护", tone: "" as const }))

@@ -5,7 +5,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { resolveRoleUser } from "@/lib/roles/service";
 import { audit } from "@/server/audit";
-import { verifyLoginSecondFactor } from "@/server/auth/totp-actions";
+import { verifyLoginSecondFactor } from "@/server/auth/totp-login";
+import { recordLoginFailure } from "@/lib/auth/login-lockout";
 
 // v1.x P0-3: 登录失败锁定参数（连续 5 次失败锁 15 分钟；成功登录清零）
 const LOGIN_LOCKOUT_THRESHOLD = 5;
@@ -63,16 +64,10 @@ export const authOptions: NextAuthOptions = {
 
         const matches = await bcrypt.compare(parsed.data.password, user.passwordHash);
         if (!matches) {
-          // 连续失败累计，达到阈值锁定 15 分钟（成功登录清零）
-          const attempts = user.failedLoginAttempts + 1;
+          // 连续失败累计，达到阈值锁定 15 分钟（成功登录清零）。
+          // 数据库端原子递增：读-算-写会被并发请求读到同一旧值而绕过阈值。
+          const attempts = await recordLoginFailure(user.id, LOGIN_LOCKOUT_THRESHOLD, LOGIN_LOCKOUT_MINUTES);
           const lock = attempts >= LOGIN_LOCKOUT_THRESHOLD;
-          await prisma.user.update({
-            where: { id: user.id },
-            data: {
-              failedLoginAttempts: attempts,
-              ...(lock ? { lockedUntil: new Date(Date.now() + LOGIN_LOCKOUT_MINUTES * 60_000) } : {})
-            }
-          });
           await audit({
             userId: user.id,
             action: lock ? "LOGIN_LOCKED" : "LOGIN_FAILED",
@@ -98,16 +93,22 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        // v1.x P1: 双步验证——已开启者必须提供动态码或恢复码（恒拒绝空码）
+        // v1.x P1: 双步验证——已开启者必须提供动态码或恢复码（恒拒绝空码）。
+        // 动态码错误同样计入失败锁定：持正确密码的爆破者也必须被闸住
+        //（与上面的「策略拦截不计失败」不同——那是未绑定即拒绝，无码可试）。
         if (user.totpEnabled) {
           const code = (parsed.data as { totpCode?: string }).totpCode?.trim() ?? "";
           if (!code || !(await verifyLoginSecondFactor(user.id, code))) {
+            const attempts = code
+              ? await recordLoginFailure(user.id, LOGIN_LOCKOUT_THRESHOLD, LOGIN_LOCKOUT_MINUTES)
+              : user.failedLoginAttempts;
+            const lock = attempts >= LOGIN_LOCKOUT_THRESHOLD;
             await audit({
               userId: user.id,
-              action: "LOGIN_TOTP_FAILED",
+              action: lock ? "LOGIN_LOCKED" : "LOGIN_TOTP_FAILED",
               targetType: "User",
               targetId: user.id,
-              detail: { email: parsed.data.email }
+              detail: { email: parsed.data.email, ...(code ? { attempts, locked: lock } : {}) }
             });
             return null;
           }
@@ -174,6 +175,7 @@ export const authOptions: NextAuthOptions = {
         }
         session.user.roleName = access.roleName;
         session.user.rolePermissions = access.rolePermissions;
+        session.user.managerAuthorized = access.managerAuthorized === true;
       }
       return session;
     }

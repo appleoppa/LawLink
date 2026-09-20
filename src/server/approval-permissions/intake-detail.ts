@@ -1,3 +1,4 @@
+import {readIntakeRounds} from "@/server/intakes/revision-history";
 import { prisma } from "@/lib/prisma";
 import { formatDate } from "@/lib/utils";
 import { decryptIdNumber } from "@/lib/clients/id-number-crypto";
@@ -29,7 +30,8 @@ export async function loadIntakeApprovalDetail(id: string) {
   const when = (cond: boolean, ...fields: IntakeReviewField[]) => (cond ? fields : []);
   const clientIsPerson = (r.client?.type ?? r.clientType) === "INDIVIDUAL";
   // 证件号码在审批中直接明文展示（审批授权已在 requireApprovalRecord 对象级校验；2026-09-14 用户确认）
-  const clientId = decryptIdNumber(r.client?.idNumber) || null;
+  const clientSnapshot=r.parties.find(p=>p.role==="CLIENT_PARTY");
+  const clientId = clientSnapshot ? clientSnapshot.idNumber||clientSnapshot.enterpriseSocialCode : decryptIdNumber(r.client?.idNumber) || null;
   const sections: IntakeReviewSection[] = [
     { title: "基本情况与承办人员", fields: [
       field("案件名称", r.title), field("案件类别", matterCategoryLabel[r.category]), field("收案日期", r.receivedAt),
@@ -51,17 +53,17 @@ export async function loadIntakeApprovalDetail(id: string) {
     ...(kind === "counsel" ? [{ title: "顾问服务", fields: [
       field("顾问类型", r.counselType), field("服务范围", r.serviceScope), field("顾问期限起", r.serviceStart), field("顾问期限止", r.serviceEnd)
     ] }] : []),
-    { title: "委托方与联系人", note: "委托方名称、主体类型及企业资料为关联客户档案当前值；联系人为本申请保存内容。", fields: [
-      field("委托方", r.client?.name),
+    { title: "委托方与联系人", note: "委托方与联系人按本申请保存内容展示。", fields: [
+      field("委托方", clientSnapshot?.name??r.client?.name),
       field("主体类型", r.client ? clientTypeLabel[r.client.type] : r.clientType && clientTypeLabel[r.clientType]),
       // 仅当申请时登记的类型与档案当前类型不一致时才需要提示
       ...when(Boolean(r.client && r.clientType && r.clientType !== r.client.type), field("申请时登记的客户类型", r.clientType && clientTypeLabel[r.clientType])),
       field(clientIsPerson ? personIdLabel(r.client?.idType) : "统一社会信用代码", clientId),
-      field(clientIsPerson ? "住址" : "注册地址", r.client?.address),
-      ...when(!clientIsPerson, field("法定代表人", r.client?.legalRep)),
+      field(clientIsPerson ? "住址" : "注册地址", clientSnapshot?.address??r.client?.address),
+      ...when(!clientIsPerson, field("法定代表人", clientSnapshot?.legalRep??r.client?.legalRep)),
       field("联系人", r.contactName), field("联系电话", r.contactPhone)
     ] },
-    ...r.parties.map((p, i) => {
+    ...r.parties.filter(p=>p.role!=="CLIENT_PARTY").map((p, i) => {
       const person = p.partyType === "NATURAL_PERSON";
       return { title: `当事人 ${i + 1}：${p.name}`, fields: [
         field("姓名 / 名称", p.name), field("本案角色", conflictPartyRoleLabel[p.role]),
@@ -118,5 +120,5 @@ export async function loadIntakeApprovalDetail(id: string) {
       })
     };
   });
-  return { sections, currentParties: expected, checks, attachments: r.documents };
+  return { rounds:await readIntakeRounds(prisma,id), sections, currentParties: expected, checks, attachments: r.documents };
 }

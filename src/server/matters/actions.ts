@@ -1,4 +1,5 @@
 "use server";
+import {responsibilityReady,readWorkRows,closedHearingIds} from "@/server/reminders/responsibility";
 import { withRoleNames } from "@/lib/roles/presentation";
 import { hasCustomPermission } from "@/lib/roles/catalog";
 import { checkRoleMutation, roleMutation } from "@/lib/roles/service";
@@ -20,9 +21,9 @@ import {
   teamMatterFilter,
   assertCanReadMatter,
   hasMatterBusinessAccess,
-  assertCanAccessMatter,
   assertCanAccessMatterFinance,
   assertCanAssociateMatter,
+  assertCanHandleMatter,
   assertCanLeadMatter,
   assertCanOwnMatter
 } from "@/lib/permissions";
@@ -295,7 +296,8 @@ export async function updateProcedureInfo(input: {
     select: { matterId: true, type: true }
   });
   if (!proc) throw new Error("程序不存在");
-  await assertCanAccessMatter(session.user.id, session.user.role, proc.matterId, session.user.rolePermissions);
+  // 案件办理断言（P1-1）：程序当事人信息属结构性案件写入，合伙人全所口径、其余岗位须经办。
+  await assertCanHandleMatter(session.user, proc.matterId);
   await assertMatterWritable(proc.matterId);
   assertAgencyAllowedForProcedure(input.handlingAgency, proc.type);
 
@@ -740,6 +742,7 @@ export async function getMatterById(id: string) {
   await assertCanReadMatter(session.user.id, session.user.role, id, session.user.rolePermissions);
   const scheduleDenied = !hasCustomPermission(session.user, "schedule.read") ? { where: { id: { in: [] as string[] } } } : {};
   const businessAccess = await hasMatterBusinessAccess(session.user.id, session.user.role, id, session.user.rolePermissions);
+  const excludedHearings=await closedHearingIds(prisma);
   const matter = await prisma.matter.findFirst({
     where: { id, deletedAt: null },
     include: {
@@ -782,7 +785,7 @@ export async function getMatterById(id: string) {
         orderBy: { order: "asc" },
         include: {
           deadlines: { ...scheduleDenied, orderBy: [{ completed: "asc" }, { dueAt: "asc" }] },
-          hearings: { ...scheduleDenied, orderBy: { startsAt: "asc" } },
+          hearings: { where:{id:{notIn:excludedHearings}}, ...scheduleDenied, orderBy: { startsAt: "asc" } },
           stages: {
             orderBy: { order: "asc" },
             include: {
@@ -977,6 +980,15 @@ export async function updateMatterTeam(input: {
 
   await prisma.$transaction(async (tx) => {
     await checkRoleMutation(tx, session.user, "matters.write");
+    await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(72606101)`;
+    if(await responsibilityReady(tx)){
+      const current=await tx.matter.findUniqueOrThrow({where:{id:input.matterId},select:{ownerId:true,members:{select:{userId:true}}}});
+      if(current.ownerId!==input.ownerId)throw new Error("更换主办请使用「事项责任与交接」，由接收人确认后生效");
+      const retained=new Set([input.ownerId,...input.coLeadIds,...input.assistantIds]);
+      const removed=current.members.filter(m=>!retained.has(m.userId)).map(m=>m.userId);
+      if((await readWorkRows(tx)).some(w=>w.matterId===input.matterId&&w.state==='OPEN'&&(removed.includes(w.assigneeId)||Boolean(w.proposedAssigneeId&&removed.includes(w.proposedAssigneeId)))))throw new Error("拟移除成员仍有未完成或待接收事项，请先逐项交接");
+      if(await tx.matterProcedure.count({where:{matterId:input.matterId,status:{not:'CONCLUDED'},leadLawyerId:{in:removed}}}))throw new Error("拟移除成员仍负责未结程序，请先完成程序责任交接");
+    }
     // 更新 Matter.ownerId
     if (matter.ownerId !== input.ownerId) {
       await tx.matter.update({
@@ -1086,6 +1098,17 @@ export async function softDeleteMatter(id: string) {
   const session = await requireSession("matters.write");
   await assertMatterWritable(id);
   await assertCanOwnMatter(session.user.id, id, "只有当前主办律师可以删除案件");
+
+  // 2026-09-19 审计：删除前拦截未决交接与未结责任，否则遗留永久 PENDING 的交接、
+  // 以及工作台里持续提醒却无入口关闭的待办（提醒查询不过滤 deletedAt）。
+  const [handoverTable] = await prisma.$queryRaw<{ ready: boolean }[]>`SELECT to_regclass('public."MatterHandover"') IS NOT NULL AS ready`;
+  if (handoverTable?.ready) {
+    const [pending] = await prisma.$queryRaw<{ count: bigint }[]>`SELECT COUNT(*) AS count FROM "MatterHandover" WHERE "matterId"=${id} AND status='PENDING'`;
+    if (Number(pending.count)) throw new Error("案件存在待接收的交接，请先处理或取消交接后再删除");
+  }
+  if ((await readWorkRows(prisma)).some(w => w.matterId === id && w.state === "OPEN")) {
+    throw new Error("案件存在未办结事项（任务/期限/开庭），请先办结或作废后再删除");
+  }
 
   await roleMutation(session.user, "matters.write", async roleDb => roleDb.matter.update({
     where: { id },

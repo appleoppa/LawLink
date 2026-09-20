@@ -7,7 +7,7 @@
  * 材料删除后证据项保留、引用悬空由列表返回 sourceDocumentName=null 表达，
  * 不级联、不回填、不推测。
  *
- * 权限：创建按既有案件写入断言（assertCanAccessMatter）；列表按
+ * 权限：创建按案件办理断言（assertCanHandleMatter）；列表按
  * matters.read（assertCanReadMatter，含团队只读授权）。
  * UI 入口待 A 线接入（报告 §6.3 第二阶段做报告内嵌引用）。
  */
@@ -15,7 +15,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { auditTx } from "@/server/audit";
-import { assertCanAccessMatter, assertCanReadMatter } from "@/lib/permissions";
+import { assertCanReadMatter, assertCanHandleMatter } from "@/lib/permissions";
 
 const createSchema = z.object({
   matterId: z.string().cuid(),
@@ -38,7 +38,8 @@ export async function createEvidenceItem(input: CreateEvidenceItemInput) {
   const session = await requireSession("matters.write");
   const data = createSchema.parse(input);
 
-  await assertCanAccessMatter(session.user.id, session.user.role, data.matterId, session.user.rolePermissions);
+  // 证据项属结构性案件写入（P1-1）：合伙人全所口径，其余岗位（含管理权）须经办。
+  await assertCanHandleMatter(session.user, data.matterId);
 
   if (data.sourceDocumentId) {
     const doc = await prisma.document.findUnique({

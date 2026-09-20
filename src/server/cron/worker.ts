@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { isEmailConfigured, sendReminderEmail } from "@/lib/notifications/email";
 import { saveWebhookLastResult, type ReminderWebhookLastResult } from "@/server/settings/webhook-last-result";
 import { claimDueJobs, completeJob, failJob } from "./queue";
+import { shDayKey } from "@/lib/ui/sh-time";
 
 type JobHandler = (payload: Record<string, unknown>) => Promise<void>;
 
@@ -44,8 +45,8 @@ const emailDigestHandler: JobHandler = async () => {
   // 个人邮件摘要：按当日站内通知按人聚合外发；未配置 SMTP 时以跳过完结
   // （幂等键当日一次；重试退避与死信由队列兜底——提醒失败不可静默）。
   if (!isEmailConfigured()) return;
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  // 按上海日界切「今日」——此前用服务器本地时区 new Date(y,m,d)，UTC 容器 0-8 点归错日
+  const startOfToday = new Date(`${shDayKey(new Date())}T00:00:00+08:00`);
   const notes = await prisma.notification.findMany({
     where: { createdAt: { gte: startOfToday } },
     select: { userId: true, title: true, content: true },
@@ -70,9 +71,19 @@ const emailDigestHandler: JobHandler = async () => {
   }
 };
 
+const smsAttachmentFetchHandler: JobHandler = async (payload) => {
+  // B1：来件附件取件重试（粘贴同步取件失败后的队列补漏）。幂等由
+  // SmsInboundFile (smsId, sha256) 唯一约束 + attachmentResults 按 url 合并承担。
+  const smsId = String(payload.smsId ?? "");
+  if (!smsId) throw new Error("sms.attachment_fetch 缺少 smsId");
+  const { extractSmsAttachments } = await import("@/server/sms/actions");
+  await extractSmsAttachments({ id: smsId });
+};
+
 const handlers: Record<string, JobHandler> = {
   "webhook-digest": webhookDigestHandler,
-  "email-digest": emailDigestHandler
+  "email-digest": emailDigestHandler,
+  "sms.attachment_fetch": smsAttachmentFetchHandler
 };
 
 export async function processDueJobs(limit = 10): Promise<{ processed: number; succeeded: number; failed: number }> {
@@ -82,16 +93,24 @@ export async function processDueJobs(limit = 10): Promise<{ processed: number; s
   for (const job of jobs) {
     const handler = handlers[job.type];
     if (!handler) {
-      await failJob(job.id, job.attempts, job.maxAttempts, `未知任务类型：${job.type}`);
+      await failJob(job.id, job.maxAttempts, `未知任务类型：${job.type}`);
       failed++;
       continue;
+    }
+    // 逐人同步发邮件可能超过默认 5 分钟租约：给摘要类任务单独延长租约，
+    // 避免执行中被第二 worker 重领造成重复投递。
+    if (job.type === "email-digest" || job.type === "webhook-digest") {
+      await prisma.jobQueue.updateMany({
+        where: { id: job.id, status: "RUNNING" },
+        data: { leaseUntil: new Date(Date.now() + 20 * 60_000) }
+      });
     }
     try {
       await handler((job.payload ?? {}) as Record<string, unknown>);
       await completeJob(job.id);
       succeeded++;
     } catch (err) {
-      await failJob(job.id, job.attempts, job.maxAttempts, err instanceof Error ? err.message : String(err));
+      await failJob(job.id, job.maxAttempts, err instanceof Error ? err.message : String(err));
       failed++;
     }
   }

@@ -13,10 +13,16 @@ export const billingStatusSchema = z.enum(["DRAFT", "ACTIVE", "CLOSED"]);
 export const billingCreateSchema = z.object({
   matterId: z.string().cuid(),
   title: z.string().min(1, "合同名称必填").max(120),
-  contractAmount: z.coerce.number().nonnegative(),
+  contractAmount: z.coerce
+    .number({ invalid_type_error: "请填写合同金额" })
+    .nonnegative("金额不能为负"),
   schedule: z.string().max(1000).optional().or(z.literal("")),
   status: billingStatusSchema.default("DRAFT"),
-  signedAt: z.coerce.date().optional()
+  // 可选日期：date input 清空得到空串，先归一成 undefined 再走 coerce，避免英文 "Invalid date"
+  signedAt: z.preprocess(
+    v => (v === "" ? undefined : v),
+    z.coerce.date({ invalid_type_error: "签订日期格式不正确" }).optional()
+  )
 });
 
 export const feeEntryCreateSchema = z.object({
@@ -25,7 +31,11 @@ export const feeEntryCreateSchema = z.object({
   type: feeEntryTypeSchema,
   // 金额一律取正数，方向由 type 表达；负数实收会让统计口径与 Payment 对不上（2026-09-19）
   amount: z.coerce.number().positive("金额必须大于 0").max(99_999_999.99, "金额超出范围"),
-  occurredAt: z.coerce.date().default(() => new Date()),
+  // 必填日期：date input 清空得到空串，先归一成 undefined，配中文 required_error 提示补填
+  occurredAt: z.preprocess(
+    v => (v === "" ? undefined : v),
+    z.coerce.date({ required_error: "请选择收付日期", invalid_type_error: "请选择收付日期" })
+  ),
   invoiceNo: z.string().max(50).optional().or(z.literal("")),
   payerOrPayee: z.string().max(80).optional().or(z.literal("")),
   method: z.string().max(40).optional().or(z.literal("")),

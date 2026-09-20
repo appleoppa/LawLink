@@ -572,7 +572,9 @@ export function toDate(s: string): Date | null {
     let h = m[4] ? parseInt(m[4]) : 0;
     const mi = m[5] ? parseInt(m[5]) : 0;
     if (isPM && h < 12) h += 12;
-    return new Date(y, mo, d, h, mi);
+    // 短信里的日期时间是法院所在地的墙钟时间（上海，UTC+8 固定、无夏令时），
+    // 必须固定按 +08:00 构造；new Date(y, ...) 会按运行环境时区解释，非上海浏览器/UTC 服务器都会偏移
+    return new Date(Date.UTC(y, mo, d, h - 8, mi));
   }
   return null;
 }

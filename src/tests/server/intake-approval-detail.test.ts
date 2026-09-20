@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { db, access } = vi.hoisted(() => ({ db: {
   intake: { findUniqueOrThrow: vi.fn() }, user: { findMany: vi.fn() }, matter: { findMany: vi.fn() }, auditLog: { findMany: vi.fn() }, document: { findUnique: vi.fn() }
 }, access: vi.fn() }));
+vi.mock("@/server/intakes/revision-history", () => ({ readIntakeRounds:async()=>[] }));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
 vi.mock("@/lib/auth/session", () => ({ requireSession: async () => ({ user: { id: "reviewer", role: "LAWYER" } }) }));
 vi.mock("@/server/approval-permissions/records", () => ({ requireApprovalRecord: access }));

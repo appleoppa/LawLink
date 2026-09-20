@@ -12,7 +12,8 @@ export const sealCreateSchema = z.object({
   sealType: z.enum(sealTypes),
   matterId: z.string().cuid().optional().nullable(),
   purposeConfigId: z.string().cuid().optional().nullable(),
-  purpose: z.string().min(1, "用章事由必填").max(500),
+  // 2026-09-19：说明＝申请人一句话写清这次为什么盖章，限 60 字；与前端 maxLength 一致，服务端兜底
+  purpose: z.string().min(1, "用章事由必填").max(60, "本次用印说明限 60 字"),
   documentTitle: z.string().min(1, "文件标题必填").max(200),
   pageCount: z.coerce.number().int().positive().default(1),
   requireCrossPageSeal: z.coerce.boolean().default(false),

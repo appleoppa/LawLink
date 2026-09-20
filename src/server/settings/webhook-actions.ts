@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { isManager } from "@/lib/permissions";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/session";
 import { isSystemAdmin } from "@/lib/auth/system-role";
@@ -22,7 +23,7 @@ const saveSchema = z.object({
 
 async function requireManager() {
   const session = await requireSession();
-  if (!isSystemAdmin(session.user) && session.user.role !== "PRINCIPAL_LAWYER") {
+  if (!isSystemAdmin(session.user) && !isManager(session.user)) {
     throw new Error("仅系统超级管理员 / 主任律师可配置提醒推送");
   }
   return session;

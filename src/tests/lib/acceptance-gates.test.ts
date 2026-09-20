@@ -37,6 +37,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: db }));
 vi.mock("@/lib/auth/session", () => ({ requireSession: vi.fn(async () => session) }));
 vi.mock("@/server/audit", () => ({ audit: vi.fn(), auditTx: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("@/server/finance/ledger-storage", () => ({ financeLedgerReady: vi.fn(async () => false) }));
 vi.mock("@/lib/archive/guard", () => ({ assertMatterWritable: vi.fn(async () => {}) }));
 vi.mock("@/lib/approvals/documents", () => ({ canReadDocument: canRead }));
 
@@ -142,15 +143,24 @@ describe("G2 派生搜索授权过滤", () => {
 /* ---------- G3 队列幂等 ---------- */
 
 describe("G3 队列幂等", () => {
-  it("dedupeKey 命中已终结任务（SUCCESS/DEAD）不复活", async () => {
+  it("dedupeKey 命中已终结任务不复活（DEAD 6 小时后可自愈重试）", async () => {
     db.jobQueue.findUnique.mockResolvedValue({ id: "j1", status: "SUCCESS" });
     await enqueueJob({ type: "webhook-digest", payload: { text: "x" }, dedupeKey: "webhook-digest:2026-09-13" });
     expect(db.jobQueue.create).not.toHaveBeenCalled();
     expect(db.jobQueue.update).not.toHaveBeenCalled();
 
-    db.jobQueue.findUnique.mockResolvedValue({ id: "j1", status: "DEAD" });
+    db.jobQueue.findUnique.mockResolvedValue({ id: "j1", status: "DEAD", updatedAt: new Date(Date.now() - 60 * 60_000) });
     await enqueueJob({ type: "webhook-digest", payload: { text: "x" }, dedupeKey: "webhook-digest:2026-09-13" });
     expect(db.jobQueue.create).not.toHaveBeenCalled();
+    expect(db.jobQueue.update).not.toHaveBeenCalled();
+
+    // 死信超过 6 小时：重置尝试再入队（当日扫描可自愈死信）
+    db.jobQueue.findUnique.mockResolvedValue({ id: "j1", status: "DEAD", updatedAt: new Date(Date.now() - 7 * 60 * 60_000) });
+    await enqueueJob({ type: "webhook-digest", payload: { text: "x" }, dedupeKey: "webhook-digest:2026-09-13" });
+    expect(db.jobQueue.create).not.toHaveBeenCalled();
+    expect(db.jobQueue.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "PENDING", attempts: 0 })
+    }));
   });
 
   it("未终结任务同键覆盖（改期语义）；无键直建", async () => {

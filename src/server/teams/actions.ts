@@ -54,7 +54,7 @@ export async function saveTeam(input: TeamInput) {
         throw new Error("不能新增已停用的账号为成员");
       }
       const leader = users.find((u) => u.id === data.leaderId);
-      if (!leader?.active || !["PRINCIPAL_LAWYER", "LAWYER"].includes(leader.role)) {
+      if (!leader?.active || !["PRINCIPAL_LAWYER", "INDEPENDENT_LAWYER", "LAWYER"].includes(leader.role)) {
         throw new Error("负责人须为有效律师账号");
       }
       const fields = { name: data.name, leaderId: data.leaderId, active: data.active };

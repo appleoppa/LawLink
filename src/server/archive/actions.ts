@@ -1,5 +1,8 @@
 "use server";
-import { roleMutation, checkRoleMutation } from "@/lib/roles/service";
+import {assertClosureReady,closureReady} from "./closure";
+import {buildArchiveManifest} from "./export";
+import {scopeFor} from "@/lib/roles/catalog";
+import { roleMutation, checkRoleMutation, resolveRoleUser } from "@/lib/roles/service";
 
 import { approvalTransaction, approvalAudit, assertApprovalItem, requireApprovalRoute } from "@/lib/approvals/service";
 
@@ -45,7 +48,10 @@ export async function archiveMatter(input: ArchiveSubmitInput) {
   const session = await requireSession("archive.submit");
   const data = archiveSubmitSchema.parse(input);
 
-  await assertMatterWritable(data.matterId);
+  const initial=await prisma.matter.findUniqueOrThrow({where:{id:data.matterId},select:{status:true}});
+  const supplement=initial.status==='ARCHIVED';
+  if(supplement){if(scopeFor(session.user,'archive.supplement')!=='OWN')throw new Error('补充归档须独立授权');}
+  else await assertMatterWritable(data.matterId);
   await assertCanLeadMatter(session.user.id, data.matterId, "仅案件主办/协办可以提交归档申请");
 
   const matter = await prisma.matter.findUnique({
@@ -54,7 +60,9 @@ export async function archiveMatter(input: ArchiveSubmitInput) {
   });
   if (!matter) throw new Error("案件不存在");
   await requireApprovalRoute({ action: "ARCHIVE_APPROVE", category: matter.category, requesterId: session.user.id });
-  if (matter.status === "ARCHIVED") throw new Error("案件已归档");
+  const parent=supplement?await prisma.archiveRecord.findFirst({where:{matterId:matter.id,status:"APPROVED"},orderBy:{archivedAt:"asc"},select:{id:true}}):null;
+  if(supplement&&!parent)throw new Error("缺少已批准原归档");
+  await assertClosureReady(prisma,matter.id,undefined,{supplement});
 
   const pending = await prisma.archiveRecord.findFirst({
     where: { matterId: matter.id, status: "PENDING_REVIEW" },
@@ -231,6 +239,8 @@ export async function archiveMatter(input: ArchiveSubmitInput) {
   try {
     submitted = await prisma.$transaction(async (tx) => {
     await checkRoleMutation(tx, session.user, "archive.submit");
+    if(supplement){const actor=await tx.user.findUniqueOrThrow({where:{id:session.user.id},select:{role:true}});if(scopeFor(await resolveRoleUser(session.user.id,actor.role,tx),'archive.supplement')!=='OWN')throw new Error('补充归档须独立授权');}
+      const workflow=await assertClosureReady(tx,matter.id,undefined,{supplement});
       const alreadyPending = await tx.archiveRecord.findFirst({
         where: { matterId: matter.id, status: "PENDING_REVIEW" },
         select: { archiveNo: true }
@@ -255,6 +265,7 @@ export async function archiveMatter(input: ArchiveSubmitInput) {
           reviewedAt: null
         }
       });
+      if(workflow)await tx.$executeRaw`UPDATE "ArchiveRecord" SET "workflowSnapshot"=${JSON.stringify(workflow)}::jsonb,"supplementOfId"=${parent?.id??null} WHERE id=${record.id}`;
       await recordTimelineEvent(tx, {
           matterId: matter.id,
           eventType: "MATTER_ARCHIVE_REQUESTED",
@@ -329,6 +340,12 @@ export async function approveArchiveRecord(input: ArchiveApproveInput) {
   const now = new Date();
   await approvalTransaction(async (tx) => {
     await assertApprovalItem(session.user.id, "ARCHIVE_APPROVE", data.archiveId, tx);
+    let supplementOfId:string|null=null;
+    if(await closureReady(tx)){
+      const [saved]=await tx.$queryRaw<{workflowSnapshot:{fingerprint:string}|null;supplementOfId:string|null}[]>`SELECT "workflowSnapshot","supplementOfId" FROM "ArchiveRecord" WHERE id=${record.id}`;
+      if(!saved?.workflowSnapshot)throw new Error('缺少归档核对快照，请退回重新送审');
+      await assertClosureReady(tx,record.matterId,saved.workflowSnapshot.fingerprint,{supplement:Boolean(saved.supplementOfId)});supplementOfId=saved.supplementOfId;
+    }
     await approvalAudit(tx, session.user.id, "ARCHIVE_APPROVE", data.archiveId, {
       note: data.note?.trim() ?? "",
       attachmentIds: snapshot.documentIds,
@@ -346,7 +363,7 @@ export async function approveArchiveRecord(input: ArchiveApproveInput) {
         reviewNote: data.note?.trim() || null
       }
     });
-    await tx.matter.update({
+    if(!supplementOfId)await tx.matter.update({
       where: { id: record.matterId },
       data: { status: "ARCHIVED", archivedAt: now, closedAt: record.completedAt }
     });
@@ -357,6 +374,7 @@ export async function approveArchiveRecord(input: ArchiveApproveInput) {
         content: data.note?.trim() ? `审批意见：${data.note.trim()}` : "审批人已逐项核验并通过",
         occurredAt: now
       });
+    if(await closureReady(tx)){const frozen=await buildArchiveManifest(tx,record.id);await tx.$executeRaw`UPDATE "ArchiveRecord" SET "frozenManifest"=${JSON.stringify(frozen)}::jsonb WHERE id=${record.id}`;}
   });
 
   // v0.18: 通知申请人

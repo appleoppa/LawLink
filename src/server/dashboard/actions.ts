@@ -1,4 +1,7 @@
 "use server";
+import {closedHearingIds} from "@/server/reminders/responsibility";
+import { agingFromFacts } from "@/server/finance/facts-aging";
+import { getFinanceFacts, periodReceipts, sumAmounts, shMonthStart, financeTrend } from "@/server/finance/facts";
 
 import { customMatterFilter } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
@@ -93,7 +96,8 @@ export async function getDashboardKpis(): Promise<KpiItem[]> {
     })
   ]);
 
-  const receivedTotal = Number(received._sum.amount ?? 0);
+  const facts=await getFinanceFacts({deletedAt:null,...matterFinanceVisibilityFilter(userId,role,session.user.rolePermissions)});
+  const receivedTotal = facts ? sumAmounts(periodReceipts(facts,shMonthStart(now))) : Number(received._sum.amount ?? 0);
 
   // Trend text is derived from raw counts
   // Sparkline is a flat representation of the single value (no historical series yet)
@@ -123,7 +127,9 @@ export async function getDashboardKpis(): Promise<KpiItem[]> {
     },
     {
       key: "received",
-      label: "本月实收",
+      // ledger 模式下 periodReceipts 只统计律师费（moneyKind==='LAWYER_FEE'），
+      // 标签随数据切换口径（与财务页 finance-view-v4 一致），避免把律师费实收标成「本月实收」
+      label: facts ? "本月律师费实收" : "本月实收",
       value: receivedTotal,
       valueFormat: "currency",
       trend: { direction: "up", text: `¥${(receivedTotal / 10000).toFixed(1)}万` },
@@ -137,6 +143,8 @@ export async function getDashboardKpis(): Promise<KpiItem[]> {
 export async function getDashboardRevenueTrend(months = 6) {
   const session = await requireSession("personal");
   const visFilter = matterFinanceVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions);
+  const facts=await getFinanceFacts({deletedAt:null,...visFilter});
+  if(facts)return financeTrend(facts,Math.max(1,Math.min(36,Math.floor(months))));
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
 
@@ -241,9 +249,10 @@ export async function getDashboardSchedule(): Promise<ScheduleItem[]> {
     }
   };
 
+  const excludedHearings=await closedHearingIds(prisma);
   const [hearings, deadlines] = await Promise.all([
     prisma.hearing.findMany({
-      where: { startsAt: { gte: from, lte: to }, procedure: procWhere },
+      where: { id:{notIn:excludedHearings}, startsAt: { gte: from, lte: to }, procedure: procWhere },
       include: { procedure: { select: procSelect } },
       orderBy: { startsAt: "asc" },
       take: 12
@@ -492,6 +501,8 @@ export async function getDashboardOverdueReceivables(): Promise<{ amount: number
   const session = await requireSession("personal");
   const { hasCustomPermission } = await import("@/lib/roles/catalog");
   if (!hasCustomPermission(session.user, "finance.read")) return null;
+  const facts=await getFinanceFacts({deletedAt:null,...matterFinanceVisibilityFilter(session.user.id,session.user.role,session.user.rolePermissions)});
+  if(facts){const aging=agingFromFacts(facts);const ids=new Set(aging.items.filter(r=>(r.overdueDays??0)>0).map(r=>r.matter.id));return {amount:aging.overdueAmount,clientCount:new Set(facts.matters.filter(m=>ids.has(m.id)).map(m=>m.primaryClientId??"none")).size,oldestDays:aging.worst?.overdueDays??0};}
   const rows = await prisma.receivable.findMany({
     where: {
       status: "OPEN",

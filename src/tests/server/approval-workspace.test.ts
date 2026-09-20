@@ -5,6 +5,7 @@ const { db, session, canApprove } = vi.hoisted(() => {
   const models = Object.fromEntries(tables.map(t => [t, { findMany: vi.fn(), findFirst: vi.fn() }])) as Record<typeof tables[number], { findMany: ReturnType<typeof vi.fn>; findFirst: ReturnType<typeof vi.fn> }>;
   return { db: models, session: { user: { id: "reviewer", role: "LAWYER", systemRole: "NONE" } }, canApprove: vi.fn() };
 });
+vi.mock("@/server/approval-permissions/termination",()=>({executionTerminations:async()=>[],canResolveTermination:async()=>false}));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
 vi.mock("@/lib/auth/session", () => ({ requireSession: async () => session }));
 vi.mock("@/lib/approvals/service", () => ({ canApproveItem: canApprove, canExecuteInvoice: (userId: string, id: string) => canApprove(userId, "INVOICE_APPROVE", id) }));

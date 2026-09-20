@@ -8,6 +8,7 @@
  */
 import { getAiSettings } from "./settings";
 import { withExternalCallLog } from "@/lib/external-call-log";
+import { assertSafeHttpUrl } from "@/lib/net/safe-url";
 
 export type ChatMessage =
   | { role: "system" | "user" | "assistant"; content: string }
@@ -49,6 +50,8 @@ async function callOpenAiCompatible(opts: {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs);
   try {
+    // 私网校验（2026-09-19 审计）：管理端可配的 baseUrl 不得指向本机/内网
+    await assertSafeHttpUrl(opts.baseUrl.replace(/\/$/, ""));
     const res = await fetch(`${opts.baseUrl.replace(/\/$/, "")}/chat/completions`, {
       method: "POST",
       headers: {

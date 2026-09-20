@@ -10,20 +10,11 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { auditTx } from "@/server/audit";
 import { revalidatePath } from "next/cache";
-import { encryptBuffer, decryptBuffer } from "@/lib/storage/crypto";
+import { encryptSecret, decryptSecret } from "@/server/auth/totp-login";
 import {
   generateTotpSecret, verifyTotp, otpauthUri,
   generateRecoveryCodes, matchRecoveryCode
 } from "@/lib/auth/totp";
-
-function encryptSecret(secret: string): string {
-  const enc = encryptBuffer(Buffer.from(secret, "utf8"));
-  return [enc.iv.toString("base64"), enc.authTag.toString("base64"), enc.ciphertext.toString("base64")].join(".");
-}
-function decryptSecret(stored: string): string {
-  const [iv, tag, ct] = stored.split(".");
-  return decryptBuffer(Buffer.from(ct, "base64"), iv, tag).toString("utf8");
-}
 
 /** 登录页预检：该账号是否已开启双步验证（仅返回布尔，防枚举只暴露 TOTP 开关） */
 export async function checkLoginRequiresTotp(email: string): Promise<boolean> {
@@ -47,9 +38,50 @@ export async function checkLoginTotpEnforcement(email: string): Promise<boolean>
   return (user?.totpEnforced && !user.totpEnabled) ?? false;
 }
 
-/** 开始绑定：生成待确认 secret（未启用前仅暂存），返回 otpauth URI 供手输/扫码 */
-export async function enrollStartTotp(): Promise<{ secret: string; uri: string }> {
+/**
+ * 开始绑定：生成待确认 secret（未启用前仅暂存），返回 otpauth URI 供手输/扫码。
+ * 已开启者重新绑定必须先验证当前动态码或恢复码——否则任意持有会话者可一步
+ * 把 totpEnabled 置 false（2FA 静默降级，2026-09-19 审计修复）。
+ */
+export async function enrollStartTotp(input?: { code?: string }): Promise<{ secret: string; uri: string }> {
   const session = await requireSession("personal");
+
+  {
+    const current = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { totpSecret: true, totpEnabled: true, recoveryCodeHashes: true }
+    });
+    if (current?.totpEnabled) {
+      const code = (input?.code ?? "").trim();
+      if (!code) throw new Error("双步验证已开启，重新绑定需先验证当前动态码或恢复码");
+      const secretOk = current.totpSecret && verifyTotp(decryptSecret(current.totpSecret), code);
+      if (!secretOk) {
+        const hashes = current.recoveryCodeHashes ?? [];
+        const idx = matchRecoveryCode(hashes, code);
+        if (idx === null) throw new Error("验证失败：动态码或恢复码不正确");
+        const hash = hashes[idx];
+        const updated = await prisma.$executeRaw`
+          UPDATE "User"
+          SET "recoveryCodeHashes" = array_remove("recoveryCodeHashes", ${hash})
+          WHERE id = ${session.user.id} AND ${hash} = ANY("recoveryCodeHashes")`;
+        if (updated === 0) throw new Error("该恢复码已被使用，请换一枚或输入动态码");
+      }
+      await prisma.$transaction(async tx => {
+        await tx.user.update({
+          where: { id: session.user.id },
+          data: { totpEnabled: false }
+        });
+        await auditTx(tx, {
+          userId: session.user.id,
+          action: "USER_TOTP_REBIND_RESET",
+          targetType: "User",
+          targetId: session.user.id,
+          detail: { via: secretOk ? "totp-code" : "recovery-code" }
+        });
+      });
+    }
+  }
+
   const secret = generateTotpSecret();
   await prisma.user.update({
     where: { id: session.user.id },
@@ -120,28 +152,4 @@ export async function disableTotp(input: { code: string }): Promise<{ ok: boolea
   });
   revalidatePath("/settings/profile");
   return { ok: true };
-}
-
-/** 登录链二次因子校验：TOTP 或恢复码（恢复码核销后落库）。密码已过、锁定已查后调用 */
-export async function verifyLoginSecondFactor(
-  userId: string,
-  code: string
-): Promise<boolean> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { totpSecret: true, recoveryCodeHashes: true }
-  });
-  if (!user?.totpSecret) return false;
-
-  if (verifyTotp(decryptSecret(user.totpSecret), code)) return true;
-
-  const idx = matchRecoveryCode(user.recoveryCodeHashes ?? [], code);
-  if (idx !== null) {
-    await prisma.user.update({
-      where: { id: userId },
-      data: { recoveryCodeHashes: (user.recoveryCodeHashes ?? []).filter((_, i) => i !== idx) }
-    });
-    return true;
-  }
-  return false;
 }

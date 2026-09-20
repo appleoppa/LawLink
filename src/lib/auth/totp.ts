@@ -56,12 +56,17 @@ export function totpAt(secret: string, counter: number): string {
 
 /** 校验动态码（当前步长 ±1 窗口）。比对为恒时语义（聚合后一次比较）。 */
 export function verifyTotp(secret: string, code: string, nowMs = Date.now()): boolean {
+  return verifyTotpCounter(secret, code, nowMs) !== null;
+}
+
+/** 校验动态码并返回命中的计数器（供重放防护记录「最近已用」），未命中返回 null */
+export function verifyTotpCounter(secret: string, code: string, nowMs = Date.now()): number | null {
   const normalized = code.replace(/\s/g, "");
-  if (!/^\d{6}$/.test(normalized)) return false;
+  if (!/^\d{6}$/.test(normalized)) return null;
   const step = Math.floor(nowMs / 30_000);
-  let matched = false;
+  let matched: number | null = null;
   for (const drift of [-1, 0, 1]) {
-    if (totpAt(secret, step + drift) === normalized) matched = true;
+    if (totpAt(secret, step + drift) === normalized) matched = step + drift;
   }
   return matched;
 }

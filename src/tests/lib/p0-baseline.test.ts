@@ -2,6 +2,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Prisma } from "@prisma/client";
 
+vi.mock("@/server/finance/ledger-storage", () => ({ financeLedgerReady: vi.fn(async () => false) }));
+import { financeLedgerReady } from "@/server/finance/ledger-storage";
+
 /* ---------- 纯函数：客户身份规范化 ---------- */
 import {
   normalizeIdNumber, suggestIdType, duplicateWhereInput, nameWhereInput
@@ -77,8 +80,15 @@ import { deleteBilling, deleteFeeEntry } from "@/server/finance/actions";
 describe("财务删除守卫（P0-6）", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(financeLedgerReady).mockResolvedValue(false);
     db.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn(db));
     db.matter.findFirst.mockResolvedValue({ id: "m1", status: "IN_PROGRESS" });
+  });
+
+  it("新模型不允许旧删除入口绕过财务更正", async () => {
+    vi.mocked(financeLedgerReady).mockResolvedValue(true);
+    await expect(deleteFeeEntry("f-new")).rejects.toThrow("财务更正");
+    expect(db.feeEntry.deleteMany).not.toHaveBeenCalled();
   });
 
   it("已签署合同拒绝删除", async () => {
@@ -110,19 +120,28 @@ describe("财务删除守卫（P0-6）", () => {
     expect(db.feeEntry.delete).not.toHaveBeenCalled();
   });
 
-  it("普通未确认记录仍可删除并级联分成（行为不回退）", async () => {
+  it("普通未确认记录仍可删除（行为不回退，不走级联）", async () => {
     db.feeEntry.findUnique.mockResolvedValue({
       id: "f3", matterId: "m1", invoiceNo: null, type: "COST", confirmState: "CONFIRMED",
-      commissionChildren: [{ id: "c1" }, { id: "c2" }], billing: { signedAt: null }
+      parentFeeEntryId: null, billing: { signedAt: null }
     });
     db.feeEntry.deleteMany.mockResolvedValue({ count: 1 });
     await expect(deleteFeeEntry("f3")).resolves.toEqual({ ok: true });
-    // 级联删分成 + 条件删父条目，都走 deleteMany（并发下按受影响行数判定）
-    expect(db.feeEntry.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ["c1", "c2"] } } });
-    // 条件删除：发票号、合同签署、确认状态一并判定，避免读取后被改动
+    // 条件删除：发票号、合同签署一并判定，避免读取后被改动。
+    // 级联删分成已随「实收一律不可删」移除：分成只在确认时派生，父条目不可删则级联不可达
+    expect(db.feeEntry.deleteMany).toHaveBeenCalledTimes(1);
     expect(db.feeEntry.deleteMany).toHaveBeenLastCalledWith({
       where: { id: "f3", invoiceNo: null, OR: [{ billingId: null }, { billing: { is: { signedAt: null } } }] }
     });
+  });
+
+  it("确认时自动派生的分成不可单独删除：单独删会让分成合计与父实收对不上", async () => {
+    db.feeEntry.findUnique.mockResolvedValue({
+      id: "c1", matterId: "m1", invoiceNo: null, type: "COMMISSION", confirmState: "CONFIRMED",
+      parentFeeEntryId: "f9", billing: null
+    });
+    await expect(deleteFeeEntry("c1")).rejects.toThrow("不可单独删除");
+    expect(db.feeEntry.deleteMany).not.toHaveBeenCalled();
   });
 
   it("并发期间被开票 / 确认：受影响行数为 0 时报错，不静默通过", async () => {

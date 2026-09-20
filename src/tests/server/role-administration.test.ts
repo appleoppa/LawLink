@@ -6,6 +6,8 @@ const { db, session, requireAdmin } = vi.hoisted(() => ({ session: { user: { id:
 } }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/auth/session", () => ({ requireSystemAdmin: requireAdmin }));
+vi.mock("@/server/reminders/offboarding",()=>({recordOffboardingRisk:async()=>{}}));
+vi.mock("@/server/reminders/responsibility",()=>({responsibilityReady:async()=>false}));
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
 vi.mock("@/lib/approvals/service", () => ({ approvalTransaction: async (fn: (tx: typeof db) => Promise<unknown>) => fn(db) }));
 import { saveRoleDefinition, saveBuiltinRolePresentation } from "@/server/roles/actions";
@@ -41,7 +43,7 @@ describe("内置角色显示资料与权限分离", () => {
     expect(db.user.updateMany).not.toHaveBeenCalled();
   });
   it("拒绝冒用另一个内置角色名称", async () => {
-    await expect(saveBuiltinRolePresentation({ ...builtinInput, name: "主办律师" })).rejects.toThrow("已被内置角色使用");
+    await expect(saveBuiltinRolePresentation({ ...builtinInput, name: "合伙人" })).rejects.toThrow("已被内置角色使用");
   });
   it("拒绝与已有自定义角色重名", async () => {
     db.roleDefinition.findFirst.mockResolvedValue({ id });

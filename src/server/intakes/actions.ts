@@ -1,4 +1,8 @@
 "use server";
+import {insertFinanceRowTx} from "@/server/finance/allocation-internals";
+import { assertNoOpenIntakeUrgency, transferIntakeUrgency } from "@/server/reminders/urgent";
+import { recordMatterReviewTx } from "@/server/conflicts/matter-review";
+import { assertLiveAssignees, currentActor, intakeWorkflowReady, submitIntakeTx, assertIntakeConvertible } from "./workflow";
 import { hasCustomPermission, scopeFor } from "@/lib/roles/catalog";
 import { clientVisibilityFilter } from "@/lib/permissions";
 import { normalizeIdNumber, duplicateWhereInput, suggestIdType } from "@/lib/clients/identity";
@@ -32,6 +36,8 @@ import { seedDefaultFolders } from "@/lib/default-folders";
 import { notifyRoleApprovers } from "@/server/notifications/approval";
 import { assertCauseAllowedForSelection } from "@/server/causes/validation";
 import { recordTimelineEvent } from "@/server/timeline/record";
+import { financeLedgerReady } from "@/server/finance/ledger-storage";
+import { createIntakeBillingDraftTx } from "@/server/finance/ledger-registration";
 
 function emptyToNull<T extends Record<string, unknown>>(obj: T): T {
   const out: Record<string, unknown> = {};
@@ -405,14 +411,17 @@ export async function createIntake(input: IntakeCreateInput) {
       ? data.title.trim()
       : generateTitle(resolvedClientName, opposingNames, causeName);
 
-  const created = await roleMutation(session.user, "intakes.create", async roleDb => roleDb.intake.create({
+  const workflowEnabled=await intakeWorkflowReady(prisma);
+  const created = await approvalTransaction(async roleDb => {
+    if(workflowEnabled){await currentActor(roleDb,session.user.id,"intakes.create");await assertLiveAssignees(roleDb,[data.ownerUserId||session.user.id,...data.coUserIds]);}
+    return roleDb.intake.create({
     data: {
       title: finalTitle,
       category: data.category,
       causeId: data.causeId || null,
       causeFreeText: data.causeFreeText || null,
       description: data.description || null,
-      status: "PENDING_CONFIRMATION",
+      status: workflowEnabled ? "INTAKE" : "PENDING_CONFIRMATION",
       receivedAt: data.receivedAt ?? new Date(),
 
       clientId: resolvedClientId,
@@ -447,7 +456,7 @@ export async function createIntake(input: IntakeCreateInput) {
 
       createdById: session.user.id,
       parties: {
-        create: data.parties.map((p) =>
+        create: [...(workflowEnabled && data.clientName ? [{role:"CLIENT_PARTY" as const,name:data.clientName,partyType:data.clientType==="INDIVIDUAL"?"NATURAL_PERSON" as const:"COMPANY" as const,ordinal:1,standing:data.ourStanding,idType:(data.clientIdType||undefined),idNumber:data.clientType==="INDIVIDUAL"?data.clientIdNumber:undefined,enterpriseSocialCode:data.clientType!=="INDIVIDUAL"?data.clientIdNumber:undefined,phone:data.contactPhone,address:data.clientAddress,legalRep:data.clientLegalRep,contactName:data.contactName,enterpriseName:data.clientType!=="INDIVIDUAL"?data.clientName:undefined,notes:undefined}] : []),...data.parties].map((p) =>
           emptyToNull({
             role: p.role,
             standing: p.standing ?? null,
@@ -455,19 +464,21 @@ export async function createIntake(input: IntakeCreateInput) {
             name: p.name,
             partyType: p.partyType,
             idType: p.partyType === "NATURAL_PERSON" ? (p.idType || "ID_CARD") : null,
-            idNumber: p.idNumber,
+            // 证件号/信用代码落库即规范化（trim+大写）：冲突检索按大小写不敏感口径比对，历史小写数据由检索侧补变体
+            idNumber: p.idNumber ? p.idNumber.trim().toUpperCase() : p.idNumber,
             phone: p.phone,
             address: p.address,
             legalRep: p.legalRep,
             contactName: p.contactName,
-            enterpriseSocialCode: p.enterpriseSocialCode,
+            enterpriseSocialCode: p.enterpriseSocialCode ? p.enterpriseSocialCode.trim().toUpperCase() : p.enterpriseSocialCode,
             enterpriseName: p.enterpriseName,
             notes: p.notes
           })
         )
       }
     }
-  }));
+  });
+  });
 
   await audit({
     userId: session.user.id,
@@ -482,7 +493,7 @@ export async function createIntake(input: IntakeCreateInput) {
     }
   });
 
-  await notifyRoleApprovers({
+  if(!workflowEnabled) await notifyRoleApprovers({
     roles: ["PRINCIPAL_LAWYER"],
     excludeUserId: session.user.id,
     title: "新的案件审批待处理",
@@ -496,7 +507,7 @@ export async function createIntake(input: IntakeCreateInput) {
   revalidatePath("/intakes");
   revalidatePath("/approvals");
   revalidatePath("/matters");
-  return { ok: true, id: created.id, clientId: resolvedClientId };
+  return { ok: true, id: created.id, clientId: resolvedClientId, workflowEnabled };
 }
 
 export async function declineIntake(input: DeclineIntakeInput) {
@@ -505,6 +516,7 @@ export async function declineIntake(input: DeclineIntakeInput) {
 
   await approvalTransaction(async tx => {
     await assertApprovalItem(session.user.id, "INTAKE_APPROVE", data.id, tx);
+    await assertNoOpenIntakeUrgency(tx,data.id);
   await tx.intake.update({
     where: { id: data.id, status: "PENDING_CONFIRMATION" },
     data: {
@@ -521,6 +533,28 @@ export async function declineIntake(input: DeclineIntakeInput) {
   revalidatePath("/approvals");
   revalidatePath(`/intakes/${data.id}`);
   revalidatePath("/matters");
+  return { ok: true };
+}
+
+/**
+ * P2-6（2026-09-20 C 批）：作废草稿态收案。INTAKE 的唯一出边此前只有送审——弃置草稿
+ * 永久滞留「收案中」页签污染列表与统计。作废是终态：先处置紧急事项（同拒绝接案口径），
+ * 留痕不物理删除；仅申请人/当前主办在 INTAKE 态可作废。
+ */
+export async function voidIntake(input: { id: string; reason: string }) {
+  const session = await requireSession("intakes.create");
+  if (!input.reason.trim()) throw new Error("请填写作废原因");
+  await approvalTransaction(async tx => {
+    await assertNoOpenIntakeUrgency(tx, input.id);
+    await tx.intake.update({
+      where: { id: input.id, status: "INTAKE" },
+      data: { status: "VOID", declinedReason: input.reason.trim() }
+    });
+    await approvalAudit(tx, session.user.id, "INTAKE_VOID", input.id, { reason: input.reason.trim() });
+  });
+  revalidatePath("/intakes");
+  revalidatePath("/matters");
+  revalidatePath(`/intakes/${input.id}`);
   return { ok: true };
 }
 
@@ -553,7 +587,11 @@ export async function markIntakeNeedsRevision(input: { id: string; reason: strin
 /** v0.14: 律师补完材料后重新提交（NEEDS_REVISION → PENDING_CONFIRMATION） */
 export async function resubmitIntake(id: string) {
   const session = await requireSession("matters.write");
-
+  if(await intakeWorkflowReady(prisma)){
+    await approvalTransaction(db=>submitIntakeTx(db,session.user.id,id));
+    await notifyRoleApprovers({roles:["PRINCIPAL_LAWYER"],excludeUserId:session.user.id,title:"收案已送审",content:"新的收案轮次已固定，请复核",href:`/intakes/${id}`,refType:"Intake",refId:id,priority:"HIGH"});
+    revalidatePath(`/intakes/${id}`);revalidatePath('/approvals');revalidatePath('/matters');return {ok:true};
+  }
   const intake = await prisma.intake.findUnique({
     where: { id },
     select: { status: true, title: true, createdById: true, ownerUserId: true, declinedReason: true }
@@ -644,6 +682,7 @@ export async function convertIntakeToMatter(intakeId: string, note?: string) {
 
   const matter = await approvalTransaction(async (tx) => {
     await assertApprovalItem(session.user.id, "INTAKE_APPROVE", intakeId, tx);
+    await assertIntakeConvertible(tx,intakeId);
     await tx.intake.update({ where: { id: intakeId, status: "PENDING_CONFIRMATION", updatedAt: intake.updatedAt }, data: { status: "CONVERTED" } });
     await approvalAudit(tx, session.user.id, "INTAKE_APPROVE", intakeId, { note: note?.trim().slice(0, 500) ?? "", attachmentIds: intake.documents.map(d => d.id) });
     const ownerId = intake.ownerUserId ?? session.user.id;
@@ -696,7 +735,7 @@ export async function convertIntakeToMatter(intakeId: string, note?: string) {
     const procedurePartyRows: { partyId: string; standing: LitigationStanding; ordinal: number }[] = [];
     let nextProcedurePartyOrdinal = 1;
 
-    if (intake.client && intake.ourStanding) {
+    if (intake.client && intake.ourStanding && !intake.parties.some(p=>p.role==="CLIENT_PARTY")) {
       const clientParty = await tx.party.create({
         data: {
           matterId: m.id,
@@ -758,8 +797,9 @@ export async function convertIntakeToMatter(intakeId: string, note?: string) {
         matterId: m.id,
         type: firstProcedureType,
         engagement: "ENGAGED",
+        leadLawyerId: ownerId,
         order: 1,
-        status: "IN_PROGRESS",
+        status: await financeLedgerReady(tx)?"PENDING":"IN_PROGRESS",
         handlingAgency: intake.firstAgency,
         // 程序级信息从收案带入首程序（原先丢失）
         jurisdiction: intake.jurisdiction,
@@ -786,15 +826,18 @@ export async function convertIntakeToMatter(intakeId: string, note?: string) {
         FIXED: "固定收费",
         CONTINGENCY: "风险代理"
       };
-      await tx.billing.create({
-        data: {
+      if (await financeLedgerReady(tx)) {
+        await createIntakeBillingDraftTx(tx,session.user.id,{
+          matterId:m.id,title:`委托代理合同 - ${feeTypeLabel[intake.feeType] ?? intake.feeType}`,
+          amount:intake.feeAmount,schedule:intake.feeSchedule
+        });
+      } else await insertFinanceRowTx(tx,'Billing',{
           matterId: m.id,
           title: `委托代理合同 - ${feeTypeLabel[intake.feeType] ?? intake.feeType}`,
           contractAmount: intake.feeAmount,
           schedule: intake.feeSchedule,
           status: "ACTIVE"
-        }
-      });
+        });
     }
 
     // 把 Intake 上传的合同回填 matterId（保留 intakeId 溯源），并归入首程序的第一个环节
@@ -826,6 +869,8 @@ export async function convertIntakeToMatter(intakeId: string, note?: string) {
     // v0.8: 默认卷宗
     await seedDefaultFolders(tx, m.id, intake.category);
 
+    await transferIntakeUrgency(tx,intake.id,m.id);
+    if(await intakeWorkflowReady(tx))await recordMatterReviewTx(tx,session.user.id,m.id,`承接收案审批已复核的主体与范围。${intake.conflictChecks[0]?.note??""}`);
     return m;
   });
 

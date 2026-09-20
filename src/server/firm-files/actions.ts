@@ -9,11 +9,12 @@
  * 搜索：ILIKE name + description + tags 多字段模糊匹配（不用 tsvector）。
  */
 import { customOrLegacy } from "@/lib/roles/catalog";
+import { isManager } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { storage } from "@/lib/storage";
 import { sha256 } from "@/lib/storage/crypto";
-import { ensureExt } from "@/lib/storage/mime-ext";
+import { validateUploadedFile } from "@/lib/storage/file-validator";
 import { audit } from "@/server/audit";
 import { revalidatePath } from "next/cache";
 import type { FirmFileCategory, Prisma } from "@prisma/client";
@@ -37,7 +38,7 @@ export type FirmFileEntry = {
 
 async function requireUploader() {
   const session = await requireSession("firm-files.manage");
-  if (!customOrLegacy(session.user, "firm-files.manage", session.user.role === "PRINCIPAL_LAWYER")) {
+  if (!customOrLegacy(session.user, "firm-files.manage", isManager(session.user))) {
     throw new Error("仅主任律师或获授权岗位可管理律所资料");
   }
   return session;
@@ -169,9 +170,9 @@ export async function uploadFirmFile(formData: FormData): Promise<{
   const supersedesRaw = formData.get("supersedesId");
 
   if (!(file instanceof File)) throw new Error("缺少文件");
-  if (file.size === 0) throw new Error("空文件");
-  if (file.size > FIRM_FILE_MAX_BYTES)
-    throw new Error(`文件超过 ${Math.round(FIRM_FILE_MAX_BYTES / 1024 / 1024)}MB`);
+  // 2026-09-19 审计修复：此前律所资料上传完全没有类型校验，MIME 取客户端声明，
+  // 配合下载 inline 构成全所面 XSS；现与案件材料同口径校验并按扩展名推导落库 MIME。
+  const validated = validateUploadedFile(file, { purpose: "firmfile", maxBytes: FIRM_FILE_MAX_BYTES });
   if (typeof name !== "string" || !name.trim()) throw new Error("名称必填");
 
   const supersedesId =
@@ -193,14 +194,10 @@ export async function uploadFirmFile(formData: FormData): Promise<{
   const hash = sha256(buf);
 
   // 用户填的 name 可能不含扩展名（如"员工手册 v2.4"），下载时浏览器要靠扩展名识别程序，
-  // 这里优先取原始文件名的扩展名兜底，其次用 mimeType 推断
+  // 这里优先取原始文件名的扩展名兜底
   const trimmedName = name.trim().slice(0, 200);
   const userHasExt = /\.[A-Za-z0-9]{1,5}$/.test(trimmedName);
-  let nameWithFileExt = trimmedName;
-  if (!userHasExt) {
-    const m = file.name.match(/\.[A-Za-z0-9]{1,5}$/);
-    nameWithFileExt = m ? trimmedName + m[0] : ensureExt(trimmedName, file.type || null);
-  }
+  const nameWithFileExt = userHasExt ? trimmedName : `${trimmedName}.${validated.ext}`;
 
   const created = await prisma.$transaction(async (tx) => {
     const doc = await tx.firmFile.create({
@@ -213,7 +210,7 @@ export async function uploadFirmFile(formData: FormData): Promise<{
         category,
         tags,
         path,
-        mimeType: file.type || null,
+        mimeType: validated.mimeType,
         size: file.size,
         sha256: hash,
         uploadedById: session.user.id

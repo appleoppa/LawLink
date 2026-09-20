@@ -24,6 +24,7 @@ export async function getSession() {
   session.user.systemRole = user.systemRole;
   session.user.roleName = access.roleName;
   session.user.rolePermissions = access.rolePermissions;
+  session.user.managerAuthorized = access.managerAuthorized === true;
   return session;
 }
 

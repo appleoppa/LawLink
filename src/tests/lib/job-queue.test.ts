@@ -21,10 +21,27 @@ vi.mock("@/lib/prisma", () => ({ prisma: db }));
 import { enqueueJob } from "@/server/cron/queue";
 
 describe("enqueueJob 幂等语义", () => {
-  it("同键 SUCCESS/DEAD 任务：忽略（不复活）", async () => {
+  it("同键 SUCCESS 任务：忽略（不复活）", async () => {
     db.jobQueue.findUnique.mockResolvedValue({ id: "j1", status: "SUCCESS" });
     await enqueueJob({ type: "t", payload: { a: 1 }, dedupeKey: "k" });
     expect(db.jobQueue.update).not.toHaveBeenCalled();
+    expect(db.jobQueue.create).not.toHaveBeenCalled();
+  });
+
+  it("同键 DEAD 任务 6 小时内：忽略", async () => {
+    db.jobQueue.findUnique.mockResolvedValue({ id: "j9", status: "DEAD", updatedAt: new Date(Date.now() - 60 * 60_000) });
+    await enqueueJob({ type: "t", payload: { a: 1 }, dedupeKey: "k" });
+    expect(db.jobQueue.update).not.toHaveBeenCalled();
+    expect(db.jobQueue.create).not.toHaveBeenCalled();
+  });
+
+  it("同键 DEAD 任务超过 6 小时：重置尝试再入队（死信自愈）", async () => {
+    db.jobQueue.findUnique.mockResolvedValue({ id: "j10", status: "DEAD", updatedAt: new Date(Date.now() - 7 * 60 * 60_000) });
+    await enqueueJob({ type: "t", payload: { a: 1 }, dedupeKey: "k" });
+    expect(db.jobQueue.update).toHaveBeenCalledWith({
+      where: { id: "j10" },
+      data: expect.objectContaining({ status: "PENDING", attempts: 0 })
+    });
     expect(db.jobQueue.create).not.toHaveBeenCalled();
   });
 
@@ -39,7 +56,7 @@ describe("enqueueJob 幂等语义", () => {
     expect(db.jobQueue.create).not.toHaveBeenCalled();
   });
 
-  it("无同键任务：新建", async () => {
+  it("无同键任务：新建；并发撞唯一键不抛出", async () => {
     db.jobQueue.findUnique.mockResolvedValue(null);
     await enqueueJob({ type: "t", payload: {}, dedupeKey: "k2" });
     expect(db.jobQueue.create).toHaveBeenCalled();

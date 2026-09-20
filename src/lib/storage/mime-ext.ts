@@ -36,11 +36,10 @@ export function isInlinePreviewable(mimeType: string | null | undefined): boolea
   const m = mimeType.toLowerCase();
   return (
     m === "application/pdf" ||
-    m.startsWith("image/") ||
+    (m.startsWith("image/") && m !== "image/svg+xml") ||
     m === "text/plain" ||
     m === "text/markdown" ||
-    m === "text/csv" ||
-    m === "text/html"
+    m === "text/csv"
   );
 }
 

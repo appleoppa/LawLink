@@ -1,4 +1,6 @@
 "use server";
+import {assertIntakeDocumentChange,intakeWorkflowReady} from "@/server/intakes/workflow";
+import type {RoleUser} from "@/lib/roles/catalog";
 import { roleMutation } from "@/lib/roles/service";
 
 import { notifyRoleApprovers } from "@/server/notifications/approval";
@@ -14,7 +16,7 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import { assertDocumentWritable } from "@/lib/archive/guard";
-import { matterVisibilityFilter, matterAssociationFilter, isManager, assertCanAccessMatter, assertCanLeadMatter } from "@/lib/permissions";
+import { matterVisibilityFilter, matterAssociationFilter, assertCanAccessMatter, assertCanAssociateMatter, assertCanHandleMatter, assertCanLeadMatter } from "@/lib/permissions";
 import { storage } from "@/lib/storage";
 import { validateUploadedFile } from "@/lib/storage/file-validator";
 import { encryptBuffer, sha256 } from "@/lib/storage/crypto";
@@ -38,6 +40,15 @@ const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
  * 上传材料。前端通过 Server Action 传 FormData，含 file（File）、metadata。
  * 加密分支：encrypted=true 时把文件用 AES-256-GCM 加密后写盘。
  */
+async function documentMutation<T>(user:RoleUser&{id:string},subject:{intakeId:string|null;matterId:string|null;id?:string},write:(db:Prisma.TransactionClient)=>Promise<T>){
+ if(subject.intakeId&&await intakeWorkflowReady(prisma))return approvalTransaction(async db=>{
+   if(!subject.matterId)await assertIntakeDocumentChange(db,user.id,subject.intakeId!,subject.id);
+   else if(subject.id){const [used]=await db.$queryRaw<{count:bigint}[]>`SELECT COUNT(*) AS count FROM "IntakeRevision" WHERE "intakeId"=${subject.intakeId} AND snapshot->'documents' @> ${JSON.stringify([{id:subject.id}])}::jsonb`;if(Number(used.count))throw new Error('已送审材料原件须保留，请另传补充材料');}
+   return write(db);
+ });
+ return roleMutation(user,'documents.write',write);
+}
+
 export async function uploadDocument(formData: FormData) {
   const session = await requireSession("documents.write");
 
@@ -73,7 +84,7 @@ export async function uploadDocument(formData: FormData) {
       ? tagsRaw.split(",").map((t) => t.trim()).filter(Boolean)
       : [];
 
-  validateUploadedFile(file, { purpose: "document", maxBytes: MAX_FILE_SIZE });
+  const validated = validateUploadedFile(file, { purpose: "document", maxBytes: MAX_FILE_SIZE });
 
   const folderId = typeof folderIdRaw === "string" && folderIdRaw ? folderIdRaw : null;
   const stageId = typeof stageIdRaw === "string" && stageIdRaw ? stageIdRaw : null;
@@ -86,7 +97,13 @@ export async function uploadDocument(formData: FormData) {
       select: { id: true, status: true }
     });
     if (!matter) throw new Error("案件不存在");
-    await assertCanAccessMatter(session.user.id, session.user.role, matterId, session.user.rolePermissions);
+    // 上传属案件写入：合伙人沿用全所可见口径，其余岗位（含 managerAuthorized）须本案经办关联，
+    // 管理权只放大「可见」不放大写入（AGENTS 业务管理权决议）。
+    if (session.user.role === "PRINCIPAL_LAWYER") {
+      await assertCanAccessMatter(session.user.id, session.user.role, matterId, session.user.rolePermissions);
+    } else {
+      await assertCanAssociateMatter(session.user.id, matterId);
+    }
 
     if (folderId) {
       const folder = await prisma.documentFolder.findUnique({
@@ -122,10 +139,11 @@ export async function uploadDocument(formData: FormData) {
       select: { id: true, status: true, createdById: true, ownerUserId: true, coUserIds: true }
     });
     if (!intake) throw new Error("收案记录不存在");
+    if(!matterId&&await intakeWorkflowReady(prisma)) await approvalTransaction(db=>assertIntakeDocumentChange(db,session.user.id,intakeId));
     if (intake.status === "DECLINED") throw new Error("已拒绝的收案不可上传材料");
     const uid = session.user.id;
     if (
-      !isManager(session.user.role) &&
+      session.user.role !== "PRINCIPAL_LAWYER" &&
       intake.createdById !== uid &&
       intake.ownerUserId !== uid &&
       !intake.coUserIds.includes(uid)
@@ -159,7 +177,7 @@ export async function uploadDocument(formData: FormData) {
       ? archiveChecklistItemIdRaw
       : null;
 
-  const created = await roleMutation(session.user, "documents.write", async roleDb => roleDb.document.create({
+  const created = await documentMutation(session.user,{intakeId,matterId}, async roleDb => roleDb.document.create({
     data: {
       matterId,
       intakeId,
@@ -174,7 +192,7 @@ export async function uploadDocument(formData: FormData) {
           ? sourcePartyRaw.trim()
           : null,
       path,
-      mimeType: file.type || "application/octet-stream",
+      mimeType: validated.mimeType,
       size: file.size,
       sha256: hash,
       encrypted,
@@ -205,7 +223,7 @@ export async function uploadDocument(formData: FormData) {
   // 失败标 FAILED——失败页不可隐去）。抽取基于未加密内存副本，不读回存储；
   // 抽取失败不影响上传成功，但状态落库供维护与重试。
   try {
-    const layer = await extractDocumentTextLayer(raw, file.type || null);
+    const layer = await extractDocumentTextLayer(raw, validated.mimeType);
     await prisma.document.update({
       where: { id: created.id },
       data: {
@@ -260,7 +278,7 @@ export async function deleteDocument(id: string) {
   }
 
   // 软删除（保留文件以备审计），如需物理删除走单独脚本
-  await roleMutation(session.user, "documents.write", async roleDb => roleDb.document.update({
+  await documentMutation(session.user,doc, async roleDb => roleDb.document.update({
     where: { id },
     data: { deletedAt: new Date() }
   }));
@@ -289,8 +307,10 @@ export async function hardDeleteDocument(id: string) {
   await assertDocumentNotInPendingArchive(id);
   await assertDocumentWritable(doc.matterId, { kind: "modify" });
 
-  await storage.deleteFile(doc.path);
-  await roleMutation(session.user, "documents.write", async roleDb => roleDb.document.delete({ where: { id } }));
+  await documentMutation(session.user,doc, async roleDb => {
+    await storage.deleteFile(doc.path);
+    return roleDb.document.delete({ where: { id } });
+  });
 
   await audit({
     userId: session.user.id,
@@ -390,7 +410,7 @@ export async function submitDocumentForReview(id: string) {
   await requireApprovalRoute(docContext);
   if (doc.status !== "DRAFT") throw new Error("只有草稿状态的材料才能提交审核");
 
-  await roleMutation(session.user, "documents.write", async roleDb => roleDb.document.update({
+  await documentMutation(session.user,doc, async roleDb => roleDb.document.update({
     where: { id, status: "DRAFT", updatedAt: doc.updatedAt },
     data: { status: "PENDING_REVIEW" },
   }));
@@ -464,10 +484,11 @@ export async function fileDocument(id: string) {
   const doc = await prisma.document.findUnique({ where: { id, deletedAt: null } });
   if (!doc) throw new Error("材料不存在");
   if (doc.matterId)
-    await assertCanAccessMatter(session.user.id, session.user.role, doc.matterId, session.user.rolePermissions);
+    // 材料归档属材料操作（P1-1）：合伙人全所口径，其余岗位（含管理权）须经办。
+    await assertCanHandleMatter(session.user, doc.matterId);
   if (doc.status !== "APPROVED") throw new Error("只有已审批的材料才能归档");
 
-  await roleMutation(session.user, "documents.write", async roleDb => roleDb.document.update({
+  await documentMutation(session.user,doc, async roleDb => roleDb.document.update({
     where: { id },
     data: { status: "FILED" },
   }));
@@ -500,12 +521,16 @@ export async function uploadNewVersion(input: {
   checkoutToken?: string;
 }): Promise<{ ok: true; id: string; version: number }> {
   const session = await requireSession("documents.write");
+  // 2026-09-19 审计修复：此前新版本不经任何类型/大小校验、落库 MIME 取客户端值。
+  const validated = validateUploadedFile(input.file, { purpose: "document", maxBytes: MAX_FILE_SIZE });
   const prior = await prisma.document.findUnique({ where: { id: input.documentId } });
   if (!prior || prior.deletedAt) throw new Error("原材料不存在");
   if (!prior.isLatest) throw new Error("只能基于最新版本更新");
 
   if (prior.matterId) {
-    await assertCanAccessMatter(session.user.id, session.user.role, prior.matterId, session.user.rolePermissions);
+    // 替换材料内容属材料操作（P1-1）：合伙人全所口径，其余岗位（含管理权）须经办，
+    // 与上传入口的分流口径统一——管理权只放大可见不放大写入。
+    await assertCanHandleMatter(session.user, prior.matterId);
     await assertDocumentWritable(prior.matterId, { kind: "modify" });
   }
 
@@ -525,11 +550,13 @@ export async function uploadNewVersion(input: {
 
   const raw = Buffer.from(await input.file.arrayBuffer());
   const hash = sha256(raw);
-  const encrypted = false; // 新版本默认与原文件一致策略由调用方后续可调；先随所配置
+  // 加密策略随原材料：首传加密的文件其新版本必须同样加密，
+  // 此前写死 false 会让「传新版本」把已加密材料静默替换成明文落盘。
+  const encrypted = prior.encrypted;
   const enc = encrypted ? encryptBuffer(raw) : null;
   const path = await storage.writeFile(prior.matterId ? `m_${prior.matterId}` : `i_${prior.intakeId}`, enc ? enc.ciphertext : raw);
 
-  const created = await prisma.$transaction(async tx => {
+  const created = await documentMutation(session.user,prior,async tx => {
     await tx.document.updateMany({
       where: { familyId: prior.familyId ?? prior.id, isLatest: true },
       data: { isLatest: false }
@@ -546,7 +573,7 @@ export async function uploadNewVersion(input: {
         sourceParty: prior.sourceParty,
         sourceOrigin: prior.sourceOrigin,
         path,
-        mimeType: input.file.type || prior.mimeType,
+        mimeType: validated.mimeType,
         size: input.file.size,
         sha256: hash,
         encrypted,
@@ -573,7 +600,7 @@ export async function uploadNewVersion(input: {
   // 新版本同样抽取文本层（沿用上传路径口径）
   try {
     const { extractDocumentTextLayer } = await import("@/lib/documents/text-extraction");
-    const layer = await extractDocumentTextLayer(raw, input.file.type || prior.mimeType);
+    const layer = await extractDocumentTextLayer(raw, validated.mimeType);
     await prisma.document.update({
       where: { id: created.id },
       data: {

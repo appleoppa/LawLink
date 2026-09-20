@@ -6,7 +6,7 @@ import { roleMutation } from "@/lib/roles/service";
  */
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
-import { assertCanAccessMatter } from "@/lib/permissions";
+import { assertCanHandleMatter } from "@/lib/permissions";
 import { storage } from "@/lib/storage";
 import { sha256 } from "@/lib/storage/crypto";
 import { audit } from "@/server/audit";
@@ -74,7 +74,8 @@ export async function saveReviewToMatter(input: {
   items: ReviewItem[];
 }): Promise<{ ok: true; documentId: string; documentName: string }> {
   const session = await requireSession("documents.write");
-  await assertCanAccessMatter(session.user.id, session.user.role, input.matterId, session.user.rolePermissions);
+  // AI 审查结果落库属材料写入（P1-1）：合伙人全所口径，其余岗位须经办。
+  await assertCanHandleMatter(session.user, input.matterId);
 
   const matter = await prisma.matter.findUnique({
     where: { id: input.matterId, deletedAt: null },

@@ -65,9 +65,18 @@ export const deadlineCreateSchema = z.object({
   procedureId: z.string().cuid(),
   title: z.string().min(1, "期限名称必填").max(100),
   category: deadlineCategorySchema.default("CUSTOM"),
-  dueAt: z.coerce.date(),
+  // 必填日期：date input 清空得到空串，先归一成 undefined，配中文 required_error 提示补填
+  dueAt: z.preprocess(
+    v => (v === "" ? undefined : v),
+    z.coerce.date({ required_error: "请选择到期日", invalid_type_error: "请选择到期日" })
+  ),
   basis: z.string().max(200).optional().or(z.literal("")),
-  remindDays: z.coerce.number().int().min(0).max(60).default(3),
+  remindDays: z.coerce
+    .number({ invalid_type_error: "请填写提醒天数" })
+    .int("提醒天数须为整数")
+    .min(0, "提醒天数不能为负")
+    .max(60, "提醒天数不能超过 60")
+    .default(3),
   // v1.x P0-8: 期限来源（规则触发时由调用方带入；人工录入可空 = 已确认）
   sourceRuleId: z.string().optional().or(z.literal("")),
   startFact: z.string().max(200).optional().or(z.literal("")),

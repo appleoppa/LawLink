@@ -202,14 +202,16 @@ export const intakeStatusLabel: Record<IntakeStatus, string> = {
   PENDING_CONFIRMATION: "待确认",
   CONVERTED: "已转化",
   DECLINED: "不接案",
-  NEEDS_REVISION: "待补正"
+  NEEDS_REVISION: "待补正",
+  VOID: "已作废"
 };
 
 export const userRoleLabel: Record<UserRole, string> = {
   CUSTOM: "自定义角色",
-  PRINCIPAL_LAWYER: "主办律师",
-  LAWYER: "经办律师",
-  ASSISTANT: "助理",
+  PRINCIPAL_LAWYER: "合伙人",
+  INDEPENDENT_LAWYER: "独立律师",
+  LAWYER: "授薪律师",
+  ASSISTANT: "律师助理",
   FINANCE: "财务"
 };
 

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const { intake } = vi.hoisted(() => ({ intake: vi.fn() }));
+vi.mock("@/server/intakes/revision-history", () => ({ readIntakeRounds:async()=>[] }));
 vi.mock("@/lib/prisma", () => ({ prisma: { intake: { findUniqueOrThrow: intake }, auditLog: { findMany: async () => [] } } }));
 vi.mock("@/lib/auth/session", () => ({ requireSession: async () => ({ user: { id: "reviewer" } }) }));
 vi.mock("@/lib/approvals/service", () => ({ assertApprovalItem: vi.fn() }));

@@ -1,3 +1,4 @@
+import { getFinanceFacts, periodReceipts } from "@/server/finance/facts";
 /**
  * v0.20: 律所报表数据聚合（纯 read-only，无 use server）
  *
@@ -113,6 +114,7 @@ export type ClientSourceBreakdown = {
 };
 
 export type ReportData = {
+  financeReady: boolean;
   period: ReportPeriod;
   kpis: ReportKpis;
   byCategory: CategoryBreakdown[];
@@ -186,7 +188,8 @@ export async function getReportData(period: ReportPeriod, access: ReportAccess =
   });
 
   // 律师本期收款：FeeEntry.type=RECEIVED + occurredAt 在本期 + matter.ownerId
-  const feeReceivedRaw = await prisma.feeEntry.findMany({
+  const facts=await getFinanceFacts({deletedAt:null,AND:[access.finance]});
+  const feeReceivedRaw = facts ? periodReceipts(facts,period.start,period.end) : await prisma.feeEntry.findMany({
     where: {
       type: "RECEIVED",
       confirmState: "CONFIRMED",
@@ -256,6 +259,15 @@ export async function getReportData(period: ReportPeriod, access: ReportAccess =
     if (f.type === "RECEIVED") row.received += Number(f.amount);
   }
   for (const row of byClient.values()) row.balance = row.receivable - row.received;
+  if(facts) {
+    byClient.clear();
+    // 当前应收余额与本期新增应收不同；余额必须按有效核销计算。
+    for(const r of facts.receivables.filter(r=>r.moneyKind==='LAWYER_FEE')) {
+      const c=r.matter.primaryClient;if(!c)continue;
+      const row=byClient.get(c.id)??{clientId:c.id,name:c.name,receivable:0,received:0,balance:0};
+      row.receivable+=r.effectiveAmount.toNumber();row.received+=r.settledAmount.toNumber();row.balance+=r.outstanding.toNumber();byClient.set(c.id,row);
+    }
+  }
   const byClientReceivable = Array.from(byClient.values()).sort(
     (a, b) => b.balance - a.balance
   );
@@ -283,6 +295,7 @@ export async function getReportData(period: ReportPeriod, access: ReportAccess =
     .sort((a, b) => b.count - a.count);
 
   return {
+    financeReady:Boolean(facts),
     period,
     kpis: { newIntake, inProgress, closed, archived, archiveRate },
     byCategory,

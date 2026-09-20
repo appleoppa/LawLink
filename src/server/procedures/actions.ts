@@ -1,8 +1,14 @@
 "use server";
+import type { ProcedureStatus } from "@prisma/client";
+import {assertMatterReviewCurrent} from "@/server/conflicts/matter-review";
+import {assertProcedureCovered} from "@/server/finance/ledger-contracts";
+import { approvalTransaction } from "@/lib/approvals/service";
+import { changeWorkTx,readWorkRows,responsibilityReady } from "@/server/reminders/responsibility";
 import { roleMutation, checkRoleMutation } from "@/lib/roles/service";
 
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
+import { refreshScheduleReminderAfterSave, retireScheduleReminders } from "@/server/reminders/schedule";
 import { audit } from "@/server/audit";
 import { assertMatterWritable } from "@/lib/archive/guard";
 import { assertCanModifyMatter, assertCanAssociateMatter, assertCanLeadMatter } from "@/lib/permissions";
@@ -52,6 +58,7 @@ export async function addProcedure(input: ProcedureCreateInput) {
     select: { order: true }
   });
 
+  const workflow=await responsibilityReady(prisma);
   const created = await roleMutation(session.user, "schedule.write", async roleDb => roleDb.matterProcedure.create({
     data: {
       matterId: data.matterId,
@@ -67,7 +74,7 @@ export async function addProcedure(input: ProcedureCreateInput) {
       acceptedAt: data.acceptedAt,
       leadLawyerId: data.isExternalLead ? null : (data.leadLawyerId || null),
       isExternalLead: data.isExternalLead,
-      status: data.engagement === "INFORMATIONAL" ? "CONCLUDED" : "IN_PROGRESS"
+      status: data.engagement === "INFORMATIONAL" ? "CONCLUDED" : workflow?"PENDING":"IN_PROGRESS"
     }
   }));
 
@@ -99,7 +106,7 @@ export async function updateProcedure(input: ProcedureUpdateInput) {
 
   const existing = await prisma.matterProcedure.findUnique({
     where: { id },
-    select: { matterId: true, type: true, jurisdiction: true, handlingAgency: true }
+    select: { matterId: true, type: true, jurisdiction: true, handlingAgency: true,status:true }
   });
   if (!existing) throw new Error("程序不存在");
   await assertCanModifyMatter(session.user.id, session.user.role, existing.matterId);
@@ -116,10 +123,24 @@ export async function updateProcedure(input: ProcedureUpdateInput) {
     ) ?? "";
   }
 
-  const updated = await roleMutation(session.user, "schedule.write", async roleDb => roleDb.matterProcedure.update({
-    where: { id },
-    data: emptyToNull(normalizedRest)
-  }));
+  // 状态转换门禁先于写入且整体原子（2026-09-20 A 批 P1-3）：事务内 FOR UPDATE 复读当前状态，
+  // 首次进入办理时先核合同覆盖与动态冲突复核，条件更新带原状态；门禁失败零写入，
+  // 重试不会因状态已落库而跳过首次启动判断。内置岗位与自定义角色走同一事务语义。
+  const updated = await prisma.$transaction(async db => {
+    await checkRoleMutation(db, session.user, "schedule.write");
+    const locked = await db.$queryRaw<{ status: ProcedureStatus; engagement: string; matterId: string }[]>`
+      SELECT status::text, engagement::text, "matterId" FROM "MatterProcedure" WHERE id = ${id} FOR UPDATE`;
+    const current = locked[0];
+    if (!current) throw new Error("程序不存在");
+    if (current.matterId !== existing.matterId) throw new Error("程序归属已变化，请刷新");
+    if (rest.status === "IN_PROGRESS" && current.status !== "IN_PROGRESS" && current.engagement === "ENGAGED" && await responsibilityReady(db)) {
+      await assertProcedureCovered(db, id);
+      await assertMatterReviewCurrent(db, current.matterId);
+    }
+    const result = await db.matterProcedure.updateMany({ where: { id, status: current.status }, data: emptyToNull(normalizedRest) });
+    if (result.count === 0) throw new Error("程序状态已变化，请刷新后重试");
+    return { matterId: current.matterId };
+  }, { isolationLevel: "Serializable", timeout: 20000 });
 
   await audit({
     userId: session.user.id,
@@ -133,6 +154,10 @@ export async function updateProcedure(input: ProcedureUpdateInput) {
 }
 
 export async function deleteProcedure(id: string) {
+  // 级联删除期限/开庭会撞 WorkResponsibility 的 Restrict 外键（英文 P2003），先按同族入口拦截
+  if (await responsibilityReady(prisma) && await prisma.deadline.count({ where: { procedureId: id } }) + await prisma.hearing.count({ where: { procedureId: id } }) > 0) {
+    throw new Error("该程序含期限/开庭事项，请先在事项责任面板逐项取消后再删除程序");
+  }
   const session = await requireSession("schedule.write");
   const procedure = await prisma.matterProcedure.findUnique({ where: { id } });
   if (!procedure) return { ok: false };
@@ -461,6 +486,7 @@ export async function addDeadline(input: DeadlineCreateInput) {
     await revalidateMatter(procedure.matterId);
   }
 
+  await refreshScheduleReminderAfterSave("Deadline", created.id);
   return { ok: true, id: created.id };
 }
 
@@ -474,14 +500,18 @@ export async function toggleDeadlineCompleted(id: string) {
   await assertCanModifyMatter(session.user.id, session.user.role, current.procedure.matterId);
   await assertMatterWritable(current.procedure.matterId);
 
+  if(await responsibilityReady(prisma)){
+    if(current.completed)throw new Error("重新办理请从事项责任面板填写原因");
+    await approvalTransaction(async db=>{const w=(await readWorkRows(db)).find(w=>w.kind==='Deadline'&&w.targetId===id);if(!w)throw new Error('事项责任缺失');await changeWorkTx(db,session.user.id,{id:w.id,revision:w.revision,action:'COMPLETE',reason:'经办通过完成操作确认已办结'});});
+    await revalidateMatter(current.procedure.matterId);return {ok:true};
+  }
   const next = !current.completed;
-  await roleMutation(session.user, "schedule.write", async roleDb => roleDb.deadline.update({
-    where: { id },
-    data: {
-      completed: next,
-      completedAt: next ? new Date() : null
-    }
-  }));
+  await prisma.$transaction(async (tx) => {
+    await checkRoleMutation(tx, session.user, "schedule.write");
+    await tx.deadline.update({ where: { id }, data: { completed: next, completedAt: next ? new Date() : null } });
+    if (next) await retireScheduleReminders(tx, "Deadline", id);
+  });
+  if (!next) await refreshScheduleReminderAfterSave("Deadline", id);
 
   await audit({
     userId: session.user.id,
@@ -495,6 +525,7 @@ export async function toggleDeadlineCompleted(id: string) {
 }
 
 export async function deleteDeadline(id: string) {
+  if(await responsibilityReady(prisma))throw new Error("请在事项责任面板取消期限并填写原因，原记录保留");
   const session = await requireSession("schedule.write");
   const current = await prisma.deadline.findUnique({
     where: { id },
@@ -504,7 +535,11 @@ export async function deleteDeadline(id: string) {
   await assertCanModifyMatter(session.user.id, session.user.role, current.procedure.matterId);
   await assertMatterWritable(current.procedure.matterId);
 
-  await roleMutation(session.user, "schedule.write", async roleDb => roleDb.deadline.delete({ where: { id } }));
+  await prisma.$transaction(async (tx) => {
+    await checkRoleMutation(tx, session.user, "schedule.write");
+    await tx.deadline.delete({ where: { id } });
+    await retireScheduleReminders(tx, "Deadline", id);
+  });
   await audit({
     userId: session.user.id,
     action: "DEADLINE_DELETE",
@@ -568,10 +603,12 @@ export async function addHearing(input: HearingCreateInput) {
     await revalidateMatter(procedure.matterId);
   }
 
+  await refreshScheduleReminderAfterSave("Hearing", created.id);
   return { ok: true, id: created.id };
 }
 
 export async function deleteHearing(id: string) {
+  if(await responsibilityReady(prisma))throw new Error("请在事项责任面板取消开庭并填写原因，原记录保留");
   const session = await requireSession("schedule.write");
   const current = await prisma.hearing.findUnique({
     where: { id },
@@ -581,7 +618,11 @@ export async function deleteHearing(id: string) {
   await assertCanModifyMatter(session.user.id, session.user.role, current.procedure.matterId);
   await assertMatterWritable(current.procedure.matterId);
 
-  await roleMutation(session.user, "schedule.write", async roleDb => roleDb.hearing.delete({ where: { id } }));
+  await prisma.$transaction(async (tx) => {
+    await checkRoleMutation(tx, session.user, "schedule.write");
+    await tx.hearing.delete({ where: { id } });
+    await retireScheduleReminders(tx, "Hearing", id);
+  });
   await audit({
     userId: session.user.id,
     action: "HEARING_DELETE",
