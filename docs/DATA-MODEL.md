@@ -1,5 +1,7 @@
 # LawLink 数据模型设计
 
+> 2026-09-19 业务流程修复已获确认，当前增量规则以 [修复方案](BUSINESS-WORKFLOW-REPAIR-PLAN-20260919.md) 为准：应收与核销统一、合同变更分类、财务更正、收案轮次、责任交接、动态冲突复核和归档收尾。先实施无需迁移的批次 0；A/B 共同设计后依次实施，旧账核对通过前不切换正式统计。顾问续约/成果交付后置。此为批准的目标范围，不代表全部已实现；数据库迁移须另行批准。
+
 > **公开版本阅读入口（2026-09-13）**：当前 v1.3.x 功能与首次配置以[本版使用与升级说明](./RELEASE-GUIDE-v1.3.md)为准，字段以同标签 `prisma/schema.prisma` 和迁移文件为准。本文保留历史设计章节，章内 `ADMIN`、旧 `/settings/*`、按岗位直接审批等描述均不作为当前授权规则。原始版本号和当时验证状态只说明对应阶段，不代表本文全部已与本版同步。
 
 ## v1.3.x 当前差异摘要
@@ -100,6 +102,7 @@ User ─── (member of) ──── Matter ──┬── 引用 ─┘
 enum UserRole {
   CUSTOM
   PRINCIPAL_LAWYER
+  INDEPENDENT_LAWYER
   LAWYER
   ASSISTANT
   FINANCE

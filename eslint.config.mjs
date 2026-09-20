@@ -19,6 +19,7 @@ const eslintConfig = defineConfig([
     ".next/**",
     ".next-dev/**",
     ".next-build/**",
+    "output/ledger-preview/**", // 独立测试库预览的 Next.js 生成产物
     "node_modules/**",
     "dist/**",
     "coverage/**",

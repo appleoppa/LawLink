@@ -29,18 +29,18 @@ describe("角色管理界面", () => {
     fireEvent.click(screen.getByRole("button", { name: "保存角色" }));
     await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ id: role.id, version: 2, active: false })));
   });
-  it("五个内置业务角色可编辑资料但不能删除", () => {
+  it("六个内置业务角色可编辑资料但不能删除", () => {
     render(<RolesView roles={[]} />);
     expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "删除" })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "复制新建" })).toHaveLength(5);
-    expect(screen.getAllByRole("button", { name: /^编辑.*的名称和介绍$/ })).toHaveLength(5);
+    expect(screen.getAllByRole("button", { name: "复制新建" })).toHaveLength(6);
+    expect(screen.getAllByRole("button", { name: /^编辑.*的名称和介绍$/ })).toHaveLength(6);
   });
 });
 
 it("内置编辑表单只保存显示资料，不出现权限或启停选项", async () => {
   render(<RolesView roles={[]} />);
-  fireEvent.click(screen.getByRole("button", { name: "编辑主办律师的名称和介绍" }));
+  fireEvent.click(screen.getByRole("button", { name: "编辑合伙人的名称和介绍" }));
   fireEvent.change(screen.getByLabelText("角色名称"), { target: { value: "系统管理员" } });
   fireEvent.change(screen.getByLabelText("角色介绍"), { target: { value: "维护系统与账号" } });
   expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();

@@ -80,10 +80,24 @@ const smsAttachmentFetchHandler: JobHandler = async (payload) => {
   await extractSmsAttachments({ id: smsId });
 };
 
+/** B2：来件阅读分析（取件成功后入队；AI/OCR 未配置时文件降级 NEEDS_OCR 可见，不报错重试浪费） */
+const smsFileAnalysisHandler: JobHandler = async (payload) => {
+  const smsId = String(payload.smsId ?? "");
+  if (!smsId) throw new Error("sms.file_analysis 缺少 smsId");
+  const { prisma } = await import("@/lib/prisma");
+  const { analyzeInboundFile } = await import("@/server/sms/analysis");
+  const files = await prisma.smsInboundFile.findMany({
+    where: { smsId, state: { in: ["PENDING_REVIEW", "FILED"] }, analysisState: "PENDING" },
+    select: { id: true }
+  });
+  for (const f of files) await analyzeInboundFile(f.id);
+};
+
 const handlers: Record<string, JobHandler> = {
   "webhook-digest": webhookDigestHandler,
   "email-digest": emailDigestHandler,
-  "sms.attachment_fetch": smsAttachmentFetchHandler
+  "sms.attachment_fetch": smsAttachmentFetchHandler,
+  "sms.file_analysis": smsFileAnalysisHandler
 };
 
 export async function processDueJobs(limit = 10): Promise<{ processed: number; succeeded: number; failed: number }> {

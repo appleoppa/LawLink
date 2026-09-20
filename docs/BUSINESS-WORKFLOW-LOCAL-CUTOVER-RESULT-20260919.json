@@ -1,0 +1,33 @@
+{
+  "completedAt": "2026-09-20T00:54:31.425Z",
+  "database": "lawlink",
+  "backupPath": "backups/workflow-cutover-2026-09-20T00-47-41-753Z",
+  "backupSha256": "ae5dc069a724589688de78a012bd8fdc5f30727e2c76859f899b6aa9732972b6",
+  "sqlSha256": "623d416d5925de89718fd05c274b95d4b144a9ee287a700e547e02c38b09abfd",
+  "migrationCommittedAt": "2026-09-20T00:48:25.013Z",
+  "preservedTablesVerifiedBeforeSeed": 22,
+  "unchangedConfigurationTablesAfterUI": 20,
+  "seedCounts": {
+    "matters": 3,
+    "intakes": 1,
+    "clients": 1,
+    "users": 8,
+    "pendingReceipts": 1,
+    "payments": 0
+  },
+  "lawyerFeeOutstanding": "130000.00",
+  "confirmedReceipt": "0.00",
+  "pendingReceipt": "40000.00",
+  "clientMatterLinks": 3,
+  "browserAcceptedItems": 1,
+  "migrationRecorded": true,
+  "browserPages": [
+    "finance",
+    "finance/reconciliation",
+    "matters",
+    "intakes",
+    "schedule",
+    "reports?period=month"
+  ],
+  "status": "PASS"
+}

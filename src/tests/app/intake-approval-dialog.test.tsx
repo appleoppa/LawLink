@@ -7,7 +7,7 @@ import type { getApprovalDetail } from "@/server/approval-permissions/inbox";
 
 type Detail = Awaited<ReturnType<typeof getApprovalDetail>>;
 const intakeDetail: NonNullable<Detail["intakeDetail"]> = {
-  currentParties: [],
+  rounds: [], currentParties: [],
   sections: [{ title: "程序与标的", fields: [{ label: "办理机构", value: "未填写" }, { label: "非金钱标的", value: "未填写" }, { label: "标的金额（元）", value: "0" }] }],
   checks: [],
 };

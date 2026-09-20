@@ -1,0 +1,272 @@
+{
+  "database": "lawlink",
+  "sqlSha256": "623d416d5925de89718fd05c274b95d4b144a9ee287a700e547e02c38b09abfd",
+  "impact": [
+    {
+      "model": "Contact",
+      "deleteCount": 6
+    },
+    {
+      "model": "MatterMember",
+      "deleteCount": 19
+    },
+    {
+      "model": "MatterClient",
+      "deleteCount": 10
+    },
+    {
+      "model": "Task",
+      "deleteCount": 11
+    },
+    {
+      "model": "Hearing",
+      "deleteCount": 4
+    },
+    {
+      "model": "Deadline",
+      "deleteCount": 8
+    },
+    {
+      "model": "ProcedureMemo",
+      "deleteCount": 3
+    },
+    {
+      "model": "ProcedureParty",
+      "deleteCount": 9
+    },
+    {
+      "model": "Party",
+      "deleteCount": 26
+    },
+    {
+      "model": "RelatedEntity",
+      "deleteCount": 1
+    },
+    {
+      "model": "MatterLink",
+      "deleteCount": 2
+    },
+    {
+      "model": "ConflictHit",
+      "deleteCount": 11
+    },
+    {
+      "model": "ConflictCheck",
+      "deleteCount": 12
+    },
+    {
+      "model": "Note",
+      "deleteCount": 7
+    },
+    {
+      "model": "InvoiceRequest",
+      "deleteCount": 4
+    },
+    {
+      "model": "Allocation",
+      "deleteCount": 1
+    },
+    {
+      "model": "Receivable",
+      "deleteCount": 7
+    },
+    {
+      "model": "Payment",
+      "deleteCount": 1
+    },
+    {
+      "model": "FinanceCorrection",
+      "deleteCount": 0
+    },
+    {
+      "model": "EngagementMatter",
+      "deleteCount": 2
+    },
+    {
+      "model": "EvidenceItem",
+      "deleteCount": 5
+    },
+    {
+      "model": "FeeEntry",
+      "deleteCount": 26
+    },
+    {
+      "model": "Billing",
+      "deleteCount": 8
+    },
+    {
+      "model": "Engagement",
+      "deleteCount": 1
+    },
+    {
+      "model": "CommissionPlan",
+      "deleteCount": 3
+    },
+    {
+      "model": "TimelineEvent",
+      "deleteCount": 17
+    },
+    {
+      "model": "ArchiveRecord",
+      "deleteCount": 2
+    },
+    {
+      "model": "SealRequest",
+      "deleteCount": 4
+    },
+    {
+      "model": "SmsMessage",
+      "deleteCount": 4
+    },
+    {
+      "model": "PreservationPropertyRenewal",
+      "deleteCount": 0
+    },
+    {
+      "model": "PreservationProperty",
+      "deleteCount": 2
+    },
+    {
+      "model": "PreservationTarget",
+      "deleteCount": 1
+    },
+    {
+      "model": "PreservationCase",
+      "deleteCount": 1
+    },
+    {
+      "model": "ExpressTracking",
+      "deleteCount": 2
+    },
+    {
+      "model": "ReviewRecord",
+      "deleteCount": 1
+    },
+    {
+      "model": "Document",
+      "deleteCount": 28
+    },
+    {
+      "model": "MatterStage",
+      "deleteCount": 76
+    },
+    {
+      "model": "MatterProcedure",
+      "deleteCount": 11
+    },
+    {
+      "model": "DocumentFolder",
+      "deleteCount": 74
+    },
+    {
+      "model": "Matter",
+      "deleteCount": 10
+    },
+    {
+      "model": "Intake",
+      "deleteCount": 8
+    },
+    {
+      "model": "Client",
+      "deleteCount": 13
+    },
+    {
+      "model": "Notification",
+      "deleteCount": 9
+    },
+    {
+      "model": "JobQueue",
+      "deleteCount": 0
+    }
+  ],
+  "preserved": [
+    {
+      "model": "Announcement",
+      "count": 4
+    },
+    {
+      "model": "ApprovalPermissionGroup",
+      "count": 4
+    },
+    {
+      "model": "ApprovalPermissionMember",
+      "count": 9
+    },
+    {
+      "model": "ApprovalPermissionRule",
+      "count": 10
+    },
+    {
+      "model": "AuditLog",
+      "count": 773
+    },
+    {
+      "model": "CauseOfAction",
+      "count": 1809
+    },
+    {
+      "model": "CustomFieldDef",
+      "count": 3
+    },
+    {
+      "model": "DeadlineRule",
+      "count": 12
+    },
+    {
+      "model": "DocumentTemplate",
+      "count": 22
+    },
+    {
+      "model": "ExternalCallLog",
+      "count": 1029
+    },
+    {
+      "model": "ExternalContact",
+      "count": 6
+    },
+    {
+      "model": "FirmFile",
+      "count": 8
+    },
+    {
+      "model": "RoleDefinition",
+      "count": 1
+    },
+    {
+      "model": "RolePermission",
+      "count": 5
+    },
+    {
+      "model": "SealPurposeConfig",
+      "count": 5
+    },
+    {
+      "model": "SealTypeConfig",
+      "count": 5
+    },
+    {
+      "model": "StageTemplate",
+      "count": 4
+    },
+    {
+      "model": "SystemSetting",
+      "count": 23
+    },
+    {
+      "model": "Team",
+      "count": 2
+    },
+    {
+      "model": "TeamMember",
+      "count": 5
+    },
+    {
+      "model": "User",
+      "count": 8
+    },
+    {
+      "model": "UserIdentityDocument",
+      "count": 0
+    }
+  ]
+}
