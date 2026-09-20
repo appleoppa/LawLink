@@ -77,24 +77,23 @@ export function TotpCard({ enabled }: { enabled: boolean }) {
   }
 
   return (
-    <div className="card p-4">
+    <section className="card p-6">
+      <div className="mb-4 flex items-center gap-2">
+        {enabled ? (
+          <ShieldCheck className="h-4 w-4 text-primary" />
+        ) : (
+          <ShieldOff className="h-4 w-4 text-muted-foreground" />
+        )}
+        <h2 className="text-base font-semibold">双步验证（动态码）</h2>
+        {enabled && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10.5px] text-primary">已开启</span>}
+      </div>
+
       <div className="flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            {enabled ? (
-              <ShieldCheck className="h-4 w-4 text-primary" />
-            ) : (
-              <ShieldOff className="h-4 w-4 text-muted-foreground" />
-            )}
-            双步验证（动态码）
-            {enabled && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10.5px] text-primary">已开启</span>}
-          </div>
-          <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
-            {enabled
-              ? "登录时需输入验证器 App 的 6 位动态码或恢复码，为账号增加第二道防线。"
-              : "开启后登录需动态码二次验证（支持各类验证器 App），防止密码泄露导致的账号被盗。"}
-          </p>
-        </div>
+        <p className="min-w-0 text-[12px] leading-5 text-muted-foreground">
+          {enabled
+            ? "登录时需输入验证器 App 的 6 位动态码或恢复码，为账号增加第二道防线。"
+            : "开启后登录需动态码二次验证（支持各类验证器 App），防止密码泄露导致的账号被盗。"}
+        </p>
         {!enrolling && !recoveryCodes && !enabled && (
           <button
             onClick={start}
@@ -195,6 +194,6 @@ export function TotpCard({ enabled }: { enabled: boolean }) {
           </button>
         </div>
       )}
-    </div>
+    </section>
   );
 }

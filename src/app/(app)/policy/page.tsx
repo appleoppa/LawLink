@@ -1,4 +1,5 @@
 import { customOrLegacy } from "@/lib/roles/catalog";
+import { isManager as canManage } from "@/lib/permissions";
 /**
  * v0.38: 制度规范独立页（律所文书里的 POLICY 分类，只列文件、不显分类筛选）
  * v0.44: 标题与上传按钮同行（不再 hideHeader，改用 headerTitle 覆盖）
@@ -17,7 +18,7 @@ export default async function PolicyPage({
   if (!session?.user) redirect("/login");
 
   const isManager =
-    customOrLegacy(session.user, "firm-files.manage", session.user.role === "PRINCIPAL_LAWYER");
+    customOrLegacy(session.user, "firm-files.manage", canManage(session.user));
 
   const files = await listFirmFiles({
     category: "POLICY",

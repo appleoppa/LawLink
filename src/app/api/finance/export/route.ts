@@ -1,3 +1,6 @@
+import { getFinanceFacts } from "@/server/finance/facts";
+import { moneyKindLabels, type MoneyKind } from "@/lib/finance/ledger-labels";
+import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/options";
@@ -28,7 +31,6 @@ export async function GET(req: Request) {
       ...(since ? { occurredAt: { gte: since } } : {})
     },
     orderBy: { occurredAt: "desc" },
-    take: 5000,
     include: {
       matter: { select: { internalCode: true, title: true } },
       recordedBy: { select: { name: true } },
@@ -36,13 +38,19 @@ export async function GET(req: Request) {
     }
   });
 
+  const facts=await getFinanceFacts({deletedAt:null,...matterFinanceVisibilityFilter(session.user.id,session.user.role,session.user.rolePermissions)});
+  const payments=new Map(facts?.payments.map(p=>[p.feeEntryId,p.amount.toFixed(2)])??[]);
+  const kinds=facts&&rows.length?await prisma.$queryRaw<{id:string;moneyKind:MoneyKind}[]>(Prisma.sql`SELECT id,"moneyKind"::text FROM "FeeEntry" WHERE id IN (${Prisma.join(rows.map(r=>r.id))})`):[];
+  const kindById=new Map(kinds.map(r=>[r.id,r.moneyKind]));
   const esc = (v: unknown) => {
     const s = v === null || v === undefined ? "" : String(v);
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
-  const header = ["日期", "案件编号", "案件名称", "类型", "确认状态", "金额", "对方户名", "方式", "发票号", "分成受益人", "备注", "经手"];
+  const header = ["款项性质", "已确认净实收", "日期", "案件编号", "案件名称", "类型", "确认状态", "金额", "对方户名", "方式", "发票号", "分成受益人", "备注", "经手"];
   const lines = rows.map((r) =>
     [
+      kindById.has(r.id)?moneyKindLabels[kindById.get(r.id)!]:"",
+      payments.get(r.id)??"",
       r.occurredAt.toLocaleDateString("zh-CN", { timeZone: "Asia/Shanghai" }),
       r.matter.internalCode,
       r.matter.title,
@@ -58,6 +66,9 @@ export async function GET(req: Request) {
       r.recordedBy.name
     ].map(esc).join(",")
   );
+  for(const r of facts?.refunds.filter(r=>!since||r.occurredAt>=since)??[]) {
+    lines.push([moneyKindLabels[r.moneyKind],"",r.occurredAt.toLocaleDateString("zh-CN",{timeZone:"Asia/Shanghai"}),r.matter.internalCode,r.matter.title,r.correctionType==="REFUND"?"已确认退款":"误录冲销","已确认",r.amount.negated().toFixed(2),r.payerOrPayee,"","","",r.note,""].map(esc).join(","));
+  }
   const csv = "﻿" + [header.join(","), ...lines].join("\r\n");
 
   await audit({
@@ -65,7 +76,7 @@ export async function GET(req: Request) {
     action: "FINANCE_EXPORT",
     targetType: "FeeEntryList",
     targetId: since ? `last-${days}d` : "all",
-    detail: { rows: rows.length }
+    detail: { rows: lines.length }
   });
 
   const filename = `lawlink-收付流水-${new Date().toISOString().slice(0, 10)}.csv`;

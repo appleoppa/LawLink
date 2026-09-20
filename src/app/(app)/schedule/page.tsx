@@ -1,3 +1,5 @@
+import {getWorkBoard} from "@/server/reminders/work-actions";
+import {WorkResponsibilityPanel} from "@/components/matters/work-responsibility-panel";
 import { listScheduleItems } from "@/server/schedule/actions";
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
@@ -27,5 +29,5 @@ export default async function SchedulePage() {
     })
   ]);
 
-  return <ScheduleView items={items} matters={matters} />;
+  return <div className="space-y-4"><ScheduleView items={items} matters={matters} /><WorkResponsibilityPanel data={await getWorkBoard()}/></div>;
 }

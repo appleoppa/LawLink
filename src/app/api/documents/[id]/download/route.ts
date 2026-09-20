@@ -85,12 +85,26 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const arrayBuffer = outBuf.buffer.slice(outBuf.byteOffset, outBuf.byteOffset + outBuf.byteLength) as ArrayBuffer;
   const filename = normalizeUploadedFilename(doc.name);
 
+  // inline 仅放行浏览器可安全渲染的类型（PDF/位图/纯文本）。落库 MIME 已由服务端
+  // 按白名单扩展名推导，但历史行可能存有客户端声明的 text/html / svg——一律
+  // 强制 attachment 并降级为 octet-stream，杜绝同源脚本执行。
+  const lower = (doc.mimeType ?? "").toLowerCase();
+  const inlineSafe =
+    lower === "application/pdf" ||
+    (lower.startsWith("image/") && lower !== "image/svg+xml") ||
+    lower === "text/plain" ||
+    lower === "text/markdown" ||
+    lower === "text/csv";
+  const dangerous = /html|svg|xml|javascript/.test(lower);
+  const disposition = inline && inlineSafe ? "inline" : "attachment";
+
   return new NextResponse(arrayBuffer, {
     status: 200,
     headers: {
-      "Content-Type": doc.mimeType ?? "application/octet-stream",
+      "Content-Type": dangerous ? "application/octet-stream" : (doc.mimeType ?? "application/octet-stream"),
       "Content-Length": String(outBuf.byteLength),
-      "Content-Disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      "Content-Disposition": `${disposition}; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      "X-Content-Type-Options": "nosniff",
       ...(watermarked ? { "X-Watermarked": "1" } : {})
     }
   });

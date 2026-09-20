@@ -1,3 +1,10 @@
+import {hasCustomPermission} from "@/lib/roles/catalog";
+import {getWorkBoard} from "@/server/reminders/work-actions";
+import {WorkResponsibilityPanel} from "@/components/matters/work-responsibility-panel";
+import {intakeWorkflowReady} from "@/server/intakes/workflow";
+import {readIntakeRounds} from "@/server/intakes/revision-history";
+import {RevisionHistory} from "./_components/revision-history";
+import {RevisionControls} from "./_components/revision-controls";
 import { buildIntakeConflictQueries } from "@/lib/approvals/intake-detail";
 import { canApproveItem } from "@/lib/approvals/service";
 import { notFound } from "next/navigation";
@@ -50,6 +57,9 @@ export default async function IntakeDetailPage({ params }: PageProps) {
     </div>
   );
 
+  const workflowEnabled=await intakeWorkflowReady(prisma);
+  const rounds=await readIntakeRounds(prisma,id,!!session&&hasCustomPermission(session.user,"finance.read"));
+  const isEditor=session?.user.id===intake.createdById||session?.user.id===intake.ownerUserId;
   const opposing = intake.parties.filter((p) => p.role === "OPPOSING_PARTY");
   const thirdParty = intake.parties.filter((p) => p.role === "THIRD_PARTY");
   const latestCheckRaw = intake.conflictChecks[0] ?? null;
@@ -173,10 +183,13 @@ export default async function IntakeDetailPage({ params }: PageProps) {
         }
       />
 
+      {workflowEnabled&&isEditor&&<RevisionControls id={id} status={intake.status}/>}
+      <WorkResponsibilityPanel data={await getWorkBoard({intakeId:id})} intakeId={id}/>
+      <RevisionHistory rounds={rounds}/>
       {intake.declinedReason ? (
         <div className="flex items-start gap-2 rounded-[10px] border border-[var(--red-line)] bg-[var(--red-bg)] px-3.5 py-3 text-[12.5px]">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--red)]" />
-          <div><b className="text-[var(--red)]">不接案原因</b><div className="mt-0.5 text-[var(--t-secondary)]">{intake.declinedReason}</div></div>
+          <div><b className="text-[var(--red)]">{intake.status==="DECLINED"?"不接案原因":"补正说明"}</b><div className="mt-0.5 text-[var(--t-secondary)]">{intake.declinedReason}</div></div>
         </div>
       ) : null}
 
@@ -200,14 +213,15 @@ export default async function IntakeDetailPage({ params }: PageProps) {
             intakeId={intake.id}
             queries={buildIntakeConflictQueries(intake, decryptIdNumber)}
             latestCheck={latestCheck}
-            canEditConclusion={canApprove}
+            canRunCheck={isEditor && (!workflowEnabled || ["INTAKE","NEEDS_REVISION"].includes(intake.status))}
+            canEditConclusion={isEditor && ["INTAKE","NEEDS_REVISION","PENDING_CONFIRMATION"].includes(intake.status)}
           />
         </div>
 
-        <Panel title="当事人" icon={Users} count={intake.parties.length + (intake.client ? 1 : 0)} className="xl:sticky xl:top-[68px]">
+        <Panel title="当事人" icon={Users} count={intake.parties.filter(p=>p.role!=="CLIENT_PARTY").length + (intake.client ? 1 : intake.parties.filter(p=>p.role==="CLIENT_PARTY").length)} className="xl:sticky xl:top-[68px]">
           <div className="space-y-3">
             <PartyGroup title="客户 / 委托方" tone="teal">
-              {intake.client ? <PartyCard name={intake.client.name} sub={clientTypeLabel[intake.client.type]} href={`/clients/${intake.client.id}`} /> : <Empty />}
+              {intake.client ? <PartyCard name={intake.client.name} sub={clientTypeLabel[intake.client.type]} href={`/clients/${intake.client.id}`} /> : intake.parties.some(p=>p.role==="CLIENT_PARTY") ? intake.parties.filter(p=>p.role==="CLIENT_PARTY").map(p=><PartyCard key={p.id} name={p.name} sub={p.idNumber||p.enterpriseSocialCode||undefined}/>) : <Empty />}
             </PartyGroup>
             <PartyGroup title="相对方" tone="amber">
               {opposing.length === 0 ? <Empty /> : opposing.map((p) => <PartyCard key={p.id} name={p.name} sub={p.idNumber || undefined} />)}

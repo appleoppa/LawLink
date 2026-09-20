@@ -7,7 +7,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
-import { Search, ChevronDown, Plus, LogOut, User, Settings as SettingsIcon, Menu, ShieldCheck, ScanSearch } from "lucide-react";
+import { Search, ChevronDown, Plus, LogOut, Settings as SettingsIcon, Menu, ShieldCheck, ScanSearch } from "lucide-react";
 import { roleDisplayName } from "@/lib/roles/catalog";
 import { canEnterAdminWorkspace } from "@/lib/auth/system-role";
 import {
@@ -92,18 +92,12 @@ export function Topbar({ onMobileMenuToggle, userAvatar }: { onMobileMenuToggle?
             {displayName ? `${displayName} · ${roleLabel}` : "加载中…"}
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem asChild>
-            <Link href="/settings/profile" className="cursor-pointer">
-              <User />
-              个人信息
-            </Link>
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild>
-            <Link href="/settings" className="cursor-pointer">
-              <SettingsIcon />
-              个人设置
-            </Link>
-          </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/settings/profile" className="cursor-pointer">
+                <SettingsIcon />
+                个人设置
+              </Link>
+            </DropdownMenuItem>
           {canEnterAdminWorkspace(user) ? (
             <DropdownMenuItem asChild>
               <a href="/admin" target="_blank" rel="noopener" className="cursor-pointer">

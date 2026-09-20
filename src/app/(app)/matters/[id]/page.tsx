@@ -1,3 +1,9 @@
+import {getClosureBoard} from "@/server/archive/closure-actions";
+import {MatterClosurePanel} from "@/components/matters/closure-panel";
+import {getWorkBoard} from "@/server/reminders/work-actions";
+import {WorkResponsibilityPanel} from "@/components/matters/work-responsibility-panel";
+import {readMatterReview} from "@/server/conflicts/matter-review";
+import {MatterConflictReview} from "./_components/conflict-review";
 import { hasCustomPermission } from "@/lib/roles/catalog";
 import { hasMatterBusinessAccess } from "@/lib/permissions";
 import { TeamMatterOverview } from "./_components/team-matter-overview";
@@ -66,7 +72,7 @@ export default async function MatterDetailPage({ params }: PageProps) {
     customFieldDefs,
     preservationCases
   ] = await Promise.all([
-    allowed("finance.read") ? getMatterFinance(matter.id) : Promise.resolve({ billings: [], entries: [], plans: [], stats: { contractAmount: 0, receivable: 0, received: 0, pendingReceived: 0, refund: 0, cost: 0, commission: 0, invoiced: 0 } }),
+    allowed("finance.read") ? getMatterFinance(matter.id) : Promise.resolve({ billings: [], entries: [], plans: [], stats: { outstanding:0, allocated:0, clientFunds:0, contractAmount: 0, receivable: 0, received: 0, pendingReceived: 0, refund: 0, cost: 0, commission: 0, invoiced: 0 } }),
     listActiveColleagues(),
     prisma.document.findMany({
       where: { matterId: matter.id, deletedAt: null, ...(!allowed("documents.read") ? { id: { in: [] } } : {}) },
@@ -198,11 +204,15 @@ export default async function MatterDetailPage({ params }: PageProps) {
   }));
   const preservationCasesForClient = serializeDecimals(preservationCases);
 
+  const conflictReview=await readMatterReview(prisma,matter.id);
   return (
     <>
       {/* 墨案 04 页面骨架由 MatterDetailTabs 统一承载：
           上下文头 → 信号条 → 程序链卡 → 三栏工作区（环节导航 / 工作区 / 辅助栏） */}
       <MatterDetailTabs
+        responsibilityNode={<WorkResponsibilityPanel data={await getWorkBoard({matterId:matter.id})} matterId={matter.id}/>}
+        closureNode={<MatterClosurePanel matterId={matter.id} data={allowed("archive.read")?await getClosureBoard(matter.id):null}/>}
+        conflictNode={<MatterConflictReview matterId={matter.id} data={conflictReview} canWrite={allowed("matters.write")&&matter.status!=="ARCHIVED"}/>}
         matter={matter}
         finance={finance}
         userOptions={[

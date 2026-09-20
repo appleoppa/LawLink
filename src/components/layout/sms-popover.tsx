@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { ClipboardPaste, Mail } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { listSmsMessages, markSmsProcessed } from "@/server/sms/actions";
@@ -70,6 +71,9 @@ export function SmsPopover() {
       await markSmsProcessed({ id });
       setItems((prev) => prev.filter((s) => s.id !== id));
       router.refresh();
+    } catch (e) {
+      // 无 catch 时失败是未处理的 rejection，用户看不到任何提示（对比 inbox 页的完整 toast 处理）
+      toast.error(e instanceof Error ? e.message : "标记失败，请稍后重试");
     } finally {
       setBusyId(null);
     }

@@ -1,0 +1,11 @@
+'use client';
+import {useState} from 'react';import {useRouter} from 'next/navigation';import {toast} from 'sonner';
+import {runMatterReview,decideMatterReview} from '@/server/conflicts/matter-actions';
+import type {readMatterReview} from '@/server/conflicts/matter-review';
+import {conflictConclusionLabel} from '@/lib/enums';import {formatDateTime} from '@/lib/utils';
+import {Textarea} from '@/components/ui/textarea';
+export function MatterConflictReview({matterId,data,canWrite}:{matterId:string;data:Awaited<ReturnType<typeof readMatterReview>>;canWrite:boolean}){
+ const router=useRouter(),[busy,setBusy]=useState(false),[note,setNote]=useState('');if(!data)return null;
+ async function run(work:()=>Promise<unknown>){setBusy(true);try{await work();router.refresh();toast.success('冲突核查已保存');}catch(e){toast.error(e instanceof Error?e.message:'核查失败');}finally{setBusy(false);}}
+ const latest=data.checks[0];return <details className={`rounded-xl border p-3 ${data.needsReview?'border-amber-300 bg-amber-50':''}`} open={data.needsReview}><summary className="cursor-pointer text-sm font-medium">利益冲突复核 · {data.needsReview?'待复核':'当前主体已核查'}</summary><p className="my-2 text-sm text-muted-foreground">新增主体、变更角色或代理范围后须复核。法院新增当事人等客观事实仍可正常登记。</p>{canWrite&&<button disabled={busy} className="btn btn-secondary btn-sm" onClick={()=>void run(()=>runMatterReview(matterId))}>按当前主体重新检索</button>}{data.checks.map(c=><article key={c.id} className="my-3 border-t pt-2 text-sm"><b>{formatDateTime(c.checkedAt)} · {conflictConclusionLabel[c.conclusion]}{!c.current?' · 主体或范围已变化':''}</b><p>{c.note} {c.decidedBy}</p>{c.hits.map(h=><p key={h.id}>{h.reason} · {h.matchedValue}</p>)}</article>)}{canWrite&&latest?.current&&<div className="space-y-2"><Textarea aria-label="冲突复核理由" placeholder="排除冲突的依据，或存在冲突后的处理措施" value={note} onChange={e=>setNote(e.target.value)}/><div className="flex gap-2">{(['DIFFERENT','SAME_SUBJECT','NEED_INFO'] as const).map(conclusion=><button key={conclusion} disabled={busy||!note.trim()} className="btn btn-secondary btn-sm" onClick={()=>void run(()=>decideMatterReview({matterId,checkId:latest.id,conclusion,note}))}>{conflictConclusionLabel[conclusion]}</button>)}</div></div>}</details>;
+}

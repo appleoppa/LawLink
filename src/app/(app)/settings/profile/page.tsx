@@ -19,20 +19,22 @@ export default async function ProfilePage() {
   return (
     <div className="space-y-5">
       <section className="card p-6">
-        <h2 className="mb-4 text-base font-semibold">个人信息</h2>
-        <div className="mb-5">
-          <AvatarForm name={dbUser.name} initialAvatar={dbUser?.avatar ?? null} />
+        <h2 className="mb-5 text-base font-semibold">个人信息</h2>
+        <div className="grid gap-6 md:grid-cols-[184px_1fr] md:gap-8">
+          <AvatarForm name={dbUser.name} role={roleDisplayName(user)} initialAvatar={dbUser?.avatar ?? null} />
+          <div className="md:border-l md:border-[var(--bd-hair)] md:pl-8">
+            <ProfileBasicsForm key={dbUser.updatedAt.toISOString()} layout="stacked" profile={{ name: dbUser.name, email: dbUser.email, phone: dbUser.phone, updatedAt: dbUser.updatedAt.toISOString() }} extraFields={<IdentityForm />} />
+          </div>
         </div>
-        <p className="mb-4 text-sm text-muted-foreground">角色：{roleDisplayName(user)}</p>
-        <ProfileBasicsForm key={dbUser.updatedAt.toISOString()} profile={{ name: dbUser.name, email: dbUser.email, phone: dbUser.phone, updatedAt: dbUser.updatedAt.toISOString() }} />
-        <div className="mt-6"><IdentityForm key={`identity-${dbUser.updatedAt.toISOString()}`} /></div>
       </section>
 
-      <section className="card p-6">
-        <h2 className="mb-4 text-base font-semibold">修改密码</h2>
-        <ChangePasswordForm />
+      <div className="grid items-start gap-5 md:grid-cols-2">
+        <section className="card p-6">
+          <h2 className="mb-4 text-base font-semibold">修改密码</h2>
+          <ChangePasswordForm />
+        </section>
         <TotpCard enabled={dbUser.totpEnabled} />
-      </section>
+      </div>
     </div>
   );
 }

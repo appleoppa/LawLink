@@ -1,10 +1,11 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { Loader2, Plus, Trash2, Paperclip, FileText, Sparkles } from "lucide-react";
+import { Loader2, Paperclip, FileText, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -32,14 +33,14 @@ import {
   type FeeEntryCreateInput
 } from "@/server/finance/schemas";
 import {
+  getMatterFinance,
   createBilling,
   createFeeEntry,
-  setCommissionPlan,
   listMatterInvoiceRequests
 } from "@/server/finance/actions";
 import { uploadDocument } from "@/server/documents/actions";
 import { recognizeInvoiceFromImage, type RecognizedInvoice } from "@/server/ai/actions";
-import { userRoleLabel } from "@/lib/enums";
+import { shDayKey } from "@/lib/ui/sh-time";
 
 // ============ AddBillingSheet ============
 
@@ -52,6 +53,8 @@ export function AddBillingSheet({
   onOpenChange: (o: boolean) => void;
   matterId: string;
 }) {
+  const router=useRouter();
+  useEffect(()=>{if(!open)return;let active=true;void getMatterFinance(matterId).then(fin=>{if(active&&fin.ledgerReady){onOpenChange(false);router.push(`/finance/reconciliation?matterId=${matterId}`);}}).catch(()=>{});return()=>{active=false;};},[open,matterId,onOpenChange,router]);
   const [isPending, startTransition] = useTransition();
   const [contractFile, setContractFile] = useState<File | null>(null);
   const {
@@ -118,7 +121,7 @@ export function AddBillingSheet({
               />
             </Field>
 
-            <Field label="合同金额（元）" required>
+            <Field label="合同金额（元）" required error={errors.contractAmount?.message as string | undefined}>
               <Input
                 type="number"
                 step="0.01"
@@ -140,8 +143,9 @@ export function AddBillingSheet({
               />
             </Field>
 
-            <Field label="签订日期">
-              <Input type="date" {...register("signedAt", { valueAsDate: true })} />
+            <Field label="签订日期" error={errors.signedAt?.message}>
+              {/* 留空时保持 undefined（草稿）；用字符串注册，空串会在 zod 校验报错并显示，避免 Invalid Date 静默失败 */}
+              <Input type="date" {...register("signedAt")} />
             </Field>
 
             <Field label="阶段付款约定">
@@ -198,6 +202,22 @@ export function AddBillingSheet({
 
 // ============ AddFeeEntrySheet ============
 
+// 工厂而非内联字面量：occurredAt 须在每次打开/重置时取「现在」，常驻挂载的对话框跨天后仍会默认昨天
+function feeEntryDefaults(matterId: string): FeeEntryCreateInput {
+  return {
+    matterId,
+    billingId: "",
+    type: "RECEIVED",
+    amount: 0,
+    // yyyy-MM-dd 字符串默认值：date input 才能正确回显，提交时由 zod coerce 成 Date（上海当日）
+    occurredAt: shDayKey(new Date()) as unknown as Date,
+    invoiceNo: "",
+    payerOrPayee: "",
+    method: "",
+    note: ""
+  };
+}
+
 export function AddFeeEntrySheet({
   open,
   onOpenChange,
@@ -231,18 +251,13 @@ export function AddFeeEntrySheet({
     formState: { errors }
   } = useForm<FeeEntryCreateInput>({
     resolver: zodResolver(feeEntryCreateSchema),
-    defaultValues: {
-      matterId,
-      billingId: "",
-      type: "RECEIVED",
-      amount: 0,
-      occurredAt: new Date(),
-      invoiceNo: "",
-      payerOrPayee: "",
-      method: "",
-      note: ""
-    }
+    defaultValues: feeEntryDefaults(matterId)
   });
+
+  // 打开（变为 true）时重置默认值：defaultValues 只在首次渲染求值，跨天打开默认「发生日期」会是昨天
+  useEffect(() => {
+    if (open) reset(feeEntryDefaults(matterId));
+  }, [open, matterId, reset]);
 
   const type = useWatch({ control, name: "type" });
   const billingId = useWatch({ control, name: "billingId" });
@@ -294,11 +309,8 @@ export function AddFeeEntrySheet({
               />
             </Field>
 
-            <Field label="发生日期" required>
-              <Input
-                type="date"
-                {...register("occurredAt", { valueAsDate: true })}
-              />
+            <Field label="发生日期" required error={errors.occurredAt?.message}>
+              <Input type="date" {...register("occurredAt")} />
             </Field>
 
             {billings.length > 0 && (
@@ -396,8 +408,9 @@ export function AddFeeEntrySheet({
                   setValue("payerOrPayee", data.sellerName, { shouldDirty: true });
                 if (data.invoiceDate) {
                   const d = new Date(data.invoiceDate);
+                  // 回填也用 yyyy-MM-dd 字符串：Date 对象不会被 date input 回显，用户将无法核对
                   if (!isNaN(d.getTime()))
-                    setValue("occurredAt", d, { shouldDirty: true });
+                    setValue("occurredAt", shDayKey(d) as unknown as Date, { shouldDirty: true });
                 }
               }}
             />
@@ -423,181 +436,6 @@ export function AddFeeEntrySheet({
             </Button>
           </DialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ============ EditCommissionPlanDialog ============
-
-type PlanRow = { userId: string; percent: number; label: string };
-
-export function EditCommissionPlanDialog({
-  open,
-  onOpenChange,
-  matterId,
-  userOptions,
-  initialPlans
-}: {
-  open: boolean;
-  onOpenChange: (o: boolean) => void;
-  matterId: string;
-  userOptions: { id: string; name: string; role: string; roleName?: string }[];
-  initialPlans: PlanRow[];
-}) {
-  const [isPending, startTransition] = useTransition();
-  const [plans, setPlans] = useState<PlanRow[]>(initialPlans);
-
-  function addRow() {
-    const available = userOptions.find((u) => !plans.some((p) => p.userId === u.id));
-    if (available) {
-      setPlans([...plans, { userId: available.id, percent: 0, label: "" }]);
-    } else {
-      toast.warning("已为所有用户添加分成");
-    }
-  }
-
-  function removeRow(idx: number) {
-    setPlans(plans.filter((_, i) => i !== idx));
-  }
-
-  function updateRow(idx: number, patch: Partial<PlanRow>) {
-    setPlans(plans.map((p, i) => (i === idx ? { ...p, ...patch } : p)));
-  }
-
-  const total = plans.reduce((acc, p) => acc + p.percent, 0);
-
-  function handleSave() {
-    if (total > 100) {
-      toast.error("分成总和不能超过 100%");
-      return;
-    }
-    startTransition(async () => {
-      try {
-        await setCommissionPlan({ matterId, items: plans });
-        toast.success("分成方案已保存");
-        onOpenChange(false);
-      } catch (err) {
-        toast.error("保存失败", {
-          description: err instanceof Error ? err.message : ""
-        });
-      }
-    });
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>分成方案</DialogTitle>
-          <p className="text-xs text-muted-foreground">
-            未列入的比例归律所留存。实收时按此方案自动派生分成条目。
-          </p>
-        </DialogHeader>
-
-        <div className="space-y-2">
-          {plans.length === 0 ? (
-            <p className="rounded-md border border-dashed border-border bg-background py-6 text-center text-xs text-muted-foreground">
-              未配置分成
-            </p>
-          ) : (
-            plans.map((p, idx) => {
-              return (
-                <div
-                  key={idx}
-                  className="grid grid-cols-12 gap-2 rounded-lg border border-border bg-background p-3"
-                >
-                  <div className="col-span-4">
-                    <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                      用户
-                    </Label>
-                    <Select
-                      value={p.userId}
-                      onValueChange={(v) => updateRow(idx, { userId: v })}
-                    >
-                      <SelectTrigger className="mt-1 h-9 bg-background">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {userOptions.map((u) => (
-                          <SelectItem key={u.id} value={u.id}>
-                            {u.name} · {u.roleName ?? userRoleLabel[u.role as keyof typeof userRoleLabel] ?? u.role}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="col-span-3">
-                    <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                      百分比
-                    </Label>
-                    <Input
-                      type="number"
-                      step="0.5"
-                      min={0}
-                      max={100}
-                      value={p.percent}
-                      onChange={(e) =>
-                        updateRow(idx, { percent: Number(e.target.value) || 0 })
-                      }
-                      className="mt-1 h-9 bg-background font-mono tabular"
-                    />
-                  </div>
-                  <div className="col-span-4">
-                    <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                      标签
-                    </Label>
-                    <Input
-                      value={p.label}
-                      onChange={(e) => updateRow(idx, { label: e.target.value })}
-                      placeholder="主办律师 / 推荐人 / 合伙人"
-                      className="mt-1 h-9 bg-background"
-                    />
-                  </div>
-                  <div className="col-span-1 flex items-end justify-center">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeRow(idx)}
-                      className="h-9 w-9 p-0 text-destructive"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        <div className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2">
-          <Button variant="outline" size="sm" onClick={addRow} className="h-7 gap-1">
-            <Plus className="h-3.5 w-3.5" />
-            添加
-          </Button>
-          <div className="flex items-center gap-4 text-xs">
-            <div>
-              受益人合计：
-              <span className="ml-1 font-mono tabular text-foreground">{total.toFixed(1)}%</span>
-            </div>
-            <div>
-              律所留存：
-              <span className="ml-1 font-mono tabular text-muted-foreground">
-                {Math.max(0, 100 - total).toFixed(1)}%
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
-            取消
-          </Button>
-          <Button onClick={handleSave} disabled={isPending} className="gap-1.5">
-            {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-            保存方案
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

@@ -1,4 +1,5 @@
 "use client";
+import {ExecutionTerminationPanel} from "@/components/matters/execution-termination-panel";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { ApprovalAction } from "@prisma/client";
@@ -76,7 +77,7 @@ export function ApprovalInbox({ data, initialSelection }: { data: Data; initialS
   useEffect(() => { setQuery(data.query.q ?? ""); }, [data.query.q]);
 
   function process(decision: "approve" | "reject" | "revision") {
-    if (!selected || !detail?.task) return;
+    if (!selected || !detail?.task || detail.task==="terminate") return;
     const r = selected;
     if (decision === "approve" && (detail.task === "issue" || detail.task === "stamp") && !file) { toast.error(detail.task === "issue" ? "请上传电子发票" : "请上传盖章后的 PDF 扫描件"); return; }
     if (decision === "approve" && r.action === "INVOICE_APPROVE" && file && !invoiceNo.trim()) { toast.error("上传电子发票时必须填写发票号码"); return; }
@@ -240,22 +241,23 @@ export function ApprovalInbox({ data, initialSelection }: { data: Data; initialS
         { id: "attachments", label: "附件", count: detail?.attachments.length ?? 0, content: detail?.attachments.length ? <ReviewSection title="申请附件" icon={<Paperclip />}>{detail.attachments.map(d => <ReviewFileRow key={d.id} id={d.id} name={d.name} readable={d.readable} />)}</ReviewSection> : <ReviewEmpty icon={<Paperclip />} title="暂无申请附件" desc="当前申请未关联可展示的材料。" /> },
         { id: "history", label: "处理记录", count: detail?.history.length ?? 0, content: <ReviewHistory items={detail?.history ?? []} emptyText={detail?.status === "PENDING" ? "尚无处理记录" : "此记录未保存逐次处理历史"} emptyDesc={detail?.status === "PENDING" ? "处理后将在这里显示审批意见与结果。" : "当前结果见申请状态。"} /> },
       ]}
-      sidebarTitle={detail?.task === "issue" ? "完成开票" : detail?.task === "stamp" ? "盖章回填" : detail?.task ? "审批" : "申请进度"}
+      sidebarTitle={detail?.task === "issue" ? "完成开票" : detail?.task === "stamp" ? "盖章回填" : detail?.task === "terminate" ? "核实终止执行" : detail?.task ? "审批" : "申请进度"}
       sidebar={<>
         {detail?.task === "approve" && <ReviewStatusLine tone="amber" title="等待你的审批" desc={`你有本事项的${selected ? ACTION_LABELS[selected.action] : "审批"}授权${detail.submittedAt ? ` · 已等待 ${waitDays(detail.submittedAt)} 天` : ""}`} />}
+        {selected&&["INVOICE_APPROVE","SEAL_APPROVE"].includes(selected.action)&&<ExecutionTerminationPanel kind={selected.action==="INVOICE_APPROVE"?"INVOICE":"SEAL"} id={selected.id} onChanged={()=>{open(selected);router.refresh();}}/>}
         {(detail?.task === "issue" || detail?.task === "stamp") && <ReviewStatusLine tone="teal" title={detail.task === "issue" ? "审批已通过 · 等待开具发票" : "审批已通过 · 等待盖章回填"} desc="执行环节不可再次驳回" />}
         {detail && !detail.task && <ReviewStatusLine tone={detail.status === "REJECTED" ? "red" : detail.status === "PENDING" ? "amber" : "green"} title={APPROVAL_STATUS_LABELS[detail.status] ?? "状态待核实"} desc={detail.canResubmit ? "补充完善后可重新提交审批" : "当前为只读查阅，后续进度会继续记录在此申请中"} />}
-        {detail?.task && detail.task !== "stamp" && <><label htmlFor="approval-note" className="op-label">审批意见</label><textarea id="approval-note" className="op-area" aria-label="审批意见或驳回原因" placeholder="请记录处理意见；驳回时必填" value={note} onChange={e => setNote(e.target.value)} maxLength={500} disabled={pending} /><div className="t-xs t-faint mt-1 text-right font-mono">{note.length} / 500</div></>}
-        {detail?.task && (detail.task === "stamp" || selected?.action === "INVOICE_APPROVE") && <label className="mt-3 block space-y-2"><span className="op-label" style={{ margin: "12px 0 7px" }}>{detail.task === "stamp" ? "盖章后的 PDF 扫描件（必传）" : "电子发票（上传后记为已开具）"}</span><Input type="file" aria-label={detail.task === "stamp" ? "盖章后的 PDF 扫描件（必传）" : "电子发票（上传后记为已开具）"} accept={detail.task === "stamp" ? "application/pdf" : "application/pdf,image/*"} onChange={e => setFile(e.target.files?.[0] ?? null)} /></label>}
-        {detail?.task && selected?.action === "INVOICE_APPROVE" && <Input className="mt-2" aria-label="发票号码" placeholder="发票号码" value={invoiceNo} onChange={e => setInvoiceNo(e.target.value)} />}
-        {detail?.task && selected?.action === "INVOICE_APPROVE" && <InvoiceRecognition file={file} onNumber={setInvoiceNo} requestedAmount={detail.fields.find(f => f.label === "金额（元）")?.value} />}
+        {detail?.task && detail.task !== "stamp" && detail.task!=="terminate" && <><label htmlFor="approval-note" className="op-label">审批意见</label><textarea id="approval-note" className="op-area" aria-label="审批意见或驳回原因" placeholder="请记录处理意见；驳回时必填" value={note} onChange={e => setNote(e.target.value)} maxLength={500} disabled={pending} /><div className="t-xs t-faint mt-1 text-right font-mono">{note.length} / 500</div></>}
+        {detail?.task && (detail.task === "stamp" || (selected?.action === "INVOICE_APPROVE" && detail.task!=="terminate")) && <label className="mt-3 block space-y-2"><span className="op-label" style={{ margin: "12px 0 7px" }}>{detail.task === "stamp" ? "盖章后的 PDF 扫描件（必传）" : "电子发票（上传后记为已开具）"}</span><Input type="file" aria-label={detail.task === "stamp" ? "盖章后的 PDF 扫描件（必传）" : "电子发票（上传后记为已开具）"} accept={detail.task === "stamp" ? "application/pdf" : "application/pdf,image/*"} onChange={e => setFile(e.target.files?.[0] ?? null)} /></label>}
+        {detail?.task && detail.task!=="terminate" && selected?.action === "INVOICE_APPROVE" && <Input className="mt-2" aria-label="发票号码" placeholder="发票号码" value={invoiceNo} onChange={e => setInvoiceNo(e.target.value)} />}
+        {detail?.task && detail.task!=="terminate" && selected?.action === "INVOICE_APPROVE" && <InvoiceRecognition file={file} onNumber={setInvoiceNo} requestedAmount={detail.fields.find(f => f.label === "金额（元）")?.value} />}
         {detail?.archiveReview && detail.task === "approve" && <div className="op-check"><span className={`box ${archiveReady ? "checked" : ""}`}>{archiveReady ? <FileCheck2 /> : null}</span><span>{archiveReady ? "清单、材料与人工核验事项已全部核对。" : "请在「资料与核验」逐项勾选清单、文件与人工核验事项后再通过。"}</span></div>}
         <div className="side-note" style={{ marginTop: 16 }}><Clock3 /><span>审批结果与意见同事务写入审计日志，处理后不可重复审批；审批授权不扩大案件其他材料的访问范围。</span></div>
       </>}
       footer={detail && (detail.task || detail.canResubmit || detail.canCancel) ? <>
         {detail.task === "approve" && <button type="button" className="btn btn-danger" disabled={pending} onClick={() => process("reject")}>驳回</button>}
         {detail.task === "approve" && selected?.action === "INTAKE_APPROVE" && <button type="button" className="btn btn-secondary" disabled={pending} onClick={() => process("revision")}>退回补正</button>}
-        {detail.task && <button type="button" className="btn btn-approve" disabled={pending || !archiveReady} onClick={() => process("approve")}>{detail.task === "stamp" ? "完成盖章回填" : detail.task === "issue" ? "完成开票" : selected?.action === "ARCHIVE_APPROVE" ? <><FileCheck2 />逐项核验并通过</> : "审批通过"}</button>}
+        {detail.task && detail.task!=="terminate" && <button type="button" className="btn btn-approve" disabled={pending || !archiveReady} onClick={() => process("approve")}>{detail.task === "stamp" ? "完成盖章回填" : detail.task === "issue" ? "完成开票" : selected?.action === "ARCHIVE_APPROVE" ? <><FileCheck2 />逐项核验并通过</> : "审批通过"}</button>}
         {detail.canResubmit && <button type="button" className="btn btn-primary" disabled={pending} onClick={() => applicantAction("resubmit")}>重新提交审批</button>}
         {detail.canCancel && <button type="button" className="btn btn-secondary" disabled={pending} onClick={() => applicantAction("cancel")}>撤回用章申请</button>}
       </> : undefined}

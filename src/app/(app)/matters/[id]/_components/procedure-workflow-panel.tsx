@@ -714,7 +714,7 @@ export function ProcedureWorkflowPanel({
   view,
   onViewChange,
   viewCounts,
-  archiveNode,
+  archiveNode, responsibilityNode,
   archiveRailTop,
   expresses,
   onAddLedger,
@@ -740,6 +740,7 @@ export function ProcedureWorkflowPanel({
   onViewChange: (view: DossierView) => void;
   viewCounts?: Partial<Record<DossierView, number>>;
   archiveNode: React.ReactNode;
+  responsibilityNode?: React.ReactNode;
   /** 案件档案侧栏顶部（承办团队） */
   archiveRailTop?: React.ReactNode;
   /** 快递记录（并入经办记录） */
@@ -871,6 +872,7 @@ export function ProcedureWorkflowPanel({
             onAddStage={canManage && procedure ? () => setStageCreateOpen(true) : undefined}
           />
           <div className="dos-main">
+          {responsibilityNode}
           {selectedStage && procedure && effectiveScope === "stage" ? (
             <StageBar
               stage={selectedStage}

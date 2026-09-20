@@ -25,6 +25,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { createTask } from "@/server/tasks/actions";
+import { civilKey, shParts, WEEKDAY_CN } from "@/lib/ui/sh-time";
 
 type MatterPickerItem = { id: string; internalCode: string; title: string };
 
@@ -72,16 +73,12 @@ export function AddTaskDialog({
       return;
     }
 
-    // 合成 dueAt：全天 → 23:59；有时间 → 解析 HH:MM
-    const dueAt = new Date(date);
-    if (allDay) {
-      dueAt.setHours(23, 59, 0, 0);
-    } else {
-      const [hh, mm] = time.split(":").map(Number);
-      if (Number.isFinite(hh) && Number.isFinite(mm)) {
-        dueAt.setHours(hh, mm, 0, 0);
-      }
-    }
+    // 合成 dueAt（上海时区）：date 是 sh-time「本地正午」载体，不能用浏览器本地 setHours——
+    // 境外浏览器会把所选时刻/全天边界挪到别的日历日；统一以 +08:00 拼接
+    const key = civilKey(date);
+    const [hhStr, mmStr] = time.split(":");
+    const timePart = allDay ? "23:59" : `${hhStr ?? "09"}:${mmStr ?? "00"}`;
+    const dueAt = new Date(`${key}T${timePart}:00+08:00`);
 
     startTransition(async () => {
       try {
@@ -114,13 +111,10 @@ export function AddTaskDialog({
           </DialogTitle>
           <DialogDescription className="text-xs">
             {date
-              ? date.toLocaleDateString("zh-CN", {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                  weekday: "long",
-                  timeZone: "Asia/Shanghai"
-                })
+              ? (() => {
+                  const p = shParts(date);
+                  return `${p.y}年${p.m}月${p.d}日 星期${WEEKDAY_CN[p.w] ?? p.w}`;
+                })()
               : "—"}
           </DialogDescription>
         </DialogHeader>

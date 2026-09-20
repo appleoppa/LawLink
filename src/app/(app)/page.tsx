@@ -34,7 +34,7 @@ export default async function DashboardPage() {
     getDashboardCategoryDistribution(),
     getDashboardSchedule(),
     getDashboardHeroData(),
-    loadAlerts(session?.user.id ?? null, session?.user.role ?? null),
+    loadAlerts(session?.user.id ?? null, session?.user.role ?? null, session?.user.managerAuthorized === true),
     getDashboardWorkQueue(),
     getDashboardOverdueReceivables().catch(() => null),
     getDashboardClientSources().catch(() => [])

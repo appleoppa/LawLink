@@ -28,6 +28,7 @@ export default async function ContactsPage() {
       currentUserId={session.user.id}
       currentUserRole={session.user.role}
       rolePermissions={session.user.rolePermissions}
+      managerAuthorized={session.user.managerAuthorized === true}
     />
   );
 }

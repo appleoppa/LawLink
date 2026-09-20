@@ -1,5 +1,6 @@
 "use client";
 
+import {RevisionHistory} from "@/app/(app)/intakes/[id]/_components/revision-history";
 import { useState } from "react";
 
 import { AlertTriangle, FileText, Scale, Users, Wallet, Building2, BriefcaseBusiness, ChevronRight } from "lucide-react";
@@ -77,6 +78,7 @@ const keyFields = new Set(["案件名称", "案件类别", "案由", "主办律�
 export function IntakeApprovalContent({ detail, view = "all", onOpenConflicts }: { detail: Detail; view?: "all" | "overview" | "conflicts"; onOpenConflicts?: () => void }) {
   const latest = detail.checks[0];
   return <div>
+    {view!=="conflicts"&&<RevisionHistory rounds={detail.rounds??[]}/>}
     {view !== "conflicts" && (() => {
       const parties = detail.sections.filter(sec => sec.title.startsWith("当事人 "));
       const others = detail.sections.filter(sec => !parties.includes(sec));

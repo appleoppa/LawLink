@@ -37,7 +37,8 @@ import { agencyOptionsForProcedure, isAgencyAllowedForProcedure, isNationalAgenc
 import { proceduresByCategory, suggestHandlingAgency } from "@/lib/procedures-by-category";
 import { buildIntakeConflictQueries } from "@/lib/approvals/intake-detail";
 import { intakeCreateSchema, type IntakeCreateInput } from "@/server/intakes/schemas";
-import { createIntake } from "@/server/intakes/actions";
+import { saveIntakeRevision } from "@/server/intakes/revision-actions";
+import { createIntake, resubmitIntake } from "@/server/intakes/actions";
 import { uploadDocument } from "@/server/documents/actions";
 import { parsePleading } from "@/server/ai/parse-pleading";
 import { recommendCause, type CauseRecommendation } from "@/server/ai/recommend-cause";
@@ -83,7 +84,9 @@ const emptyParty = (role: PartyRole, ordinal: number): IntakeCreateInput["partie
   notes: ""
 });
 
-const defaults: IntakeCreateInput = {
+// 工厂而非模块级常量：receivedAt 须在每次打开/重置时取「现在」，常驻挂载的向导跨天后仍会默认昨天
+function freshDefaults(): IntakeCreateInput {
+  return {
   title: "",
   category: "CIVIL_COMMERCIAL",
   causeId: "",
@@ -111,7 +114,8 @@ const defaults: IntakeCreateInput = {
   ownerUserId: "",
   coUserIds: [],
   parties: [emptyParty("CLIENT_PARTY", 1), emptyParty("OPPOSING_PARTY", 1)]
-};
+  };
+}
 
 export type ClientOption = { id: string; name: string; type: ClientType };
 type Colleague = { id: string; name: string; role?: string; isTeammate?: boolean; active?: boolean };
@@ -127,7 +131,12 @@ function firstFormErrorMessage(value: unknown): string | undefined {
 }
 
 // 日期输入框取值一律按上海日历日：toISOString 走 UTC，上海 0-8 点会落成前一天
-const dateInput = (v: unknown) => (v ? shDayKey(v as string) : "");
+// Invalid Date 防御：清空日期等场景下 shDayKey 会让 Intl 抛 RangeError，这里兜底回空串
+const dateInput = (v: unknown) => {
+  if (!v) return "";
+  const d = new Date(v as string);
+  return Number.isNaN(d.getTime()) ? "" : shDayKey(d);
+};
 
 export function IntakeWizard({
   open,
@@ -135,7 +144,8 @@ export function IntakeWizard({
   clientOptions,
   colleagues,
   onSubmitted,
-  initialClientId
+  initialClientId,
+  editing
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -145,6 +155,7 @@ export function IntakeWizard({
   onSubmitted?: (intakeId: string) => void;
   /** 从客户档案「为此客户新建收案」进入时预关联的客户 */
   initialClientId?: string;
+  editing?: {id:string;revision:number;values:Partial<IntakeCreateInput>};
 }) {
   const router = useRouter();
   const { data: session } = useSession();
@@ -166,7 +177,7 @@ export function IntakeWizard({
 
   const methods = useForm<IntakeCreateInput>({
     resolver: zodResolver(intakeCreateSchema),
-    defaultValues: { ...defaults, ownerUserId: session?.user?.id ?? "" }
+    defaultValues: { ...freshDefaults(), ownerUserId: session?.user?.id ?? "", ...editing?.values }
   });
   const { register, control, handleSubmit, getValues, setValue, reset, trigger, formState: { errors } } = methods;
   const { fields: parties, append: appendParty, remove: removeParty } = useFieldArray({ control, name: "parties" });
@@ -188,6 +199,13 @@ export function IntakeWizard({
   const agencyOpts = useMemo(() => agencyOptionsForProcedure(jurisdiction, firstProcedureType), [jurisdiction, firstProcedureType]);
   const kind: CategoryKind = matterCategoryKind(category);
   const nameLabel = kind === "counsel" ? "顾问事项名称" : kind === "project" ? "项目名称" : "案件名称";
+
+  // 打开（非编辑）即重置：向导常驻挂载，defaultValues 只在首次渲染求值，跨天打开须取「现在」
+  useEffect(() => {
+    if (!open || editing) return;
+    reset({ ...freshDefaults(), ownerUserId: session?.user?.id ?? "" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // 客户档案入口：打开时预关联该客户（仅在尚未选择委托方时带入）
   useEffect(() => {
@@ -211,18 +229,30 @@ export function IntakeWizard({
       setDupResult(null);
       return;
     }
+    // cancelled 守卫：慢响应晚于清理返回时不得回写——否则已关联客户/重新打开后查重横幅会再次弹出
+    let cancelled = false;
     const timer = setTimeout(() => {
-      const idType = watch("parties.0.partyType") !== "NATURAL_PERSON" ? "USCC" : (watch<string | undefined>("parties.0.idType") || "ID_CARD");
-      checkClientDuplicate({ idType: idNumber ? idType : null, idNumber: idNumber || null, name: name || undefined })
-        .then(setDupResult)
-        .catch(() => setDupResult(null));
+      // 回调内用 getValues 现取：watch 读到的是渲染快照，防抖窗口内的最新输入（如证件类型切换）会被旧值吞掉
+      const partyType = getValues("parties.0.partyType");
+      const latestName = (getValues("parties.0.name") ?? "").trim();
+      const latestIdNumber = (
+        (partyType !== "NATURAL_PERSON" ? getValues("parties.0.enterpriseSocialCode") : getValues("parties.0.idNumber")) ?? ""
+      ).trim();
+      if (!latestName && !latestIdNumber) {
+        if (!cancelled) setDupResult(null);
+        return;
+      }
+      const idType = partyType !== "NATURAL_PERSON" ? "USCC" : getValues("parties.0.idType") || "ID_CARD";
+      checkClientDuplicate({ idType: latestIdNumber ? idType : null, idNumber: latestIdNumber || null, name: latestName || undefined })
+        .then((r) => { if (!cancelled) setDupResult(r); })
+        .catch(() => { if (!cancelled) setDupResult(null); });
     }, 500);
-    return () => clearTimeout(timer);
+    return () => { cancelled = true; clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, party0Name, party0IdNumber, dupDismissed]);
 
   // 标题自动生成：委托方 与 对方 + 案由；用户手改后不再覆盖
-  const [titleTouched, setTitleTouched] = useState(false);
+  const [titleTouched, setTitleTouched] = useState(Boolean(editing));
   const [causeName, setCauseName] = useState("");
   const watchedParties = watch("parties");
   const watchedTitle = watch("title");
@@ -251,6 +281,7 @@ export function IntakeWizard({
 
   // 切类别同步当事人行：顾问/非诉专项默认只留委托方；诉讼仲裁至少一个相对方
   useEffect(() => {
+    if(editing)return;
     const cur = (watch("parties") ?? []) as { role?: string }[];
     if (kind === "counsel" || kind === "project") {
       for (let i = cur.length - 1; i >= 1; i--) removeParty(i);
@@ -295,7 +326,7 @@ export function IntakeWizard({
   }
 
   function resetAll() {
-    reset({ ...defaults, ownerUserId: session?.user?.id ?? "" });
+    reset({ ...freshDefaults(), ownerUserId: session?.user?.id ?? "", ...editing?.values });
     setTitleTouched(false);
     setCauseName("");
     setContracts([]);
@@ -304,8 +335,10 @@ export function IntakeWizard({
   }
 
   async function performSubmit(values: IntakeCreateInput) {
+    let savedId=editing?.id;
     try {
-      const res = await createIntake(values);
+      const res = editing ? await saveIntakeRevision(editing.id,editing.revision,values) : await createIntake(values);
+      savedId=res.id;
       if (contracts.length > 0 && res.id) {
         for (const file of contracts) {
           const fd = new FormData();
@@ -319,7 +352,7 @@ export function IntakeWizard({
       }
       // 冲突预检：自动携带收案全部主体发起检索（结果挂在收案上，审批时直接复核）
       let conflictText = "";
-      if (res.id) {
+      if (res.id && !editing) {
         const queries = buildIntakeConflictQueries({
           client: { name: values.clientName ?? "", idNumber: values.clientIdNumber || null },
           parties: (values.parties ?? []).map((p) => ({ role: p.role, name: p.name ?? "", idNumber: p.idNumber || null, enterpriseSocialCode: p.enterpriseSocialCode || null }))
@@ -333,7 +366,15 @@ export function IntakeWizard({
           }
         }
       }
-      toast.success(`收案已提交审批${contracts.length > 0 ? `，上传 ${contracts.length} 份合同` : ""}${conflictText}`);
+      // P2-5（2026-09-20 C 批）：冲突预检有命中时不自动送审——结论只能在意向可编辑状态给出，
+      // 直接送审会形成「结论恒 PENDING、无法转案」的无效轮次，每个命中收案被迫撤回-补结论-重提空转一轮。
+      const conflictHit = conflictText.includes("命中") && !conflictText.includes("未命中");
+      if(res.workflowEnabled&&!editing&&!conflictHit) await resubmitIntake(res.id);
+      toast.success(editing
+        ? "补正已保存，请在详情复核检索后重新提交"
+        : conflictHit
+          ? `收案已保存为草稿${contracts.length > 0 ? `，上传 ${contracts.length} 份合同` : ""}${conflictText}。请先在收案详情作出冲突结论，再提交送审。`
+          : `收案已提交审批${contracts.length > 0 ? `，上传 ${contracts.length} 份合同` : ""}${conflictText}`);
       resetAll();
       onOpenChange(false);
       if (res.id) {
@@ -342,7 +383,8 @@ export function IntakeWizard({
       }
       router.refresh();
     } catch (err) {
-      toast.error("创建失败", { description: err instanceof Error ? err.message : "" });
+      toast.error(editing?"补正未完成":"收案未送审", { description: err instanceof Error ? err.message : "" });
+      if(savedId){onOpenChange(false);router.push(`/intakes/${savedId}`);router.refresh();}
     }
   }
 
@@ -530,9 +572,9 @@ export function IntakeWizard({
             <div className="id-head">
               <div className="id-top">
                 <SheetTitle asChild>
-                  <span className="id-title">新建收案</span>
+                  <span className="id-title">{editing?"补正收案资料":"新建收案"}</span>
                 </SheetTitle>
-                <span className="badge b-white">提交后进入收案审批</span>
+                <span className="badge b-white">{editing?"保存后复核并重新提交":"提交后进入收案审批"}</span>
                 <button type="button" className="btn btn-ghost btn-sm btn-icon id-close" onClick={() => onOpenChange(false)} aria-label="关闭" disabled={isPending}>
                   <X />
                 </button>
@@ -616,7 +658,7 @@ export function IntakeWizard({
                           </div>
                           <div className="fitem" style={{ maxWidth: 180 }}>
                             <label className="flabel">收案日期<span className="star">*</span></label>
-                            <input type="date" className="finput font-mono" value={dateInput(receivedAt)} onChange={(e) => setValue("receivedAt", new Date(e.target.value), { shouldDirty: true })} />
+                            <input type="date" className="finput font-mono" value={dateInput(receivedAt)} onChange={(e) => setValue("receivedAt", e.target.value ? new Date(e.target.value) : undefined, { shouldDirty: true })} />
                           </div>
                         </div>
                         <div className="frow">
@@ -684,7 +726,7 @@ export function IntakeWizard({
                           </div>
                           <div className="fitem" style={{ maxWidth: 160 }}>
                             <label className="flabel">收案日期<span className="star">*</span></label>
-                            <input type="date" className="finput font-mono" value={dateInput(receivedAt)} onChange={(e) => setValue("receivedAt", new Date(e.target.value), { shouldDirty: true })} />
+                            <input type="date" className="finput font-mono" value={dateInput(receivedAt)} onChange={(e) => setValue("receivedAt", e.target.value ? new Date(e.target.value) : undefined, { shouldDirty: true })} />
                           </div>
                         </div>
                         <div className="frow">
@@ -719,7 +761,7 @@ export function IntakeWizard({
                           </div>
                           <div className="fitem" style={{ maxWidth: 160 }}>
                             <label className="flabel">收案日期<span className="star">*</span></label>
-                            <input type="date" className="finput font-mono" value={dateInput(receivedAt)} onChange={(e) => setValue("receivedAt", new Date(e.target.value), { shouldDirty: true })} />
+                            <input type="date" className="finput font-mono" value={dateInput(receivedAt)} onChange={(e) => setValue("receivedAt", e.target.value ? new Date(e.target.value) : undefined, { shouldDirty: true })} />
                           </div>
                         </div>
                         <div className="frow">
@@ -1017,7 +1059,7 @@ export function IntakeWizard({
                 </div>
 
                 <div className="fsec">
-                  <div className="fsec-head"><span className="t">确认信息</span><span className="req">提交后进入收案审批，并自动发起冲突预检</span></div>
+                  <div className="fsec-head"><span className="t">确认信息</span><span className="req">{editing?"保存补正后须复核冲突再送审":"提交后完成正式冲突检索并进入审批"}</span></div>
                   <div className="fsec-body">
                     <dl className="grid grid-cols-2 gap-x-6">
                       {[
@@ -1048,20 +1090,20 @@ export function IntakeWizard({
               <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
                 <span className="ai-note hidden whitespace-nowrap lg:flex">
                   <Sparkles className="h-3.5 w-3.5" />
-                  提交后自动发起冲突预检
+                  {editing?"保存后复核冲突并重新送审":"提交时自动进行正式冲突检索"}
                 </span>
                 <button type="button" className="btn btn-ghost" disabled={step === 0 || isPending} onClick={() => setStep((s) => Math.max(0, s - 1))}>
                   上一步
                 </button>
                 {step < STEPS.length - 1 ? (
-                  <button type="button" className="btn btn-primary" onClick={next}>
+                  <button key="next-step" type="button" className="btn btn-primary" onClick={next}>
                     下一步 · {STEPS[step + 1]}
                     <ChevronRight />
                   </button>
                 ) : (
-                  <button type="submit" className="btn btn-primary" disabled={isPending}>
+                  <button key="submit-intake" type="submit" className="btn btn-primary" disabled={isPending}>
                     {isPending ? <Loader2 className="animate-spin" /> : null}
-                    提交审批
+                    {editing?"保存补正":"提交审批"}
                     <ChevronRight />
                   </button>
                 )}

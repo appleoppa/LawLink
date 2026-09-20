@@ -6,20 +6,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { calcLateInterest, numberToChinese } from "@/lib/legal-calc";
-
-function fmtDate(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
+import { shDayKey, shTodayCivil, civilFromKey } from "@/lib/ui/sh-time";
 
 export function LateInterestCalc() {
-  const today = new Date();
-  const halfYearAgo = new Date();
+  // 日历日统一「上海日键 + 本地正午」载体；迟延天数按正午时刻差计算，与浏览器时区无关
+  const todayCivil = shTodayCivil();
+  const halfYearAgo = new Date(todayCivil);
   halfYearAgo.setMonth(halfYearAgo.getMonth() - 6);
 
   const [principal, setPrincipal] = useState("100000");
-  const [dueDate, setDueDate] = useState(fmtDate(halfYearAgo));
-  const [paidDate, setPaidDate] = useState(fmtDate(today));
+  const [dueDate, setDueDate] = useState(shDayKey(halfYearAgo));
+  const [paidDate, setPaidDate] = useState(shDayKey(new Date()));
   const [lprPercent, setLprPercent] = useState("3.45");
   const [extraPercent, setExtraPercent] = useState("5");
 
@@ -27,17 +24,15 @@ export function LateInterestCalc() {
 
   function compute() {
     const p = parseFloat(principal) || 0;
-    const d1 = new Date(dueDate);
-    const d2 = new Date(paidDate);
-    if (isNaN(d1.getTime()) || isNaN(d2.getTime()) || p <= 0) {
+    if (!dueDate || !paidDate || p <= 0) {
       setResult(null);
       return;
     }
     setResult(
       calcLateInterest({
         principal: p,
-        dueDate: d1,
-        paidDate: d2,
+        dueDate: civilFromKey(dueDate),
+        paidDate: civilFromKey(paidDate),
         lprPercent: parseFloat(lprPercent) || 0,
         extraPercent: parseFloat(extraPercent) || 0
       })

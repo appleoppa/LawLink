@@ -19,6 +19,7 @@ import { RadioChips } from "@/components/ui/radio-chips";
 import { Segmented } from "@/components/patterns/moan";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { JUDGMENT_NOTE_TAG, stageNoteTag } from "./procedure-workflow-panel";
+import { shDayKey, shTime } from "@/lib/ui/sh-time";
 
 type Mode = "record" | "judgment";
 const CHANNELS = [
@@ -30,10 +31,13 @@ const CHANNELS = [
   { value: "OTHER", label: "其他" }
 ] as const;
 
-function nowLocal() {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 16);
+/** 记录时间默认「现在的上海墙钟」；datetime-local 值统一按 +08:00 解释，非上海浏览器不偏移 */
+function nowSh() {
+  const now = new Date();
+  return `${shDayKey(now)}T${shTime(now)}`;
+}
+function parseSh(value: string): Date {
+  return new Date(`${value}:00+08:00`);
 }
 
 export function ProgressDialog({
@@ -62,7 +66,7 @@ export function ProgressDialog({
   const [mode, setMode] = useState<Mode>(initialMode);
   const [channel, setChannel] = useState<string>("COURT");
   const [withWhom, setWithWhom] = useState("");
-  const [occurredAt, setOccurredAt] = useState(nowLocal());
+  const [occurredAt, setOccurredAt] = useState(nowSh());
   const [content, setContent] = useState("");
   const [stage, setStage] = useState(initialStage ?? "");
 
@@ -72,7 +76,7 @@ export function ProgressDialog({
     setStage(initialStage ?? "");
     setChannel("COURT");
     setWithWhom("");
-    setOccurredAt(nowLocal());
+    setOccurredAt(nowSh());
     setContent("");
   }, [open, initialMode, initialStage]);
 
@@ -87,7 +91,7 @@ export function ProgressDialog({
           matterId,
           channel: (mode === "judgment" ? "OTHER" : channel) as "OTHER",
           withWhom: mode === "judgment" ? "" : withWhom,
-          occurredAt: new Date(occurredAt),
+          occurredAt: parseSh(occurredAt),
           content: content.trim(),
           tags: mode === "judgment" ? [JUDGMENT_NOTE_TAG, ...(stage ? [stageNoteTag(stage)] : [])] : stage ? [stageNoteTag(stage)] : []
         });

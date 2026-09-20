@@ -12,7 +12,9 @@ import { saveSelfConfirmListAdmin } from "@/server/approval-permissions/self-con
 const ACTION_META: { action: string; label: string; hint: string }[] = [
   { action: "DOCUMENT_APPROVE", label: "文书送审", hint: "上传人自我确认即生效，不再进入审批队列" },
   { action: "SEAL_APPROVE", label: "用章申请（非法人章）", hint: "申请人自确认后直接进入待盖章；法定代表人章始终走完整审批" },
-  { action: "INTAKE_APPROVE", label: "收案审批", hint: "清单可配置；收案转化的自确认接线随收案专项启用" }
+  // M-2c（2026-09-20 C 批）：收案自确认明确禁用——其语义与收案轮次/转化门禁耦合，
+  // 未接线的可配置开关是配置幻觉；服务端 sanitizeSelfConfirmList 同步硬排除。
+  { action: "INTAKE_APPROVE", label: "收案审批（未启用）", hint: "收案审批暂不支持自确认，勾选不生效；单人执业请走 allowSelfApproval 本人审批例外" }
 ];
 
 export function SelfConfirmCard({ initialActions }: { initialActions: string[] }) {
@@ -52,7 +54,8 @@ export function SelfConfirmCard({ initialActions }: { initialActions: string[] }
         {ACTION_META.map(meta => (
           <label
             key={meta.action}
-            className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2"
+            className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2"
+            style={meta.action === "INTAKE_APPROVE" ? { opacity: 0.6 } : undefined}
           >
             <span className="min-w-0">
               <span className="block text-[13px] font-medium">{meta.label}</span>
@@ -61,8 +64,8 @@ export function SelfConfirmCard({ initialActions }: { initialActions: string[] }
             <input
               type="checkbox"
               className="h-4 w-4 shrink-0"
-              checked={enabled.includes(meta.action)}
-              disabled={pending}
+              checked={false}
+              disabled={pending || meta.action === "INTAKE_APPROVE"}
               onChange={() => toggle(meta.action)}
             />
           </label>

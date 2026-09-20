@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/select";
 import { archiveMatter, getArchivePrepData } from "@/server/archive/actions";
 import { uploadDocument } from "@/server/documents/actions";
+import { shDayKey } from "@/lib/ui/sh-time";
 import { CLOSED_REASON_CN } from "@/server/archive/schemas";
 import type { ArchiveChecklist, ArchiveChecklistItem } from "@/lib/archive/checklists";
 import type { ArchiveClosedReason } from "@prisma/client";
@@ -87,7 +88,7 @@ export function ArchiveWizardDialog({ matterId, open, onOpenChange }: Props) {
   const [availableDocuments, setAvailableDocuments] = useState<AvailableDocument[]>([]);
   const [policy, setPolicy] = useState<Awaited<ReturnType<typeof getArchivePrepData>>["policy"] | null>(null);
   const [closedReason, setClosedReason] = useState<ArchiveClosedReason>("JUDGMENT");
-  const [completedAt, setCompletedAt] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [completedAt, setCompletedAt] = useState<string>(shDayKey(new Date()));
   const [judgmentSummary, setJudgmentSummary] = useState("");
   const [summary, setSummary] = useState("");
   const [summaryFromClose, setSummaryFromClose] = useState(false);
@@ -105,7 +106,8 @@ export function ArchiveWizardDialog({ matterId, open, onOpenChange }: Props) {
     const preselected = Object.fromEntries(Object.entries(data.docsByItem).map(([itemId, docs]) => [itemId, docs.map((doc) => doc.id)]));
     setAssignments((current) => resetAssignments ? preselected : Object.fromEntries(Object.keys({ ...current, ...preselected }).map((itemId) => [itemId, [...new Set([...(current[itemId] ?? []), ...(preselected[itemId] ?? [])])]])));
     if (data.matter.closedAt) {
-      setCompletedAt(data.matter.closedAt.toISOString().slice(0, 10));
+      // 上海日历日：toISOString 走 UTC，上海 0-8 点会落成前一天
+      setCompletedAt(shDayKey(data.matter.closedAt));
     }
     if (data.existingSummary) {
       setSummary(data.existingSummary);

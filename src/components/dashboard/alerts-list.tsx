@@ -24,11 +24,11 @@ function classifyByDays(days: number): AlertItem["tone"] {
   return "ok";
 }
 
-export async function loadAlerts(userId: string | null, role: string | null): Promise<AlertItem[]> {
+export async function loadAlerts(userId: string | null, role: string | null, managerAuthorized = false): Promise<AlertItem[]> {
   const now = new Date();
   const in30 = new Date();
   in30.setDate(in30.getDate() + 30);
-  const isManager = role === "PRINCIPAL_LAWYER";
+  const isManager = role === "PRINCIPAL_LAWYER" || managerAuthorized;
 
   const [preservationProperties, unprocessedSms, pendingSeals] = await Promise.all([
     userId && role

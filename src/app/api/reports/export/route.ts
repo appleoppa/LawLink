@@ -1,4 +1,5 @@
 import { customOrLegacy } from "@/lib/roles/catalog";
+import { isManager } from "@/lib/permissions";
 import { reportAccess } from "@/lib/roles/report-scope";
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
@@ -15,7 +16,7 @@ export async function GET(req: Request) {
   if (!session?.user) {
     return NextResponse.json({ error: "未登录" }, { status: 401 });
   }
-  if (!customOrLegacy(session.user, "reports.export", session.user.role === "PRINCIPAL_LAWYER")) {
+  if (!customOrLegacy(session.user, "reports.export", isManager(session.user))) {
     return NextResponse.json({ error: "无权访问" }, { status: 403 });
   }
 

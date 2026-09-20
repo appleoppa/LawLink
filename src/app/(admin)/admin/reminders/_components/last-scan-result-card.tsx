@@ -72,7 +72,7 @@ export function LastScanResultCard({ result, stats, deadJobs }: { result: Remind
               <div key={j.id} className="t-xs" style={{ padding: "6px 8px", borderRadius: 7, background: "var(--bg-sunken)" }}>
                 <div className="flex flex-wrap items-center gap-1.5 t-mute">
                   <span className="font-mono">{formatScanTime(j.updatedAt)}</span>
-                  <span className="offset-chip">{j.type}</span>
+                  <span className="offset-chip">{j.type === "webhook-digest" ? "群机器人摘要" : j.type === "email-digest" ? "邮件摘要" : j.type}</span>
                   <span>尝试 {j.attempts} 次</span>
                 </div>
                 <div className="truncate" style={{ color: "var(--red)", marginTop: 2 }} title={j.lastError ?? ""}>{j.lastError ?? "未知错误"}</div>

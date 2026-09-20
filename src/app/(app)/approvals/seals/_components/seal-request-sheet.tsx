@@ -99,8 +99,17 @@ export function SealRequestSheet({
       toast.error("请选择章种类");
       return;
     }
+    // 事项决定审批路由与可用印章，服务端无条件必填；提前拦截避免填完全表才在提交时报错
+    if (!purposeConfigId) {
+      toast.error(purposes.length ? "请选择用章事项" : "管理员尚未配置用章事项，请联系管理员在管理后台配置后再提交");
+      return;
+    }
     if (!purpose.trim()) {
       toast.error("请填写本次用印说明");
+      return;
+    }
+    if (purpose.length > 60) {
+      toast.error("本次用印说明限 60 字");
       return;
     }
     if (!documentTitle.trim()) {
@@ -187,7 +196,15 @@ export function SealRequestSheet({
                 description: c.description ?? undefined
               }))}
               value={sealType}
-              onChange={setSealType}
+              onChange={(v) => {
+                setSealType(v);
+                // 事项与章型必须适配：切换章型后当前事项若不再允许，原生 select 会显示空白但 state 仍留旧值，提交才报错
+                setPurposeConfigId((cur) => {
+                  if (!cur) return cur;
+                  const curPurpose = purposes.find((p) => p.id === cur);
+                  return curPurpose && curPurpose.allowedSealTypes.some((t) => t === v) ? cur : "";
+                });
+              }}
             />
             {sealType && (
               <p className="mt-1.5 text-[11px] text-muted-foreground">
@@ -236,7 +253,7 @@ export function SealRequestSheet({
                 <option value="">请选择</option>{purposes.filter(p => !sealType || p.allowedSealTypes.some(t => t === sealType)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </Label>
-            {!purposes.length && <p className="mb-2 text-xs text-muted-foreground">尚未配置用章事项；启用按事项审批后需由管理员先配置。</p>}
+            {!purposes.length && <p className="mb-2 text-xs text-muted-foreground">管理员尚未配置用章事项：事项为必选项，未配置前无法提交用章申请，请联系管理员在管理后台配置。</p>}
             <Label className="text-xs" htmlFor="seal-purpose">本次用印说明 *</Label>
             <Input
               id="seal-purpose"

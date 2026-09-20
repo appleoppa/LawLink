@@ -1,4 +1,5 @@
 import { hasCustomPermission } from "@/lib/roles/catalog";
+import { isManager } from "@/lib/permissions";
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/options";
@@ -12,8 +13,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET(
   req: Request,
-  { params }: { params: { matterId: string } }
+  { params }: { params: Promise<{ matterId: string }> }
 ) {
+  const { matterId } = await params;
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json({ error: "未登录" }, { status: 401 });
@@ -23,7 +25,7 @@ export async function GET(
 
   // 权限：主任律师或案件成员
   const matter = await prisma.matter.findUnique({
-    where: { id: params.matterId },
+    where: { id: matterId },
     select: { id: true, status: true, internalCode: true }
   });
   if (!matter) return NextResponse.json({ error: "案件不存在" }, { status: 404 });
@@ -43,7 +45,7 @@ export async function GET(
   });
   if (!archive) return NextResponse.json({ error: "指定归档记录不存在或尚未批准" }, { status: 404 });
 
-  if (session.user.role !== "PRINCIPAL_LAWYER") {
+  if (!isManager(session.user)) {
     const member = await prisma.matterMember.findUnique({
       where: { matterId_userId: { matterId: matter.id, userId: session.user.id } }
     });

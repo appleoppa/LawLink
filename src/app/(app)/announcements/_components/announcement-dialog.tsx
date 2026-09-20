@@ -22,6 +22,7 @@ import {
   createAnnouncement,
   updateAnnouncement
 } from "@/server/announcements/actions";
+import { shDayKey } from "@/lib/ui/sh-time";
 
 type Editing = {
   id: string;
@@ -32,12 +33,7 @@ type Editing = {
 } | null;
 
 function toDateInput(d: Date | null): string {
-  if (!d) return "";
-  const dt = new Date(d);
-  const y = dt.getFullYear();
-  const m = String(dt.getMonth() + 1).padStart(2, "0");
-  const day = String(dt.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return d ? shDayKey(d) : "";
 }
 
 export function AnnouncementDialog({
@@ -83,7 +79,7 @@ export function AnnouncementDialog({
           title,
           content,
           pinned,
-          expiresAt: expiresAt ? new Date(expiresAt) : null
+          expiresAt: expiresAt ? new Date(`${expiresAt}T00:00+08:00`) : null
         };
         if (editing) {
           await updateAnnouncement({ ...payload, id: editing.id });

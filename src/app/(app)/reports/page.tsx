@@ -1,4 +1,5 @@
 import { customOrLegacy } from "@/lib/roles/catalog";
+import { isManager } from "@/lib/permissions";
 import { reportAccess } from "@/lib/roles/report-scope";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
@@ -13,15 +14,15 @@ import { ReportsView } from "./_components/reports-view";
 export default async function ReportsPage({
   searchParams
 }: {
-  searchParams: { period?: string; start?: string; end?: string };
+  searchParams: Promise<{ period?: string; start?: string; end?: string }>;
 }) {
   const session = await getSession();
   if (!session?.user) redirect("/login");
-  if (!customOrLegacy(session.user, "reports.read", session.user.role === "PRINCIPAL_LAWYER")) {
+  if (!customOrLegacy(session.user, "reports.read", isManager(session.user))) {
     redirect("/");
   }
 
-  const resolved = resolveReportPeriod(searchParams);
+  const resolved = resolveReportPeriod(await searchParams);
   const [data, cycle, reviewAnalysis] = await Promise.all([
     getReportData(resolved.period, reportAccess(session.user)),
     getCaseCycleAnalysis(resolved.period, reportAccess(session.user)),

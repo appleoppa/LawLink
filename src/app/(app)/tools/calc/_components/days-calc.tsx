@@ -8,46 +8,39 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioChips } from "@/components/ui/radio-chips";
 import { daysBetween, addDays } from "@/lib/legal-calc";
-
-function fmtDate(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
+import { shDayKey, civilFromKey, civilKey } from "@/lib/ui/sh-time";
 
 type Mode = "between" | "add";
 
 export function DaysCalc() {
   const [mode, setMode] = useState<Mode>("between");
 
-  // 模式 1：两日期之间
-  const today = new Date();
-  const [dateA, setDateA] = useState(fmtDate(today));
-  const [dateB, setDateB] = useState(fmtDate(today));
+  // 模式 1：两日期之间（日历日一律用「上海日键 + 本地正午」载体，与浏览器时区无关）
+  const todayKey = shDayKey(new Date());
+  const [dateA, setDateA] = useState(todayKey);
+  const [dateB, setDateB] = useState(todayKey);
   const [excludeWeekend, setExcludeWeekend] = useState(false);
 
   const [between, setBetween] = useState<number | null>(null);
   function computeBetween() {
-    const a = new Date(dateA);
-    const b = new Date(dateB);
-    if (isNaN(a.getTime()) || isNaN(b.getTime())) {
+    if (!dateA || !dateB) {
       setBetween(null);
       return;
     }
-    setBetween(daysBetween(a, b, excludeWeekend));
+    setBetween(daysBetween(civilFromKey(dateA), civilFromKey(dateB), excludeWeekend));
   }
 
   // 模式 2：加减天数
-  const [baseDate, setBaseDate] = useState(fmtDate(today));
+  const [baseDate, setBaseDate] = useState(todayKey);
   const [offset, setOffset] = useState("15");
   const [targetDate, setTargetDate] = useState<Date | null>(null);
   function computeTarget() {
-    const base = new Date(baseDate);
     const n = parseInt(offset);
-    if (isNaN(base.getTime()) || isNaN(n)) {
+    if (!baseDate || isNaN(n)) {
       setTargetDate(null);
       return;
     }
-    setTargetDate(addDays(base, n));
+    setTargetDate(addDays(civilFromKey(baseDate), n));
   }
 
   return (
@@ -163,7 +156,7 @@ export function DaysCalc() {
                   目标日（{parseInt(offset) >= 0 ? "+" : ""}{offset} 天）
                 </div>
                 <div className="mt-1 font-mono text-[20px] font-medium tabular text-primary">
-                  {fmtDate(targetDate)}
+                  {civilKey(targetDate)}
                 </div>
                 <div className="mt-0.5 text-[10px] text-muted-foreground">
                   {["日", "一", "二", "三", "四", "五", "六"][targetDate.getDay()]}

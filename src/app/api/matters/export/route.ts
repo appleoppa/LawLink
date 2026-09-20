@@ -30,7 +30,8 @@ export async function GET(req: Request) {
     result = await buildMattersExportWorkbook(params, {
       id: session.user.id,
       role: session.user.role,
-      rolePermissions: session.user.rolePermissions
+      rolePermissions: session.user.rolePermissions,
+      managerAuthorized: session.user.managerAuthorized
     });
   } catch (err) {
     console.error("[matters/export] 生成失败：", err);

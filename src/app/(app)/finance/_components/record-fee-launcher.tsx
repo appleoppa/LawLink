@@ -1,7 +1,8 @@
 "use client";
 
 /** 财务页「登记收付」：先选案件，再打开案件内同一张收付登记表（沿用 createFeeEntry 校验与权限） */
-import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState, useTransition, useRef} from "react";
 import { Loader2, Search } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { searchMattersForInvoice, getMatterFinance } from "@/server/finance/actions";
@@ -9,19 +10,23 @@ import { AddFeeEntrySheet } from "@/app/(app)/matters/[id]/_components/finance-f
 import { toast } from "sonner";
 
 export function RecordFeeLauncher({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+  const router=useRouter();
   const [q, setQ] = useState("");
   const [options, setOptions] = useState<{ id: string; internalCode: string; title: string }[]>([]);
   const [loading, startLoading] = useTransition();
   const [picked, setPicked] = useState<{ id: string; billings: { id: string; title: string }[] } | null>(null);
 
+  const searchSeqRef = useRef(0);
   useEffect(() => {
     if (!open) return;
+    const seq = ++searchSeqRef.current;
     const t = setTimeout(() => {
       startLoading(async () => {
         try {
-          setOptions(await searchMattersForInvoice(q || undefined));
+          const rows = await searchMattersForInvoice(q || undefined);
+          if (seq === searchSeqRef.current) setOptions(rows);
         } catch {
-          setOptions([]);
+          if (seq === searchSeqRef.current) setOptions([]);
         }
       });
     }, 250);
@@ -32,6 +37,7 @@ export function RecordFeeLauncher({ open, onOpenChange }: { open: boolean; onOpe
     try {
       const fin = await getMatterFinance(id);
       onOpenChange(false);
+      if(fin.ledgerReady){router.push(`/finance/reconciliation?matterId=${id}`);return;}
       setPicked({ id, billings: fin.billings.map((b) => ({ id: b.id, title: b.title })) });
     } catch (err) {
       toast.error("无法读取该案件财务信息", { description: err instanceof Error ? err.message : "" });

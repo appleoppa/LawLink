@@ -357,9 +357,9 @@ export function ReportsView({
 
         {/* 客户应收 */}
         <section className="ll-surface p-4">
-          <h3 className="mb-3 text-sm font-medium">客户应收 · 本期</h3>
+          <h3 className="mb-3 text-sm font-medium">{data.financeReady?"客户应收 · 当前余额":"客户应收 · 本期"}</h3>
           {data.byClientReceivable.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">本期无应收数据</p>
+            <p className="py-6 text-center text-sm text-muted-foreground">暂无应收数据</p>
           ) : (
             <div className="overflow-hidden rounded border border-border">
               <table className="w-full text-xs">
@@ -367,7 +367,7 @@ export function ReportsView({
                   <tr>
                     <th className="px-2 py-1.5 text-left font-normal">客户</th>
                     <th className="px-2 py-1.5 text-right font-normal">应收</th>
-                    <th className="px-2 py-1.5 text-right font-normal">已收</th>
+                    <th className="px-2 py-1.5 text-right font-normal">{data.financeReady?"已核销":"已收"}</th>
                     <th className="px-2 py-1.5 text-right font-normal">余额</th>
                   </tr>
                 </thead>

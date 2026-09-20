@@ -42,7 +42,6 @@ import {
 } from "@/server/yuandian/enterprise";
 import { cn } from "@/lib/utils";
 import { readFormPath } from "@/lib/form-path";
-import { decryptIdNumber } from "@/lib/clients/id-number-crypto";
 
 type Props = {
   open: boolean;
@@ -102,7 +101,8 @@ export function ClientSheet({ open, onOpenChange, editingClient }: Props) {
         name: editingClient.name,
         type: editingClient.type,
         idType: (editingClient as any).idType ?? (editingClient.type === "INDIVIDUAL" ? "ID_CARD" : "USCC"),
-        idNumber: decryptIdNumber(editingClient.idNumber),
+        // 列表/详情在服务端完成授权和解密，浏览器不能引用服务端密钥模块。
+        idNumber: editingClient.idNumber ?? "",
         address: editingClient.address ?? "",
         legalRep: (editingClient as any).legalRep ?? "",
         phone: editingClient.phone ?? "",

@@ -46,6 +46,10 @@ export function LoginForm() {
       router.replace(callbackUrl);
       router.refresh();
     } else {
+      if (res?.error !== "CredentialsSignin") {
+        setAuthError("登录服务暂时异常，请稍后重试或联系管理员；这不代表密码错误。");
+        return;
+      }
       // 凭据被拒时区分策略性拦截：被管理员要求开启双步验证但尚未绑定的账号
       // 在完成绑定前无法登录（authorize 恒拒）。仅在已失败后查询，避免账号探测。
       try {

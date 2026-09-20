@@ -75,7 +75,8 @@ export function ScheduleView({
     setAddOpen(true);
   }
 
-  useTopbarAction({ label: "新建任务", onClick: () => openAddDialog() }, []);
+  // 点击时现取「今天」：useTopbarAction 只在挂载时注册一次，闭包里的 today 跨天后是旧值
+  useTopbarAction({ label: "新建任务", onClick: () => openAddDialog(shTodayCivil()) }, []);
 
   return (
     <div className="mo-schedule">
@@ -481,7 +482,7 @@ function ScheduleItemDialog({
                 label="关联案件"
                 value={
                   <Link
-                    href={matterHref(item.matter)}
+                    href={item.href??matterHref(item.matter)}
                     className="font-medium text-primary underline-offset-4 hover:underline"
                   >
                     {item.matter.title}
@@ -513,7 +514,7 @@ function ScheduleItemDialog({
                 关闭
               </Button>
               <Button asChild>
-                <Link href={matterHref(item.matter)}>查看案件</Link>
+                <Link href={item.href??matterHref(item.matter)}>查看案件</Link>
               </Button>
             </DialogFooter>
           </>

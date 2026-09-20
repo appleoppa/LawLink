@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { renderCaseNoTemplate } from "@/lib/matters/firm-caseno";
+import { shParts } from "@/lib/ui/sh-time";
 import { saveFirmProfileAction } from "@/server/settings/firm-profile-actions";
 
 type Category = { key: string; label: string; abbr: string; word: string };
@@ -37,7 +38,8 @@ export function FirmProfileForm({ initial }: { initial: Initial }) {
   const [pending, startTransition] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const year = new Date().getFullYear();
+  // 上海日历年：本地时区在 12/31 或 1/1 边界会取错年份（预览与实际编号须一致）
+  const year = shParts(new Date()).y;
   const sample = initial.categories[0]; // 以第一个类别（民商诉讼）做示例
   const caseNoPreview = sample
     ? renderCaseNoTemplate(template, {

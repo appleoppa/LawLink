@@ -35,7 +35,7 @@ export function FinancePanel({
     .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime());
 
   const { stats } = finance;
-  const outstanding = Math.max(stats.receivable - stats.received, 0);
+  const outstanding = stats.outstanding;
 
   const cards: { label: string; value: number; tone: StatTone; className?: string }[] = [
     // 非紧凑 6 列：有分成卡时合同额占 2 列、无分成时占 3 列，保证整行填满不留空格

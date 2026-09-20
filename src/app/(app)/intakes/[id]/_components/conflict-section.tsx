@@ -77,6 +77,7 @@ type Props = {
   queries: ReturnType<typeof buildIntakeConflictQueries>;
   latestCheck: LatestCheck | null;
   canEditConclusion: boolean;
+  canRunCheck?: boolean;
 };
 
 const severityStyle: Record<ConflictSeverity, { color: string; bg: string; label: string }> = {
@@ -100,7 +101,8 @@ export function ConflictSection({
   intakeId,
   queries,
   latestCheck,
-  canEditConclusion
+  canEditConclusion,
+  canRunCheck=true
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [conclusionNote, setConclusionNote] = useState(latestCheck?.note ?? "");
@@ -165,7 +167,7 @@ export function ConflictSection({
         </div>
 
         <Button
-          onClick={handleRunCheck}
+          onClick={handleRunCheck} hidden={!canRunCheck}
           disabled={isPending}
           size="sm"
           variant={latestCheck ? "secondary" : "default"}
@@ -200,9 +202,9 @@ export function ConflictSection({
                 latestCheck.conclusion === "NEED_INFO" && "border-[var(--amber-line)] text-[var(--amber)]"
               )}
             >
-              {conflictConclusionLabel[latestCheck.conclusion]}
+              {latestCheck.note?.startsWith("系统自动标记：")?"未命中（系统自动提示）":conflictConclusionLabel[latestCheck.conclusion]}
             </Badge>
-            {latestCheck.decidedBy && (
+            {latestCheck.decidedBy && !latestCheck.note?.startsWith("系统自动标记：") && (
               <span className="ml-auto text-[11px] text-muted-foreground">
                 {latestCheck.decidedBy.name} ·{" "}
                 {latestCheck.decidedAt
@@ -261,7 +263,7 @@ export function ConflictSection({
             <div className="rounded-md border border-[#1A7F45]/30 bg-[#1A7F45]/10 p-3 text-sm">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-[#1A7F45]" />
-                <span className="text-foreground">未命中历史案件，系统已标记为可承接</span>
+                <span className="text-foreground">本次检索未命中，仍须结合实际主体关系核查</span>
               </div>
             </div>
           ) : (

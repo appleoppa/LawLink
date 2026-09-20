@@ -31,7 +31,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
   const session = await requireSession("clients.read");
   const canReadFinance = hasCustomPermission(session.user, "finance.read");
   const canWrite = hasCustomPermission(session.user, "clients.write");
-  const canMerge = canWrite && (isManager(session.user.role) || session.user.role === "CUSTOM");
+  const canMerge = canWrite && (isManager(session.user) || session.user.role === "CUSTOM");
   const [finance, insights] = await Promise.all([
     canReadFinance ? getClientFinanceSummary(id) : Promise.resolve(null),
     getClientInsights(id)
@@ -41,8 +41,15 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
   const activeCount = insights.matters.filter((m) => ACTIVE.has(m.status)).length;
   const idNumber = decryptIdNumber(client.idNumber);
   const visibleMatters = insights.matters.slice(0, 6);
-  const paidBase = finance ? (finance.receivable > 0 ? finance.receivable : finance.contractTotal) : 0;
-  const paidRate = finance && paidBase > 0 ? Math.min(100, Math.round((finance.received / paidBase) * 100)) : 0;
+  // 回款进度分子分母同口径：有应收时按「已核销/应收」（与案件详情 allocated/receivable 一致），
+  // 无应收时退回「累计实收/合同总额」——不再把含未核销的实收直接除以应收
+  const paidRate = finance
+    ? finance.receivable > 0
+      ? Math.min(100, Math.round((finance.allocated / finance.receivable) * 100))
+      : finance.contractTotal > 0
+        ? Math.min(100, Math.round((finance.received / finance.contractTotal) * 100))
+        : 0
+    : 0;
   const intakeHref = `/matters?tab=intake&new=1&clientId=${client.id}`;
 
   return (
@@ -85,7 +92,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap", alignItems: "center" }}>
-          {canWrite ? <ClientEditButton client={client} /> : null}
+          {canWrite ? <ClientEditButton client={{ ...client, idNumber: idNumber || null }} /> : null}
           <Link href={`/conflicts?name=${encodeURIComponent(client.name)}`} className="btn btn-secondary btn-sm">冲突预检</Link>
           {canMerge && insights.suspects.length === 0 ? <MergeBanner keepId={client.id} keepName={client.name} suspects={[]} canMerge={canMerge} /> : null}
           <div style={{ flex: 1 }} />
@@ -133,7 +140,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
                 <Users className="ic" strokeWidth={1.8} />
                 联系人 <span className="badge b-white" style={{ marginLeft: 2 }}>{client.contacts.length}</span>
               </div>
-              {canWrite && (isManager(session.user.role) || session.user.role === "CUSTOM") ? <AddContactButton clientId={client.id} /> : null}
+              {canWrite && (isManager(session.user) || session.user.role === "CUSTOM") ? <AddContactButton clientId={client.id} /> : null}
             </div>
             {client.contacts.length === 0 ? (
               <div className="empty mo-empty-compact"><div className="mo-empty-title">暂无联系人</div></div>

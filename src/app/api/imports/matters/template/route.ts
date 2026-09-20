@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isManager } from "@/lib/permissions";
 import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/lib/auth/options";
@@ -13,7 +14,7 @@ export async function GET() {
   if (!session?.user) {
     return NextResponse.json({ error: "未登录" }, { status: 401 });
   }
-  if (!isSystemAdmin(session.user) && session.user.role !== "PRINCIPAL_LAWYER") {
+  if (!isSystemAdmin(session.user) && !isManager(session.user)) {
     return NextResponse.json({ error: "无权访问" }, { status: 403 });
   }
 

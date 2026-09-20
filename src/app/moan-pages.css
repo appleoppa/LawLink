@@ -1230,9 +1230,10 @@
 .mo-dossier .dos-bill-div { padding: 5px 12px; background: #FAFBFB; border-top: 1px solid var(--bd-hair); font-size: 10.5px; font-weight: 650; letter-spacing: .06em; color: var(--t-faint); }
 
 
-/* 案件档案密度（2026-09-16 用户反馈页面偏空）：当事人两列、合同与材料两列、自定义字段并入基本信息 */
+/* 案件档案密度（2026-09-16 用户反馈页面偏空）：合同与材料两列、自定义字段并入基本信息。
+   当事人两列已随 2026-09-19 重排作废——我方/对方各占整行，第三人（dos-party-list）
+   保持单列全宽（基础样式 line 831），单个第三人不允许只占半行。 */
 @media (min-width: 1280px) {
-  .mo-dossier .dos-party-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .mo-dossier .dos-two-col { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; }
 }
 .mo-dossier .dos-custom-edit { display: flex; justify-content: flex-end; margin-top: -6px; }

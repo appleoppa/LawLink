@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { storage } from "@/lib/storage";
 import { decryptBuffer } from "@/lib/storage/crypto";
 import { verifyCheckoutToken } from "@/lib/desktop/checkout-token";
+import { resolveRoleUser } from "@/lib/roles/service";
+import { canReadDocument } from "@/lib/approvals/documents";
 import { audit } from "@/server/audit";
 
 /**
@@ -18,15 +20,24 @@ export async function GET(req: NextRequest) {
 
   const user = await prisma.user.findUnique({
     where: { id: payload.userId },
-    select: { active: true }
+    select: { active: true, role: true }
   });
   if (!user?.active) return NextResponse.json({ error: "账号已停用" }, { status: 403 });
+  // 令牌有效期内角色可能被停用（停用即暂停业务访问），取件前复核，口径与日历令牌路由一致
+  if (!(await resolveRoleUser(payload.userId, user.role)).enabled) {
+    return NextResponse.json({ error: "账号所在角色已停用" }, { status: 403 });
+  }
 
   const doc = await prisma.document.findFirst({
     where: { id: payload.docId, deletedAt: null },
-    select: { id: true, name: true, path: true, encrypted: true, iv: true, authTag: true, mimeType: true, isLatest: true, version: true }
+    select: { id: true, name: true, path: true, encrypted: true, iv: true, authTag: true, mimeType: true, isLatest: true, version: true, matterId: true, intakeId: true, uploadedById: true }
   });
   if (!doc) return NextResponse.json({ error: "材料不存在" }, { status: 404 });
+
+  // 令牌 15 分钟窗口内可能被移出案件团队：取件时重跑材料读取权（口径与签发口一致）
+  if (!(await canReadDocument(payload.userId, doc))) {
+    return NextResponse.json({ error: "无权访问" }, { status: 403 });
+  }
 
   let buf: Buffer;
   try {

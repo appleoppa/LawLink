@@ -39,6 +39,7 @@ import {
   updateUserRole,
   updateUserSystemRole,
   setUserActive,
+  setUserManagerAuthorized,
   unlockUserLogin,
   resetUserPassword,
   forceEnforceTotp
@@ -54,7 +55,7 @@ import { formatDate, formatDateTime } from "@/lib/utils";
 
 type CustomRoleOption = { id: string; name: string; active: boolean };
 const assignment = (value: string) => ROLES.includes(value as UserRole) ? { role: value as UserRole, roleDefinitionId: null } : { role: "CUSTOM" as const, roleDefinitionId: value };
-const ROLES: UserRole[] = ["PRINCIPAL_LAWYER", "LAWYER", "ASSISTANT", "FINANCE"];
+const ROLES: UserRole[] = ["PRINCIPAL_LAWYER", "INDEPENDENT_LAWYER", "LAWYER", "ASSISTANT", "FINANCE"];
 
 const createSchema = z.object({
   name: z.string().min(1).max(40),
@@ -71,11 +72,13 @@ type UserRow = {
   email: string;
   role: UserRole;
   systemRole: SystemRole;
+  managerAuthorized?: boolean;
   roleDefinitionId?: string | null;
   roleName?: string;
   roleActive?: boolean;
   phone: string | null;
   active: boolean;
+  openResponsibilityCount?: number;
   lastLoginAt: Date | null;
   lockedUntil?: Date | null;
   failedLoginAttempts?: number;
@@ -235,6 +238,28 @@ function UserRow({
     });
   }
 
+  // 业务管理权与岗位解耦（2026-09-19）：按人授予，即时生效，不撤销在线会话
+  async function handleManagerAuthorizationChange() {
+    const next = !user.managerAuthorized;
+    const action = next ? "授予业务管理权" : "撤销业务管理权";
+    if (!(await confirmDialog({
+      title: `${action}：${user.name}？`,
+      description: next
+        ? "等同合伙人的业务权限：全所案件、收案、客户与财务可见，可进入报表、导入、公告与联系人审核等管理功能。写入与撤销均实时生效并记录审计。"
+        : "撤销后该账号即时失去业务管理权限；其岗位本身的权限不受影响。",
+      confirmText: "确认",
+      danger: !next
+    }))) return;
+    startTransition(async () => {
+      try {
+        await setUserManagerAuthorized({ id: user.id, managerAuthorized: next, expectedManagerAuthorized: user.managerAuthorized === true });
+        toast.success(next ? "已授予业务管理权" : "已撤销业务管理权");
+      } catch (err) {
+        toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
+      }
+    });
+  }
+
   // v1.x P1 收尾 c: 管理员强制账号开启双步验证（TOTP）
   async function handleToggleTotpEnforce() {
     const next = !user.totpEnforced;
@@ -294,9 +319,17 @@ function UserRow({
         )}
       </td>
       <td className="px-5 py-3">
-        <Badge variant={user.systemRole === "SUPER_ADMIN" ? "secondary" : "outline"} className="text-[10px]">
-          {user.systemRole === "SUPER_ADMIN" ? "系统超级管理员" : "无"}
-        </Badge>
+        <div className="flex flex-col items-start gap-1">
+          <Badge variant={user.systemRole === "SUPER_ADMIN" ? "secondary" : "outline"} className="text-[10px]">
+            {user.systemRole === "SUPER_ADMIN" ? "系统超级管理员" : "无"}
+          </Badge>
+          <Badge
+            variant={user.managerAuthorized || user.role === "PRINCIPAL_LAWYER" ? "secondary" : "outline"}
+            className={`text-[10px] ${user.managerAuthorized && user.role !== "PRINCIPAL_LAWYER" ? "text-[#1A7F45]" : "text-muted-foreground"}`}
+          >
+            {user.role === "PRINCIPAL_LAWYER" ? "岗位自带" : user.managerAuthorized ? "业务管理权" : "无业务管理权"}
+          </Badge>
+        </div>
       </td>
       <td className="whitespace-nowrap px-5 py-3 font-mono text-xs tabular text-muted-foreground">
         主办 {user._count.ownedMatters} · 参与 {user._count.memberships}
@@ -313,6 +346,7 @@ function UserRow({
         >
           {user.active ? "已激活" : "已禁用"}
         </Badge>
+        {(!user.active||!user.roleActive)&&Boolean(user.openResponsibilityCount)&&<p className="mt-1 text-xs text-amber-700">{user.openResponsibilityCount} 项责任待交接</p>}
       </td>
       <td className="px-5 py-3">
         <div className="flex flex-col items-start gap-1">
@@ -353,6 +387,11 @@ function UserRow({
             <Smartphone className="h-3.5 w-3.5" />
             {user.totpEnforced ? "解除强制" : "强制双步"}
           </Button>
+          {user.role !== "PRINCIPAL_LAWYER" && (
+            <Button variant="ghost" size="sm" onClick={handleManagerAuthorizationChange} disabled={isPending} className="h-7 gap-1 text-xs">
+              {user.managerAuthorized ? "撤管理权" : "授管理权"}
+            </Button>
+          )}
           {!isSelf && (
             <>
               <Button variant="ghost" size="sm" onClick={handleSystemRoleChange} disabled={isPending} className="h-7 gap-1 text-xs">

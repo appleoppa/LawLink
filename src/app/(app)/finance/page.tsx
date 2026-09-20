@@ -7,16 +7,17 @@ import {
   getPersonalRevenue
 } from "@/server/finance/actions";
 import { listInvoiceRequests, getInvoiceStats } from "@/server/invoices/actions";
+import { getInvoiceReconciliation } from "@/server/finance/invoice-reconciliation";
 import { getReceivablesAging } from "@/server/finance/aging";
 import { hasCustomPermission } from "@/lib/roles/catalog";
-import { canConfirmReceipt } from "@/lib/permissions";
+import { canConfirmReceipt, isManager } from "@/lib/permissions";
 import { FinanceViewV4 } from "./_components/finance-view-v4";
 
 export default async function FinancePage() {
   const session = await getSession();
   const userId = session!.user.id;
 
-  const [entries, pending, commissions, kpis, monthly, personal, invoiceRequests, invoiceStats, aging] = await Promise.all([
+  const [entries, pending, commissions, kpis, monthly, personal, invoiceRequests, invoiceStats, aging, invoiceReconciliation] = await Promise.all([
     listAllFeeEntries({ limit: 500 }),
     listPendingReceipts(),
     listAllFeeEntries({ type: "COMMISSION", limit: 500 }),
@@ -25,10 +26,11 @@ export default async function FinancePage() {
     getPersonalRevenue(userId),
     listInvoiceRequests(),
     getInvoiceStats(),
-    getReceivablesAging()
+    getReceivablesAging(),
+    getInvoiceReconciliation()
   ]);
 
-  const { monthlyReceived, monthlyReceivable, lastMonthReceived, yearlyReceived, yearlyReceivable, monthConfirmedCount, monthPendingCount, monthPendingAmount } = kpis;
+  const { monthlyReceived, monthlyReceivable, lastMonthReceived, yearlyReceived, yearlyReceivable, monthConfirmedCount, monthPendingCount, monthPendingAmount, writeOffRate } = kpis;
 
   return (
     <FinanceViewV4
@@ -49,10 +51,12 @@ export default async function FinancePage() {
       }))}
       monthly={monthly.slice(-6)}
       aging={aging}
+      invoiceReconciliation={invoiceReconciliation}
       canExport={hasCustomPermission(session!.user, "reports.export")}
       canWrite={hasCustomPermission(session!.user, "finance.write")}
       canConfirmReceipt={canConfirmReceipt(session!.user)}
       stats={{
+        ledgerReady:kpis.ledgerReady,
         monthlyReceived,
         monthlyReceivable,
         yearlyReceived,
@@ -64,12 +68,13 @@ export default async function FinancePage() {
         pendingInvoiceCount: invoiceStats.pendingCount,
         monthConfirmedCount,
         monthPendingCount,
-        monthPendingAmount
+        monthPendingAmount,
+        writeOffRate
       }}
       invoiceRequests={invoiceRequests}
       canApproveInvoice={
         session!.user.role === "FINANCE" ||
-        session!.user.role === "PRINCIPAL_LAWYER"
+        isManager(session!.user)
       }
     />
   );

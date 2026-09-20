@@ -63,21 +63,23 @@ export function ContactsView({
   externalContacts,
   currentUserId,
   currentUserRole,
-  rolePermissions
+  rolePermissions,
+  managerAuthorized
 }: {
   colleagues: ColleagueItem[];
   externalContacts: ExternalContactItem[];
   currentUserId: string;
   currentUserRole: string;
   rolePermissions?: RoleGrant[];
+  managerAuthorized?: boolean;
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ExternalContactItem | null>(null);
   const [filter, setFilter] = useState<ExternalContactCategory | "ALL">("ALL");
   const [search, setSearch] = useState("");
   const router = useRouter();
-  const roleUser = { role: currentUserRole, rolePermissions };
-  const canReviewContacts = customOrLegacy(roleUser, "contacts.review", currentUserRole === "PRINCIPAL_LAWYER");
+  const roleUser = { role: currentUserRole, rolePermissions, managerAuthorized };
+  const canReviewContacts = customOrLegacy(roleUser, "contacts.review", currentUserRole === "PRINCIPAL_LAWYER" || managerAuthorized === true);
   const pendingCount = externalContacts.filter((c) => c.status === "PENDING_REVIEW").length;
 
   const filteredExternal = externalContacts.filter((c) => {
@@ -207,7 +209,7 @@ export function ContactsView({
           <ul className="space-y-1.5">
             {filteredExternal.map((c) => {
               const canEdit =
-                hasCustomPermission(roleUser, "contacts.manage") && (currentUserRole === "PRINCIPAL_LAWYER" ||
+                hasCustomPermission(roleUser, "contacts.manage") && (currentUserRole === "PRINCIPAL_LAWYER" || managerAuthorized === true ||
                 scopeFor(roleUser, "contacts.manage") === "ALL" || c.createdBy.id === currentUserId);
               return (
                 <li

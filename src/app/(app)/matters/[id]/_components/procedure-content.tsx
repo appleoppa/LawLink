@@ -64,7 +64,7 @@ import { parseExpressLabel } from "@/server/ai/parse-express";
 import { parseSummons } from "@/server/ai/parse-summons";
 import type { ExpressItem } from "./info-extras";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
-import { shDayKey, shMonthDayTime } from "@/lib/ui/sh-time";
+import { shDayKey, shMonthDayTime, shTime } from "@/lib/ui/sh-time";
 
 type ProcedureWithChildren = MatterProcedure & {
   deadlines: Deadline[];
@@ -416,7 +416,8 @@ export function AdjustDeadlineDialog({ deadline, onClose }: { deadline: { id: st
   const [pending, startTransition] = useTransition();
 
   function submit() {
-    const dueAt = new Date(`${date}T00:00:00`);
+    // 落库瞬间统一上海午夜（P1-6）：不再用浏览器本地午夜，UTC 容器/异时区浏览器下口径一致
+    const dueAt = new Date(`${date}T00:00:00+08:00`);
     if (!date || Number.isNaN(dueAt.getTime())) return setError("请选择调整后的到期日");
     if (!reason.trim()) return setError("请填写调整原因（将记入审计）");
     setError(null);
@@ -895,14 +896,13 @@ const CN_NUM: Record<number, string> = {
   10: "十"
 };
 
+/** 输入框值是上海墙钟；默认「现在的上海日期/时刻」，解析统一按 +08:00 固定偏移 */
 function toDateInput(date = new Date()) {
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 10);
+  return shDayKey(date);
 }
 
 function toDateTimeInput(date = new Date()) {
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 16);
+  return `${shDayKey(date)}T${shTime(date)}`;
 }
 
 export function ImportantItemDialog({
@@ -1065,7 +1065,7 @@ export function ImportantItemDialog({
       toast.error("请填写开庭主题");
       return;
     }
-    const startsAt = new Date(hearingStartsAt);
+    const startsAt = new Date(`${hearingStartsAt}:00+08:00`);
     if (Number.isNaN(startsAt.getTime())) {
       toast.error("请填写有效开庭时间");
       return;
@@ -1103,7 +1103,7 @@ export function ImportantItemDialog({
       toast.error("请填写期限名称");
       return;
     }
-    const dueAt = new Date(`${deadlineDueAt}T00:00:00`);
+    const dueAt = new Date(`${deadlineDueAt}T00:00+08:00`);
     if (Number.isNaN(dueAt.getTime())) {
       toast.error("请填写有效到期日");
       return;

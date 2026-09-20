@@ -129,6 +129,9 @@ export type FinancePayload = {
     user: { id: string; name: string; role: string; roleName?: string; isTeammate?: boolean; active?: boolean };
   }[];
   stats: {
+    outstanding: number;
+    allocated: number;
+    clientFunds: number;
     contractAmount: number;
     receivable: number;
     received: number;
@@ -176,7 +179,7 @@ export function MatterDetailTabs({
   preservationCases,
   evidenceItems,
   notes,
-  reviewNode,
+  reviewNode, responsibilityNode, closureNode, conflictNode,
   capabilities = { aiReview: false, caseSearch: false }
 }: {
   matter: MatterPayload;
@@ -216,6 +219,9 @@ export function MatterDetailTabs({
   notes: WorkflowNote[];
   /** AI 审查总览（服务端渲染节点），归入「信息总览」 */
   reviewNode?: React.ReactNode;
+  responsibilityNode?: React.ReactNode;
+  closureNode?: React.ReactNode;
+  conflictNode?: React.ReactNode;
   /** 外部能力是否已配置：AI 文书审查 / 元典类案检索（未配置不显示入口） */
   capabilities?: { aiReview: boolean; caseSearch: boolean };
 }) {
@@ -430,6 +436,7 @@ export function MatterDetailTabs({
               serviceStatus={matter.serviceStatus}
               canArchive={canLeadThisMatter && allowed("archive.submit")}
               canChangeStatus={Boolean(currentUserRole && canLeadThisMatter)}
+              canExportBundle={currentUserRole !== "FINANCE" && allowed("matters.export") && allowed("matters.read") && allowed("finance.read") && allowed("documents.download")}
               extraItems={moreItems}
             />
           </div>
@@ -510,6 +517,7 @@ export function MatterDetailTabs({
 
       {/* ③ 页签 */}
       <ProcedureWorkflowPanel
+        responsibilityNode={responsibilityNode}
         apiRef={workflowApi}
         matter={{ id: matter.id, internalCode: matter.internalCode, title: matter.title, category: matter.category }}
         procedure={currentProcedure}
@@ -526,7 +534,8 @@ export function MatterDetailTabs({
         onViewChange={setView}
         viewCounts={{ seal: sealContracts.filter((sc) => sc.status === "PENDING").length }}
         waiting={waiting}
-        archiveNode={
+        archiveNode={<>
+          {conflictNode}
           <MatterArchive
             matter={matter}
             currentProcedure={currentProcedure}
@@ -544,7 +553,8 @@ export function MatterDetailTabs({
             canManageRelated={canAssociateThisMatter}
             onEdit={() => setMatterEditorOpen(true)}
           />
-        }
+          {closureNode}
+        </>}
         archiveRailTop={<TeamRailCard matter={matter} canManage={canOwnThisMatter} onManage={() => setMatterEditorOpen(true)} />}
         expresses={expresses}
         onAddLedger={canAssociateThisMatter && currentProcedure ? (type) => setLedgerAdd(type) : undefined}
@@ -552,9 +562,11 @@ export function MatterDetailTabs({
         onCaseSearch={capabilities.caseSearch && allowed("matters.write") ? () => setCaseSearchOpen(true) : undefined}
         financeNode={
           <div className="dos-main">
+            {allowed("finance.read") ? <Link href={`/finance/reconciliation?matterId=${matter.id}`} className="btn btn-secondary btn-sm w-fit">应收与收款分配</Link> : null}
             {allowed("finance.read") ? <FinanceHero stats={finance.stats} /> : null}
             {allowed("finance.read") ? (
               <BillingsCard
+                contractTotal={finance.stats.contractAmount}
                 matterId={matter.id}
                 billings={finance.billings}
                 canManage={canAssociateThisMatter && !isArchived}
@@ -727,9 +739,9 @@ const PROC_STATUS_LABEL: Record<string, string> = { PENDING: "未开始", IN_PRO
  * 合同与补充协议：一案一签（2026-09-16 用户确认取消独立委托模块）。
  * 中途变更收费、增加代理程序＝新增一条补充协议，原合同保留，合同额自动合计。
  */
-function BillingsCard({ matterId, billings, canManage }: { matterId: string; billings: FinancePayload["billings"]; canManage: boolean }) {
+function BillingsCard({ matterId, billings, canManage, contractTotal }: { matterId: string; billings: FinancePayload["billings"]; canManage: boolean; contractTotal: number }) {
   const [addOpen, setAddOpen] = useState(false);
-  const total = billings.reduce((acc, b) => acc + Number(b.contractAmount), 0);
+  const total = contractTotal;
   return (
     <section className="card">
       <div className="panel-head">
@@ -760,7 +772,7 @@ function BillingsCard({ matterId, billings, canManage }: { matterId: string; bil
             </div>
           ))}
           <div className="panel-foot flex items-center justify-between">
-            <span className="t-xs t-mute">合同额合计</span>
+            <span className="t-xs t-mute">已签署律师费合同额</span>
             <span className="font-mono text-[14px] font-semibold">¥{total.toLocaleString("zh-CN")}</span>
           </div>
         </>
@@ -772,9 +784,9 @@ function BillingsCard({ matterId, billings, canManage }: { matterId: string; bil
 
 /** 委托与财务：收费概览（大号数字 + 回款进度） */
 function FinanceHero({ stats }: { stats: FinancePayload["stats"] }) {
-  const outstanding = Math.max(0, stats.receivable - stats.received);
-  const base = stats.contractAmount > 0 ? stats.contractAmount : stats.receivable;
-  const received = base > 0 ? Math.min(100, Math.round((stats.received / base) * 100)) : 0;
+  const outstanding = stats.outstanding;
+  const base = stats.receivable;
+  const received = base > 0 ? Math.min(100, Math.round((stats.allocated / base) * 100)) : 0;
   const pending = base > 0 ? Math.min(100 - received, Math.round((outstanding / base) * 100)) : 0;
   const money = (n: number) => (n > 0 ? `¥${n.toLocaleString("zh-CN")}` : "—");
   const cells: [string, number, string][] = [
@@ -804,11 +816,11 @@ function FinanceHero({ stats }: { stats: FinancePayload["stats"] }) {
           <div className="legend">
             <span><b className="dot got" />回款 {received}%</span>
             <span><b className="dot due" />待收 {pending}%</span>
-            <span className="t-mute">按合同额计算</span>
+            <span className="t-mute">按有效应收核销计算</span>
           </div>
         </div>
       ) : (
-        <p className="t-xs t-mute" style={{ margin: "10px 0 0" }}>未登记合同金额，暂不计算回款进度</p>
+        <p className="t-xs t-mute" style={{ margin: "10px 0 0" }}>尚无有效应收，暂不计算核销进度</p>
       )}
     </section>
   );

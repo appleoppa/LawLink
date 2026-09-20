@@ -50,12 +50,15 @@ export function LifecycleActions({
   serviceStatus,
   canArchive,
   canChangeStatus = true,
+  canExportBundle = false,
   extraItems = []
 }: {
   matterId: string;
   status: MatterStatus;
   serviceStatus?: "SERVICE_ACTIVE" | "SERVICE_COMPLETED" | null;
   canArchive: boolean;
+  /** M-3c（D 批）：在办卷宗打包导出资格（与案件工作簿导出同口径，页面服务端判定） */
+  canExportBundle?: boolean;
   /** 无主办/协办权限时只显示 extraItems（查看类入口） */
   canChangeStatus?: boolean;
   /** 墨案 04 页头「···」菜单：案件级入口（编辑信息、新增程序、财务明细等） */
@@ -133,6 +136,13 @@ export function LifecycleActions({
     </DropdownMenuItem>
   ));
 
+  // M-3c（D 批）：在办卷宗打包导出（归档案件走归档包，见下方分支）
+  const bundleLink = !isArchived && canExportBundle ? (
+    <a href={`/api/matters/${matterId}/export-bundle`} className="btn btn-secondary btn-sm" title="导出在办卷宗 ZIP（manifest + 材料 + 记录与财务摘要）">
+      <Download />
+      导出卷宗
+    </a>
+  ) : null;
   if (isArchived) {
     return (
       <>
@@ -160,6 +170,7 @@ export function LifecycleActions({
 
   return (
     <>
+      {bundleLink}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button type="button" disabled={isPending} className="btn btn-secondary btn-sm btn-icon" aria-label="更多操作">
