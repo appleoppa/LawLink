@@ -98,7 +98,6 @@ enum IntakeStatus {
   CONVERTED
   DECLINED // 最终拒绝（无法补正）
   NEEDS_REVISION // 待补正（可由律师补充材料后重新提交审批）
-  VOID // 作废（2026-09-20 C 批 P2-6）：草稿态弃置的终态出边——先处置紧急事项，不物理删除
 }
 
 enum LitigationStanding {
@@ -364,11 +363,9 @@ enum FeeEntryType {
   COMMISSION
 }
 
-/// 实收确认状态（2026-09-19 用户确认：实收一律两步，无人例外）：任何人登记的
-/// 实收都先记 PENDING——不生成实收 Payment、不派生分成、不计入已实收与统计；
-/// 仅持 finance.confirm（ALL）者确认后转 CONFIRMED 生效。非 RECEIVED 类型由
-/// 代码显式写 CONFIRMED（派生台账行，非实收）。默认值 PENDING 是防线：
-/// 漏写 confirmState 的插入不得静默变成已确认。
+/// 实收确认状态（2026-09-18 用户确认）：律师登记的实收先记 PENDING，
+/// 不生成实收 Payment、不派生分成、不计入已实收；财务确认后才转 CONFIRMED 生效。
+/// 财务/主任/管理员自行登记时直接 CONFIRMED。非 RECEIVED 类型恒为 CONFIRMED。
 enum FeeConfirmState {
   PENDING
   CONFIRMED
@@ -515,9 +512,6 @@ model User {
   sealStamps                SealRequest[]                 @relation("SealStamper")
   // v0.9: 短信收件人 / 快递创建人
   receivedSmsMessages       SmsMessage[]                  @relation("SmsReceiver")
-  downloadedSmsInboundFiles SmsInboundFile[]              @relation("SmsInboundFileDownloader")
-  createdSmsSuggestions     SmsSuggestion[]                @relation("SmsSuggestionCreator")
-  decidedSmsSuggestions     SmsSuggestion[]                @relation("SmsSuggestionDecider")
   // v0.44: 保全三层重构（v0.48 移除旧单表模型）
   ownedPreservationCases    PreservationCase[]            @relation("PreservationCaseOwner")
   propertyRenewals          PreservationPropertyRenewal[] @relation("PropertyRenewalPerformer")
@@ -833,7 +827,6 @@ model Matter {
   sealRequests      SealRequest[]
   // v0.9: 法院短信 + 财产保全 + 快递追踪（保全 v0.48 起仅三层模型）
   smsMessages       SmsMessage[]
-  smsInboundFiles   SmsInboundFile[]
   preservationCases PreservationCase[]
   expressTrackings  ExpressTracking[]
   // v0.21: AI 文书审查历史
@@ -1359,7 +1352,6 @@ model Document {
 
   // v0.21: 反向 - AI 审查历史
   reviewRecords ReviewRecord[]
-  smsInboundFiles    SmsInboundFile[]
 
   @@index([matterId, category])
   @@index([intakeId])
@@ -1473,8 +1465,8 @@ model Receivable {
   revision Int @default(0)
   id            String           @id @default(cuid())
   matterId      String
-  matter        Matter           @relation(fields: [matterId], references: [id], onDelete: Restrict)
-  billingId     String? // 来源合同（数据库层有 FK ON DELETE RESTRICT，Prisma 层未建模，见迁移 20260919000002）
+  matter        Matter           @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  billingId     String? // 来源合同（Billing.id，纯引用）
   title         String
   amount        Decimal          @db.Decimal(14, 2)
   settledAmount Decimal          @default(0) @db.Decimal(14, 2) // 已核销合计（Allocation 汇总冗余）
@@ -1498,7 +1490,7 @@ model Payment {
   revision Int @default(0)
   id              String        @id @default(cuid())
   matterId        String
-  matter          Matter        @relation(fields: [matterId], references: [id], onDelete: Restrict)
+  matter          Matter        @relation(fields: [matterId], references: [id], onDelete: Cascade)
   feeEntryId      String @unique // 唯一的已确认 RECEIVED 来源流水
   amount          Decimal       @db.Decimal(14, 2)
   allocatedAmount Decimal       @default(0) @db.Decimal(14, 2)
@@ -1653,7 +1645,7 @@ model Billing {
   engagementId   String?
   engagement     Engagement?   @relation(fields: [engagementId], references: [id])
   matterId       String
-  matter         Matter        @relation(fields: [matterId], references: [id], onDelete: Restrict)
+  matter         Matter        @relation(fields: [matterId], references: [id], onDelete: Cascade)
   title          String
   contractAmount Decimal       @db.Decimal(14, 2)
   schedule       String?
@@ -1678,7 +1670,7 @@ model FeeEntry {
   revision Int @default(0)
   id           String       @id @default(cuid())
   matterId     String
-  matter       Matter       @relation(fields: [matterId], references: [id], onDelete: Restrict)
+  matter       Matter       @relation(fields: [matterId], references: [id], onDelete: Cascade)
   billingId    String?
   billing      Billing?     @relation(fields: [billingId], references: [id])
   type         FeeEntryType
@@ -1700,7 +1692,7 @@ model FeeEntry {
   recordedById String
   recordedBy   User   @relation("FeeRecorder", fields: [recordedById], references: [id])
 
-  confirmState  FeeConfirmState @default(PENDING)
+  confirmState  FeeConfirmState @default(CONFIRMED)
   confirmedById String?
   confirmedBy   User?           @relation("FeeConfirmer", fields: [confirmedById], references: [id])
   confirmedAt   DateTime?
@@ -1997,8 +1989,6 @@ enum SmsMatchSource {
 model SmsMessage {
   id           String   @id @default(cuid())
   rawText      String // 原始短信全文
-  // B1（2026-09-20）：粘贴幂等——重复粘贴/双击按（收件人, 原文哈希）去重，服务端与 DB 约束双保险
-  rawTextHash  String   @default("")
   receivedAt   DateTime @default(now())
   receivedById String
   receivedBy   User     @relation("SmsReceiver", fields: [receivedById], references: [id], onDelete: Restrict)
@@ -2022,15 +2012,6 @@ model SmsMessage {
   // parsedJson.attachmentResults 冗余出来供 SQL 过滤（ROADMAP §四.2）
   needsManualAction Boolean   @default(false)
 
-  // B1：来件处理状态机（docs/SMS-B1-DESIGN-20260920.md §2.3）。processed 保留为
-  // 「人工处置标记」语义；processingState 表达取件/匹配/整理的流水线位置。
-  processingState SmsProcessingState @default(READY_FOR_REVIEW)
-  processingNote  String?
-
-  // B1：本次来件的文件清单（含自动取件与人工补传）
-  inboundFiles SmsInboundFile[]
-  suggestions  SmsSuggestion[]
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -2038,128 +2019,6 @@ model SmsMessage {
   @@index([receivedById, needsManualAction])
   @@index([matchedMatterId])
   @@index([smsType, receivedAt])
-  // 唯一约束为部分唯一索引（仅约束已回填哈希的行），见迁移 20260920000002；
-  @@index([receivedById, rawTextHash])
-}
-
-// B1：来件文件——私有暂存区载体（docs/SMS-B1-DESIGN-20260920.md §2.2）。
-// 文件先入暂存、确认后转正：documentId 为空表示尚未成为正式案件材料
-// （未匹配案件的私有来件）；已匹配案件下载即转正并回填映射。
-// 磁盘文件不物理删除；错误归属经有权人纠正只改映射并留审计。
-model SmsInboundFile {
-  id             String        @id @default(cuid())
-  smsId          String
-  sms            SmsMessage    @relation(fields: [smsId], references: [id], onDelete: Restrict)
-  matterId       String?
-  matter         Matter?       @relation(fields: [matterId], references: [id], onDelete: SetNull)
-  documentId     String?
-  document       Document?     @relation(fields: [documentId], references: [id], onDelete: SetNull)
-  sourceUrl      String
-  storageKey     String // 私有存储键（storage/sms-inbound/…，下载经鉴权，不暴露直链）
-  originalName   String // 平台原始文件名（保留）
-  displayName    String? // 规范化显示名（B2 AI 命名后回填）
-  mimeType       String
-  size           Int
-  sha256         String
-  downloadedAt   DateTime      @default(now()) // 与粘贴时间 receivedAt 分离
-  downloadedById String
-  downloadedBy   User          @relation("SmsInboundFileDownloader", fields: [downloadedById], references: [id], onDelete: Restrict)
-  uploadSource   SmsFileSource @default(LINK_FETCH)
-  state          SmsFileState  @default(PENDING_REVIEW)
-  // B2：阅读分析
-  analysisState  SmsAnalysisState @default(PENDING)
-  analysisError  String?
-  analyzedAt     DateTime?
-  docType        String? // AI 判断的文书类型（受理通知/传票/举证通知…）
-  extractedPages Int? // 文本/OCR 总页数（截断与失败页可见）
-  suggestions    SmsSuggestion[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([smsId, sha256]) // 同一来件内同内容不重复存；重复送达事件（不同 smsId）各自成行
-  @@index([matterId, state])
-  @@index([downloadedById, state])
-}
-
-enum SmsProcessingState {
-  PROCESSING // 后台取件/解析进行中
-  NEEDS_MANUAL_FETCH // 需人工接续（登录/验证码/暂不支持平台）
-  NEEDS_MATCH // 已取件、未匹配案件（私有来件区）
-  PARTIAL // 部分文件失败（显示 N/M，可重试或补传）
-  READY_FOR_REVIEW // 已取全、待人工处理/B3 律师确认
-  ORGANIZED // 已整理（文件有明确处置、建议已确认/拒绝）
-  NO_ACTION_NEEDED // 无需处理（明确标记，与「未处理」区分）
-}
-
-enum SmsFileState {
-  PENDING_REVIEW // 待确认（私有区/待 B3）
-  FILED // 已转正式案件材料
-  FAILED // 取件失败（保留原因，可重试）
-  SUPERSEDED // 被补传/换开替代（不删，历史可溯）
-}
-
-enum SmsFileSource {
-  LINK_FETCH
-  MANUAL_UPLOAD
-}
-
-// B2（2026-09-20）：来件文件的阅读分析状态——「已下载」「已阅读（有文本）」不是同一状态；
-// NEEDS_OCR/FAILED 降级可见，不显示为分析成功。
-enum SmsAnalysisState {
-  PENDING
-  ANALYZING
-  ANALYZED
-  NEEDS_OCR // 无文本层且 OCR 不可用（未配置/类型不支持），降级可见
-  FAILED
-}
-
-// B2/B3：整理建议——系统自动准备、律师确认后生效（docs/SYSTEM-AUDIT-REMEDIATION-V3 §5.2：
-// 每项建议最少记录目标、原值、建议值、来源定位、决定人与时间；拒绝过的建议不重复弹回）
-model SmsSuggestion {
-  id            String   @id @default(cuid())
-  smsId         String
-  sms           SmsMessage @relation(fields: [smsId], references: [id], onDelete: Restrict)
-  fileId        String?
-  file          SmsInboundFile? @relation(fields: [fileId], references: [id], onDelete: SetNull)
-  kind          SmsSuggestionKind
-  /// FIELD_CHANGE 的目标对象类型（如 MatterProcedure）与 id
-  targetType    String?
-  targetId      String?
-  /// FIELD_CHANGE 的字段名（caseNumber/handlingAgency/acceptedAt…）
-  fieldKey      String?
-  currentValue  String?
-  suggestedValue String?
-  /// 来源定位：文件内页码（1 起）或原文片段
-  sourcePage    Int?
-  sourceExcerpt String?
-  /// HEARING/DEADLINE/MATTER_MATCH 的结构化载荷（标题、日期、责任建议等）
-  payload       Json?
-  status        SmsSuggestionStatus @default(PENDING)
-  decidedById   String?
-  decidedBy     User?   @relation("SmsSuggestionDecider", fields: [decidedById], references: [id], onDelete: SetNull)
-  decidedAt     DateTime?
-  createdById   String
-  createdBy     User    @relation("SmsSuggestionCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@index([smsId, status])
-  @@index([fileId])
-}
-
-enum SmsSuggestionKind {
-  FIELD_CHANGE // 档案字段修正（原值 → 建议值）
-  HEARING // 登记开庭
-  DEADLINE // 建立期限/缴费等事项
-  MATTER_MATCH // 来件归属案件（私有区 → 匹配）
-  DOC_TYPE // 文书分类与显示名
-}
-
-enum SmsSuggestionStatus {
-  PENDING
-  ACCEPTED
-  REJECTED
 }
 
 // ============================================================
