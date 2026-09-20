@@ -5,7 +5,7 @@ import { hasCustomPermission, type RoleGrant } from "@/lib/roles/catalog";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import type { ClientType, Prisma } from "@prisma/client";
-import { Archive, ChevronLeft, CircleDollarSign, Clock3, FileSignature, Gavel, Pencil, Plus, Scale, Stamp, Upload, X } from "lucide-react";
+import { Archive, ChevronLeft, Clock3, FileSignature, Gavel, Pencil, Plus, Upload, X } from "lucide-react";
 import { CaseSearchPanel } from "./case-search-panel";
 import { DocumentReviewDialog } from "./document-review-dialog";
 import { DocActionsContext } from "./doc-actions-context";
@@ -327,13 +327,10 @@ export function MatterDetailTabs({
   const restricted = Boolean((matter as { teamAccessRestricted?: boolean }).teamAccessRestricted);
   const procLabel = (p: ProcedureItem) => p.customLabel ?? procedureTypeLabel[p.type] ?? p.type;
 
+  // 页头「···」菜单只留页面级编辑入口；页签切换（财务/用印）、类案检索、安排开庭与新增程序
+  // 均在各自常驻位置有入口，不在此重复（2026-09-20 用户确认收敛）
   const moreItems = [
-    ...(canOpenUnifiedEditor ? [{ key: "edit", label: "编辑信息与团队", icon: Pencil, onSelect: () => setMatterEditorOpen(true) }] : []),
-    ...(canAssociateThisMatter && !isArchived ? [{ key: "proc", label: "新增程序", icon: Plus, onSelect: () => setAddProcOpen(true) }] : []),
-    ...(allowed("finance.read") ? [{ key: "fin", label: "财务明细与开票", icon: CircleDollarSign, onSelect: () => setView("money") }] : []),
-    { key: "seal", label: "用印审批", icon: Stamp, onSelect: () => setView("seal") },
-    ...(capabilities.caseSearch && allowed("matters.write") ? [{ key: "cases", label: "类案检索（元典）", icon: Scale, onSelect: () => setCaseSearchOpen(true) }] : []),
-    ...(canWriteRecords && currentProcedure ? [{ key: "hearing", label: "安排开庭", icon: Gavel, onSelect: () => setHearingOpen(true) }] : [])
+    ...(canOpenUnifiedEditor ? [{ key: "edit", label: "编辑信息与团队", icon: Pencil, onSelect: () => setMatterEditorOpen(true) }] : [])
   ];
 
   const archiveBadge = matter.status === "ARCHIVED"
@@ -433,7 +430,6 @@ export function MatterDetailTabs({
             <LifecycleActions
               matterId={matter.id}
               status={matter.status}
-              serviceStatus={matter.serviceStatus}
               canArchive={canLeadThisMatter && allowed("archive.submit")}
               canChangeStatus={Boolean(currentUserRole && canLeadThisMatter)}
               canExportBundle={currentUserRole !== "FINANCE" && allowed("matters.export") && allowed("matters.read") && allowed("finance.read") && allowed("documents.download")}
@@ -546,6 +542,8 @@ export function MatterDetailTabs({
               .map((d: { id: string; name: string; createdAt: Date; mimeType: string | null }) => ({ id: d.id, name: d.name, createdAt: d.createdAt, mimeType: d.mimeType }))}
             canReadFinance={allowed("finance.read")}
             onOpenFinance={() => setView("money")}
+            serviceStatus={matter.serviceStatus}
+            canEditService={canLeadThisMatter && !isArchived}
             customFieldDefs={customFieldDefs}
             customValues={customValues}
             canEdit={canOpenUnifiedEditor}
