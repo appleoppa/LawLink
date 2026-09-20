@@ -10,7 +10,7 @@ import { refreshScheduleReminderAfterSave } from "@/server/reminders/schedule";
 import { audit } from "@/server/audit";
 import { createNotification } from "@/server/notifications/create";
 import { assertMatterWritable } from "@/lib/archive/guard";
-import { assertCanAccessMatter, assertCanAssociateMatter, isManager } from "@/lib/permissions";
+import { assertCanAccessMatter, assertCanAssociateMatter, assertCanHandleMatter, isManager } from "@/lib/permissions";
 import { parseSms, splitSmsBatch, toDate, type ParsedSms } from "@/lib/sms-parser";
 import { enrichWithAi } from "@/lib/sms-parser-ai";
 import { downloadSmsAttachments } from "./attachments";
@@ -585,7 +585,7 @@ export async function generateHearingFromSms(input: z.infer<typeof smsGenerateHe
     select: { id: true, matterId: true }
   });
   if (!proc) throw new Error("程序不存在");
-  await assertCanAccessMatter(session.user.id, session.user.role, proc.matterId, session.user.rolePermissions);
+  await assertCanHandleMatter(session.user, proc.matterId);
   await assertMatterWritable(proc.matterId);
 
   const hearing = await roleMutation(session.user, "matters.write", async roleDb => roleDb.hearing.create({
@@ -638,7 +638,7 @@ export async function generateDeadlineFromSms(input: z.infer<typeof smsGenerateD
     select: { id: true, matterId: true }
   });
   if (!proc) throw new Error("程序不存在");
-  await assertCanAccessMatter(session.user.id, session.user.role, proc.matterId, session.user.rolePermissions);
+  await assertCanHandleMatter(session.user, proc.matterId);
   await assertMatterWritable(proc.matterId);
 
   const deadline = await roleMutation(session.user, "matters.write", async roleDb => roleDb.deadline.create({

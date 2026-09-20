@@ -9,7 +9,7 @@ import { roleMutation } from "@/lib/roles/service";
  */
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
-import { assertCanAccessMatter } from "@/lib/permissions";
+import { assertCanHandleMatter } from "@/lib/permissions";
 import { storage } from "@/lib/storage";
 import { sha256 } from "@/lib/storage/crypto";
 import { audit } from "@/server/audit";
@@ -66,7 +66,7 @@ export async function saveCaseToMatter(input: SaveCaseInput): Promise<{
   documentName: string;
 }> {
   const session = await requireSession("matters.write");
-  await assertCanAccessMatter(session.user.id, session.user.role, input.matterId, session.user.rolePermissions);
+  await assertCanHandleMatter(session.user, input.matterId);
 
   const matter = await prisma.matter.findUnique({
     where: { id: input.matterId, deletedAt: null },
@@ -178,7 +178,7 @@ export async function saveVectorCaseToMatter(input: SaveVectorCaseInput): Promis
   documentName: string;
 }> {
   const session = await requireSession("matters.write");
-  await assertCanAccessMatter(session.user.id, session.user.role, input.matterId, session.user.rolePermissions);
+  await assertCanHandleMatter(session.user, input.matterId);
 
   const matter = await prisma.matter.findUnique({
     where: { id: input.matterId, deletedAt: null },

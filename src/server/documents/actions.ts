@@ -16,7 +16,7 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import { assertDocumentWritable } from "@/lib/archive/guard";
-import { matterVisibilityFilter, matterAssociationFilter, assertCanAccessMatter, assertCanAssociateMatter, assertCanHandleMatter, assertCanLeadMatter } from "@/lib/permissions";
+import { matterVisibilityFilter, matterAssociationFilter, assertCanHandleMatter, assertCanLeadMatter } from "@/lib/permissions";
 import { storage } from "@/lib/storage";
 import { validateUploadedFile } from "@/lib/storage/file-validator";
 import { encryptBuffer, sha256 } from "@/lib/storage/crypto";
@@ -97,13 +97,9 @@ export async function uploadDocument(formData: FormData) {
       select: { id: true, status: true }
     });
     if (!matter) throw new Error("案件不存在");
-    // 上传属案件写入：合伙人沿用全所可见口径，其余岗位（含 managerAuthorized）须本案经办关联，
+    // 上传属案件写入，统一走经办断言：合伙人全所、其余（含 managerAuthorized）须本案经办，
     // 管理权只放大「可见」不放大写入（AGENTS 业务管理权决议）。
-    if (session.user.role === "PRINCIPAL_LAWYER") {
-      await assertCanAccessMatter(session.user.id, session.user.role, matterId, session.user.rolePermissions);
-    } else {
-      await assertCanAssociateMatter(session.user.id, matterId);
-    }
+    await assertCanHandleMatter(session.user, matterId);
 
     if (folderId) {
       const folder = await prisma.documentFolder.findUnique({
@@ -371,7 +367,7 @@ export async function submitDocumentForReview(id: string) {
   const doc = await prisma.document.findUnique({ where: { id, deletedAt: null } });
   if (!doc) throw new Error("材料不存在");
   if (doc.matterId) {
-    await assertCanAccessMatter(session.user.id, session.user.role, doc.matterId, session.user.rolePermissions);
+    await assertCanHandleMatter(session.user, doc.matterId);
     await assertDocumentWritable(doc.matterId, { kind: "modify" });
   }
   if (doc.uploadedById !== session.user.id) throw new Error("仅上传人可提交此材料审核");
