@@ -9,7 +9,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { storage } from "@/lib/storage";
-import { aiChat } from "@/lib/ai/client";
+import { aiChat, AiNotConfiguredError } from "@/lib/ai/client";
 import { extractDocumentTextLayer, NoTextLayerError, UnsupportedTextExtraction } from "@/lib/documents/text-extraction";
 import { recognizeText, OcrNotConfiguredError } from "@/server/ocr/provider";
 import type { SmsSuggestionKind } from "@prisma/client";
@@ -130,7 +130,8 @@ export async function analyzeInboundFile(fileId: string): Promise<{ state: strin
     return { state: "ANALYZED", suggestionCount: created };
   } catch (err) {
     const message = err instanceof Error ? err.message : "分析失败";
-    const state = err instanceof OcrNotConfiguredError ? "NEEDS_OCR" : "FAILED";
+    // AI 未配置 / OCR 未配置同属能力不可用：降级 NEEDS_OCR 可见，不算失败
+    const state = err instanceof OcrNotConfiguredError || err instanceof AiNotConfiguredError ? "NEEDS_OCR" : "FAILED";
     await prisma.smsInboundFile.update({ where: { id: fileId }, data: { analysisState: state, analysisError: message } });
     return { state, suggestionCount: 0 };
   }
