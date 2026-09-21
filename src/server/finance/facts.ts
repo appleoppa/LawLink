@@ -32,7 +32,10 @@ export async function readFinanceFacts(db:Prisma.TransactionClient,where:Prisma.
 }
 export function getFinanceFacts(where:Prisma.MatterWhereInput) {return prisma.$transaction(db=>readFinanceFacts(db,where),{isolationLevel:"RepeatableRead"});}
 export type FinanceFacts=NonNullable<Awaited<ReturnType<typeof readFinanceFacts>>>;
-export function periodReceipts(facts:FinanceFacts,start:Date,end?:Date) {return [...facts.payments.map(p=>({...p,amount:p.originalAmount})),...facts.refunds.map(p=>({...p,amount:p.amount.negated()}))].filter(p=>p.moneyKind==='LAWYER_FEE'&&p.occurredAt>=start&&(!end||p.occurredAt<end)).sort((a,b)=>a.occurredAt.getTime()-b.occurredAt.getTime());}
+export function periodReceipts(facts:Pick<FinanceFacts,"payments"|"refunds">,start:Date,end?:Date) {return [...facts.payments.map(p=>({...p,amount:p.originalAmount})),...facts.refunds.map(p=>({...p,amount:p.amount.negated()}))].filter(p=>p.moneyKind==='LAWYER_FEE'&&p.occurredAt>=start&&(!end||p.occurredAt<end)).sort((a,b)=>a.occurredAt.getTime()-b.occurredAt.getTime());}
+/** 期间实收汇总（KPI 口径集中处）：净实收＝正向收款−退款冲正；「已确认 N 笔」只数正向收款，
+ *  退款不计数——净额为负时界面须另行注明退款构成，否则「¥-10,000 · 已确认 1 笔」不可解（2026-09-21）。 */
+export function periodReceiptSummary(rows:{amount:Prisma.Decimal}[]) {return {netReceived:sumAmounts(rows),confirmedCount:rows.filter(p=>p.amount.gt(0)).length,refundTotal:sumAmounts(rows.filter(p=>p.amount.lt(0)).map(p=>({amount:p.amount.negated()})))};}
 export const sumAmounts=(rows:{amount:Prisma.Decimal}[])=>rows.reduce((s,r)=>s.plus(r.amount),new Prisma.Decimal(0)).toNumber();
 export function shMonthStart(now=new Date(),offset=0) {const d=new Date(now.getTime()+8*3600000);return new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+offset,1)-8*3600000);}
 export function shYearStart(now=new Date()) {const d=new Date(now.getTime()+8*3600000);return new Date(Date.UTC(d.getUTCFullYear(),0,1)-8*3600000);}

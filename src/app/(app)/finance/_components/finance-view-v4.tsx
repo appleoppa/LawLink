@@ -71,6 +71,8 @@ type Props = {
     monthConfirmedCount: number;
     monthPendingCount: number;
     monthPendingAmount: number;
+    /** 本月确认的退款/冲正更正合计（正值）：净实收为负时卡片注明构成，避免「¥-10,000 · 已确认 1 笔」不可解 */
+    monthRefundAmount?: number;
     /** D 批：本期新增应收的当前核销率（%，分母为零时为 null——不显示为 0%） */
     writeOffRate?: number | null;
   };
@@ -187,7 +189,7 @@ export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests,
           label={stats.ledgerReady?"本月律师费实收":"本月实收"}
           value={yuan(stats.monthlyReceived)}
           trend={monthGrowth === null ? null : { tone: monthGrowth >= 0 ? "up" : "down", text: `${monthGrowth >= 0 ? "↑" : "↓"} ${Math.abs(monthGrowth)}%` }}
-          sub={`已确认 ${stats.monthConfirmedCount} 笔${stats.monthPendingCount ? ` · 待确认 ${stats.monthPendingCount} 笔 ${yuan(stats.monthPendingAmount)}（未计入）` : ""}`}
+          sub={`已确认 ${stats.monthConfirmedCount} 笔${stats.monthRefundAmount ? ` · 含退款冲正 -${yuan(stats.monthRefundAmount)}` : ""}${stats.monthPendingCount ? ` · 待确认 ${stats.monthPendingCount} 笔 ${yuan(stats.monthPendingAmount)}（未计入）` : ""}`}
         />
         <MetricCard
           label="应收余额"

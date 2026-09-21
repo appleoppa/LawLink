@@ -188,6 +188,11 @@ v1 报告两条头牌 P1 经独立核对证伪/收窄后出 v2 修订版，本�
 - **分级次序**：EXACT ＞ NORMALIZED_EQUAL（归一相同）＞ CONTAINS（原文双向包含，含反向——查询全称 vs 存储简称，与旧正向 LOW 口径对称）＞ NORMALIZED_CONTAINS（归一后双向包含）。原文包含优先于归一包含：防止「嘉吉贸易 vs 嘉吉贸易有限公司甲分公司」类母/分司关系被归一升档。归一命中（NORMALIZED_*）在 pickSeverity 基础上**降一级**（BLOCKING→HIGH）并标注「请人工核对」。
 - 测试：`conflicts-name-normalize.test.ts` 10 例（归一变换恒等性/分级/探针 + 四分支集成：反向子串 LOW、反向归一 HIGH 标注、原文相似 LOW 不变、客户档案与在办收案归一命中）。终态 728 测试全绿。
 
+### P2-4 + P2-1 批次（2026-09-21 实施）
+
+- **P2-4 诉讼时效/举证期限预置规则**（律师执业风险最高的两类期限补齐，seed 已入库共 16 条）：① `CIVIL_LIMITATION_GENERAL` 三年普通时效（起算＝知道或应当知道权利受损及义务人之日）与 `CIVIL_LIMITATION_MAX` 二十年最长保护期（起算＝权利受到损害之日，特殊情况可申请延长），《民法典》第一百八十八条——经司法部公布民法典全文复核 + 第六轮体检北大法宝核验；② `EVIDENCE_DEADLINE_FIRST`（一审普通程序 ≥15 日）/`EVIDENCE_DEADLINE_SECOND`（二审新证据 ≥10 日），《民诉法解释》第九十九条——举证期限由法院指定因案而异，法律只定下限，规则明示「按法定下限推算默认值，以法院通知书为准」。applicableProcedures 空数组＝任意程序适用（时效不绑定程序阶段）。**未做（如实声明）**：繁简/劳动争议一年仲裁时效（另需核验《劳动争议调解仲裁法》27 条）；收案登记时的时效起算点提示（随 F-2 类产品项）。
+- **P2-1 服务端按规则重算 dueAt**：`deadlineCreateSchema` 增可选 `sourceTriggerDate`（仅随 sourceRuleId 发送，表单 applyRule 时写入）；`addDeadline` 服务端以上海日历口径（civilFromKey 正午载体 + computeDeadlineDate + civilKey，与生产客户端同一 civil 算法，时区无关）按规则重算并与提交值比对——**不一致不拒绝**（表单明示可人工调整），在 basis 追加「系统按规则重算为 X，与提交日期不一致，请核对」，确认律师核对时可见；无 sourceTriggerDate 或人工录入不触发。测试：`deadline-rules.test.ts` 改写为 civil 载体断言（任何 TZ 下直断上海日历结果，消除两端同源自洽盲区）+ `deadline-recompute.test.ts` 新增 5 例（一致/不一致标注/UTC 深夜跨日安全/旧客户端不触发/人工 CONFIRMED）。终态 734 测试全绿。
+
 ### 第四轮体检与法院短信专项（2026-09-20 确认）
 
 **A 批已实施（2026-09-20）**：12 项代码修复全部落地（权限收敛 `assertCanHandleMatter`、AI 逐件外发资格、程序门禁事务化+零写入回归测试、法人章三条件分立、旧开票入口停用、扣回上限 recoverable、退款免债按核销对应、合同三承接点复核门禁、日期出口归一+存量审计无迁移、责任失效可见最小版、日历搜索发票列表权限）；迁移 20260920000001 触发器修订版经叶森批准已执行（备份在 `backups/hardening-migration-20260920/`，主库 FK RESTRICT/默认 PENDING/AuditLog 触发器拒删三项验证通过，663 测试回归）。存量日期瞬间审计脚本 `scripts/audit-date-instants.ts`：三种瞬间出口归一后均正确，无需迁移。

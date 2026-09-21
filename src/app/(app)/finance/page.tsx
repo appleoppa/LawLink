@@ -30,7 +30,7 @@ export default async function FinancePage() {
     getInvoiceReconciliation()
   ]);
 
-  const { monthlyReceived, monthlyReceivable, lastMonthReceived, yearlyReceived, yearlyReceivable, monthConfirmedCount, monthPendingCount, monthPendingAmount, writeOffRate } = kpis;
+  const { monthlyReceived, monthlyReceivable, lastMonthReceived, yearlyReceived, yearlyReceivable, monthConfirmedCount, monthPendingCount, monthPendingAmount, monthRefundAmount, writeOffRate } = kpis;
 
   return (
     <FinanceViewV4
@@ -69,6 +69,7 @@ export default async function FinancePage() {
         monthConfirmedCount,
         monthPendingCount,
         monthPendingAmount,
+        monthRefundAmount,
         writeOffRate
       }}
       invoiceRequests={invoiceRequests}

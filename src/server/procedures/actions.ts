@@ -34,6 +34,8 @@ import {
 } from "./schemas";
 import { revalidateMatter } from "@/server/matters/route";
 import { recordTimelineEvent } from "@/server/timeline/record";
+import { shDayKey, civilFromKey, civilKey } from "@/lib/ui/sh-time";
+import { computeDeadlineDate } from "@/lib/deadline-rules";
 
 function emptyToNull<T extends Record<string, unknown>>(obj: T): T {
   const out: Record<string, unknown> = {};
@@ -444,13 +446,35 @@ export async function addDeadline(input: DeadlineCreateInput) {
   await assertCanHandleMatter(session.user, procedureForGuard.matterId);
   await assertMatterWritable(procedureForGuard.matterId);
 
+  // 第六轮体检 P2-1：规则生成的期限此前日期值系统自己没算过也没验过。服务端按
+  // sourceTriggerDate + 规则重算（上海日历口径，civilFromKey 本地正午载体与
+  // 生产客户端同一套 civil 算法，时区无关），与提交值不一致不拒绝（允许人工调整
+  // ——表单明示「可再人工调整」），但在 basis 追加提示，确认律师核对时可见。
+  let basis = data.basis || null;
+  if (data.sourceRuleId && data.sourceTriggerDate) {
+    const rule = await prisma.deadlineRule.findUnique({
+      where: { id: data.sourceRuleId },
+      select: { name: true, periodValue: true, periodUnit: true }
+    });
+    if (rule) {
+      const computedKey = civilKey(computeDeadlineDate(
+        civilFromKey(shDayKey(data.sourceTriggerDate)), rule.periodValue, rule.periodUnit
+      ));
+      const submittedKey = shDayKey(data.dueAt);
+      if (computedKey !== submittedKey) {
+        const note = `；系统按规则「${rule.name}」重算为 ${computedKey}，与提交日期 ${submittedKey} 不一致，请核对`;
+        basis = `${basis ?? ""}${note}`.slice(0, 300);
+      }
+    }
+  }
+
   const created = await roleMutation(session.user, "schedule.write", async roleDb => roleDb.deadline.create({
     data: {
       procedureId: data.procedureId,
       title: data.title,
       category: data.category,
       dueAt: data.dueAt,
-      basis: data.basis || null,
+      basis,
       remindDays: data.remindDays,
       // v1.x P0-8: 带来源规则的期限为"待确认"（律师核对起算事实后确认）；
       // 人工录入的期限由录入者负责，直接视为已确认。

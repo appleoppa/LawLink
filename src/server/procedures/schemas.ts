@@ -80,7 +80,13 @@ export const deadlineCreateSchema = z.object({
   // v1.x P0-8: 期限来源（规则触发时由调用方带入；人工录入可空 = 已确认）
   sourceRuleId: z.string().optional().or(z.literal("")),
   startFact: z.string().max(200).optional().or(z.literal("")),
-  sourceDocumentId: z.string().optional().or(z.literal(""))
+  sourceDocumentId: z.string().optional().or(z.literal("")),
+  // 第六轮体检 P2-1：规则起算日（上海日历日），服务端据此按规则重算并与 dueAt 比对，
+  // 不一致不拒绝（允许人工调整）但在 basis 标注提示核对；仅随 sourceRuleId 一起发送
+  sourceTriggerDate: z.preprocess(
+    v => (v === "" || v == null ? undefined : v),
+    z.coerce.date().optional()
+  )
 });
 
 export const hearingCreateSchema = z.object({

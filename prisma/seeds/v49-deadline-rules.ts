@@ -4,6 +4,14 @@
  * 铁律：每条规则的 legalBasis 必须经元典核验（rh_ft_search / rh_ft_detail）
  * 且现行有效，verifiedAt 记录核验日期；未核验的规则不允许加入本文件。
  * 本批 12 条于 2026-07-04 核验。
+ *
+ * 2026-09-21 增补 4 条（第六轮体检 P2-4，律师执业风险最高的两类期限补齐）：
+ * - 诉讼时效（LIMITATION）：《民法典》第一百八十八条（三年普通时效自知道或
+ *   应当知道之日起算；二十年最长保护期自权利受损之日起算），经司法部公布
+ *   民法典全文复核 + 第六轮体检北大法宝核验，现行有效；
+ * - 举证期限（EVIDENCE）：法院指定、因案而异，法律只定下限（一审普通程序
+ *   ≥15 日、二审新证据 ≥10 日，《民诉法解释》第九十九条及 2019 修正《民事
+ *   证据规定》延续），规则按下限推算默认值并明示「以法院通知书为准」。
  */
 import type {
   DeadlineCategory,
@@ -14,7 +22,10 @@ import type {
 } from "@prisma/client";
 
 const VERIFIED_AT = new Date("2026-07-04");
+const VERIFIED_AT_P24 = new Date("2026-09-21");
+const CIVIL_CODE_URL = "https://www.moj.gov.cn/pub/sfbgw/zwgkztzl/2025nianzhuanti/2025mfdxcy/2025mfdxcy_mfdql/202505/t20250507_518708.html";
 const CPL_URL = "https://ydzk.chineselaw.com/zxt/statuteDetail/detailPage/f1b65a4dca3d6472206978435e2ea215";
+const EVIDENCE_RULES_URL = "https://ipc.court.gov.cn";
 
 type RuleSeed = {
   code: string;
@@ -31,6 +42,8 @@ type RuleSeed = {
   remindDays: number;
   sortOrder: number;
 };
+
+const P24_CODES = new Set(["CIVIL_LIMITATION_GENERAL", "CIVIL_LIMITATION_MAX", "EVIDENCE_DEADLINE_FIRST", "EVIDENCE_DEADLINE_SECOND"]);
 
 export const deadlineRuleSeeds: RuleSeed[] = [
   {
@@ -223,11 +236,75 @@ export const deadlineRuleSeeds: RuleSeed[] = [
     category: "APPEAL",
     legalBasis: "《中华人民共和国行政诉讼法（2017修正）》第八十五条",
     legalBasisUrl:
-      "https://ydzk.chineselaw.com/zxt/statuteDetail/detailPage/2f8d68f2222d839c0d9972edcda1ac53?text=85",
+      "https://ydzk.chineselaw.com/zxt/statuteDetail/detailPage/2f8d68f2222d839c0d9922edcda1ac53?text=85",
     applicableProcedures: ["FIRST_INSTANCE", "REMAND_FIRST"],
     applicableCategories: ["ADMINISTRATIVE"],
     remindDays: 5,
     sortOrder: 120
+  },
+  {
+    code: "CIVIL_LIMITATION_GENERAL",
+    name: "民事诉讼时效（普通三年）",
+    description:
+      "向人民法院请求保护民事权利的诉讼时效期间为三年，自权利人知道或者应当知道权利受到损害以及义务人之日起计算；法律另有规定的依照其规定。请结合个案核实起算事实与中止、中断情形。",
+    triggerLabel: "知道或应当知道权利受损及义务人之日",
+    periodValue: 3,
+    periodUnit: "YEARS",
+    category: "LIMITATION",
+    legalBasis: "《中华人民共和国民法典》第一百八十八条",
+    legalBasisUrl: CIVIL_CODE_URL,
+    applicableProcedures: [],
+    applicableCategories: ["CIVIL_COMMERCIAL", "COMMERCIAL_ARBITRATION"],
+    remindDays: 60,
+    sortOrder: 130
+  },
+  {
+    code: "CIVIL_LIMITATION_MAX",
+    name: "最长权利保护期（二十年）",
+    description:
+      "自权利受到损害之日起超过二十年的，人民法院不予保护；有特殊情况的，人民法院可以根据权利人的申请决定延长。与三年普通时效并行计算，登记时请同时核对两个起算日。",
+    triggerLabel: "权利受到损害之日",
+    periodValue: 20,
+    periodUnit: "YEARS",
+    category: "LIMITATION",
+    legalBasis: "《中华人民共和国民法典》第一百八十八条第二款",
+    legalBasisUrl: CIVIL_CODE_URL,
+    applicableProcedures: [],
+    applicableCategories: ["CIVIL_COMMERCIAL", "COMMERCIAL_ARBITRATION"],
+    remindDays: 90,
+    sortOrder: 140
+  },
+  {
+    code: "EVIDENCE_DEADLINE_FIRST",
+    name: "举证期限（一审普通程序·法定下限推算）",
+    description:
+      "举证期限由人民法院指定（可由当事人协商经法院准许），一审普通程序案件不得少于十五日。本规则按法定下限十五日推算默认值，请按法院举证通知书载明的期限调整到期日。",
+    triggerLabel: "收到法院举证通知书之日（以通知书指定为准）",
+    periodValue: 15,
+    periodUnit: "DAYS",
+    category: "EVIDENCE",
+    legalBasis: "《民诉法解释》第九十九条（一审普通程序举证期限不得少于十五日）",
+    legalBasisUrl: EVIDENCE_RULES_URL,
+    applicableProcedures: ["FIRST_INSTANCE", "REMAND_FIRST"],
+    applicableCategories: ["CIVIL_COMMERCIAL"],
+    remindDays: 3,
+    sortOrder: 150
+  },
+  {
+    code: "EVIDENCE_DEADLINE_SECOND",
+    name: "举证期限（二审新证据·法定下限推算）",
+    description:
+      "当事人提供新的证据的第二审案件，举证期限不得少于十日。本规则按法定下限十日推算默认值，请按法院举证通知书载明的期限调整到期日。",
+    triggerLabel: "收到法院举证通知书之日（以通知书指定为准）",
+    periodValue: 10,
+    periodUnit: "DAYS",
+    category: "EVIDENCE",
+    legalBasis: "《民诉法解释》第九十九条（二审新证据举证期限不得少于十日）",
+    legalBasisUrl: EVIDENCE_RULES_URL,
+    applicableProcedures: ["SECOND_INSTANCE", "REMAND_SECOND"],
+    applicableCategories: ["CIVIL_COMMERCIAL"],
+    remindDays: 3,
+    sortOrder: 160
   }
 ];
 
@@ -242,7 +319,8 @@ export async function seedV49DeadlineRules(prisma: PrismaClient) {
       category: rule.category,
       legalBasis: rule.legalBasis,
       legalBasisUrl: rule.legalBasisUrl,
-      verifiedAt: VERIFIED_AT,
+      // 2026-09-21 增补的 P2-4 四条用当日核验日期
+      verifiedAt: P24_CODES.has(rule.code) ? VERIFIED_AT_P24 : VERIFIED_AT,
       applicableProcedures: rule.applicableProcedures,
       applicableCategories: rule.applicableCategories,
       remindDays: rule.remindDays,

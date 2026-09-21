@@ -423,6 +423,9 @@ export function AddDeadlineDialog({
     setValue("category", selectedRule.category, { shouldDirty: true });
     // v1.x P0-8: 规则生成的期限带来源——提交后以"待确认"落库，律师核对起算事实后确认
     setValue("sourceRuleId", selectedRule.id, { shouldDirty: true });
+    // 第六轮体检 P2-1：携带规则起算日，服务端据此按规则重算比对（不一致在 basis 标注）；
+    // 与 dueAt 同款：date 字符串经 as-cast 赋值，提交时 zod coerce.date() 转回
+    setValue("sourceTriggerDate", triggerDate as unknown as Date, { shouldDirty: true });
     setValue("startFact", `${selectedRule.triggerLabel}（${formatLocalDate(trigger)}）`, {
       shouldDirty: true
     });

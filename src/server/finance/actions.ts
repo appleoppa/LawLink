@@ -4,7 +4,7 @@ import { financeLedgerReady } from "./ledger-storage";
 import type { MoneyKind } from "@/lib/finance/ledger-labels";
 import { confirmReceiptTx,rejectReceiptTx,deleteBillingDraftTx } from "./ledger-registration";
 import { commissionPositions } from "./ledger-corrections";
-import { getFinanceFacts, periodReceipts, sumAmounts, shMonthStart, shYearStart, financeTrend } from "./facts";
+import { getFinanceFacts, periodReceipts, periodReceiptSummary, sumAmounts, shMonthStart, shYearStart, financeTrend } from "./facts";
 import { shParts } from "@/lib/ui/sh-time";
 import { roleMutation, checkRoleMutation } from "@/lib/roles/service";
 import { scopeFor } from "@/lib/roles/catalog";
@@ -810,7 +810,9 @@ export async function getFinanceKpis() {
     const monthArTotal=sumAmounts(monthArs.map(r=>({amount:r.effectiveAmount})));
     const monthArSettled=sumAmounts(monthArs.map(r=>({amount:r.settledAmount})));
     const writeOffRate=monthArTotal>0?Math.round(monthArSettled/monthArTotal*1000)/10:null;
-    return {ledgerReady:true,monthlyReceived:sumAmounts(periodReceipts(facts,month)),monthlyReceivable:ar(month),lastMonthReceived:sumAmounts(periodReceipts(facts,last,month)),yearlyReceived:sumAmounts(periodReceipts(facts,year)),yearlyReceivable:ar(year),monthConfirmedCount:periodReceipts(facts,month).filter(p=>p.amount.gt(0)).length,monthPendingCount:pending.length,monthPendingAmount:sumAmounts(pending),writeOffRate,confirmedReceiptInvoiceNos:[] as string[]};
+    const monthRows=periodReceipts(facts,month);
+    const monthSummary=periodReceiptSummary(monthRows);
+    return {ledgerReady:true,monthlyReceived:monthSummary.netReceived,monthlyReceivable:ar(month),lastMonthReceived:sumAmounts(periodReceipts(facts,last,month)),yearlyReceived:sumAmounts(periodReceipts(facts,year)),yearlyReceivable:ar(year),monthConfirmedCount:monthSummary.confirmedCount,monthRefundAmount:monthSummary.refundTotal,monthPendingCount:pending.length,monthPendingAmount:sumAmounts(pending),writeOffRate,confirmedReceiptInvoiceNos:[] as string[]};
   }
   const now = new Date();
   // 上海月界/年界：避免 UTC 部署把月初 0-8 点归错月（与 facts 口径一致）
@@ -863,6 +865,7 @@ export async function getFinanceKpis() {
     monthConfirmedCount,
     monthPendingCount,
     monthPendingAmount,
+    monthRefundAmount:0,
     confirmedReceiptInvoiceNos: invoiceRows.map((r) => r.invoiceNo as string)
   };
 }
