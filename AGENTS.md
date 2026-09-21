@@ -163,7 +163,8 @@ v1 报告两条头牌 P1 经独立核对证伪/收窄后出 v2 修订版，本�
 - **P2-5 测试修复**：bugfix-regressions 补 `user.findMany` mock（「待确认实收通知」分支此前全程走 catch、断言在通知从未执行的情况下通过）；「通知发送失败不影响登记」用例改 mock 真实路径的 `createNotification` 并断言 `FEE_ENTRY_NOTIFY_FAILED` 审计（此前 mock 的 `notifyRoleApprovers` 根本不在此路径上）。
 - **P3 批**：auth 登录后状态更新改 await + 失败写 `LOGIN_POST_UPDATE_FAILED` 审计（此前 fire-and-forget 空吞，失败计数不清零可致误锁）；dashboard 逾期应收与 finance aging 回退路径改 Decimal 口径（此前 Number() 浮点累加）；`.env.example` 补 `AUDIT_RETENTION_DAYS` 与 `DISABLE_CRON`。
 - **新增测试**：`preservation-reminder.test.ts` 4 例（停用回退/全失效升级+当日去重/criticalOnly 档位补扫/EXPIRED+升级链）。终态：693 测试全绿（+4）、lint/typecheck/build 干净、`docker compose config` 通过、本地 dev 站点可达。
-- **未做（如实声明）**：完整镜像实构建并跑一次真实备份（已做容器级实测：`node:22-alpine` 内 `apk add bash postgresql16-client` 后 bash 5.3.9 与 pg_dump 16.15 均可执行、主版本对齐 postgres:16；Dockerfile COPY 清单静态核验；部署前仍应实构建走一遍 02:30 备份）；P2-1 服务端按规则重算 dueAt、P2-2 冲突名称归一化、P2-3 邮件摘要分页、P2-4 诉讼时效/举证期限预置规则、F-1 送达台账（结构性，含 Schema 走审批）、P3-3 SSRF TOCTOU、F-2~F-6 产品层建议——均按 v2 §九 进 backlog 排期。
+- **部署链实测（事后补验，同日）**：实构建 `lawlink-app` 镜像（`docker compose --profile full build` 成功）+ 容器内以 nextjs 用户对运行中 db 真跑 `scripts/backup.sh`——bash/pg_dump 16.15 连库导出 739KB dump、manifest 的 `storage_path` 为 `/app/storage`（`APP_STORAGE_DIR` 变量修复生效）、`/app/backups` 目录可写、产物属主 nextjs；`--profile dev` 的 mailpit 服务启动 healthy（Web UI 200）。本机 1025 端口被系统进程占用，实测经临时端口覆盖完成，不影响 compose 服务定义；实测后 mailpit 已停删，lawlink-db 与 dev 服务未受影响。
+- **未做（如实声明）**：02:30 cron 自动备份的持续观察与真实生产部署；P2-1 服务端按规则重算 dueAt、P2-2 冲突名称归一化、P2-3 邮件摘要分页、P2-4 诉讼时效/举证期限预置规则、F-1 送达台账（结构性，含 Schema 走审批）、P3-3 SSRF TOCTOU、F-2~F-6 产品层建议——均按 v2 §九 进 backlog 排期。
 
 ### 第四轮体检与法院短信专项（2026-09-20 确认）
 
