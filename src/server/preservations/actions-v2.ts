@@ -23,6 +23,7 @@ import {
   deleteSchema,
 } from "./schemas-v2";
 import { revalidateMatter } from "@/server/matters/route";
+import { voidPendingPreservation } from "@/server/reminders/delivery";
 
 // ━━━━ Read ━━━━
 
@@ -181,7 +182,18 @@ export async function updatePreservationCase(input: z.infer<typeof caseUpdateSch
   if (note !== undefined) patch.note = note?.trim() || null;
   if (guaranteeType !== undefined) patch.guaranteeType = guaranteeType ?? null;
 
-  await roleMutation(session.user, "matters.write", async roleDb => roleDb.preservationCase.update({ where: { id }, data: patch }));
+  await roleMutation(session.user, "matters.write", async roleDb => {
+    await roleDb.preservationCase.update({ where: { id }, data: patch });
+    // F-1 阶段一：档位（remindDays）、保全负责人或关联案件变化会改变提醒集合——
+    // 作废该保全下全部 PENDING 档位登记，下次扫描按当前事实重新登记
+    if (data.remindDays !== undefined || ownerId !== undefined || matterId !== undefined) {
+      const props = await roleDb.preservationProperty.findMany({
+        where: { target: { caseId: id } },
+        select: { id: true }
+      });
+      await voidPendingPreservation(props.map((p) => p.id), "SUPERSEDED", "CASE_MUTATED", roleDb);
+    }
+  });
 
   await audit({
     userId: session.user.id,
@@ -375,6 +387,8 @@ export async function renewProperty(input: z.infer<typeof propertyRenewSchema>) 
       where: { id: data.propertyId },
       data: { expiryDate: data.newExpiryDate, status: "RENEWED" }
     });
+    // F-1 阶段一：续封改期后旧档位登记全部作废（到期日变了，旧档位提醒失效）
+    await voidPendingPreservation([data.propertyId], "SUPERSEDED", "RENEWED", db);
   });
 
   revalidatePath("/preservation");
@@ -392,12 +406,16 @@ export async function liftProperty(propertyId: string) {
   await assertCanAccessPreservationCaseRecord(session.user.id, prop.target.case);
   if (prop.target.case.matterId) await assertMatterWritable(prop.target.case.matterId);
 
-  await roleMutation(session.user, "matters.write", async roleDb => roleDb.preservationProperty.update({
-    where: { id: propertyId },
-    data: {
-      status: "LIFTED",
-    }
-  }));
+  await roleMutation(session.user, "matters.write", async roleDb => {
+    await roleDb.preservationProperty.update({
+      where: { id: propertyId },
+      data: {
+        status: "LIFTED",
+      }
+    });
+    // F-1 阶段一：解除后不再有续封提醒，残余 PENDING 登记取消
+    await voidPendingPreservation([propertyId], "CANCELLED", "LIFTED", roleDb);
+  });
 
   revalidatePath("/preservation");
   if (prop.target.case.matterId) await revalidateMatter(prop.target.case.matterId);
@@ -414,7 +432,11 @@ export async function deleteProperty(id: string) {
   await assertCanAccessPreservationCaseRecord(session.user.id, property.target.case);
   if (property.target.case.matterId) await assertMatterWritable(property.target.case.matterId);
 
-  await roleMutation(session.user, "matters.write", async roleDb => roleDb.preservationProperty.delete({ where: { id } }));
+  await roleMutation(session.user, "matters.write", async roleDb => {
+    await roleDb.preservationProperty.delete({ where: { id } });
+    // F-1 阶段一：对象删除，残余 PENDING 登记取消（台账行保留作历史）
+    await voidPendingPreservation([id], "CANCELLED", "OBJECT_DELETED", roleDb);
+  });
   revalidatePath("/preservation");
   return { ok: true };
 }

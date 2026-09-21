@@ -166,11 +166,12 @@ v1 报告两条头牌 P1 经独立核对证伪/收窄后出 v2 修订版，本�
 - **部署链实测（事后补验，同日）**：实构建 `lawlink-app` 镜像（`docker compose --profile full build` 成功）+ 容器内以 nextjs 用户对运行中 db 真跑 `scripts/backup.sh`——bash/pg_dump 16.15 连库导出 739KB dump、manifest 的 `storage_path` 为 `/app/storage`（`APP_STORAGE_DIR` 变量修复生效）、`/app/backups` 目录可写、产物属主 nextjs；`--profile dev` 的 mailpit 服务启动 healthy（Web UI 200）。本机 1025 端口被系统进程占用，实测经临时端口覆盖完成，不影响 compose 服务定义；实测后 mailpit 已停删，lawlink-db 与 dev 服务未受影响。
 - **未做（如实声明）**：02:30 cron 自动备份的持续观察与真实生产部署；P2-1 服务端按规则重算 dueAt、P2-2 冲突名称归一化、P2-3 邮件摘要分页、P2-4 诉讼时效/举证期限预置规则、F-1 送达台账（结构性，含 Schema 走审批）、P3-3 SSRF TOCTOU、F-2~F-6 产品层建议——均按 v2 §九 进 backlog 排期。
 
-### F-1 送达台账批次（2026-09-21，v2 设计冻结待批）
+### F-1 送达台账批次（2026-09-21，v2 批准执行，阶段一已实施）
 
 - **P2-3 已先行修复（不依赖 Schema）**：email-digest worker 改为先取当日有通知的用户集（distinct userId）再逐人聚合（单人上限 50 条、文末标注），删除全局 take:500 截断；新增 `email-digest.test.ts` 4 例。
 - **ReminderDelivery v2**（`docs/REMINDER-DELIVERY-LEDGER-PLAN-20260921.md`，吸收叶森 8 条审查意见）：① objectType×kind 二维拆分（对象与事件分离，唯一键加 kind）；② 状态补 SUPERSEDED（对象变更）/CANCELLED（对象消亡），retireScheduleReminders 与保全处置路径挂作废，投递前复核对象现值（沿用 B3「发送前核实当前状态」）；③ 四个封闭集合字段全部 Prisma enum；④ scheduledAt 改 registeredAt＝登记时刻（即时触发取保存时刻、档位扫描取扫描时刻，修正「恒 09:00」错误）；⑤ 明细保留 180 天（可配）+ 每日清理 job；⑥ 分期改为**保全单点完整闭环 → 扩期限/开庭 → Digest 行+台账卡**（废弃 v1 全量事后补记——只记成功的台账答不了「该发未发」）。
-- **中间态约定**：model 在 schema、表在库不一致的状态只允许存在于待批窗口；不批则整体摘除。**迁移 `20260921000002_reminder_delivery_ledger` 已生成（4 enum + 建表 + 三索引，纯增量），v1 的 20260921000001 已删除从未执行；待叶森批准后独立测试库演练再 `prisma migrate deploy`。**
+- **迁移已批准执行（2026-09-21）**：独立测试库演练通过后 `prisma migrate deploy` 落主库（20260921000002 已应用并核对 `_prisma_migrations`；演练库 `lawlink_rehearsal_20260921` 保留供复核）。演练同时发现**既有问题**（与本迁移无关）：迁移链从零重放在 20260920000001 报 `FeeEntry.confirmState` 不存在——2026-09-19 业务重建时迁移记录系手工登记，链条不可从零重放；全新安装走 CI 现有空库路径，不重放旧链。此事待单独立项处理。
+- **阶段一已实施（保全单点闭环）**：① 登记侧——`scanPreservationReminders` 不再直接创建通知，改经 `registerReminderDelivery`（新模块 `src/server/reminders/delivery.ts`）登记 PENDING 行：OFFSET（接收人锁定）、EXPIRED/ESCALATION/RECIPIENT_MISSING（受众投递时实时解析，userId 空串）；当日同键重复（P2002）计 suppressed，FAILED 未超限重新武装。② 投递侧——`deliverPendingReminders` sweep PENDING 且 registeredAt≤now，逐行**复核对象现值**（B3 原则）：到期日漂移/接收人漂移→SUPERSEDED，解除/删除/过期翻转→CANCELLED，零发送兜住作废-投递竞态；当日通知 findFirst 幂等兜底。③ 作废矩阵——续封 renewProperty→SUPERSEDED；解除 lift/删除 delete/EXPIRED 翻转→CANCELLED；updatePreservationCase 改 remindDays/负责人/关联案件→整案作废。④ 接线——2 分钟 worker「提醒台账投递」（REMINDER_LEDGER_DELIVERY_FAILED_CRON）+ 手动「立即扫描」登记后即时投递。⑤ 扫描计数语义变为「登记数」（audit 加 preservationCountsAreRegistrations 标记），实际送达/作废以台账为准。测试：preservation-reminder 改写为登记断言（4 例）+ reminder-delivery 新增（10 例：送达/档位漂移/接收人漂移/解除删除/EXPIRED 受众回退/升级/无接收人恢复与超管兜底/失败重试与幂等/批量作废/接收人选择），合计 707 测试全绿。
 
 
 

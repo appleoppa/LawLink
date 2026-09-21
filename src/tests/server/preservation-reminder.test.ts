@@ -1,22 +1,20 @@
 // @vitest-environment node
 /**
- * 保全续封提醒单测（2026-09-20 第六轮体检 P1-2/P1-3 修复的防线用例）。
+ * 保全提醒登记扫描单测（F-1 阶段一，2026-09-21 改写）。
  *
- * 覆盖：
- * - 接收人校验：保全负责人停用 → 回退有效案件主办（此前直接投进停用账号）；
- * - 保全负责人与案件主办全部失效 → 不发原始提醒，升级给持「应急接管」资格者，
- *   无资格人则通知在任超管（对齐 recordOffboardingRisk 口径）并记审计；
- *   当日重复扫描不重复升级；
- * - 补扫档位（criticalOnly）：09:00 前仅补当日关键档（到期当天/逾期首日），
- *   提前档（如 30 天档）只在全量扫描触发——档位不再因当日停机永久丢失；
- * - 过期未续封：自动置 EXPIRED + 责任人 URGENT + 团队负责人升级链
- *   （口径与期限逾期升级一致）。
+ * 扫描职责 = 登记 PENDING 台账行（不再直接创建通知）；发送/复核/作废在
+ * reminder-delivery.test.ts 覆盖。本文件覆盖：
+ * - 档位登记：有效保全负责人停用 → 以案件主办为接收人登记 OFFSET 行；
+ * - 无接收人：登记 RECIPIENT_MISSING 行（userId 空串），当日重复登记计 suppressed；
+ * - criticalOnly 补扫只登记当日关键档；同键重复登记幂等（P2002 → suppressed）；
+ * - 过期翻转：置 EXPIRED + 取消残余 OFFSET PENDING + 登记 EXPIRED/ESCALATION 行。
  */
 import { it, expect, vi, beforeEach } from "vitest";
 
-const { db, notify, auditMock } = vi.hoisted(() => {
+const { db, auditMock } = vi.hoisted(() => {
   const db: Record<string, any> = {
     preservationProperty: { findMany: vi.fn(), update: vi.fn() },
+    reminderDelivery: { create: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findMany: vi.fn() },
     notification: { findFirst: vi.fn() },
     user: { findMany: vi.fn() },
     team: { findMany: vi.fn() },
@@ -24,21 +22,19 @@ const { db, notify, auditMock } = vi.hoisted(() => {
     systemSetting: { upsert: vi.fn() },
     jobQueue: {}
   };
-  return { db, notify: vi.fn(), auditMock: vi.fn() };
+  return { db, auditMock: vi.fn() };
 });
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
 vi.mock("@/server/audit", () => ({ audit: auditMock }));
-vi.mock("@/server/notifications/create", () => ({ createNotification: notify }));
 vi.mock("@/lib/matters/route", () => ({ matterHref: (m: { id: string }) => `/matters/${m.id}` }));
 vi.mock("@/server/cron/queue", () => ({ enqueueJob: vi.fn() }));
 vi.mock("@/server/settings/webhook-last-result", () => ({ saveWebhookLastResult: vi.fn() }));
+vi.mock("@/server/notifications/create", () => ({ createNotification: vi.fn() }));
 
 import { scanPreservationReminders } from "@/server/cron/jobs/scan-due-reminders";
 
 const OWNER = "clawyer0000000000000000001"; // 保全负责人（LAWYER）
 const MATTER_OWNER = "clawyer0000000000000000002"; // 案件主办（LAWYER）
-const LEADER = "cleader00000000000000000001"; // 团队负责人（PRINCIPAL_LAWYER）
-const ADMIN = "cadmin00000000000000000001"; // 超管
 const MATTER = "cmatter00000000000000000001";
 const PROP = "cprop000000000000000000001";
 
@@ -46,11 +42,12 @@ const recipient = (id: string, overrides: Record<string, unknown> = {}) => ({
   id, active: true, role: "LAWYER", roleDefinition: null, ...overrides
 });
 
-const property = (daysUntil: number, ownerOverrides: Record<string, unknown> = {}, matterOwnerOverrides: Record<string, unknown> = {}) => ({
+const property = (daysUntil: number, ownerOverrides: Record<string, unknown> = {}, matterOwnerOverrides: Record<string, unknown> = {}, status = "ACTIVE") => ({
   id: PROP,
   propertyType: "BANK_DEPOSIT",
   propertyDetail: "某银行账户存款",
   expiryDate: new Date(Date.now() + daysUntil * 86_400_000),
+  status,
   target: {
     name: "张三",
     case: {
@@ -68,88 +65,72 @@ function setProperties(active: unknown[], lapsed: unknown[] = []) {
   );
 }
 
+const registeredRows: any[] = [];
+
 beforeEach(() => {
   vi.clearAllMocks();
-  db.notification.findFirst.mockResolvedValue(null);
-  db.user.findMany.mockResolvedValue([]);
-  db.team.findMany.mockResolvedValue([]);
-  db.matter.count.mockResolvedValue(1);
-  notify.mockResolvedValue({});
+  registeredRows.length = 0;
+  db.reminderDelivery.create.mockImplementation(async (args: any) => {
+    registeredRows.push(args.data);
+    return args.data;
+  });
+  db.reminderDelivery.update.mockResolvedValue({});
+  db.reminderDelivery.updateMany.mockResolvedValue({ count: 0 });
   db.preservationProperty.update.mockResolvedValue({});
 });
 
-it("保全负责人停用时回退有效案件主办接收提醒", async () => {
+it("保全负责人停用时以案件主办为接收人登记 OFFSET 台账行（不直接发通知）", async () => {
   setProperties([property(7, { active: false })]);
 
   const result = await scanPreservationReminders();
   expect(result.preservationNotified).toBe(1);
-  expect(notify).toHaveBeenCalledTimes(1);
-  expect(notify).toHaveBeenCalledWith(expect.objectContaining({
+  expect(registeredRows).toHaveLength(1);
+  expect(registeredRows[0]).toMatchObject({
+    objectType: "PRESERVATION_PROPERTY",
+    objectId: PROP,
+    kind: "OFFSET",
+    offset: 7,
+    channel: "IN_APP",
     userId: MATTER_OWNER,
-    priority: "HIGH", // 7 天档：>3 天非紧急、≤15 天 HIGH
-    refType: "PreservationExpiry:7",
-    refId: PROP
-  }));
+    status: "PENDING"
+  });
+  expect(db.notification.findFirst).not.toHaveBeenCalled();
 });
 
-it("接收人全部失效：不发原始提醒，升级给在任超管并记审计；当日重复扫描不重复升级", async () => {
+it("接收人全部失效：登记 RECIPIENT_MISSING 行（userId 空串）；当日重复登记计 suppressed", async () => {
   setProperties([property(7, { active: false }, { active: false })]);
-  // 第一次 findMany（应急接管资格人）为空 → 第二次（超管兜底）返回超管
-  db.user.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: ADMIN }]);
 
   const first = await scanPreservationReminders();
   expect(first.preservationNotified).toBe(0);
-  expect(notify).toHaveBeenCalledTimes(1);
-  expect(notify).toHaveBeenCalledWith(expect.objectContaining({
-    userId: ADMIN,
-    priority: "URGENT",
-    title: expect.stringContaining("保全提醒无人接收"),
-    refType: "PreservationRecipientMissing",
-    refId: PROP
-  }));
-  expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({
-    action: "PRESERVATION_RECIPIENT_MISSING",
-    targetType: "PreservationProperty",
-    targetId: PROP
-  }));
+  expect(registeredRows).toHaveLength(1);
+  expect(registeredRows[0]).toMatchObject({ kind: "RECIPIENT_MISSING", offset: 0, userId: "", status: "PENDING" });
 
-  // 同日补扫：去重命中，不再查接收人、不再发通知
-  db.notification.findFirst.mockResolvedValue({ id: "dup" });
-  db.user.findMany.mockClear();
-  await scanPreservationReminders();
-  expect(db.user.findMany).not.toHaveBeenCalled();
-  expect(notify).toHaveBeenCalledTimes(1);
+  // 同键重复：create 抛 P2002 → suppressed，不重复登记
+  db.reminderDelivery.create.mockRejectedValueOnce({ code: "P2002" });
+  const again = await scanPreservationReminders();
+  expect(again.suppressed).toBe(1);
 });
 
-it("criticalOnly 补扫只触发当日关键档，提前档等全量扫描（档位不再因停机永久丢失）", async () => {
+it("criticalOnly 补扫只登记当日关键档；全量登记提前档；重复登记幂等", async () => {
   setProperties([property(30)]); // 30 天档
 
   const caught = await scanPreservationReminders({ criticalOnly: true });
   expect(caught.preservationScanned).toBe(0);
-  expect(notify).not.toHaveBeenCalled();
+  expect(registeredRows).toHaveLength(0);
 
   const full = await scanPreservationReminders({ criticalOnly: false });
   expect(full.preservationNotified).toBe(1);
-  expect(notify).toHaveBeenCalledWith(expect.objectContaining({
-    userId: OWNER,
-    refType: "PreservationExpiry:30",
-    priority: "NORMAL"
-  }));
+  expect(registeredRows[0]).toMatchObject({ kind: "OFFSET", offset: 30, userId: OWNER });
 
-  // 全量送达后当日再补扫：去重幂等
-  db.notification.findFirst.mockResolvedValue({ id: "dup" });
+  db.reminderDelivery.create.mockRejectedValueOnce({ code: "P2002" });
   const again = await scanPreservationReminders({ criticalOnly: false });
   expect(again.suppressed).toBe(1);
   expect(again.preservationNotified).toBe(0);
 });
 
-it("过期未续封：置 EXPIRED + 责任人 URGENT + 团队负责人升级（口径同期限逾期升级）", async () => {
+it("过期翻转：置 EXPIRED + 取消残余 OFFSET 登记 + 登记 EXPIRED 与 ESCALATION 行", async () => {
   setProperties([], [property(-2)]); // 已过期 2 天
-  db.team.findMany.mockResolvedValue([{
-    id: "cteam00000000000000000001",
-    name: "诉讼一部",
-    leader: { id: LEADER, name: "负责人", role: "PRINCIPAL_LAWYER", active: true }
-  }]);
+  db.team.findMany.mockResolvedValue([]);
 
   const result = await scanPreservationReminders();
   expect(result.preservationExpired).toBe(1);
@@ -160,16 +141,21 @@ it("过期未续封：置 EXPIRED + 责任人 URGENT + 团队负责人升级（�
     action: "PRESERVATION_STATUS_AUTO_EXPIRED",
     targetId: PROP
   }));
-
-  const calls = notify.mock.calls.map((c) => c[0]);
-  expect(calls).toEqual(expect.arrayContaining([
-    expect.objectContaining({ userId: OWNER, priority: "URGENT", refType: "PreservationExpired" }),
+  // 残余 OFFSET PENDING 行取消（防投递已失效档位）
+  expect(db.reminderDelivery.updateMany).toHaveBeenCalledWith(
     expect.objectContaining({
-      userId: LEADER,
-      priority: "URGENT",
-      refType: "PreservationEscalation:+2:PreservationProperty",
-      title: expect.stringContaining("【升级】保全已过期 2 天未续封")
+      where: expect.objectContaining({
+        objectType: "PRESERVATION_PROPERTY",
+        objectId: { in: [PROP] },
+        status: "PENDING"
+      }),
+      data: expect.objectContaining({ status: "CANCELLED" })
     })
-  ]));
+  );
+  // EXPIRED + ESCALATION 各登记一行（受众投递时解析，userId 空串）
+  const kinds = registeredRows.map((r) => r.kind).sort();
+  expect(kinds).toEqual(["ESCALATION", "EXPIRED"]);
+  expect(registeredRows.find((r) => r.kind === "EXPIRED")).toMatchObject({ offset: 2, userId: "" });
+  expect(registeredRows.find((r) => r.kind === "ESCALATION")).toMatchObject({ offset: 2, userId: "" });
   expect(result.escalationSent).toBe(1);
 });

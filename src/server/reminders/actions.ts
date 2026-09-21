@@ -7,6 +7,7 @@
  * 内联 "use server" 无法被客户端组件 import（Next 14 限制）。
  */
 import { scanDueReminders, type DueReminderScanResult } from "@/server/cron/jobs/scan-due-reminders";
+import { deliverPendingReminders } from "@/server/reminders/delivery";
 import { isManager } from "@/lib/permissions";
 import { processDueJobs } from "@/server/cron/worker";
 import { requireSession } from "@/lib/auth/session";
@@ -20,6 +21,8 @@ export async function triggerDueReminderScan(): Promise<DueReminderScanResult> {
     throw new Error("仅系统超级管理员 / 主任律师可手动触发到期提醒扫描");
   }
   const result = await scanDueReminders();
+  // F-1 阶段一：登记后立即投递（否则要等下一个 2 分钟 worker tick）
+  await deliverPendingReminders(20);
   // 手动触发时顺带处理队列（dev 无定时 worker，生产也便于立即投递）
   await processDueJobs(10);
   // 扫描结果（含最近投递状态卡片）随本次触发刷新

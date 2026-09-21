@@ -30,6 +30,7 @@ import { runDatabaseBackup, backupCronEnabled } from "./jobs/backup-database";
 import { audit } from "@/server/audit";
 import { processDueJobs } from "./worker";
 import { scanScheduleReminders } from "@/server/reminders/schedule";
+import { deliverPendingReminders } from "@/server/reminders/delivery";
 import { shParts } from "@/lib/ui/sh-time";
 import { recoverStaleLeases } from "./queue";
 
@@ -167,6 +168,10 @@ export function registerCronJobs() {
           // 09:00 前仅补当日关键档（到期当天/逾期首日）。
           await runWithFailureAudit("保全提醒补扫", "PRESERVATION_REMINDER_CATCHUP_FAILED_CRON", () =>
             scanPreservationReminders({ criticalOnly: shParts(now).hh < 9 })
+          );
+          // F-1 阶段一：台账投递器——sweep PENDING 登记行，复核对象现值后送达。
+          await runWithFailureAudit("提醒台账投递", "REMINDER_LEDGER_DELIVERY_FAILED_CRON", () =>
+            deliverPendingReminders(20)
           );
           return processDueJobs(10);
         })()
