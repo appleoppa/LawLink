@@ -59,13 +59,15 @@ const emailDigestHandler: JobHandler = async () => {
   }
   // 按上海日界切「今日」——此前用服务器本地时区 new Date(y,m,d)，UTC 容器 0-8 点归错日
   const startOfToday = new Date(`${shDayKey(new Date())}T00:00:00+08:00`);
-  const notes = await prisma.notification.findMany({
+  // 第六轮体检 P2-3：此前全局 take:500 截断——超出的恰是当天较晚产生、往往更紧急
+  // 的通知，不会出现在任何人的摘要里且无提示。改为先取当日有通知的用户集，
+  // 再逐人取其通知（单人当日上限 50 条，超出在文末标注），不再有全局截断。
+  const notifiedUsers = await prisma.notification.findMany({
     where: { createdAt: { gte: startOfToday } },
-    select: { userId: true, title: true, content: true },
-    orderBy: { createdAt: "asc" },
-    take: 500
+    distinct: ["userId"],
+    select: { userId: true }
   });
-  if (notes.length === 0) {
+  if (notifiedUsers.length === 0) {
     await saveEmailLastResult({
       at: new Date().toISOString(),
       configured: true,
@@ -76,21 +78,23 @@ const emailDigestHandler: JobHandler = async () => {
     });
     return;
   }
-  const byUser = new Map<string, string[]>();
-  for (const n of notes) {
-    const arr = byUser.get(n.userId) ?? [];
-    arr.push(n.content ? `${n.title}：${n.content.slice(0, 80)}` : n.title);
-    byUser.set(n.userId, arr);
-  }
   const users = await prisma.user.findMany({
-    where: { id: { in: [...byUser.keys()] }, active: true },
+    where: { id: { in: notifiedUsers.map((n) => n.userId) }, active: true },
     select: { id: true, name: true, email: true }
   });
+  const PER_USER_CAP = 50;
   let sentCount = 0;
   try {
     for (const u of users) {
-      const lines = byUser.get(u.id) ?? [];
-      if (!lines.length || !u.email) continue;
+      const notes = await prisma.notification.findMany({
+        where: { userId: u.id, createdAt: { gte: startOfToday } },
+        orderBy: { createdAt: "asc" },
+        take: PER_USER_CAP,
+        select: { title: true, content: true }
+      });
+      if (notes.length === 0 || !u.email) continue;
+      const lines = notes.map((n) => (n.content ? `${n.title}：${n.content.slice(0, 80)}` : n.title));
+      if (notes.length === PER_USER_CAP) lines.push(`…当日通知超过 ${PER_USER_CAP} 条，仅含最早 ${PER_USER_CAP} 条`);
       await sendReminderEmail({ to: u.email, userName: u.name, lines });
       sentCount++;
     }
