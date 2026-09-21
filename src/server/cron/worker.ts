@@ -10,12 +10,13 @@ import { prisma } from "@/lib/prisma";
 import { isEmailConfigured, sendReminderEmail } from "@/lib/notifications/email";
 import { saveWebhookLastResult, type ReminderWebhookLastResult } from "@/server/settings/webhook-last-result";
 import { saveEmailLastResult } from "@/server/settings/email-last-result";
+import { recordDeliveryOutcome } from "@/server/reminders/ledger";
 import { claimDueJobs, completeJob, failJob } from "./queue";
 import { shDayKey } from "@/lib/ui/sh-time";
 
 type JobHandler = (payload: Record<string, unknown>) => Promise<void>;
 
-/** webhook 摘要投递：扫描侧只入队，实际外发与结果落库都在这里 */
+/** webhook 摘要投递：扫描侧只入队，实际外发与结果落库都在这里（F-1 阶段三起同时落台账行） */
 const webhookDigestHandler: JobHandler = async (payload) => {
   const text = String(payload.text ?? "");
   const stats = (payload.stats ?? {}) as Partial<ReminderWebhookLastResult>;
@@ -37,6 +38,16 @@ const webhookDigestHandler: JobHandler = async (payload) => {
     suppressed: stats.suppressed ?? 0,
     deadlineOffsets: stats.deadlineOffsets ?? []
   });
+  // F-1 阶段三：通道级行（受众全所，userId 空串），重跑更新当日结果
+  const dayKey = shDayKey(new Date());
+  await recordDeliveryOutcome(
+    { objectType: "DIGEST", objectId: dayKey, kind: "DIGEST", offset: 0, channel: "WEBHOOK", dayKey, userId: "" },
+    result.ok ? "SENT" : result.skipped ? "SKIPPED" : "FAILED",
+    {
+      ...(result.error ? { error: result.error } : {}),
+      ...(result.skipped ? { detail: { reason: "推送未启用或未配置机器人地址" } } : {})
+    }
+  );
   if (!result.ok && !result.skipped) {
     throw new Error(result.error ?? "webhook 投递失败");
   }
@@ -46,6 +57,7 @@ const emailDigestHandler: JobHandler = async () => {
   // 个人邮件摘要：按当日站内通知按人聚合外发。
   // 第六轮体检 P1-4：跳过也写台账——未配置 SMTP 时以「跳过」完结并在提醒
   // 维护页可见，不再静默 return；重试退避与死信由队列兜底（提醒失败不可静默）。
+  const dayKey = shDayKey(new Date());
   if (!isEmailConfigured()) {
     await saveEmailLastResult({
       at: new Date().toISOString(),
@@ -55,10 +67,15 @@ const emailDigestHandler: JobHandler = async () => {
       sentCount: 0,
       userCount: 0
     });
+    await recordDeliveryOutcome(
+      { objectType: "DIGEST", objectId: dayKey, kind: "DIGEST", offset: 0, channel: "EMAIL", dayKey, userId: "" },
+      "SKIPPED",
+      { detail: { reason: "SMTP 未配置，邮件渠道停用" } }
+    );
     return;
   }
   // 按上海日界切「今日」——此前用服务器本地时区 new Date(y,m,d)，UTC 容器 0-8 点归错日
-  const startOfToday = new Date(`${shDayKey(new Date())}T00:00:00+08:00`);
+  const startOfToday = new Date(`${dayKey}T00:00:00+08:00`);
   // 第六轮体检 P2-3：此前全局 take:500 截断——超出的恰是当天较晚产生、往往更紧急
   // 的通知，不会出现在任何人的摘要里且无提示。改为先取当日有通知的用户集，
   // 再逐人取其通知（单人当日上限 50 条，超出在文末标注），不再有全局截断。
@@ -86,17 +103,45 @@ const emailDigestHandler: JobHandler = async () => {
   let sentCount = 0;
   try {
     for (const u of users) {
+      // F-1 阶段三：队列重试整批重跑——当日已 SENT 的接收人不再重发（此前重试
+      // 会给已成功的人重复投递）
+      const alreadySent = await prisma.reminderDelivery.findFirst({
+        where: { objectType: "DIGEST", objectId: dayKey, kind: "DIGEST", offset: 0, channel: "EMAIL", dayKey, userId: u.id, status: "SENT" },
+        select: { id: true }
+      });
+      if (alreadySent) continue;
       const notes = await prisma.notification.findMany({
         where: { userId: u.id, createdAt: { gte: startOfToday } },
         orderBy: { createdAt: "asc" },
         take: PER_USER_CAP,
         select: { title: true, content: true }
       });
-      if (notes.length === 0 || !u.email) continue;
+      if (notes.length === 0) continue;
+      if (!u.email) {
+        await recordDeliveryOutcome(
+          { objectType: "DIGEST", objectId: dayKey, kind: "DIGEST", offset: 0, channel: "EMAIL", dayKey, userId: u.id },
+          "SKIPPED",
+          { detail: { reason: "接收人未配置邮箱" } }
+        );
+        continue;
+      }
       const lines = notes.map((n) => (n.content ? `${n.title}：${n.content.slice(0, 80)}` : n.title));
       if (notes.length === PER_USER_CAP) lines.push(`…当日通知超过 ${PER_USER_CAP} 条，仅含最早 ${PER_USER_CAP} 条`);
-      await sendReminderEmail({ to: u.email, userName: u.name, lines });
-      sentCount++;
+      try {
+        await sendReminderEmail({ to: u.email, userName: u.name, lines });
+        sentCount++;
+        await recordDeliveryOutcome(
+          { objectType: "DIGEST", objectId: dayKey, kind: "DIGEST", offset: 0, channel: "EMAIL", dayKey, userId: u.id },
+          "SENT"
+        );
+      } catch (err) {
+        await recordDeliveryOutcome(
+          { objectType: "DIGEST", objectId: dayKey, kind: "DIGEST", offset: 0, channel: "EMAIL", dayKey, userId: u.id },
+          "FAILED",
+          { error: err instanceof Error ? err.message : String(err) }
+        );
+        throw err;
+      }
     }
   } catch (err) {
     await saveEmailLastResult({

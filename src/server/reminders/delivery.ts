@@ -1,14 +1,13 @@
 /**
- * 提醒送达台账（F-1 阶段一，2026-09-21）：登记 / 作废 / 投递三组原语。
+ * 提醒送达台账投递器（F-1，docs/REMINDER-DELIVERY-LEDGER-PLAN-20260921.md）。
  *
- * 模型（docs/REMINDER-DELIVERY-LEDGER-PLAN-20260921.md）：发送点不再直接创建通知，
- * 改登记 PENDING 行；投递器 sweep（PENDING 且 registeredAt<=now）→ 复核对象当前
- * 状态（B3「发送前核实当前状态」原则，兜住作废-投递竞态）→ 发送 → 落终态。
- * 对象变更/消亡经 voidPendingPreservation 作废，杜绝投递已失效的提醒。
+ * sweep PENDING 行 → 复核对象当前状态（B3「发送前核实当前状态」原则，兜住
+ * 作废-投递竞态）→ 发送 → 落终态。阶段一接入保全四种 kind；阶段二接入期限/
+ * 开庭（OFFSET 档位 + DEADLINE 逾期升级）。对象变更/消亡经 voidPendingDeliveries
+ * /retireScheduleReminders 作废，杜绝投递已失效的提醒。
  *
- * 阶段一仅接入保全（PRESERVATION_PROPERTY）：OFFSET（档位，接收人登记时锁定，
- * 漂移即 SUPERSEDED 由下次扫描重登记）、EXPIRED（过期翻转，接收人投递时重解析）、
- * ESCALATION / RECIPIENT_MISSING（受众动态，userId 空串，投递时实时解析并按人去重）。
+ * 阶段二起本模块依赖 schedule.ts 的 evaluateScheduleReminder（复核共用登记
+ * 口径）；schedule 的保存路径经动态 import 回调本模块投递——勿引入静态环。
  */
 import { prisma } from "@/lib/prisma";
 import { Prisma, type ReminderDeliveryChannel, type ReminderDeliveryKind, type ReminderDeliveryObjectType } from "@prisma/client";
@@ -17,68 +16,12 @@ import { audit } from "@/server/audit";
 import { matterHref } from "@/lib/matters/route";
 import { PROPERTY_TYPE_CN } from "@/lib/preservation-defaults";
 import { shDayKey } from "@/lib/ui/sh-time";
-import { shDayStart, isReminderRecipientEnabled, type ReminderRecipient } from "@/server/reminders/schedule";
-import { escalateOverduePreservationToTeamLeaders } from "@/server/reminders/escalation";
+import { shDayStart, isReminderRecipientEnabled, evaluateScheduleReminder, type ReminderRecipient, type ScheduleKind } from "@/server/reminders/schedule";
+import { escalateOverduePreservationToTeamLeaders, escalateOverdueDeadlineToTeamLeaders } from "@/server/reminders/escalation";
+import { voidPendingDeliveries, MAX_ATTEMPTS } from "@/server/reminders/ledger";
 
-/** 复合唯一键（@@unique 六字段）的筛选输入；Prisma 生成名为下划线拼接 */
-function dedupeWhere(key: DedupeKey) {
-  return {
-    objectType_objectId_kind_offset_channel_dayKey_userId: {
-      objectType: key.objectType,
-      objectId: key.objectId,
-      kind: key.kind,
-      offset: key.offset,
-      channel: key.channel,
-      dayKey: key.dayKey,
-      userId: key.userId
-    }
-  };
-}
-
-type DedupeKey = {
-  objectType: "PRESERVATION_PROPERTY";
-  objectId: string;
-  kind: "OFFSET" | "EXPIRED" | "ESCALATION" | "RECIPIENT_MISSING";
-  offset: number;
-  channel: "IN_APP";
-  dayKey: string;
-  userId: string;
-};
-
-/**
- * 登记一条应发提醒（PENDING）。当日同键已存在视为已登记（调用方计 suppressed）；
- * 若既有行为 FAILED 且尝试未超限则重新武装为 PENDING（当日重试）。
- * SENT/SKIPPED/SUPERSEDED/CANCELLED 不动——这就是去重本身。
- */
-export async function registerReminderDelivery(key: DedupeKey): Promise<"REGISTERED" | "ALREADY"> {
-  try {
-    await prisma.reminderDelivery.create({
-      data: {
-        objectType: key.objectType,
-        objectId: key.objectId,
-        kind: key.kind,
-        offset: key.offset,
-        channel: key.channel,
-        dayKey: key.dayKey,
-        userId: key.userId,
-        status: "PENDING",
-        registeredAt: new Date()
-      }
-    });
-    return "REGISTERED";
-  } catch (err) {
-    if ((err as { code?: string }).code !== "P2002") throw err;
-    await prisma.reminderDelivery.updateMany({
-      where: {
-        ...dedupeWhere(key),
-        status: "FAILED",
-        attempts: { lt: MAX_ATTEMPTS }
-      },
-      data: { status: "PENDING" }
-    });
-    return "ALREADY";
-  }
-}
+// 既有调用方（扫描、保全 actions、测试）沿用 delivery 命名空间导入，转出台账原语
+export { registerReminderDelivery, MAX_ATTEMPTS } from "@/server/reminders/ledger";
 
 /** 作废保全对象的全部 PENDING 登记（阶段一作废矩阵的落库侧） */
 export async function voidPendingPreservation(
@@ -87,15 +30,8 @@ export async function voidPendingPreservation(
   reason: string,
   tx: Pick<typeof prisma, "reminderDelivery"> = prisma
 ): Promise<number> {
-  if (propertyIds.length === 0) return 0;
-  const result = await tx.reminderDelivery.updateMany({
-    where: { objectType: "PRESERVATION_PROPERTY", objectId: { in: propertyIds }, status: "PENDING" },
-    data: { status, detail: { reason } }
-  });
-  return result.count;
+  return voidPendingDeliveries("PRESERVATION_PROPERTY", propertyIds, status, reason, tx);
 }
-
-const MAX_ATTEMPTS = 5;
 
 const preservationRecipientSelect = { id: true, active: true, role: true, roleDefinition: { select: { active: true } } } as const;
 
@@ -139,12 +75,11 @@ export type DeliverySweepResult = { processed: number; sent: number; voided: num
 
 /**
  * 投递器：sweep 到期 PENDING 行，逐行复核对象现值后发送并落终态。
- * 阶段一只处理保全；其他 objectType 留给后续阶段，避免误碰。
  */
 export async function deliverPendingReminders(limit = 20): Promise<DeliverySweepResult> {
   const now = new Date();
   const rows = await prisma.reminderDelivery.findMany({
-    where: { status: "PENDING", registeredAt: { lte: now }, objectType: "PRESERVATION_PROPERTY" },
+    where: { status: "PENDING", registeredAt: { lte: now } },
     orderBy: [{ registeredAt: "asc" }],
     take: limit,
     select: {
@@ -157,7 +92,16 @@ export async function deliverPendingReminders(limit = 20): Promise<DeliverySweep
   for (const row of rows) {
     result.processed++;
     try {
-      const outcome = await deliverPreservationRow(row, now);
+      let outcome: RowOutcome;
+      if (row.objectType === "PRESERVATION_PROPERTY") {
+        outcome = await deliverPreservationRow(row, now);
+      } else if (row.objectType === "DEADLINE" || row.objectType === "HEARING") {
+        outcome = await deliverScheduleRow(row, now);
+      } else {
+        // 未接入的对象类型（如 DIGEST 行不经投递器）——防御性跳过
+        await finalize(row, "SKIPPED", { reason: "UNSUPPORTED" });
+        outcome = "skipped";
+      }
       result[outcome]++;
     } catch (err) {
       result.failed++;
@@ -188,6 +132,55 @@ type SweepRow = {
 };
 
 type RowOutcome = "sent" | "voided" | "skipped";
+
+/** 期限/开庭行投递：evaluate 复核 → 漂移作废 → 确定性主键幂等创建通知 */
+async function deliverScheduleRow(row: SweepRow, now: Date): Promise<RowOutcome> {
+  const kind: ScheduleKind = row.objectType === "DEADLINE" ? "Deadline" : "Hearing";
+  const ev = await evaluateScheduleReminder(kind, row.objectId, now);
+
+  if (ev.outcome === "SKIP") {
+    // 对象消亡（删除/办结/案件删除/责任关闭）→ CANCELLED；变更类（非档期/无接收人）→ SUPERSEDED，待重登记
+    const gone = ev.reason === "GONE" || ev.reason === "MATTER_DELETED" || ev.reason === "COMPLETED" || ev.reason === "RESP_CLOSED";
+    await finalize(row, gone ? "CANCELLED" : "SUPERSEDED", { reason: ev.reason });
+    return "voided";
+  }
+
+  if (row.kind === "ESCALATION") {
+    if (ev.offset < 1 || ev.offset !== row.offset) {
+      await finalize(row, "SUPERSEDED", { reason: "TIER_DRIFT", offset: ev.offset });
+      return "voided";
+    }
+    const outcomes = await escalateOverdueDeadlineToTeamLeaders({
+      matterId: ev.matterId,
+      matterTitle: ev.matterTitle,
+      internalCode: ev.internalCode,
+      ownerId: ev.userId,
+      deadlineId: row.objectId,
+      deadlineTitle: ev.itemTitle,
+      offset: ev.offset,
+      todayStart: shDayStart(now)
+    });
+    await finalize(row, "SENT", { outcomes });
+    return "sent";
+  }
+
+  // OFFSET：档位或接收人漂移即作废（改期路径会作废重登记，这里兜竞态）
+  if (ev.offset !== row.offset || ev.userId !== row.userId) {
+    await finalize(row, "SUPERSEDED", { reason: ev.offset !== row.offset ? "TIER_DRIFT" : "RECIPIENT_DRIFT", offset: ev.offset });
+    return "voided";
+  }
+  await prisma.notification.createMany({
+    data: [{
+      id: ev.notificationId, userId: ev.userId,
+      type: ev.notificationType, priority: ev.priority,
+      title: ev.title, content: ev.content, href: ev.href,
+      refType: ev.refType, refId: row.objectId, createdAt: now
+    }],
+    skipDuplicates: true
+  });
+  await finalize(row, "SENT");
+  return "sent";
+}
 
 /** 单行投递：复核 → 发送 → 落终态（终态由调用方 update） */
 async function deliverPreservationRow(row: SweepRow, now: Date): Promise<RowOutcome> {
@@ -361,7 +354,7 @@ async function deliverPreservationRow(row: SweepRow, now: Date): Promise<RowOutc
   return "sent";
 }
 
-async function finalize(row: SweepRow, status: "SENT" | "SUPERSEDED" | "CANCELLED", detail?: Record<string, unknown>) {
+async function finalize(row: SweepRow, status: "SENT" | "SUPERSEDED" | "CANCELLED" | "SKIPPED", detail?: Record<string, unknown>) {
   const data: Prisma.ReminderDeliveryUpdateInput = {
     status,
     sentAt: status === "SENT" ? new Date() : null

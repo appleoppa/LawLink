@@ -14,7 +14,7 @@ import { it, expect, vi, beforeEach } from "vitest";
 const { db, auditMock } = vi.hoisted(() => {
   const db: Record<string, any> = {
     preservationProperty: { findMany: vi.fn(), update: vi.fn() },
-    reminderDelivery: { create: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findMany: vi.fn() },
+    reminderDelivery: { createMany: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findMany: vi.fn() },
     notification: { findFirst: vi.fn() },
     user: { findMany: vi.fn() },
     team: { findMany: vi.fn() },
@@ -70,9 +70,9 @@ const registeredRows: any[] = [];
 beforeEach(() => {
   vi.clearAllMocks();
   registeredRows.length = 0;
-  db.reminderDelivery.create.mockImplementation(async (args: any) => {
-    registeredRows.push(args.data);
-    return args.data;
+  db.reminderDelivery.createMany.mockImplementation(async (args: any) => {
+    registeredRows.push(args.data[0]);
+    return { count: 1 };
   });
   db.reminderDelivery.update.mockResolvedValue({});
   db.reminderDelivery.updateMany.mockResolvedValue({ count: 0 });
@@ -105,8 +105,8 @@ it("接收人全部失效：登记 RECIPIENT_MISSING 行（userId 空串）；�
   expect(registeredRows).toHaveLength(1);
   expect(registeredRows[0]).toMatchObject({ kind: "RECIPIENT_MISSING", offset: 0, userId: "", status: "PENDING" });
 
-  // 同键重复：create 抛 P2002 → suppressed，不重复登记
-  db.reminderDelivery.create.mockRejectedValueOnce({ code: "P2002" });
+  // 同键重复：createMany 计数 0（重复登记计 suppressed）
+  db.reminderDelivery.createMany.mockResolvedValueOnce({ count: 0 });
   const again = await scanPreservationReminders();
   expect(again.suppressed).toBe(1);
 });
@@ -122,7 +122,7 @@ it("criticalOnly 补扫只登记当日关键档；全量登记提前档；重复
   expect(full.preservationNotified).toBe(1);
   expect(registeredRows[0]).toMatchObject({ kind: "OFFSET", offset: 30, userId: OWNER });
 
-  db.reminderDelivery.create.mockRejectedValueOnce({ code: "P2002" });
+  db.reminderDelivery.createMany.mockResolvedValueOnce({ count: 0 });
   const again = await scanPreservationReminders({ criticalOnly: false });
   expect(again.suppressed).toBe(1);
   expect(again.preservationNotified).toBe(0);

@@ -175,6 +175,11 @@ v1 报告两条头牌 P1 经独立核对证伪/收窄后出 v2 修订版，本�
 
 
 
+- **阶段二已实施（期限/开庭接入）**：① schedule.ts 评估逻辑提取为 `evaluateScheduleReminder`（登记与投递复核共用口径：对象存在/办结/责任状态/档位命中/接收人解析/确定性通知主键与文案）；`refreshScheduleReminder` 改登记 PENDING（不再直建通知），保存路径 AfterSave 登记后动态 import 投递器即时投递（保持保存即时提醒，断 schedule↔delivery 静态环）。② 扫描逾期档登记 DEADLINE ESCALATION 行（受众投递时解析）。③ `retireScheduleReminders` 同步作废台账 PENDING 行——改期/确认/交接/责任变更默认 SUPERSEDED，办结与删除三处调用点显式传 CANCELLED。④ 投递器扩 DEADLINE/HEARING：evaluate 复核（档位漂移/接收人漂移→SUPERSEDED；删除/办结/责任关闭→CANCELLED）→ 确定性主键 createMany skipDuplicates 幂等建通知。⑤ 台账原语下沉 `reminders/ledger.ts`（登记/作废/结果落账），原语支持 tx 透传（真库回滚脚本可覆盖）。
+- **阶段三已实施（Digest 行 + 台账卡 + 保留清理）**：① webhook/email 摘要投递结果落台账（WEBHOOK 通道级行、EMAIL 每接收人行，无邮箱 SKIPPED、未配置通道级 SKIPPED）；邮件队列重试整批重跑时当日已 SENT 的接收人跳过不重发（此前重试会重复投递）。② 提醒维护页新增「送达台账」卡：近 7 天通道×状态对账表、PENDING 积压超 10 分钟红色警示、最近失败列表。③ 每日 03:10 保留清理 job（`REMINDER_LEDGER_RETENTION_DAYS` 默认 180 天，超期 PENDING>7 天置 FAILED、删除超期明细并审计；.env.example 已补）。
+- **真库验证与关键缺陷修复**：`scripts/verify-workflow-reminders.ts` 改台账断言（事务回滚，PASS 9 项）过程中发现并修复——**Postgres 事务内 create 撞唯一约束毒化事务（25P02），catch 后续语句全败**：登记/落账原语改 `createMany + skipDuplicates`（ON CONFLICT DO NOTHING）以计数区分新登记/重复，单测 mock 曾掩盖此问题（这正是台账「答得了该发未发」价值的反例教训：并发重复登记在真实事务下会整个报错）。
+- 终态：718 测试全绿（+11）、lint/typecheck/build 干净、真库回滚脚本通过、本地站点可达。
+
 ### 第四轮体检与法院短信专项（2026-09-20 确认）
 
 **A 批已实施（2026-09-20）**：12 项代码修复全部落地（权限收敛 `assertCanHandleMatter`、AI 逐件外发资格、程序门禁事务化+零写入回归测试、法人章三条件分立、旧开票入口停用、扣回上限 recoverable、退款免债按核销对应、合同三承接点复核门禁、日期出口归一+存量审计无迁移、责任失效可见最小版、日历搜索发票列表权限）；迁移 20260920000001 触发器修订版经叶森批准已执行（备份在 `backups/hardening-migration-20260920/`，主库 FK RESTRICT/默认 PENDING/AuditLog 触发器拒删三项验证通过，663 测试回归）。存量日期瞬间审计脚本 `scripts/audit-date-instants.ts`：三种瞬间出口归一后均正确，无需迁移。

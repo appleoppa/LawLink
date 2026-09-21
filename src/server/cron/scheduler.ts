@@ -24,6 +24,7 @@ import cron from "node-cron";
 import { runWeeklyReportPush } from "@/server/reports/weekly-push-core";
 import { scanArchiveOverdue } from "./jobs/archive-overdue";
 import { runAuditCleanup } from "./jobs/audit-cleanup";
+import { runReminderLedgerCleanup } from "./jobs/reminder-ledger-cleanup";
 import { scanDueReminders, scanPreservationReminders } from "./jobs/scan-due-reminders";
 import { scanSealBackfillReminders } from "./jobs/scan-seal-backfill-reminders";
 import { runDatabaseBackup, backupCronEnabled } from "./jobs/backup-database";
@@ -110,6 +111,18 @@ export function registerCronJobs() {
     { timezone: TIMEZONE }
   );
 
+  // F-1 阶段三：提醒台账保留清理（超期 PENDING 置终态 + 删除超期明细，03:10）
+  cron.schedule(
+    "10 3 * * *",
+    () =>
+      runWithFailureAudit(
+        "提醒台账保留清理",
+        "REMINDER_LEDGER_CLEANUP_FAILED_CRON",
+        () => runReminderLedgerCleanup()
+      ),
+    { timezone: TIMEZONE }
+  );
+
   // v0.27: 每天 09:00 扫到期期限与开庭，发 DEADLINE_REMINDER /
   // HEARING_REMINDER（期限档位 = 固定档 ∪ 各期限 remindDays，开庭固定 T-3/T-1/T）
   cron.schedule(
@@ -180,6 +193,6 @@ export function registerCronJobs() {
   );
 
   console.log(
-    `[cron] 已注册 ${backupCronEnabled() ? 7 : 6} 个定时作业（周报推送 / 归档逾期扫描 / AuditLog 清理 / 到期提醒扫描 / 用章回填提醒扫描${backupCronEnabled() ? " / 数据库备份" : ""} / 队列 worker），时区 Asia/Shanghai`
+    `[cron] 已注册 ${backupCronEnabled() ? 8 : 7} 个定时作业（周报推送 / 归档逾期扫描 / AuditLog 清理 / 台账保留清理 / 到期提醒扫描 / 用章回填提醒扫描${backupCronEnabled() ? " / 数据库备份" : ""} / 队列 worker），时区 Asia/Shanghai`
   );
 }

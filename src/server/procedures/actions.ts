@@ -509,7 +509,7 @@ export async function toggleDeadlineCompleted(id: string) {
   await prisma.$transaction(async (tx) => {
     await checkRoleMutation(tx, session.user, "schedule.write");
     await tx.deadline.update({ where: { id }, data: { completed: next, completedAt: next ? new Date() : null } });
-    if (next) await retireScheduleReminders(tx, "Deadline", id);
+    if (next) await retireScheduleReminders(tx, "Deadline", id, new Date(), "CANCELLED");
   });
   if (!next) await refreshScheduleReminderAfterSave("Deadline", id);
 
@@ -538,7 +538,7 @@ export async function deleteDeadline(id: string) {
   await prisma.$transaction(async (tx) => {
     await checkRoleMutation(tx, session.user, "schedule.write");
     await tx.deadline.delete({ where: { id } });
-    await retireScheduleReminders(tx, "Deadline", id);
+    await retireScheduleReminders(tx, "Deadline", id, new Date(), "CANCELLED");
   });
   await audit({
     userId: session.user.id,
@@ -621,7 +621,7 @@ export async function deleteHearing(id: string) {
   await prisma.$transaction(async (tx) => {
     await checkRoleMutation(tx, session.user, "schedule.write");
     await tx.hearing.delete({ where: { id } });
-    await retireScheduleReminders(tx, "Hearing", id);
+    await retireScheduleReminders(tx, "Hearing", id, new Date(), "CANCELLED");
   });
   await audit({
     userId: session.user.id,

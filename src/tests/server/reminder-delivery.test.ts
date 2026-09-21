@@ -15,10 +15,13 @@ const { db, notify, auditMock, escalate } = vi.hoisted(() => {
   const db: Record<string, any> = {
     reminderDelivery: { findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn(), create: vi.fn() },
     preservationProperty: { findUnique: vi.fn(), findMany: vi.fn() },
-    notification: { findFirst: vi.fn() },
-    user: { findMany: vi.fn() },
+    deadline: { findUnique: vi.fn() },
+    hearing: { findUnique: vi.fn() },
+    user: { findUnique: vi.fn(), findMany: vi.fn(), count: vi.fn() },
+    notification: { findFirst: vi.fn(), createMany: vi.fn() },
     team: { findMany: vi.fn() },
-    matter: { count: vi.fn() }
+    matter: { count: vi.fn() },
+    $transaction: vi.fn(), $queryRaw: vi.fn()
   };
   return { db, notify: vi.fn(), auditMock: vi.fn(), escalate: vi.fn() };
 });
@@ -26,7 +29,11 @@ vi.mock("@/lib/prisma", () => ({ prisma: db }));
 vi.mock("@/server/audit", () => ({ audit: auditMock }));
 vi.mock("@/server/notifications/create", () => ({ createNotification: notify }));
 vi.mock("@/lib/matters/route", () => ({ matterHref: (m: { id: string }) => `/matters/${m.id}` }));
-vi.mock("@/server/reminders/escalation", () => ({ escalateOverduePreservationToTeamLeaders: escalate }));
+vi.mock("@/server/reminders/responsibility", () => ({ responsibilityReady: async () => false, readWorkRows: async () => [] }));
+vi.mock("@/server/reminders/escalation", () => ({
+  escalateOverduePreservationToTeamLeaders: escalate,
+  escalateOverdueDeadlineToTeamLeaders: escalate
+}));
 
 import { deliverPendingReminders, voidPendingPreservation, pickPreservationRecipient } from "@/server/reminders/delivery";
 
@@ -246,4 +253,94 @@ it("pickPreservationRecipient：负责人有效优先，回退案件主办，全
   expect(pickPreservationRecipient({ owner: mk("o", true), matter: { id: "m", title: "t", internalCode: "c", owner: mk("x", true) } })?.id).toBe("o");
   expect(pickPreservationRecipient({ owner: mk("o", false), matter: { id: "m", title: "t", internalCode: "c", owner: mk("x", true) } })?.id).toBe("x");
   expect(pickPreservationRecipient({ owner: mk("o", false), matter: null })).toBeNull();
+});
+
+// ── F-1 阶段二：期限/开庭行投递 ─────────────────────────────────────
+
+const LEAD = "clead00000000000000000009";
+const MATTER2 = "cmatter00000000000000000002";
+const DL = "cidl000000000000000000002";
+
+const deadlineRow = (overrides: Record<string, unknown> = {}) => ({
+  id: DL, updatedAt: new Date(), title: "举证期限",
+  dueAt: new Date(Date.now() + 0 * 86_400_000), // 当天到期
+  completed: false, confirmStatus: "CONFIRMED", remindDays: 3,
+  procedure: {
+    isExternalLead: false,
+    leadLawyer: { id: LEAD, active: true, role: "LAWYER", roleDefinition: null },
+    matter: { id: MATTER2, internalCode: "M-2026-002", title: "买卖纠纷", deletedAt: null, ownerId: LEAD, owner: { id: LEAD, active: true, role: "LAWYER", roleDefinition: null } }
+  },
+  ...overrides
+});
+
+const schedulePendingRow = (overrides: Record<string, unknown> = {}) => ({
+  id: "row-d1",
+  objectType: "DEADLINE",
+  objectId: DL,
+  kind: "OFFSET",
+  offset: 0,
+  channel: "IN_APP",
+  dayKey: "",
+  userId: LEAD,
+  attempts: 0,
+  ...overrides
+});
+
+it("期限 OFFSET 行：复核通过 → 确定性主键幂等创建通知并落 SENT", async () => {
+  db.reminderDelivery.findMany.mockResolvedValue([schedulePendingRow()]);
+  db.deadline.findUnique.mockResolvedValue(deadlineRow());
+  db.notification.createMany.mockResolvedValue({ count: 1 });
+
+  const result = await deliverPendingReminders();
+  expect(result).toMatchObject({ processed: 1, sent: 1, voided: 0 });
+  expect(db.notification.createMany).toHaveBeenCalledWith(expect.objectContaining({
+    data: [expect.objectContaining({ userId: LEAD, type: "DEADLINE_REMINDER", title: expect.stringContaining("今天到期：举证期限"), refId: DL })],
+    skipDuplicates: true
+  }));
+  expect(updates.at(-1)?.data).toMatchObject({ status: "SENT" });
+});
+
+it("期限 OFFSET 行：登记后改期（档位漂移）→ SUPERSEDED 零发送", async () => {
+  db.reminderDelivery.findMany.mockResolvedValue([schedulePendingRow()]);
+  db.deadline.findUnique.mockResolvedValue(deadlineRow({ dueAt: new Date(Date.now() + 10 * 86_400_000) })); // 改到 10 天后
+
+  const result = await deliverPendingReminders();
+  expect(result).toMatchObject({ voided: 1, sent: 0 });
+  expect(db.notification.createMany).not.toHaveBeenCalled();
+  expect(updates.at(-1)?.data).toMatchObject({ status: "SUPERSEDED" });
+});
+
+it("期限 OFFSET 行：登记后办结 → CANCELLED 零发送", async () => {
+  db.reminderDelivery.findMany.mockResolvedValue([schedulePendingRow()]);
+  db.deadline.findUnique.mockResolvedValue(deadlineRow({ completed: true }));
+
+  const result = await deliverPendingReminders();
+  expect(result).toMatchObject({ voided: 1, sent: 0 });
+  expect(updates.at(-1)?.data.status).toBe("CANCELLED");
+});
+
+it("期限 ESCALATION 行：逾期档复核通过 → 调用团队负责人升级并落 SENT", async () => {
+  db.reminderDelivery.findMany.mockResolvedValue([schedulePendingRow({ kind: "ESCALATION", offset: 1, userId: "" })]);
+  db.deadline.findUnique.mockResolvedValue(deadlineRow({ dueAt: new Date(Date.now() - 1 * 86_400_000) }));
+  escalate.mockResolvedValue(["SENT"]);
+
+  const result = await deliverPendingReminders();
+  expect(escalate).toHaveBeenCalledWith(expect.objectContaining({
+    ownerId: LEAD, deadlineId: DL, offset: 1, deadlineTitle: "举证期限"
+  }));
+  expect(result).toMatchObject({ sent: 1 });
+  expect(updates.at(-1)?.data.status).toBe("SENT");
+});
+
+it("开庭 OFFSET 行：文案含开庭信息，正常送达", async () => {
+  db.reminderDelivery.findMany.mockResolvedValue([schedulePendingRow({ objectType: "HEARING", objectId: "chear0000000000000000002", userId: LEAD })]);
+  db.hearing.findUnique.mockResolvedValue({
+    id: "chear0000000000000000002", updatedAt: new Date(), title: "庭审",
+    startsAt: new Date(Date.now() + 3 * 3_600_000), room: "第三法庭", judge: null,
+    procedure: deadlineRow().procedure
+  });
+
+  const result = await deliverPendingReminders();
+  expect(result).toMatchObject({ sent: 1 });
+  expect(db.notification.createMany.mock.calls[0][0].data[0].title).toContain("开庭：庭审");
 });
