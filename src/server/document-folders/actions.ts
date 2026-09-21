@@ -16,6 +16,7 @@ import {
   moveDocumentToFolderSchema
 } from "./schemas";
 import { revalidateMatter } from "@/server/matters/route";
+import { ActionError } from "@/lib/action-error";
 
 /** 判断当前用户是否能编辑该案件的卷宗结构（仅本案 LEAD / CO_LEAD） */
 async function requireFolderEditor(matterId: string, session: { user: { id: string; role: string } }) {
@@ -60,7 +61,7 @@ export async function createFolder(input: z.infer<typeof folderCreateSchema>) {
     }));
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      throw new Error(`已有同名卷宗「${data.name.trim()}」`);
+      throw new ActionError(`已有同名卷宗「${data.name.trim()}」`);
     }
     throw e;
   }
@@ -85,7 +86,7 @@ export async function renameFolder(input: z.infer<typeof folderRenameSchema>) {
     where: { id: data.id },
     select: { id: true, matterId: true }
   });
-  if (!folder) throw new Error("卷宗不存在");
+  if (!folder) throw new ActionError("卷宗不存在");
   await requireFolderEditor(folder.matterId, session);
   await assertMatterWritable(folder.matterId);
 
@@ -96,7 +97,7 @@ export async function renameFolder(input: z.infer<typeof folderRenameSchema>) {
     }));
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      throw new Error(`已有同名卷宗「${data.name.trim()}」`);
+      throw new ActionError(`已有同名卷宗「${data.name.trim()}」`);
     }
     throw e;
   }
@@ -121,8 +122,8 @@ export async function deleteFolder(input: z.infer<typeof folderDeleteSchema>) {
     where: { id: data.id },
     select: { id: true, matterId: true, isDefault: true, _count: { select: { documents: true } } }
   });
-  if (!folder) throw new Error("卷宗不存在");
-  if (folder.isDefault) throw new Error("默认卷宗不可删除，只能改名");
+  if (!folder) throw new ActionError("卷宗不存在");
+  if (folder.isDefault) throw new ActionError("默认卷宗不可删除，只能改名");
   await requireFolderEditor(folder.matterId, session);
   await assertMatterWritable(folder.matterId);
 
@@ -158,7 +159,7 @@ export async function reorderFolders(input: z.infer<typeof folderReorderSchema>)
     await checkRoleMutation(db, session.user, "documents.write");
     for (const [i, id] of data.orderedIds.entries()) {
       const folder = await db.documentFolder.findFirst({ where: { id, matterId: data.matterId }, select: { id: true } });
-      if (!folder) throw new Error("卷宗不存在或不属于此案件");
+      if (!folder) throw new ActionError("卷宗不存在或不属于此案件");
       await db.documentFolder.update({ where: { id }, data: { orderIndex: i } });
     }
   });
@@ -175,7 +176,7 @@ export async function moveDocumentToFolder(input: z.infer<typeof moveDocumentToF
     where: { id: data.documentId },
     select: { id: true, matterId: true }
   });
-  if (!doc || !doc.matterId) throw new Error("文档不存在或未归属案件");
+  if (!doc || !doc.matterId) throw new ActionError("文档不存在或未归属案件");
 
   // 校验目标卷宗与文档同案件
   if (data.folderId) {
@@ -184,7 +185,7 @@ export async function moveDocumentToFolder(input: z.infer<typeof moveDocumentToF
       select: { matterId: true }
     });
     if (!folder || folder.matterId !== doc.matterId) {
-      throw new Error("目标卷宗与文档不属于同一案件");
+      throw new ActionError("目标卷宗与文档不属于同一案件");
     }
   }
   await requireFolderEditor(doc.matterId, session);

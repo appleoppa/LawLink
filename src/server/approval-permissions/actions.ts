@@ -5,11 +5,12 @@ import { ApprovalAction, ApprovalCaseScope, MatterCategory, SealType } from "@pr
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { APPROVAL_SETTING_KEY, approvalAudit, approvalSettings, approvalTransaction, type ApprovalDb } from "@/lib/approvals/service";
+import { ActionError } from "@/lib/action-error";
 
 async function admin(db: ApprovalDb = prisma) {
   const session = await requireSession();
   const user = await db.user.findUnique({ where: { id: session.user.id }, select: { active: true, systemRole: true } });
-  if (!user?.active || user.systemRole !== "SUPER_ADMIN") throw new Error("仅系统超级管理员可以配置审批权限");
+  if (!user?.active || user.systemRole !== "SUPER_ADMIN") throw new ActionError("仅系统超级管理员可以配置审批权限");
   return session.user.id;
 }
 const ruleSchema = z.object({
@@ -48,11 +49,11 @@ export async function savePermissionGroup(input: PermissionGroupInput) {
     const actorId = await admin(db);
     const before = data.id ? await db.approvalPermissionGroup.findUniqueOrThrow({ where: { id: data.id }, include: { rules: { where: { active: true } }, members: { where: { active: true } } } }) : null;
     const uniqueIds = [...new Set(data.userIds)];
-    if (await db.user.count({ where: { id: { in: uniqueIds } } }) !== uniqueIds.length) throw new Error("存在已失效的账号");
+    if (await db.user.count({ where: { id: { in: uniqueIds } } }) !== uniqueIds.length) throw new ActionError("存在已失效的账号");
     for (const rule of data.rules) {
       if (data.active && rule.purposeId) {
         const purpose = await db.sealPurposeConfig.findUnique({ where: { id: rule.purposeId } });
-        if (!purpose?.active || rule.sealTypes.some(type => !purpose.allowedSealTypes.includes(type))) throw new Error("事项已停用或不支持所选印章");
+        if (!purpose?.active || rule.sealTypes.some(type => !purpose.allowedSealTypes.includes(type))) throw new ActionError("事项已停用或不支持所选印章");
       }
     }
     const group = data.id ? await db.approvalPermissionGroup.update({ where: { id: data.id }, data: { name: data.name, description: data.description, active: data.active } })

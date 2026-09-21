@@ -19,6 +19,7 @@ import { matterReadVisibilityFilter } from "@/lib/permissions";
 import { registerReminderDelivery, voidPendingDeliveries } from "@/server/reminders/ledger";
 import { shDayKey } from "@/lib/ui/sh-time";
 import type { MatterCategory } from "@prisma/client";
+import { ActionError } from "@/lib/action-error";
 
 const createSchema = z.object({
   archiveRecordId: z.string().cuid(),
@@ -105,12 +106,12 @@ export async function listArchiveBorrows(): Promise<{
       orderBy: { createdAt: "asc" }, take: PENDING_SCAN_LIMIT, select: borrowSelect
     })
   ]);
-  // 审批资格逐条判定（ARCHIVE_APPROVE 规则 + 自审批排除）
+  // 审批资格逐条判定（ARCHIVE_APPROVE 规则；自审批排除由 canApproveContext 内含的
+  // mayApproveSelf 按 allowSelfApproval 判定——2026-09-21 全流程验收发现此前在此硬编码
+  // 排除本人，单人例外开启时「待我审批」无入口而执行端可批，展示与执行口径分裂）
   const pendingWithFlag = await Promise.all(pending.map(async (row) => ({
     ...row,
-    canDecide: row.applicant.id === session.user.id
-      ? false
-      : await canApproveContext(session.user.id, {
+    canDecide: await canApproveContext(session.user.id, {
           action: "ARCHIVE_APPROVE",
           category: row.archiveRecord.matter.category,
           requesterId: row.applicant.id
@@ -134,16 +135,16 @@ export async function createArchiveBorrow(input: z.input<typeof createSchema>) {
       matter: { select: { id: true, deletedAt: true, internalCode: true, title: true, category: true } }
     }
   });
-  if (!record || record.matter.deletedAt) throw new Error("归档记录不存在");
-  if (record.status !== "APPROVED") throw new Error("仅正式归档（审批通过）的案卷可申请借阅");
+  if (!record || record.matter.deletedAt) throw new ActionError("归档记录不存在");
+  if (record.status !== "APPROVED") throw new ActionError("仅正式归档（审批通过）的案卷可申请借阅");
   // 申请人须对该案具备常规可见性（借阅开放的是归档访问，不是全所案件正文）
   const visible = await prisma.matter.findFirst({
     where: { id: record.matter.id, ...matterReadVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions) },
     select: { id: true }
   });
-  if (!visible) throw new Error("仅对该案件具备可见性的成员可申请借阅");
+  if (!visible) throw new ActionError("仅对该案件具备可见性的成员可申请借阅");
   if (data.scope === "LISTED" && (!data.documentIds || data.documentIds.length === 0)) {
-    throw new Error("指定材料范围时至少选择一份材料");
+    throw new ActionError("指定材料范围时至少选择一份材料");
   }
   // 在途去重：同案同申请人已有待审或未到期借阅
   const active = await prisma.archiveBorrowRequest.findFirst({
@@ -154,7 +155,7 @@ export async function createArchiveBorrow(input: z.input<typeof createSchema>) {
     },
     select: { id: true }
   });
-  if (active) throw new Error("该案卷已有在途借阅（待审或未到期），请先等待处理或归还");
+  if (active) throw new ActionError("该案卷已有在途借阅（待审或未到期），请先等待处理或归还");
 
   const created = await prisma.archiveBorrowRequest.create({
     data: {
@@ -185,16 +186,16 @@ export async function decideArchiveBorrow(input: z.input<typeof decideSchema>) {
       archiveRecord: { select: { id: true, archiveNo: true, matter: { select: { id: true, internalCode: true, title: true, category: true } } } }
     }
   });
-  if (!row) throw new Error("借阅申请不存在");
-  if (row.status !== "PENDING") throw new Error("该申请已被处理");
+  if (!row) throw new ActionError("借阅申请不存在");
+  if (row.status !== "PENDING") throw new ActionError("该申请已被处理");
   // 审批资格：ARCHIVE_APPROVE 规则 + 自审批排除（canApproveContext 内含 mayApproveSelf）
   const qualified = await canApproveContext(session.user.id, {
     action: "ARCHIVE_APPROVE",
     category: row.archiveRecord.matter.category,
     requesterId: row.applicantId
   });
-  if (!qualified) throw new Error("未获授归档（借阅）审批权限，或不能审批本人申请");
-  if (data.decision === "REJECTED" && !data.rejectReason?.trim()) throw new Error("驳回请填写理由");
+  if (!qualified) throw new ActionError("未获授归档（借阅）审批权限，或不能审批本人申请");
+  if (data.decision === "REJECTED" && !data.rejectReason?.trim()) throw new ActionError("驳回请填写理由");
 
   const now = new Date();
   const days = data.days ?? 30;
@@ -204,7 +205,7 @@ export async function decideArchiveBorrow(input: z.input<typeof decideSchema>) {
       ? { status: "APPROVED", approverId: session.user.id, decidedAt: now, accessUntil: new Date(now.getTime() + days * 86_400_000), revision: data.revision + 1 }
       : { status: "REJECTED", approverId: session.user.id, decidedAt: now, rejectReason: data.rejectReason ?? null, revision: data.revision + 1 }
   });
-  if (updated.count !== 1) throw new Error("申请已被其他人处理，请刷新后重试");
+  if (updated.count !== 1) throw new ActionError("申请已被其他人处理，请刷新后重试");
 
   await audit({
     userId: session.user.id,
@@ -253,10 +254,10 @@ export async function returnArchiveBorrow(id: string) {
     where: { id },
     select: { id: true, status: true, applicantId: true, approverId: true, archiveRecord: { select: { archiveNo: true } } }
   });
-  if (!row) throw new Error("借阅单不存在");
-  if (row.status !== "APPROVED") throw new Error("仅已批准的借阅可标记归还");
+  if (!row) throw new ActionError("借阅单不存在");
+  if (row.status !== "APPROVED") throw new ActionError("仅已批准的借阅可标记归还");
   if (row.applicantId !== session.user.id && row.approverId !== session.user.id) {
-    throw new Error("仅借阅人或审批人可标记归还");
+    throw new ActionError("仅借阅人或审批人可标记归还");
   }
   await prisma.archiveBorrowRequest.update({
     where: { id },
@@ -311,8 +312,14 @@ export async function searchArchiveForBorrow(q: string) {
 /** 归档台账页数据（页面已放开为登录可进）：archive.read 持有者另见全量台账 */
 export async function listArchivePageData() {
   const session = await requireSession();
-  const { hasCustomPermission } = await import("@/lib/roles/catalog");
-  const hasArchiveRead = hasCustomPermission(session.user, "archive.read");
+  const { scopeFor } = await import("@/lib/roles/catalog");
+  // 「有台账就不需要借阅」的判定按全所归档可见（ALL）口径：hasCustomPermission 对内置岗位恒
+  // 放行，会把 archive.read=OWN 的内置岗（如财务）也判为无需借阅，入口按钮因此消失——
+  // 2026-09-21 全流程验收发现。内置岗位里合伙人/业务管理权具有全所归档可见。
+  const hasArchiveRead =
+    session.user.role === "CUSTOM"
+      ? scopeFor(session.user, "archive.read") === "ALL"
+      : session.user.role === "PRINCIPAL_LAWYER" || session.user.managerAuthorized === true;
   const borrows = await listArchiveBorrows();
   return { hasArchiveRead, currentUserId: session.user.id, borrows };
 }

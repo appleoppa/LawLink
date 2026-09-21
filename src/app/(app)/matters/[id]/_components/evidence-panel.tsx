@@ -33,6 +33,7 @@ import {
 import { createEvidenceItem } from "@/server/evidence/actions";
 import { evidenceKindLabel } from "@/lib/enums";
 import { formatDate } from "@/lib/utils";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type EvidenceKind = keyof typeof evidenceKindLabel;
 
@@ -139,7 +140,7 @@ export function EvidenceItemDialog({
         onOpenChange(false);
         router.refresh();
       } catch (err) {
-        toast.error("添加失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("添加失败", { description: actionErrorMessage(err) });
       }
     });
   }

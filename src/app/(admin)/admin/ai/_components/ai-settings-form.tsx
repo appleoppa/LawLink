@@ -12,6 +12,7 @@ import {
   testAiConnection
 } from "@/server/settings/ai-actions";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Initial = {
   configured: boolean;
@@ -98,7 +99,7 @@ export function AiSettingsForm({
         toast.success("配置已保存");
         setApiKey(""); // 不在前端持久 key
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "保存失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "保存失败");
       }
     });
   };
@@ -110,7 +111,7 @@ export function AiSettingsForm({
         await clearAiKeyAction({ confirm: true });
         toast.success("API key 已清除");
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "失败");
       }
     });
   };
@@ -126,7 +127,7 @@ export function AiSettingsForm({
         setTestResult({ ok: false, msg: res.message ?? "未知错误" });
       }
     } catch (e) {
-      setTestResult({ ok: false, msg: e instanceof Error ? e.message : "网络错误" });
+      setTestResult({ ok: false, msg: e instanceof Error ? actionErrorMessage(e) : "网络错误" });
     } finally {
       setTesting(false);
     }

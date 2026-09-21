@@ -6,6 +6,7 @@ import { commissionPositions } from "./ledger-corrections";
 import { readLedger } from "./ledger-storage";
 import { summarizeLedger,receivableBalance } from "@/lib/finance/ledger";
 import type { MoneyKind } from "@/lib/finance/ledger-labels";
+import { ActionError } from "@/lib/action-error";
 export async function readFinanceFacts(db:Prisma.TransactionClient,where:Prisma.MatterWhereInput) {
   const matters=await db.matter.findMany({where:{AND:[{deletedAt:null},where]},select:{id:true,internalCode:true,title:true,ownerId:true,owner:{select:{name:true}},primaryClientId:true,primaryClient:{select:{id:true,name:true}}}});
   const ledger=await readLedger(db,matters.map(m=>m.id));
@@ -23,7 +24,7 @@ export async function readFinanceFacts(db:Prisma.TransactionClient,where:Prisma.
   const receivables=ledger.receivables.filter(r=>r.status!=="CANCELLED").map(r=>({...r,createdAt:created.get(r.id)!,effectiveAmount:r.amount.plus(r.adjustmentAmount),outstanding:receivableBalance(r),matter:byId.get(r.matterId)!}));
   const payments=ledger.payments.map(p=>({...p,amount:p.amount.minus(p.refundedAmount),originalAmount:p.amount,matter:byId.get(p.matterId)!,...bySource.get(p.feeEntryId!),id:p.id}));
   const corrections=ids.length?await db.$queryRaw<{id:string;paymentId:string;type:string;amount:Prisma.Decimal;occurredAt:Date;reason:string;relatedDocNo:string;confirmedById:string}[]>(Prisma.sql`SELECT c.id,e."paymentId",c.type::text,e.delta AS amount,c."occurredAt",c.reason,c."relatedDocNo",c."confirmedById" FROM "FinanceCorrection" c JOIN "FinanceCorrectionEffect" e ON e."correctionId"=c.id WHERE c.status='CONFIRMED' AND e."effectKind"='PAYMENT_REFUND' AND c."matterId" IN (${Prisma.join(ids)}) ORDER BY c."occurredAt",c.id`):[];
-  const refunds=corrections.map(c=>{const p=payments.find(p=>p.id===c.paymentId);if(!p)throw new Error("更正收款来源不存在");return {...p,id:c.id,paymentId:p.id,amount:c.amount,occurredAt:c.occurredAt,note:`${c.type==='REFUND'?'退款':'误录冲销'}：${c.reason}；凭据 ${c.relatedDocNo}`,correctionType:c.type,confirmedById:c.confirmedById};});
+  const refunds=corrections.map(c=>{const p=payments.find(p=>p.id===c.paymentId);if(!p)throw new ActionError("更正收款来源不存在");return {...p,id:c.id,paymentId:p.id,amount:c.amount,occurredAt:c.occurredAt,note:`${c.type==='REFUND'?'退款':'误录冲销'}：${c.reason}；凭据 ${c.relatedDocNo}`,correctionType:c.type,confirmedById:c.confirmedById};});
   const commissions=await commissionPositions(db,ids);
   const expenses=ids.length?await db.$queryRaw<{id:string;matterId:string;amount:Prisma.Decimal;reversed:Prisma.Decimal;occurredAt:Date}[]>(Prisma.sql`SELECT f.id,f."matterId",f.amount,f."occurredAt",COALESCE((SELECT SUM(delta) FROM "FinanceCorrectionEffect" e WHERE e."expenseEntryId"=f.id),0) AS reversed FROM "FeeEntry" f WHERE f.type='COST' AND f."matterId" IN (${Prisma.join(ids)})`):[];
   const lawyerAr=ledger.receivables.filter(r=>r.moneyKind==='LAWYER_FEE');

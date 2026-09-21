@@ -26,6 +26,7 @@ import {
 import { civilFromKey, civilKey, shTodayCivil } from "@/lib/ui/sh-time";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
 import { formatDate } from "@/lib/utils";
+import { actionErrorMessage } from "@/lib/action-error";
 
 /**
  * 起算日的统一口径（2026-09-20 第五轮审计时区修复）：
@@ -121,7 +122,7 @@ export function PreservationCaseDialog({
         reset();
         onOpenChange(false);
       } catch (err) {
-        toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("操作失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -252,7 +253,7 @@ export function AddTargetDialog({ open, onOpenChange, caseId }: { open: boolean;
         setName("");
         onOpenChange(false);
       } catch (err) {
-        toast.error("添加失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("添加失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -317,7 +318,7 @@ export function AddPropertyDialog({ open, onOpenChange, targetId }: { open: bool
         toast.success("财产已添加");
         onOpenChange(false);
       } catch (err) {
-        toast.error("添加失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("添加失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -368,7 +369,7 @@ export function RenewPropertyDialog({ open, onOpenChange, property }: { open: bo
         toast.success("续保成功");
         onOpenChange(false);
       } catch (err) {
-        toast.error("续保失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("续保失败", { description: actionErrorMessage(err) });
       }
     });
   }

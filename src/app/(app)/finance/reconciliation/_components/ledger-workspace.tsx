@@ -15,6 +15,7 @@ import { MetricCard, Segmented } from "@/components/patterns/moan";
 import { formatDate } from "@/lib/utils";
 import { moneyKindLabels, dueLabels } from "@/lib/finance/ledger-labels";
 import { allocateLedger, type getFinanceLedger } from "@/server/finance/ledger-actions";
+import { actionErrorMessage } from "@/lib/action-error";
 type Data = Awaited<ReturnType<typeof getFinanceLedger>>;
 const yuan = (amount: string) => `¥${Number(amount).toLocaleString("zh-CN",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 
@@ -59,7 +60,7 @@ export function LedgerWorkspace({ data, canWrite, canConfirm, canCorrect, canSet
       const result = await allocateLedger({ paymentId: payment.id, revision: payment.revision, kind, items: targets.filter(t => amounts[t.id]?.trim()).map(t => ({targetId:t.id,amount:amounts[t.id]})) });
       if(!result.ok)throw new Error(result.message);
       toast.success(kind === "RECEIVABLE" ? "已分配收款" : "已关联票款"); setPayment(null); router.refresh();
-    } catch(e) { toast.error(e instanceof Error ? e.message : "分配失败"); } finally { setBusy(false); }
+    } catch(e) { toast.error(e instanceof Error ? actionErrorMessage(e) : "分配失败"); } finally { setBusy(false); }
   }
   if (!data.ready) return <p className="rounded-xl border bg-card p-5 text-sm">应收与收款分配尚未启用，请待财务流程更新完成后使用。</p>;
 

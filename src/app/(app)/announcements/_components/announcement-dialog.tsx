@@ -23,6 +23,7 @@ import {
   updateAnnouncement
 } from "@/server/announcements/actions";
 import { shDayKey } from "@/lib/ui/sh-time";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Editing = {
   id: string;
@@ -92,7 +93,7 @@ export function AnnouncementDialog({
         router.refresh();
       } catch (err) {
         toast.error("保存失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });

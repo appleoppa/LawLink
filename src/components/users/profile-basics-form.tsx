@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { myProfileSchema } from "@/server/users/profile-schema";
 import { updateMyProfile } from "@/server/users/profile-actions";
 import { updateUserProfile } from "@/server/users/actions";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Values = z.infer<typeof myProfileSchema>;
 export type BasicProfile = { name: string; email: string; phone: string | null; updatedAt: string };
@@ -49,7 +50,7 @@ export function ProfileBasicsForm({ profile, adminTargetId, isSelf = true, onSav
         onSaved?.();
         router.refresh();
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "资料保存失败");
+        toast.error(error instanceof Error ? actionErrorMessage(error) : "资料保存失败");
       }
     });
   }

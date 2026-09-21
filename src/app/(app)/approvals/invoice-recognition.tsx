@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { recognizeInvoiceFromImage, type RecognizedInvoice } from "@/server/ai/actions";
+import { actionErrorMessage } from "@/lib/action-error";
 
 /** 保留原财务处理页的发票识别能力，由用户选择是否识别。 */
 export function InvoiceRecognition({ file, onNumber, requestedAmount }: { file: File | null; onNumber: (number: string) => void; requestedAmount?: string }) {
@@ -22,7 +23,7 @@ export function InvoiceRecognition({ file, onNumber, requestedAmount }: { file: 
       setResult(response.data);
       if (response.data.invoiceNumber) onNumber(response.data.invoiceNumber);
       toast.success("发票信息已识别，请核对后提交");
-    } catch (e) { if (generation.current === current) toast.error(e instanceof Error ? e.message : "识别失败，请手动填写"); }
+    } catch (e) { if (generation.current === current) toast.error(e instanceof Error ? actionErrorMessage(e) : "识别失败，请手动填写"); }
     finally { if (generation.current === current) setPending(false); }
   }
   const amount = result?.totalWithTax ?? result?.totalAmount;

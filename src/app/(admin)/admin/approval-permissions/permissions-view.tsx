@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getPermissionAdministration, savePermissionGroup, saveSealPurpose, saveApprovalSettings, type PermissionGroupInput } from "@/server/approval-permissions/actions";
 import { AdminPageHeader } from "@/components/layout/admin-page-header";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Data = Awaited<ReturnType<typeof getPermissionAdministration>>;
 const sealLabels: Record<SealType, string> = { OFFICIAL_SEAL: "律所公章", CONTRACT_SEAL: "合同专用章", FINANCE_SEAL: "财务专用章", LEGAL_REP_SEAL: "法定代表人章", CONTRACT_REVIEW_SEAL: "合同审核章" };
@@ -27,7 +28,7 @@ export function PermissionAdministration({ data }: { data: Data }) {
   const [purpose, setPurpose] = useState<{ id?: string; name: string; description: string; active: boolean; allowedSealTypes: SealType[] } | null>(null);
   const [query, setQuery] = useState("");
   const [allowSelf, setAllowSelf] = useState(data.settings.allowSelfApproval);
-  function run(fn: () => Promise<unknown>, close?: () => void) { start(async () => { try { await fn(); close?.(); router.refresh(); toast.success("已保存"); } catch (e) { toast.error(e instanceof Error ? e.message : "保存失败"); } }); }
+  function run(fn: () => Promise<unknown>, close?: () => void) { start(async () => { try { await fn(); close?.(); router.refresh(); toast.success("已保存"); } catch (e) { toast.error(e instanceof Error ? actionErrorMessage(e) : "保存失败"); } }); }
   function patchRule(index: number, patch: Partial<PermissionGroupInput["rules"][number]>) { if (group) setGroup({ ...group, rules: group.rules.map((r, i) => i === index ? { ...r, ...patch } : r) }); }
   return <div className="space-y-6">
     <AdminPageHeader title="审批权限" sub="审批资格与系统管理身份分开，所有人员均按案件类别和具体事项分配审批权限。" />

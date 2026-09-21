@@ -19,6 +19,7 @@ import {
   testYuandianConnection
 } from "@/server/settings/yuandian-actions";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Initial = {
   configured: boolean;
@@ -50,7 +51,7 @@ export function YuandianSettingsForm({
         toast.success("元典配置已保存");
         setApiKey("");
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "保存失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "保存失败");
       }
     });
   };
@@ -62,7 +63,7 @@ export function YuandianSettingsForm({
         await clearYuandianKeyAction({ confirm: true });
         toast.success("元典 API key 已清除");
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "失败");
       }
     });
   };
@@ -74,7 +75,7 @@ export function YuandianSettingsForm({
       const res = await testYuandianConnection();
       setTestResult({ ok: res.ok, msg: res.message ?? "" });
     } catch (e) {
-      setTestResult({ ok: false, msg: e instanceof Error ? e.message : "网络错误" });
+      setTestResult({ ok: false, msg: e instanceof Error ? actionErrorMessage(e) : "网络错误" });
     } finally {
       setTesting(false);
     }

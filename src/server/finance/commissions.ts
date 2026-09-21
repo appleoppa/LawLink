@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { ActionError } from "@/lib/action-error";
 
 /** 按总比例四舍五入到分，再按小数余量分配尾差，避免逐人取整导致超额。 */
 export function allocateCommissions(
@@ -8,7 +9,7 @@ export function allocateCommissions(
   const total = plans.reduce((sum, plan) => sum.plus(plan.percent), new Prisma.Decimal(0));
   if (!total.isFinite() || total.gt(100) || plans.some(p => p.percent.lt(0)) ||
       new Set(plans.map(p => p.userId)).size !== plans.length) {
-    throw new Error("分成方案无效，请先修正比例或重复受益人");
+    throw new ActionError("分成方案无效，请先修正比例或重复受益人");
   }
   const base = new Prisma.Decimal(amount).toDecimalPlaces(2);
   const shares = plans.map((p, index) => {

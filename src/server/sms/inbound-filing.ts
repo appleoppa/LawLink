@@ -13,6 +13,7 @@ import { assertMatterWritable } from "@/lib/archive/guard";
 import { storage } from "@/lib/storage";
 import { encryptBuffer, sha256 } from "@/lib/storage/crypto";
 import { recordTimelineEvent } from "@/server/timeline/record";
+import { ActionError } from "@/lib/action-error";
 
 /**
  * B1：把一条来件私有暂存区（PENDING_REVIEW、无 documentId）的文件转正为正式案件材料。
@@ -26,10 +27,10 @@ import { recordTimelineEvent } from "@/server/timeline/record";
 export async function fileSmsInboundFilesToMatter({ smsId, matterId, userId }: { smsId: string; matterId: string; userId: string }): Promise<number> {
   // 会话存在性校验（防直调无会话）；userId 须与会话一致（防归属伪造）
   const session = await requireSession("matters.write");
-  if (session.user.id !== userId) throw new Error("转正操作人与会话不一致");
+  if (session.user.id !== userId) throw new ActionError("转正操作人与会话不一致");
   const sms = await prisma.smsMessage.findUnique({ where: { id: smsId }, select: { matchedMatterId: true, smsType: true } });
-  if (!sms) throw new Error("来件不存在");
-  if (sms.matchedMatterId !== matterId) throw new Error("转正目标须为该来件匹配的案件");
+  if (!sms) throw new ActionError("来件不存在");
+  if (sms.matchedMatterId !== matterId) throw new ActionError("转正目标须为该来件匹配的案件");
   await assertMatterWritable(matterId, { allowPrincipal: true });
   const pending = await prisma.smsInboundFile.findMany({
     where: { smsId, documentId: null, state: "PENDING_REVIEW" },

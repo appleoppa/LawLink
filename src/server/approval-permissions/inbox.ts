@@ -11,6 +11,7 @@ import { loadIntakeApprovalDetail } from "./intake-detail";
 import { audit } from "@/server/audit";
 import { archiveHasExceptions, parseArchiveSnapshot, requiredArchiveVerificationIds } from "@/lib/archive/snapshot";
 import { isSystemAdmin } from "@/lib/auth/system-role";
+import { ActionError } from "@/lib/action-error";
 const workspaceQuery = z.object({
   tab: z.enum(["pending", "processed", "mine", "all"]).catch("pending").default("pending"),
   type: z.nativeEnum(ApprovalAction).optional().catch(undefined),
@@ -23,7 +24,7 @@ export async function listApprovalWorkspace(input: Record<string, unknown> = {})
   const session = await requireSession("approval");
   const query = workspaceQuery.parse(input);
   const canViewAll = isSystemAdmin(session.user);
-  if (query.tab === "all" && !canViewAll) throw new Error("仅管理员可查看全部审批记录");
+  if (query.tab === "all" && !canViewAll) throw new ActionError("仅管理员可查看全部审批记录");
   const records = await loadApprovalRecords();
   const accessible = await Promise.all(records.map(async row => ({ row, ...await approvalRecordAccess(session.user, row) })));
   const visible = accessible.filter(r => r.readable).map(item => {
@@ -93,9 +94,10 @@ export async function getApprovalDetail(input: { action: ApprovalAction; id: str
     const r = await prisma.archiveRecord.findUniqueOrThrow({ where: { id }, include: { matter: { select: { title: true } } } });
     field("案件名称", r.matter.title); field("归档编号", r.archiveNo); field("归档人", r.archivedBy); field("结案总结", r.summary); field("裁判结果", r.judgmentSummary); field("缺失材料", r.missingItems.join("、") || "无"); field("完成时间", r.completedAt);
     if(await closureReady(prisma)){
-      const [w]=await prisma.$queryRaw<{parentNo:string|null;workflowSnapshot:{plan:{reason:string;financeOwnerId:string|null;serviceCompletedAt:string};facts:{finance:{outstanding:string;unallocated:string;commissionBalance:string}}}|null}[]>`SELECT a."workflowSnapshot",p."archiveNo" AS "parentNo" FROM "ArchiveRecord" a LEFT JOIN "ArchiveRecord" p ON p.id=a."supplementOfId" WHERE a.id=${id}`;
+      const [w]=await prisma.$queryRaw<{parentNo:string|null;workflowSnapshot:{plan:{reason:string;financeOwnerId:string|null;serviceCompletedAt:string};finance?:{outstanding:string;unallocated:string;commissionBalance:string};facts?:{finance?:{outstanding:string;unallocated:string;commissionBalance:string}}}|null}[]>`SELECT a."workflowSnapshot",p."archiveNo" AS "parentNo" FROM "ArchiveRecord" a LEFT JOIN "ArchiveRecord" p ON p.id=a."supplementOfId" WHERE a.id=${id}`;
       if(w?.parentNo)field('补充归档对应原卷宗',w.parentNo);
-      if(w?.workflowSnapshot){const snap=w.workflowSnapshot;field('服务完成与收尾说明',snap.plan.reason);field('财务未结应收',snap.facts.finance.outstanding);field('未分配收款',snap.facts.finance.unallocated);field('未结分成',snap.facts.finance.commissionBalance);const owner=snap.plan.financeOwnerId?await prisma.user.findUnique({where:{id:snap.plan.financeOwnerId},select:{name:true}}):null;field('指定财务收尾负责人',owner?.name??'无未结财务');}
+      // finance 快照位于顶层（2026-09-21 起）；旧申请快照无财务数据时如实标注而非报错。
+      if(w?.workflowSnapshot){const snap=w.workflowSnapshot;field('服务完成与收尾说明',snap.plan.reason);const fin=snap.finance??snap.facts?.finance;if(fin){field('财务未结应收',fin.outstanding);field('未分配收款',fin.unallocated);field('未结分成',fin.commissionBalance);}else field('财务快照','送审快照未含财务数据');const owner=snap.plan.financeOwnerId?await prisma.user.findUnique({where:{id:snap.plan.financeOwnerId},select:{name:true}}):null;field('指定财务收尾负责人',owner?.name??'无未结财务');}
     }
     const snapshot = parseArchiveSnapshot(r.checklistJson);
     if (snapshot) {

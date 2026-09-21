@@ -42,6 +42,7 @@ import {
 } from "@/server/yuandian/enterprise";
 import { cn } from "@/lib/utils";
 import { readFormPath } from "@/lib/form-path";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Props = {
   open: boolean;
@@ -145,7 +146,7 @@ export function ClientSheet({ open, onOpenChange, editingClient }: Props) {
         onOpenChange(false);
       } catch (err) {
         toast.error("保存失败", {
-          description: err instanceof Error ? err.message : "请稍后重试"
+          description: err instanceof Error ? actionErrorMessage(err) : "请稍后重试"
         });
       }
     });
@@ -190,7 +191,7 @@ export function ClientSheet({ open, onOpenChange, editingClient }: Props) {
         setCandidates(r.items);
       } catch (err) {
         toast.error("查找失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });
@@ -210,7 +211,7 @@ export function ClientSheet({ open, onOpenChange, editingClient }: Props) {
         }
       } catch (err) {
         toast.warning("法代 / 地址自动填充失败，可手动补充", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });

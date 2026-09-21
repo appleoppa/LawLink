@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
+import { ActionError } from "@/lib/action-error";
 
 export async function getNotifications(params?: { unreadOnly?: boolean; limit?: number }) {
   const session = await requireSession("personal");
@@ -29,7 +30,7 @@ export async function markNotificationRead(id: string) {
   const notif = await prisma.notification.findFirst({
     where: { id, userId: session.user.id },
   });
-  if (!notif) throw new Error("通知不存在");
+  if (!notif) throw new ActionError("通知不存在");
 
   return prisma.notification.update({
     where: { id },

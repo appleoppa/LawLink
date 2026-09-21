@@ -11,6 +11,7 @@ import {formatDate} from "@/lib/utils";
 import {amendmentLabels,amendmentTypes,scopeLabels} from "@/lib/finance/contract-labels";
 import {procedureTypeLabel} from "@/lib/enums";
 import {bindContractScope,draftAmendment,activateAmendment,cancelAmendment,type getFinanceLedger} from "@/server/finance/ledger-actions";
+import { actionErrorMessage } from "@/lib/action-error";
 type Data=Awaited<ReturnType<typeof getFinanceLedger>>;
 type Part={title:string;amount:string;dueState:"UNKNOWN"|"DATE_SET"|"CONDITIONAL";dueDate:string;dueCondition:string};
 const date=(s:string)=>new Date(`${s}T00:00:00+08:00`),yuan=(s:string|null)=>`¥${Number(s??0).toLocaleString("zh-CN",{minimumFractionDigits:2})}`;
@@ -28,7 +29,7 @@ export function ContractWorkspace({data,canWrite,canCorrect}:{data:Data;canWrite
  const ars=data.receivables.filter(r=>r.billingId&&lineage.has(r.billingId));
  const activeChildren=new Set(data.billings.filter(b=>b.status==='ACTIVE').map(b=>b.sourceBillingId));
  const eligible=data.billings.filter(b=>b.status==='ACTIVE'&&b.signedAt&&b.amendmentType!=="TERMINATION"&&!activeChildren.has(b.id)&&data.matters.find(m=>m.id===b.matterId)?.status!=="ARCHIVED");
- async function run(work:()=>Promise<{ok:boolean;message?:string}>,message:string){setBusy(true);try{const r=await work();if(!r.ok)throw new Error(r.message);toast.success(message);setOpen(false);router.refresh();}catch(e){toast.error(e instanceof Error?e.message:"保存失败");}finally{setBusy(false);}}
+ async function run(work:()=>Promise<{ok:boolean;message?:string}>,message:string){setBusy(true);try{const r=await work();if(!r.ok)throw new Error(r.message);toast.success(message);setOpen(false);router.refresh();}catch(e){toast.error(e instanceof Error ? actionErrorMessage(e) :"保存失败");}finally{setBusy(false);}}
  async function submit(e:React.FormEvent){e.preventDefault();if(!source)return;await run(()=>draftAmendment({sourceBillingId:source.id,sourceRevision:source.revision,title,type,amount,signedAt:date(signed),effectiveAt:date(effective),endsAt:ends?date(ends):undefined,reason,completedWork:completed,handoverWork:handover,documentIds:docs,scopes:Object.entries(scopes).map(([procedureId,s])=>({procedureId,...s})),installments:parts.map(p=>({...p,dueDate:p.dueState==='DATE_SET'?date(p.dueDate):undefined})),reductions:ars.filter(r=>reductions[r.id]?.trim()).map(r=>({receivableId:r.id,revision:r.revision,amount:reductions[r.id],allocationReversals:data.allocations.filter(a=>a.receivableId===r.id&&reversals[a.id]?.trim()).map(a=>({targetId:a.id,amount:reversals[a.id]}))}))}),"变更草稿已保存，请核对前后总额后确认生效");}
  function start(){setSourceId(eligible[0]?.id??"");setType("ADDITION");setAmount("");setTitle("补充协议");setReason("");setSigned(formatDate(new Date()));setEffective(formatDate(new Date()));setEnds("");setCompleted("");setHandover("");setDocs([]);setParts([]);setReductions({});setReversals({});setScopes({});setOpen(true);}
  return <section className="space-y-3 rounded-xl border bg-card p-4"><div className="flex items-center justify-between"><h2 className="font-semibold">合同版本与代理范围</h2>{canWrite&&<button className="btn btn-secondary btn-sm" disabled={!eligible.length} onClick={start}>新增补充协议</button>}</div><p className="text-sm text-muted-foreground">追加、调减与替代总价分别处理；每条合同链只计当前生效总额，原合同留存。</p>

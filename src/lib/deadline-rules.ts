@@ -9,6 +9,7 @@
  * 按月/年的期间取到期月对应日；到期月无对应日的取该月最后一日。
  */
 import type { DeadlinePeriodUnit } from "@prisma/client";
+import { ActionError } from "@/lib/action-error";
 
 export const HOLIDAY_NOTE = "如届满日为法定休假日，以其后第一个工作日为届满日；已配置放假安排时由系统按其顺延并在依据标注，请核对";
 
@@ -45,7 +46,7 @@ export function computeDeadlineDate(
   periodUnit: DeadlinePeriodUnit
 ): Date {
   if (!Number.isInteger(periodValue) || periodValue <= 0) {
-    throw new Error("期限数值必须为正整数");
+    throw new ActionError("期限数值必须为正整数");
   }
   switch (periodUnit) {
     case "DAYS":

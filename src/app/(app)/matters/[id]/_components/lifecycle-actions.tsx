@@ -39,6 +39,7 @@ import {
 } from "@/server/matters/lifecycle";
 import { ArchiveWizardDialog } from "./archive-wizard";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { actionErrorMessage } from "@/lib/action-error";
 
 export function LifecycleActions({
   matterId,
@@ -88,7 +89,7 @@ export function LifecycleActions({
         setDialog(null);
         router.refresh();
       } catch (err) {
-        toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("操作失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -101,7 +102,7 @@ export function LifecycleActions({
         toast.success("案件已重新开放");
         router.refresh();
       } catch (err) {
-        toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("操作失败", { description: actionErrorMessage(err) });
       }
     });
   }

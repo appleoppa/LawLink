@@ -9,7 +9,8 @@
  * - EXPIRED / RECIPIENT_MISSING 行的受众实时解析与当日通知去重；
  * - 发送失败：attempts+1 保持 PENDING 重试，超限置 FAILED。
  */
-import { it, expect, vi, beforeEach } from "vitest";
+import { it, expect, vi, beforeEach, afterEach } from "vitest";
+import { shDayStart } from "@/server/reminders/schedule";
 
 const { db, notify, auditMock, escalate } = vi.hoisted(() => {
   const db: Record<string, any> = {
@@ -73,6 +74,8 @@ const pendingRow = (overrides: Record<string, unknown> = {}) => ({
 });
 
 const updates: any[] = [];
+
+afterEach(() => { vi.useRealTimers(); });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -332,17 +335,24 @@ it("期限 ESCALATION 行：逾期档复核通过 → 调用团队负责人升�
   expect(updates.at(-1)?.data.status).toBe("SENT");
 });
 
-it("开庭 OFFSET 行：文案含开庭信息，正常送达", async () => {
+it.each([
+  ["2026-09-21T22:00:00+08:00", "今天 23:00 开庭：庭审"],
+  ["2026-09-21T23:30:00+08:00", "今天 23:00 开庭（时间已过，请核对）：庭审"]
+])("开庭 OFFSET 行：%s 正常送达并区分是否已过时", async (now, expectedTitle) => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(now));
   db.reminderDelivery.findMany.mockResolvedValue([schedulePendingRow({ objectType: "HEARING", objectId: "chear0000000000000000002", userId: LEAD })]);
+  // 固定上海时钟，同时覆盖开庭前与开庭后，避免运行时刻改变提醒文案。
+  const startsAt = new Date(shDayStart(new Date()).getTime() + 23 * 3_600_000);
   db.hearing.findUnique.mockResolvedValue({
     id: "chear0000000000000000002", updatedAt: new Date(), title: "庭审",
-    startsAt: new Date(Date.now() + 3 * 3_600_000), room: "第三法庭", judge: null,
+    startsAt, room: "第三法庭", judge: null,
     procedure: deadlineRow().procedure
   });
 
   const result = await deliverPendingReminders();
   expect(result).toMatchObject({ sent: 1 });
-  expect(db.notification.createMany.mock.calls[0][0].data[0].title).toContain("开庭：庭审");
+  expect(db.notification.createMany.mock.calls[0][0].data[0].title).toContain(expectedTitle);
 });
 
 it("P2-1：上一轮 sweep 未结束时重入 → 整轮让开，不重复捞取未 finalize 的行", async () => {

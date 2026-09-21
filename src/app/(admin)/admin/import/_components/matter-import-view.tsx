@@ -11,6 +11,7 @@ import {
   type ImportPreview,
   type ImportResult
 } from "@/server/imports/actions";
+import { actionErrorMessage } from "@/lib/action-error";
 
 export function MatterImportView() {
   const [preview, setPreview] = useState<ImportPreview | null>(null);
@@ -32,7 +33,7 @@ export function MatterImportView() {
         setPreview(p);
       } catch (e) {
         setPreview(null);
-        toast.error(e instanceof Error ? e.message : "解析失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "解析失败");
       }
     });
   };
@@ -52,7 +53,7 @@ export function MatterImportView() {
         if (fileRef.current) fileRef.current.value = "";
         toast.success(`导入完成：成功 ${res.succeeded.length}，失败 ${res.failed.length}`);
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "导入失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "导入失败");
       }
     });
   };

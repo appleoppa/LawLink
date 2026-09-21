@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { changeMyPassword } from "@/server/users/actions";
+import { actionErrorMessage } from "@/lib/action-error";
 
 const schema = z
   .object({
@@ -46,7 +47,7 @@ export function ChangePasswordForm() {
         toast.success("密码已修改");
         reset();
       } catch (err) {
-        toast.error("修改失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("修改失败", { description: actionErrorMessage(err) });
       }
     });
   }

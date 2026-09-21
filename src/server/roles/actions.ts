@@ -10,6 +10,7 @@ import { roleDefinitionSchema, builtinRolePresentationSchema, normalizeRoleName,
 import { ADMINISTRATIVE_ROLE_ID, BUILTIN_ROLES, isBuiltinRole } from "@/lib/roles/catalog";
 import { BUILTIN_PRESENTATION_KEY, readBuiltinPresentations } from "@/lib/roles/presentation";
 import type { Prisma } from "@prisma/client";
+import { ActionError } from "@/lib/action-error";
 export async function listRoleDefinitions() {
   await requireSystemAdmin();
   if (!await roleTablesReady()) return { ready: false, roles: [], builtins: [] };
@@ -20,15 +21,15 @@ export async function listRoleDefinitions() {
 }
 export async function saveRoleDefinition(input: RoleDefinitionInput) {
   const session = await requireSystemAdmin();
-  if (input.id && isBuiltinRole(input.id)) throw new Error("内置角色只能修改名称和介绍，不能修改权限或启停状态");
+  if (input.id && isBuiltinRole(input.id)) throw new ActionError("内置角色只能修改名称和介绍，不能修改权限或启停状态");
   const parsed = roleDefinitionSchema.safeParse(input);
   if (!parsed.success) throw new Error(parsed.error.issues[0].message);
   const data = parsed.data;
   const result = await approvalTransaction(async db => {
     const actor = await db.user.findUnique({ where: { id: session.user.id }, select: { systemRole: true, active: true } });
-    if (!actor?.active || actor.systemRole !== "SUPER_ADMIN") throw new Error("系统管理权限已失效");
+    if (!actor?.active || actor.systemRole !== "SUPER_ADMIN") throw new ActionError("系统管理权限已失效");
     const old = data.id ? await db.roleDefinition.findUnique({ where: { id: data.id }, include: { permissions: true } }) : null;
-    if (data.id && (!old || old.version !== data.version)) throw new Error("角色配置已变化，请刷新后再保存");
+    if (data.id && (!old || old.version !== data.version)) throw new ActionError("角色配置已变化，请刷新后再保存");
     await assertUniqueRoleName(db, data.name, data.id);
     const values = { name: data.name, normalizedName: normalizeRoleName(data.name), description: data.description, active: data.active };
     const definition = old
@@ -52,10 +53,10 @@ async function assertUniqueRoleName(db: Prisma.TransactionClient, name: string, 
   const builtins = await readBuiltinPresentations(db);
   if (BUILTIN_ROLES.some(role => role.id !== ownId && (normalizeRoleName(role.name) === normalized || normalizeRoleName(role.id) === normalized)) ||
       builtins.some(role => role.id !== ownId && normalizeRoleName(role.name) === normalized)) {
-    throw new Error("角色名称已被内置角色使用，请换一个名称");
+    throw new ActionError("角色名称已被内置角色使用，请换一个名称");
   }
   const duplicate = await db.roleDefinition.findFirst({ where: { normalizedName: normalized, ...(ownId ? { id: { not: ownId } } : {}) }, select: { id: true } });
-  if (duplicate) throw new Error("角色名称已存在，请换一个名称");
+  if (duplicate) throw new ActionError("角色名称已存在，请换一个名称");
 }
 
 export async function saveBuiltinRolePresentation(input: BuiltinRolePresentationInput) {
@@ -65,12 +66,12 @@ export async function saveBuiltinRolePresentation(input: BuiltinRolePresentation
   const data = parsed.data;
   await approvalTransaction(async db => {
     const actor = await db.user.findUnique({ where: { id: session.user.id }, select: { systemRole: true, active: true } });
-    if (!actor?.active || actor.systemRole !== "SUPER_ADMIN") throw new Error("系统管理权限已失效");
+    if (!actor?.active || actor.systemRole !== "SUPER_ADMIN") throw new ActionError("系统管理权限已失效");
     const presentations = await readBuiltinPresentations(db);
     const stored = data.id === ADMINISTRATIVE_ROLE_ID
       ? await db.roleDefinition.findUnique({ where: { id: ADMINISTRATIVE_ROLE_ID }, select: { name: true, description: true, version: true } })
       : presentations.find(role => role.id === data.id);
-    if (!stored || stored.version !== data.version) throw new Error("角色资料已变化，请刷新后再保存");
+    if (!stored || stored.version !== data.version) throw new ActionError("角色资料已变化，请刷新后再保存");
     await assertUniqueRoleName(db, data.name, data.id);
     const after = { name: data.name, description: data.description, version: data.version + 1 };
     if (data.id === ADMINISTRATIVE_ROLE_ID) {

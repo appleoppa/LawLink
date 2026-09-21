@@ -5,6 +5,7 @@ import { approvalAudit } from "@/lib/approvals/service";
 import { basicProfileSchema } from "./profile-schema";
 import { identityDocumentTypeLabel } from "@/lib/identity-documents";
 import type { z } from "zod";
+import { ActionError } from "@/lib/action-error";
 
 type Db = Prisma.TransactionClient;
 export class ProfileInputError extends Error {}
@@ -21,11 +22,11 @@ export async function profileTransaction<T>(work: (db: Db) => Promise<T>) {
         const target = String(error.meta?.target ?? "");
         throw new Error(target.includes("identityDocument") ? "该类型的证件号码已登记，无法重复绑定" : "邮箱已被使用，请使用其他邮箱");
       }
-      if (["P2034", "P2025"].includes(error.code)) throw new Error("资料或账号状态已变化，请刷新后重试");
-      throw new Error("资料未能保存，请稍后重试");
+      if (["P2034", "P2025"].includes(error.code)) throw new ActionError("资料或账号状态已变化，请刷新后重试");
+      throw new ActionError("资料未能保存，请稍后重试");
     }
     if (error instanceof ProfileInputError) throw error;
-    throw new Error("资料暂不可用，请稍后重试；如持续失败，请联系管理员");
+    throw new ActionError("资料暂不可用，请稍后重试；如持续失败，请联系管理员");
   }
 }
 export async function assertProfileActor(db: Db, actorId: string, targetId: string, adminOnly = false) {

@@ -13,6 +13,7 @@ import { hasCustomPermission } from "@/lib/roles/catalog";
 import { clientVisibilityFilter, isManager, matterFinanceVisibilityFilter, matterReadVisibilityFilter } from "@/lib/permissions";
 import { decryptIdNumber } from "@/lib/clients/id-number-crypto";
 import { procedureTypeLabel } from "@/lib/enums";
+import { ActionError } from "@/lib/action-error";
 
 async function assertClientVisible(clientId: string) {
   const session = await requireSession("clients.read");
@@ -21,7 +22,7 @@ async function assertClientVisible(clientId: string) {
       where: { id: clientId, deletedAt: null, ...clientVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions) },
       select: { id: true }
     });
-    if (!ok) throw new Error("客户不存在");
+    if (!ok) throw new ActionError("客户不存在");
   }
   return session;
 }
@@ -30,7 +31,7 @@ export async function getClientInsights(clientId: string) {
   const session = await assertClientVisible(clientId);
   const canFinance = hasCustomPermission(session.user, "finance.read");
   const client = await prisma.client.findUnique({ where: { id: clientId }, select: { id: true, name: true, idType: true, idNumberBlind: true, source: true } });
-  if (!client) throw new Error("客户不存在");
+  if (!client) throw new ActionError("客户不存在");
 
   const readFilter = matterReadVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions);
   const [suspects, matters, intakes, contacts, fees, sameSource, totalClients] = await Promise.all([
@@ -144,7 +145,7 @@ export async function revealClientIdNumber(clientId: string) {
 
 export async function revealContactPhone(contactId: string) {
   const contact = await prisma.contact.findUnique({ where: { id: contactId }, select: { clientId: true, phone: true } });
-  if (!contact) throw new Error("联系人不存在");
+  if (!contact) throw new ActionError("联系人不存在");
   const session = await assertClientVisible(contact.clientId);
   await audit({ userId: session.user.id, action: "CONTACT_PHONE_REVEAL", targetType: "Contact", targetId: contactId, detail: { clientId: contact.clientId } });
   return contact.phone ?? "";

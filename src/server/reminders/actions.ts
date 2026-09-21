@@ -13,12 +13,13 @@ import { processDueJobs } from "@/server/cron/worker";
 import { requireSession } from "@/lib/auth/session";
 import { isSystemAdmin } from "@/lib/auth/system-role";
 import { revalidatePath } from "next/cache";
+import { ActionError } from "@/lib/action-error";
 
 /** admin / 主任律师可立即扫一遍（灰度验证 + 紧急补推 + 本地 dev 验证） */
 export async function triggerDueReminderScan(): Promise<DueReminderScanResult> {
   const session = await requireSession();
   if (!isSystemAdmin(session.user) && !isManager(session.user)) {
-    throw new Error("仅系统超级管理员 / 主任律师可手动触发到期提醒扫描");
+    throw new ActionError("仅系统超级管理员 / 主任律师可手动触发到期提醒扫描");
   }
   const result = await scanDueReminders();
   // F-1 阶段一：登记后立即投递（否则要等下一个 2 分钟 worker tick）

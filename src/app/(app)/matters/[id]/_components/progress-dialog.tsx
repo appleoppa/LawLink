@@ -20,6 +20,7 @@ import { Segmented } from "@/components/patterns/moan";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { JUDGMENT_NOTE_TAG, stageNoteTag } from "./procedure-workflow-panel";
 import { shDayKey, shTime } from "@/lib/ui/sh-time";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Mode = "record" | "judgment";
 const CHANNELS = [
@@ -99,7 +100,7 @@ export function ProgressDialog({
         onOpenChange(false);
         router.refresh();
       } catch (err) {
-        toast.error("保存失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("保存失败", { description: actionErrorMessage(err) });
       }
     });
   }

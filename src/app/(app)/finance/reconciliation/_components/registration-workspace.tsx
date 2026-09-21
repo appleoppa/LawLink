@@ -10,6 +10,7 @@ import { RadioChips } from "@/components/ui/radio-chips";
 import { formatDate } from "@/lib/utils";
 import { moneyKinds, moneyKindLabels, type MoneyKind } from "@/lib/finance/ledger-labels";
 import { registerExpense, registerBilling, registerReceipt, confirmReceipt, rejectReceipt, signBilling, confirmDueCondition, type getFinanceLedger } from "@/server/finance/ledger-actions";
+import { actionErrorMessage } from "@/lib/action-error";
 type Data=Awaited<ReturnType<typeof getFinanceLedger>>;
 type Part={title:string;amount:string;dueState:"UNKNOWN"|"DATE_SET"|"CONDITIONAL";dueDate:string;dueCondition:string};
 const newPart=():Part=>({title:"第一期",amount:"",dueState:"UNKNOWN",dueDate:"",dueCondition:""});
@@ -40,7 +41,7 @@ export function RegistrationWorkspace({data,canWrite,canConfirm,selectedMatterId
   async function run(work:()=>Promise<{ok:boolean;message?:string}>,success:string) {
     setBusy(true);try{const result=await work();if(!result.ok)throw new Error(result.message);toast.success(success);setDialogOpen(false);
       // M-3e（D 批）：从案件入口进入时，保存成功后留在案件上下文并回原案页，不再停在全局对账页
-      if(selectedMatterId){toast.info("即将返回案件");router.push(`/matters/${selectedMatterId}`);return;}router.refresh();}catch(e){toast.error(e instanceof Error?e.message:"操作失败");}finally{setBusy(false);}
+      if(selectedMatterId){toast.info("即将返回案件");router.push(`/matters/${selectedMatterId}`);return;}router.refresh();}catch(e){toast.error(e instanceof Error ? actionErrorMessage(e) :"操作失败");}finally{setBusy(false);}
   }
   const installments=()=>parts.map(p=>({...p,dueDate:p.dueState==="DATE_SET" && p.dueDate?date(p.dueDate):undefined}));
   function submit(e:React.FormEvent) {

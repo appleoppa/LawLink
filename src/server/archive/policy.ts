@@ -10,6 +10,7 @@ import {
   archivePolicySchema,
   type ArchivePolicyView
 } from "@/lib/archive/policy";
+import { ActionError } from "@/lib/action-error";
 
 const saveArchivePolicySchema = z.object({
   name: z.string().trim().min(1, "请填写制度名称").max(120),
@@ -71,7 +72,7 @@ export async function saveArchivePolicy(input: z.input<typeof saveArchivePolicyS
     where: { id: data.sourceFileId, category: "POLICY", archivedAt: null },
     select: { id: true, name: true, sha256: true }
   });
-  if (!source?.sha256) throw new Error("制度原文不存在或缺少内容校验值");
+  if (!source?.sha256) throw new ActionError("制度原文不存在或缺少内容校验值");
 
   const value = {
     schemaVersion: 1 as const,

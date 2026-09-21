@@ -8,6 +8,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { saveSelfConfirmListAdmin } from "@/server/approval-permissions/self-confirm-actions";
+import { actionErrorMessage } from "@/lib/action-error";
 
 const ACTION_META: { action: string; label: string; hint: string }[] = [
   { action: "DOCUMENT_APPROVE", label: "文书送审", hint: "上传人自我确认即生效，不再进入审批队列" },
@@ -34,7 +35,7 @@ export function SelfConfirmCard({ initialActions }: { initialActions: string[] }
         });
         router.refresh();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "保存失败");
+        setError(e instanceof Error ? actionErrorMessage(e) : "保存失败");
         setEnabled(initialActions);
       }
     });

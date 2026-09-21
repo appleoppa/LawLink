@@ -6,7 +6,10 @@ export async function getClosureBoard(matterId:string){
  const matter=await prisma.matter.findFirst({where:{id:matterId,deletedAt:null,...matterAssociationFilter(session.user.id)},select:{status:true}});if(!matter)return null;
  const facts=await closureFacts(prisma,matterId);
  const [plan]=await prisma.$queryRaw<{financeOwnerId:string|null;name:string|null;serviceCompletedAt:Date;reason:string;revision:number;fingerprint:string}[]>`SELECT p.*,u.name FROM "ArchiveClosurePlan" p LEFT JOIN "User" u ON u.id=p."financeOwnerId" WHERE p."matterId"=${matterId}`;
- const people=await prisma.user.findMany({where:{active:true,role:'CUSTOM',roleDefinition:{active:true,permissions:{some:{permissionKey:'finance.tail',scope:'ALL'}}}},select:{id:true,name:true}});
+ // 收尾人候选与执行端口径一致（scopeFor('finance.tail')==='ALL'）：内置财务岗在代码目录携带该权限、
+ // 自定义角色查 RolePermission 表——2026-09-21 全流程验收发现此前只查 CUSTOM，仅配内置财务岗的所
+ // 指不了收尾人，有未结财务时归档无法推进。
+ const people=await prisma.user.findMany({where:{active:true,OR:[{role:'FINANCE'},{role:'CUSTOM',roleDefinition:{active:true,permissions:{some:{permissionKey:'finance.tail',scope:'ALL'}}}}]},select:{id:true,name:true}});
  const archives=await prisma.archiveRecord.findMany({where:{matterId},orderBy:{archivedAt:'asc'},select:{id:true,archiveNo:true,status:true,summary:true}});
  return {status:matter.status,blockers:facts.blockers,financeOpen:facts.financeOpen,finance:hasCustomPermission(session.user,'finance.read')?facts.financeSnapshot:null,plan:plan?{financeOwnerId:plan.financeOwnerId,name:plan.name,serviceCompletedAt:plan.serviceCompletedAt,reason:plan.reason,revision:plan.revision,current:plan.fingerprint===facts.fingerprint}:null,people,archives,canSave:hasCustomPermission(session.user,'archive.submit'),canSupplement:scopeFor(session.user,'archive.supplement')==='OWN'&&hasCustomPermission(session.user,'archive.submit')};
 }

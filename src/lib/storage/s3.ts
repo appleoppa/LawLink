@@ -18,16 +18,17 @@ import {
   type S3ClientConfig
 } from "@aws-sdk/client-s3";
 import type { StorageProvider } from "./provider";
+import { ActionError } from "@/lib/action-error";
 
 function readBucket(): string {
   const bucket = process.env.S3_BUCKET;
-  if (!bucket) throw new Error("S3_BUCKET 未配置");
+  if (!bucket) throw new ActionError("S3_BUCKET 未配置");
   return bucket;
 }
 
 function readRegion(): string {
   const region = process.env.AWS_REGION;
-  if (!region) throw new Error("AWS_REGION 未配置");
+  if (!region) throw new ActionError("AWS_REGION 未配置");
   return region;
 }
 
@@ -102,7 +103,7 @@ export class S3StorageProvider implements StorageProvider {
     const now = new Date();
     const yyyymm = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
     const safeScope = scope.split("/").filter(Boolean).map(part => part.replace(/[^a-zA-Z0-9_-]/g, "_")).join("/");
-    if (!safeScope) throw new Error("存储范围不能为空");
+    if (!safeScope) throw new ActionError("存储范围不能为空");
     const relPath = `${safeScope}/${yyyymm}/${randomUUID()}.bin`;
     const key = this.prefix + relPath;
 

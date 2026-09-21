@@ -16,6 +16,7 @@ import {
 } from "@/lib/identity-documents";
 import { getIdentityRecognitionConfig, recognizeIdentityDocument } from "@/server/identity-documents/recognition";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { actionErrorMessage } from "@/lib/action-error";
 
 export type IdentityDocumentDraft = {
   documentType: IdentityDocumentTypeValue;
@@ -84,7 +85,7 @@ export function IdentityDocumentFields({
         if (result.data.name) onRecognizedName(result.data.name);
         toast.success("识别结果已填入，请对照原件核对", { description: `识别置信度：${result.data.confidence === "HIGH" ? "较高" : result.data.confidence === "MEDIUM" ? "中等" : "较低"}` });
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "识别失败，请手工录入");
+        toast.error(error instanceof Error ? actionErrorMessage(error) : "识别失败，请手工录入");
       }
     });
   }

@@ -11,6 +11,7 @@
 import { requireSession } from "@/lib/auth/session";
 import { aiChat, aiVision, extractJson, AiNotConfiguredError } from "@/lib/ai/client";
 import { extractText, getDocumentProxy, renderPageAsImage } from "unpdf";
+import { ActionError } from "@/lib/action-error";
 
 export type PleadingPartyHint = {
   name: string;
@@ -49,7 +50,7 @@ const SYSTEM_PROMPT = `你是法律文书解析助手。下方图片是一份起
 - 金额单位统一为人民币元`;
 
 function normalizeResult(parsed: Partial<ParsedPleading> | null | undefined): ParsedPleading {
-  if (!parsed) throw new Error("AI 返回结果无法解析为 JSON");
+  if (!parsed) throw new ActionError("AI 返回结果无法解析为 JSON");
   return {
     plaintiffs: Array.isArray(parsed.plaintiffs) ? parsed.plaintiffs : [],
     thirdParties: Array.isArray(parsed.thirdParties) ? parsed.thirdParties : [],
@@ -86,14 +87,14 @@ function mergeResults(results: ParsedPleading[]): ParsedPleading {
 export async function parsePleading(form: FormData): Promise<ParsedPleading> {
   const session = await requireSession("intakes.create");
   const file = form.get("file");
-  if (!(file instanceof File)) throw new Error("缺少文件");
+  if (!(file instanceof File)) throw new ActionError("缺少文件");
 
   const isImage = SUPPORTED_IMAGE_MIME.includes(file.type);
   const isPdf = SUPPORTED_PDF_MIME.includes(file.type);
   if (!isImage && !isPdf) {
-    throw new Error(`仅支持 JPG / PNG / WebP / PDF，当前 ${file.type || "未知"}`);
+    throw new ActionError(`仅支持 JPG / PNG / WebP / PDF，当前 ${file.type || "未知"}`);
   }
-  if (file.size > 20 * 1024 * 1024) throw new Error("文件超过 20MB");
+  if (file.size > 20 * 1024 * 1024) throw new ActionError("文件超过 20MB");
 
   const buf = Buffer.from(await file.arrayBuffer());
 
@@ -149,7 +150,7 @@ export async function parsePleading(form: FormData): Promise<ParsedPleading> {
     }
 
     if (pageResults.length === 0) {
-      throw new Error("扫描版 PDF 识别失败，请改传图片或检查文件");
+      throw new ActionError("扫描版 PDF 识别失败，请改传图片或检查文件");
     }
     return mergeResults(pageResults);
   } catch (err) {

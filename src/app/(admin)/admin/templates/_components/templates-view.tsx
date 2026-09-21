@@ -25,6 +25,7 @@ import {
 import { upsertStageTemplate } from "@/server/settings/actions";
 import { procedureTypeLabel } from "@/lib/enums";
 import { AdminPageHeader } from "@/components/layout/admin-page-header";
+import { actionErrorMessage } from "@/lib/action-error";
 
 const ALL_PROCEDURE_TYPES: ProcedureType[] = [
   "FIRST_INSTANCE",
@@ -186,7 +187,7 @@ function EditTemplateDialog({
         toast.success("模板已保存");
         onClose();
       } catch (err) {
-        toast.error("保存失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("保存失败", { description: actionErrorMessage(err) });
       }
     });
   }

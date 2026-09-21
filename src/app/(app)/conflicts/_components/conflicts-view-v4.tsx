@@ -22,6 +22,7 @@ import { PageHeader } from "@/components/patterns/moan";
 import { cn, formatDate } from "@/lib/utils";
 import { useTopbarAction } from "@/components/layout/topbar-action";
 import { shMonthDayTime } from "@/lib/ui/sh-time";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type QueryRole = PartyRole;
 type QueryRow = { key: string; role: QueryRole; name: string; idNumber: string; editing: boolean };
@@ -151,7 +152,7 @@ export function ConflictsViewV4({ prefillName = "" }: { prefillName?: string }) 
         toast.success(list.length ? `预检完成，共 ${list.length} 条相关记录` : "预检完成，系统中未发现相关记录");
         router.refresh();
       } catch (err) {
-        toast.error("检索失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("检索失败", { description: actionErrorMessage(err) });
       }
     });
   }

@@ -14,6 +14,7 @@ import type { ReportAccess } from "@/lib/roles/report-scope";
 import { prisma } from "@/lib/prisma";
 import type { MatterCategory } from "@prisma/client";
 import { shParts } from "@/lib/ui/sh-time";
+import { ActionError } from "@/lib/action-error";
 
 export type ReportPeriod = {
   label: string;
@@ -64,7 +65,7 @@ export function periodPresets(now = new Date()): Record<"month" | "quarter" | "y
 export function customPeriod(startStr: string, endStr: string): ReportPeriod {
   const re = /^\d{4}-\d{2}-\d{2}$/;
   if (!re.test(startStr) || !re.test(endStr)) {
-    throw new Error("日期格式不合法，需要 yyyy-MM-dd");
+    throw new ActionError("日期格式不合法，需要 yyyy-MM-dd");
   }
   // 2026-09-20 第五轮审计时区修复：自定义区间按上海日界解释（用户选 2026-09-20
   // 即上海 09-20 00:00 起，不再随服务器时区整体偏移）；非法月日由 Date 解析为 NaN 拦截
@@ -73,14 +74,14 @@ export function customPeriod(startStr: string, endStr: string): ReportPeriod {
   const end = new Date(`${endStr}T00:00:00+08:00`);
   end.setUTCDate(end.getUTCDate() + 1);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    throw new Error("日期格式不合法，需要 yyyy-MM-dd");
+    throw new ActionError("日期格式不合法，需要 yyyy-MM-dd");
   }
   if (end.getTime() <= start.getTime()) {
-    throw new Error("结束日期必须晚于起始日期");
+    throw new ActionError("结束日期必须晚于起始日期");
   }
   const days = (end.getTime() - start.getTime()) / 86400_000;
   if (days > 5 * 366) {
-    throw new Error("自定义跨度不能超过 5 年");
+    throw new ActionError("自定义跨度不能超过 5 年");
   }
   return {
     label: `${startStr} ~ ${endStr}`,

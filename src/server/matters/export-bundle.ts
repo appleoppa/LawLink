@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { storage } from "@/lib/storage";
 import { decryptBuffer, sha256 } from "@/lib/storage/crypto";
 import { readArchiveDocument } from "@/server/archive/verification";
+import { ActionError } from "@/lib/action-error";
 
 const CATEGORY_DIR: Record<string, string> = {
   EVIDENCE: "证据",
@@ -29,7 +30,7 @@ export async function buildMatterBundle(matterId: string, userId: string): Promi
     where: { id: matterId, deletedAt: null },
     select: { internalCode: true, title: true, status: true, createdAt: true, notes: true }
   });
-  if (!matter) throw new Error("案件不存在");
+  if (!matter) throw new ActionError("案件不存在");
 
   const [documents, notes, tasks, finance] = await Promise.all([
     prisma.document.findMany({

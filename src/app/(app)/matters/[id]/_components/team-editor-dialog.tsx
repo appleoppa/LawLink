@@ -67,6 +67,7 @@ import {
   isAgencyAllowedForProcedure,
   isNationalAgency
 } from "@/lib/china-regions";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type UserOption = { id: string; name: string; role: string; roleName?: string; isTeammate?: boolean; active?: boolean };
 
@@ -718,7 +719,7 @@ export function TeamEditorDialog({
         router.refresh();
       } catch (err) {
         toast.error("更新失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });

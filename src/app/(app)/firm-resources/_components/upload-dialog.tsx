@@ -26,6 +26,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { uploadFirmFile } from "@/server/firm-files/actions";
+import { actionErrorMessage } from "@/lib/action-error";
 
 const CATEGORY_OPTIONS: { value: FirmFileCategory; label: string }[] = [
   { value: "CONTRACT", label: "合同" },
@@ -109,7 +110,7 @@ export function UploadDialog({
         router.refresh();
       } catch (err) {
         toast.error("上传失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });

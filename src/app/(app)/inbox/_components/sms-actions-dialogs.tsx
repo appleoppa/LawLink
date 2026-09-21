@@ -24,6 +24,7 @@ import type { SmsRow, MatterOption, ParsedJson } from "./sms-types";
 import { toDate } from "@/lib/sms-parser";
 import { shDayKey, shTime } from "@/lib/ui/sh-time";
 import { procedureTypeLabel } from "@/lib/enums";
+import { actionErrorMessage } from "@/lib/action-error";
 
 // v0.51: 程序默认选中——优先取案号与短信解析案号一致的程序
 function preferredProcedureId(
@@ -87,7 +88,7 @@ export function GenerateHearingDialog({
         toast.success("已生成开庭并标记此短信处理完成");
         onOpenChange(false);
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "失败");
       }
     });
   };
@@ -286,7 +287,7 @@ export function GenerateDeadlineDialog({
         toast.success("已生成期限并标记此短信处理完成");
         onOpenChange(false);
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "失败");
       }
     });
   };
@@ -421,7 +422,7 @@ export function BackfillCaseNumberDialog({
         toast.success(`案号已回填：${caseNumber}`);
         onOpenChange(false);
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "回填失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "回填失败");
       }
     });
   };

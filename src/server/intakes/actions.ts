@@ -38,6 +38,7 @@ import { assertCauseAllowedForSelection } from "@/server/causes/validation";
 import { recordTimelineEvent } from "@/server/timeline/record";
 import { financeLedgerReady } from "@/server/finance/ledger-storage";
 import { createIntakeBillingDraftTx } from "@/server/finance/ledger-registration";
+import { ActionError } from "@/lib/action-error";
 
 function emptyToNull<T extends Record<string, unknown>>(obj: T): T {
   const out: Record<string, unknown> = {};
@@ -133,12 +134,12 @@ function getCheckedConflictQueries(payload: Prisma.JsonValue) {
 function assertConflictReviewAllowsConversion(intake: IntakeConflictGateInput) {
   const expectedQueries = buildExpectedConflictQueries(intake);
   if (expectedQueries.length === 0) {
-    throw new Error("请先补充委托方或相对方，再运行利益冲突检索");
+    throw new ActionError("请先补充委托方或相对方，再运行利益冲突检索");
   }
 
   const latestCheck = intake.conflictChecks[0];
   if (!latestCheck) {
-    throw new Error("转为正式案件前必须先运行利益冲突检索");
+    throw new ActionError("转为正式案件前必须先运行利益冲突检索");
   }
 
   const checkedKeys = new Set(
@@ -146,7 +147,7 @@ function assertConflictReviewAllowsConversion(intake: IntakeConflictGateInput) {
   );
   const missingQueries = expectedQueries.filter((q) => !checkedKeys.has(conflictQueryKey(q)));
   if (missingQueries.length > 0) {
-    throw new Error(
+    throw new ActionError(
       `收案当事人已变更，请重新运行利益冲突检索。缺少：${missingQueries
         .map(formatConflictQuery)
         .join("、")}`
@@ -154,23 +155,23 @@ function assertConflictReviewAllowsConversion(intake: IntakeConflictGateInput) {
   }
 
   if (latestCheck.conclusion === "PENDING") {
-    throw new Error("利益冲突检索还没有结论，请先标记是否可承接");
+    throw new ActionError("利益冲突检索还没有结论，请先标记是否可承接");
   }
   if (latestCheck.conclusion === "NEED_INFO") {
-    throw new Error("利益冲突检索结论为信息不足，不能转为正式案件");
+    throw new ActionError("利益冲突检索结论为信息不足，不能转为正式案件");
   }
   if (latestCheck.conclusion === "SAME_SUBJECT") {
-    throw new Error("已确认存在利益冲突，不能直接转为正式案件");
+    throw new ActionError("已确认存在利益冲突，不能直接转为正式案件");
   }
   if (latestCheck.conclusion !== "DIFFERENT") {
-    throw new Error("利益冲突检索结论异常，请重新检索后再转为正式案件");
+    throw new ActionError("利益冲突检索结论异常，请重新检索后再转为正式案件");
   }
 
   const hasHighRiskHit = latestCheck.hits.some(
     (h) => h.severity === "HIGH" || h.severity === "BLOCKING"
   );
   if (hasHighRiskHit && !latestCheck.note?.trim()) {
-    throw new Error("存在高风险或阻塞命中，请在冲突结论备注中写明排除理由或书面同意留痕");
+    throw new ActionError("存在高风险或阻塞命中，请在冲突结论备注中写明排除理由或书面同意留痕");
   }
 }
 
@@ -248,7 +249,7 @@ export async function getIntakeById(id: string) {
     where: { id, ...intakeReadVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions) },
     select: { id: true }
   });
-  if (!visible) throw new Error("收案记录不存在");
+  if (!visible) throw new ActionError("收案记录不存在");
   const intake = await prisma.intake.findUnique({
     where: { id },
     include: {
@@ -358,7 +359,7 @@ export async function createIntake(input: IntakeCreateInput) {
       detail: { name, type: newClient.type, source: "intake" }
     });
   } else if (resolvedClientId) {
-    if (session.user.role === "CUSTOM" && !await prisma.client.count({ where: { id: resolvedClientId, deletedAt: null, ...clientVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions) } })) throw new Error("客户不存在或无权选择");
+    if (session.user.role === "CUSTOM" && !await prisma.client.count({ where: { id: resolvedClientId, deletedAt: null, ...clientVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions) } })) throw new ActionError("客户不存在或无权选择");
     const c = await prisma.client.findUnique({
       where: { id: resolvedClientId },
       select: { name: true }
@@ -369,7 +370,7 @@ export async function createIntake(input: IntakeCreateInput) {
     if ((data.contactName?.trim() || data.contactPhone?.trim()) && hasCustomPermission(session.user, "clients.write")) {
       if (session.user.role === "CUSTOM") {
         const scope = scopeFor(session.user, "clients.write");
-        if (!scope || !await prisma.client.count({ where: { id: resolvedClientId, ...clientVisibilityFilter(session.user.id, session.user.role, [{ permissionKey: "clients.read", scope }]) } })) throw new Error("无权维护此客户的联系人");
+        if (!scope || !await prisma.client.count({ where: { id: resolvedClientId, ...clientVisibilityFilter(session.user.id, session.user.role, [{ permissionKey: "clients.read", scope }]) } })) throw new ActionError("无权维护此客户的联系人");
       }
       const existing = await prisma.contact.findFirst({
         where: {
@@ -543,7 +544,7 @@ export async function declineIntake(input: DeclineIntakeInput) {
  */
 export async function voidIntake(input: { id: string; reason: string }) {
   const session = await requireSession("intakes.create");
-  if (!input.reason.trim()) throw new Error("请填写作废原因");
+  if (!input.reason.trim()) throw new ActionError("请填写作废原因");
   await approvalTransaction(async tx => {
     // 2026-09-20 第五轮审计 P2 修复：此前只有 requireSession("intakes.create")，
     // 任何持收案权账号可作废他人草稿（状态条件更新不构成授权）——补申请人/当前主办归属校验
@@ -564,7 +565,7 @@ export async function voidIntake(input: { id: string; reason: string }) {
 /** v0.14: 标记需补正 — 让律师补充材料后可再次提交（区别于 DECLINED 终态） */
 export async function markIntakeNeedsRevision(input: { id: string; reason: string }) {
   const session = await requireSession("approval");
-  if (!input.reason.trim()) throw new Error("请填写补正原因");
+  if (!input.reason.trim()) throw new ActionError("请填写补正原因");
 
   await approvalTransaction(async tx => {
     await assertApprovalItem(session.user.id, "INTAKE_APPROVE", input.id, tx);
@@ -599,10 +600,10 @@ export async function resubmitIntake(id: string) {
     where: { id },
     select: { status: true, title: true, createdById: true, ownerUserId: true, declinedReason: true }
   });
-  if (!intake) throw new Error("收案不存在");
-  if (intake.createdById !== session.user.id && intake.ownerUserId !== session.user.id) throw new Error("仅申请人或主办可重新提交");
+  if (!intake) throw new ActionError("收案不存在");
+  if (intake.createdById !== session.user.id && intake.ownerUserId !== session.user.id) throw new ActionError("仅申请人或主办可重新提交");
   await requireApprovalRoute(await approvalContextFor("INTAKE_APPROVE", id));
-  if (intake.status !== "NEEDS_REVISION") throw new Error("只有待补正状态可重新提交");
+  if (intake.status !== "NEEDS_REVISION") throw new ActionError("只有待补正状态可重新提交");
 
   await roleMutation(session.user, "matters.write", async roleDb => roleDb.intake.update({
     where: { id, status: "NEEDS_REVISION" },
@@ -660,8 +661,8 @@ export async function convertIntakeToMatter(intakeId: string, note?: string) {
       documents: { select: { id: true } }
     }
   });
-  if (!intake) throw new Error("Intake 不存在");
-  if (intake.status !== "PENDING_CONFIRMATION") throw new Error("仅待审批收案可转为正式案件");
+  if (!intake) throw new ActionError("Intake 不存在");
+  if (intake.status !== "PENDING_CONFIRMATION") throw new ActionError("仅待审批收案可转为正式案件");
   assertConflictReviewAllowsConversion(intake);
 
   const { generateInternalCode, generateFirmCaseNo } = await import("@/server/matters/code-generator");

@@ -8,6 +8,7 @@ import type { readMatterReview } from '@/server/conflicts/matter-review';
 import { conflictConclusionLabel } from '@/lib/enums';
 import { formatDateTime } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
+import { actionErrorMessage } from "@/lib/action-error";
 
 /** 侧栏常驻的动态冲突复核卡（2026-09-20 用户确认：仅在待复核时渲染，放侧栏不占主视觉）。
  *  是新增程序、委托合同、补充协议生效三处写路径门禁（assertMatterReviewCurrent）的操作出口。 */
@@ -24,7 +25,7 @@ export function MatterConflictReview({ matterId, data, canWrite }: { matterId: s
       router.refresh();
       toast.success('冲突核查已保存');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : '核查失败');
+      toast.error(e instanceof Error ? actionErrorMessage(e) : '核查失败');
     } finally {
       setBusy(false);
     }

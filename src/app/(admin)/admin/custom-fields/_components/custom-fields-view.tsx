@@ -30,6 +30,7 @@ import {
 } from "@/server/custom-fields/actions";
 import { AdminPageHeader } from "@/components/layout/admin-page-header";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { actionErrorMessage } from "@/lib/action-error";
 
 const TYPE_LABEL: Record<CustomFieldDef["fieldType"], string> = {
   TEXT: "文本",
@@ -50,7 +51,7 @@ export function CustomFieldsView({ matterFields }: { matterFields: CustomFieldDe
         await deleteCustomFieldDef(id);
         toast.success("已删除");
       } catch (err) {
-        toast.error("删除失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("删除失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -60,7 +61,7 @@ export function CustomFieldsView({ matterFields }: { matterFields: CustomFieldDe
       try {
         await toggleCustomFieldDef(id, enabled);
       } catch (err) {
-        toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("操作失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -190,7 +191,7 @@ function FieldFormDialog({
         toast.success(field ? "已更新" : "已添加");
         onClose();
       } catch (err) {
-        toast.error("保存失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("保存失败", { description: actionErrorMessage(err) });
       }
     });
   }

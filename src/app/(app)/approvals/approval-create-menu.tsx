@@ -12,6 +12,7 @@ import { IntakeWizard } from "@/app/(app)/intakes/_components/intake-wizard";
 import { InvoiceCreateDialog } from "@/app/(app)/finance/_components/invoice-create-dialog";
 import { SealRequestSheet } from "./seals/_components/seal-request-sheet";
 import { useTopbarAction } from "@/components/layout/topbar-action";
+import { actionErrorMessage } from "@/lib/action-error";
 
 export function ApprovalCreateMenu() {
   const params = useSearchParams();
@@ -22,7 +23,7 @@ export function ApprovalCreateMenu() {
   const [pending, start] = useTransition();
   const autoOpened = useRef(false);
   const launch = useCallback((value: NonNullable<typeof kind>) => {
-    start(async () => { try { setOptions(await getApprovalCreateOptions()); setMenu(false); setKind(value); } catch (e) { toast.error(e instanceof Error ? e.message : "无法加载申请表"); } });
+    start(async () => { try { setOptions(await getApprovalCreateOptions()); setMenu(false); setKind(value); } catch (e) { toast.error(e instanceof Error ? actionErrorMessage(e) : "无法加载申请表"); } });
   }, []);
   const isNewSeal = params.get("new") === "seal";
   useEffect(() => { if (isNewSeal && !autoOpened.current) { autoOpened.current = true; launch("seal"); } }, [isNewSeal, launch]);

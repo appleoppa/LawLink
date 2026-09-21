@@ -16,6 +16,7 @@ import { audit } from "@/server/audit";
 import type { CaseSearchHit, VectorCaseHit } from "./cases";
 import { revalidateMatter } from "@/server/matters/route";
 import { shDayKey, shTime } from "@/lib/ui/sh-time";
+import { ActionError } from "@/lib/action-error";
 
 export type SaveCaseInput = {
   matterId: string;
@@ -73,9 +74,9 @@ export async function saveCaseToMatter(input: SaveCaseInput): Promise<{
     where: { id: input.matterId, deletedAt: null },
     select: { id: true, status: true }
   });
-  if (!matter) throw new Error("案件不存在");
+  if (!matter) throw new ActionError("案件不存在");
   if (matter.status === "ARCHIVED") {
-    throw new Error("案件已归档（只读），不能再保存类案");
+    throw new ActionError("案件已归档（只读），不能再保存类案");
   }
 
   const md = buildMarkdown(input.caseHit);
@@ -185,9 +186,9 @@ export async function saveVectorCaseToMatter(input: SaveVectorCaseInput): Promis
     where: { id: input.matterId, deletedAt: null },
     select: { id: true, status: true }
   });
-  if (!matter) throw new Error("案件不存在");
+  if (!matter) throw new ActionError("案件不存在");
   if (matter.status === "ARCHIVED") {
-    throw new Error("案件已归档（只读），不能再保存类案");
+    throw new ActionError("案件已归档（只读），不能再保存类案");
   }
 
   const md = buildVectorMarkdown(input.caseHit);

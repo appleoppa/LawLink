@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { searchEnterpriseCandidates, getEnterpriseDetail, type EnterpriseSearchItem } from "@/server/yuandian/enterprise";
+import { actionErrorMessage } from "@/lib/action-error";
 
 export type EnterprisePick = { name: string; creditCode: string; legalRep?: string | null; address?: string | null };
 
@@ -61,7 +62,7 @@ export function EnterpriseNameInput({
           toast.success(`已回填：${item.name}`);
         }
       } catch (err) {
-        toast.warning("法定代表人 / 地址自动填充失败，可手动补充", { description: err instanceof Error ? err.message : "" });
+        toast.warning("法定代表人 / 地址自动填充失败，可手动补充", { description: actionErrorMessage(err) });
       }
     });
   }

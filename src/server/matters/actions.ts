@@ -45,6 +45,7 @@ import {
 import { revalidateMatter } from "@/server/matters/route";
 import { recordTimelineEvent } from "@/server/timeline/record";
 import { PERSON_ID_TYPES, personIdError } from "@/lib/clients/person-id";
+import { ActionError } from "@/lib/action-error";
 
 function emptyToNull<T extends Record<string, unknown>>(obj: T): T {
   const out: Record<string, unknown> = {};
@@ -295,7 +296,7 @@ export async function updateProcedureInfo(input: {
     where: { id: input.procedureId },
     select: { matterId: true, type: true }
   });
-  if (!proc) throw new Error("程序不存在");
+  if (!proc) throw new ActionError("程序不存在");
   // 案件办理断言（P1-1）：程序当事人信息属结构性案件写入，合伙人全所口径、其余岗位须经办。
   await assertCanHandleMatter(session.user, proc.matterId);
   await assertMatterWritable(proc.matterId);
@@ -308,19 +309,19 @@ export async function updateProcedureInfo(input: {
   for (const row of updatedPartyRows) {
     if (row.partyType !== "NATURAL_PERSON" || !row.idNumber) continue;
     const idError = personIdError(row.idType, row.idNumber);
-    if (idError) throw new Error(`当事人「${row.name}」：${idError}`);
+    if (idError) throw new ActionError(`当事人「${row.name}」：${idError}`);
   }
   const newPartyRows = normalizeNewProcedureParties(input.newProcedureParties ?? []);
   for (const row of newPartyRows) {
     if (row.partyType !== "NATURAL_PERSON" || row.existingPartyId) continue;
     const idError = personIdError(row.idType, row.idNumber);
-    if (idError) throw new Error(`新增当事人「${row.name}」：${idError}`);
+    if (idError) throw new ActionError(`新增当事人「${row.name}」：${idError}`);
   }
   if ((input.updatedParties?.length ?? 0) !== updatedPartyRows.length) {
-    throw new Error("已有当事人信息不完整");
+    throw new ActionError("已有当事人信息不完整");
   }
   if ((input.newProcedureParties?.length ?? 0) !== newPartyRows.length) {
-    throw new Error("新增程序当事人信息不完整");
+    throw new ActionError("新增程序当事人信息不完整");
   }
 
   if (partyRows || updatedPartyRows.length > 0) {
@@ -361,7 +362,7 @@ export async function updateProcedureInfo(input: {
       ) ?? false) ||
       clientIds.some((clientId) => !validClientIds.has(clientId))
     ) {
-      throw new Error("存在不属于本案的当事人");
+      throw new ActionError("存在不属于本案的当事人");
     }
   }
 
@@ -409,7 +410,7 @@ export async function updateProcedureInfo(input: {
             where: { id: partyId, matterId: proc.matterId },
             select: { id: true }
           });
-          if (!existingParty) throw new Error("存在不属于本案的当事人");
+          if (!existingParty) throw new ActionError("存在不属于本案的当事人");
           await tx.party.update({
             where: { id: existingParty.id },
             data: {
@@ -463,7 +464,11 @@ export async function updateProcedureInfo(input: {
         judgeAssistantContact: input.judgeAssistantContact?.trim() || null,
         ourStanding: input.ourStanding ? (input.ourStanding as LitigationStanding) : null,
         acceptedAt: input.acceptedAt ? new Date(input.acceptedAt) : null,
-        concludedAt: input.concludedAt ? new Date(input.concludedAt) : null
+        concludedAt: input.concludedAt ? new Date(input.concludedAt) : null,
+        // 填写裁决/结案时间即视为程序终结（2026-09-21 全流程验收发现：此前无任何 UI
+        // 入口能把 ENGAGED 程序置为 CONCLUDED，结案门禁因此永远拦截）。清空时间不回退
+        // 状态——重新启用程序走 updateProcedure 的 status 通道。
+        ...(input.concludedAt ? { status: "CONCLUDED" as const } : {})
       }
     });
 
@@ -533,7 +538,7 @@ async function ensureClientParty(
     where: { id: clientId },
     select: { id: true, name: true, type: true, idType: true, idNumber: true }
   });
-  if (!client) throw new Error("客户不存在");
+  if (!client) throw new ActionError("客户不存在");
   // 客户证件号入库为密文，当事人表存明文：补入时必须先解密
   const clientIdPlain = decryptIdNumber(client.idNumber) || null;
 
@@ -696,7 +701,7 @@ export async function addMatterLink(
   const session = await requireSession("matters.write");
   await assertCanAssociateMatter(session.user.id, matterId);
   await assertCanAssociateMatter(session.user.id, relatedMatterId);
-  if (matterId === relatedMatterId) throw new Error("不能关联到自身");
+  if (matterId === relatedMatterId) throw new ActionError("不能关联到自身");
   // v1.x P1-7: 关联关系类型（缺省兼容旧行为=一般关联）+ 建链人
   const nextRelation = relation ?? "RELATED_CASE";
   await roleMutation(session.user, "matters.write", async roleDb => roleDb.matterLink.upsert({
@@ -830,7 +835,7 @@ export async function getMatterById(id: string) {
 export async function createMatter(input: MatterCreateInput) {
   const session = await requireSession("intakes.create");
   const data = matterCreateSchema.parse(input);
-  if ((await approvalSettings()).enabled) throw new Error("按事项审批已启用，请先收案登记并完成审批后转为正式案件");
+  if ((await approvalSettings()).enabled) throw new ActionError("按事项审批已启用，请先收案登记并完成审批后转为正式案件");
   assertAgencyAllowedForProcedure(data.firstProcedure.handlingAgency, data.firstProcedure.type);
   await assertCauseAllowedForSelection({
     causeId: data.causeId,
@@ -965,7 +970,7 @@ export async function updateMatterTeam(input: {
     where: { id: input.matterId, deletedAt: null },
     select: { id: true, ownerId: true, members: { select: { userId: true } } }
   });
-  if (!matter) throw new Error("案件不存在");
+  if (!matter) throw new ActionError("案件不存在");
   await assertMatterWritable(input.matterId);
   await assertCanOwnMatter(session.user.id, input.matterId, "只有当前主办律师可以修改承办团队");
 
@@ -983,11 +988,11 @@ export async function updateMatterTeam(input: {
     await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(72606101)`;
     if(await responsibilityReady(tx)){
       const current=await tx.matter.findUniqueOrThrow({where:{id:input.matterId},select:{ownerId:true,members:{select:{userId:true}}}});
-      if(current.ownerId!==input.ownerId)throw new Error("更换主办请使用「事项责任与交接」，由接收人确认后生效");
+      if(current.ownerId!==input.ownerId)throw new ActionError("更换主办请使用「事项责任与交接」，由接收人确认后生效");
       const retained=new Set([input.ownerId,...input.coLeadIds,...input.assistantIds]);
       const removed=current.members.filter(m=>!retained.has(m.userId)).map(m=>m.userId);
-      if((await readWorkRows(tx)).some(w=>w.matterId===input.matterId&&w.state==='OPEN'&&(removed.includes(w.assigneeId)||Boolean(w.proposedAssigneeId&&removed.includes(w.proposedAssigneeId)))))throw new Error("拟移除成员仍有未完成或待接收事项，请先逐项交接");
-      if(await tx.matterProcedure.count({where:{matterId:input.matterId,status:{not:'CONCLUDED'},leadLawyerId:{in:removed}}}))throw new Error("拟移除成员仍负责未结程序，请先完成程序责任交接");
+      if((await readWorkRows(tx)).some(w=>w.matterId===input.matterId&&w.state==='OPEN'&&(removed.includes(w.assigneeId)||Boolean(w.proposedAssigneeId&&removed.includes(w.proposedAssigneeId)))))throw new ActionError("拟移除成员仍有未完成或待接收事项，请先逐项交接");
+      if(await tx.matterProcedure.count({where:{matterId:input.matterId,status:{not:'CONCLUDED'},leadLawyerId:{in:removed}}}))throw new ActionError("拟移除成员仍负责未结程序，请先完成程序责任交接");
     }
     // 更新 Matter.ownerId
     if (matter.ownerId !== input.ownerId) {
@@ -1053,7 +1058,7 @@ export async function updateMatterBasicInfo(input: MatterUpdateBasicInput) {
       teamAccessRestricted: true
     }
   });
-  if (!matter) throw new Error("案件不存在");
+  if (!matter) throw new ActionError("案件不存在");
   await assertMatterWritable(data.id);
   await assertCanLeadMatter(session.user.id, data.id, "只有案件主办/协办可以编辑案件基本信息");
   await assertCauseAllowedForMatter(data.id, data.causeId);
@@ -1104,10 +1109,10 @@ export async function softDeleteMatter(id: string) {
   const [handoverTable] = await prisma.$queryRaw<{ ready: boolean }[]>`SELECT to_regclass('public."MatterHandover"') IS NOT NULL AS ready`;
   if (handoverTable?.ready) {
     const [pending] = await prisma.$queryRaw<{ count: bigint }[]>`SELECT COUNT(*) AS count FROM "MatterHandover" WHERE "matterId"=${id} AND status='PENDING'`;
-    if (Number(pending.count)) throw new Error("案件存在待接收的交接，请先处理或取消交接后再删除");
+    if (Number(pending.count)) throw new ActionError("案件存在待接收的交接，请先处理或取消交接后再删除");
   }
   if ((await readWorkRows(prisma)).some(w => w.matterId === id && w.state === "OPEN")) {
-    throw new Error("案件存在未办结事项（任务/期限/开庭），请先办结或作废后再删除");
+    throw new ActionError("案件存在未办结事项（任务/期限/开庭），请先办结或作废后再删除");
   }
 
   await roleMutation(session.user, "matters.write", async roleDb => roleDb.matter.update({

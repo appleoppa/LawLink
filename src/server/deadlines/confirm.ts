@@ -17,13 +17,14 @@ import { assertCanModifyMatter } from "@/lib/permissions";
 import { assertMatterWritable } from "@/lib/archive/guard";
 import { refreshScheduleReminderAfterSave, retireScheduleReminders } from "@/server/reminders/schedule";
 import { revalidateMatter } from "@/server/matters/route";
+import { ActionError } from "@/lib/action-error";
 
 async function loadDeadlineWithGuard(id: string) {
   const deadline = await prisma.deadline.findUnique({
     where: { id },
     include: { procedure: { select: { matterId: true } } }
   });
-  if (!deadline) throw new Error("期限不存在");
+  if (!deadline) throw new ActionError("期限不存在");
   return deadline;
 }
 
@@ -38,7 +39,7 @@ export async function confirmDeadline(input: z.infer<typeof confirmSchema>) {
   await assertCanModifyMatter(session.user.id, session.user.role, deadline.procedure.matterId);
   await assertMatterWritable(deadline.procedure.matterId);
   if (deadline.confirmStatus !== "PENDING") {
-    throw new Error("该期限已确认");
+    throw new ActionError("该期限已确认");
   }
   await prisma.$transaction(async (tx) => {
     await checkRoleMutation(tx, session.user, "schedule.write");
@@ -46,7 +47,7 @@ export async function confirmDeadline(input: z.infer<typeof confirmSchema>) {
       where: { id, confirmStatus: "PENDING", updatedAt: deadline.updatedAt },
       data: { confirmStatus: "CONFIRMED" }
     });
-    if (changed.count !== 1) throw new Error("期限已被其他人处理，请刷新后重试");
+    if (changed.count !== 1) throw new ActionError("期限已被其他人处理，请刷新后重试");
     await retireScheduleReminders(tx, "Deadline", id);
     await auditTx(tx, { userId: session.user.id, action: "DEADLINE_CONFIRM", targetType: "Deadline", targetId: id,
       detail: { sourceRuleId: deadline.sourceRuleId, dueAt: deadline.dueAt.toISOString() } });
@@ -77,7 +78,7 @@ export async function adjustDeadline(input: z.infer<typeof adjustSchema>) {
       where: { id: data.id, updatedAt: deadline.updatedAt },
       data: { dueAt: data.dueAt, confirmStatus: "ADJUSTED", adjustedById: session.user.id, adjustedAt: new Date() }
     });
-    if (changed.count !== 1) throw new Error("期限已被其他人修改，请刷新后重试");
+    if (changed.count !== 1) throw new ActionError("期限已被其他人修改，请刷新后重试");
     await retireScheduleReminders(tx, "Deadline", data.id);
     await auditTx(tx, { userId: session.user.id, action: "DEADLINE_ADJUST", targetType: "Deadline", targetId: data.id,
       detail: { previousDueAt: previous.toISOString(), newDueAt: data.dueAt.toISOString(), reason: data.reason, sourceRuleId: deadline.sourceRuleId } });

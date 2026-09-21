@@ -23,6 +23,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { saveMatterCustomValues } from "@/server/custom-fields/actions";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type FieldDef = Pick<
   CustomFieldDef,
@@ -125,7 +126,7 @@ function EditDialog({
         onClose();
         router.refresh();
       } catch (err) {
-        toast.error("保存失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("保存失败", { description: actionErrorMessage(err) });
       }
     });
   }

@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from "node:crypto";
+import { ActionError } from "@/lib/action-error";
 
 const ALGORITHM = "AES-256-GCM" as const;
 const KEY_LENGTH = 32; // 256 bit
@@ -11,11 +12,11 @@ export function getStorageEncryptionKey(): Buffer {
   if (cachedKey) return cachedKey;
   const raw = process.env.STORAGE_ENCRYPTION_KEY;
   if (!raw) {
-    throw new Error("STORAGE_ENCRYPTION_KEY 未设置。在 .env 用 openssl rand -base64 32 生成");
+    throw new ActionError("STORAGE_ENCRYPTION_KEY 未设置。在 .env 用 openssl rand -base64 32 生成");
   }
   const buf = Buffer.from(raw, "base64");
   if (buf.length !== KEY_LENGTH) {
-    throw new Error(
+    throw new ActionError(
       `STORAGE_ENCRYPTION_KEY 长度错误：期望 32 字节（base64 编码后约 44 字符），实际 ${buf.length}`
     );
   }

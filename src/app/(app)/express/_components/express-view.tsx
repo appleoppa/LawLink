@@ -26,6 +26,7 @@ import { matterHref } from "@/lib/matters/route";
 import { PageHeader, Segmented } from "@/components/patterns/moan";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
 import { useTopbarAction } from "@/components/layout/topbar-action";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Row = Prisma.ExpressTrackingGetPayload<{
   include: {
@@ -169,7 +170,7 @@ function Card({ e }: { e: Row }) {
         const r = await refreshExpress({ id: e.id });
         toast.success(`已更新：${r.state}（${r.provider}）`);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "刷新失败");
+        toast.error(err instanceof Error ? actionErrorMessage(err) : "刷新失败");
       }
     });
 
@@ -180,7 +181,7 @@ function Card({ e }: { e: Row }) {
         await deleteExpress({ id: e.id });
         toast.success("已删除");
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "失败");
+        toast.error(err instanceof Error ? actionErrorMessage(err) : "失败");
       }
     });
   };
@@ -388,7 +389,7 @@ function NewExpressDialog({
         reset();
         onOpenChange(false);
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "失败");
       }
     });
   };

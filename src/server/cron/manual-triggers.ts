@@ -11,11 +11,12 @@ import { isSystemAdmin } from "@/lib/auth/system-role";
 import { runWeeklyReportPush } from "@/server/reports/weekly-push-core";
 import { scanArchiveOverdue } from "./jobs/archive-overdue";
 import { runAuditCleanup } from "./jobs/audit-cleanup";
+import { ActionError } from "@/lib/action-error";
 
 async function requireAdmin() {
   const session = await requireSession();
   if (!isSystemAdmin(session.user) && !isManager(session.user)) {
-    throw new Error("仅系统超级管理员 / 主任律师可触发");
+    throw new ActionError("仅系统超级管理员 / 主任律师可触发");
   }
   return session;
 }

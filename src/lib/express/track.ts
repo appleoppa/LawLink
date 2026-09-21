@@ -7,6 +7,7 @@
 import { createHash } from "node:crypto";
 import { getExpressSettings } from "./settings";
 import { COMPANY_CODES, detectCompany } from "./companies";
+import { ActionError } from "@/lib/action-error";
 
 // 给 server-only 调用者继续 import 自此处
 export { COMPANY_CODES, SUPPORTED_COMPANIES, detectCompany } from "./companies";
@@ -173,7 +174,7 @@ export async function trackExpress(input: {
 }): Promise<TrackResult> {
   const s = await getExpressSettings();
   if (!s.kdniao.configured && !s.kuaidi100.configured) {
-    throw new Error("请先到 管理后台 → 快递接入 配置 快递鸟 或 快递100");
+    throw new ActionError("请先到 管理后台 → 快递接入 配置 快递鸟 或 快递100");
   }
 
   const cnName =
@@ -181,7 +182,7 @@ export async function trackExpress(input: {
       ? input.companyCode
       : detectCompany(input.trackingNo);
   if (!cnName) {
-    throw new Error("无法自动识别快递公司，请手动选择");
+    throw new ActionError("无法自动识别快递公司，请手动选择");
   }
   const [kd100Code, kdniaoCode] = COMPANY_CODES[cnName];
 

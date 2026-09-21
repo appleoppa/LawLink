@@ -18,6 +18,7 @@ import {
   type CauseRecommendation
 } from "@/server/ai/recommend-cause";
 import { cn } from "@/lib/utils";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Tab = "preset" | "free";
 
@@ -79,7 +80,7 @@ export function CauseAiManualDialog({
       const list = await recommendCause({ category, procedureType, situation });
       setCandidates(list);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "AI 推荐失败");
+      setError(err instanceof Error ? actionErrorMessage(err) : "AI 推荐失败");
     } finally {
       setLoading(false);
     }

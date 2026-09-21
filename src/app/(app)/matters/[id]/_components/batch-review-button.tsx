@@ -18,6 +18,7 @@ import {
   DialogFooter
 } from "@/components/ui/dialog";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { actionErrorMessage } from "@/lib/action-error";
 
 // v0.27: AI 复检功能暂时隐藏（后端 server action 保留），改回时去掉此 flag
 const SHOW_AI_RECHECK = false;
@@ -53,7 +54,7 @@ export function BatchReviewButton({ matterId }: { matterId: string }) {
         router.refresh();
       } catch (err) {
         toast.error("批量审查失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });

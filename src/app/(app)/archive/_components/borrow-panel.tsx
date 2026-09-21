@@ -21,6 +21,7 @@ import {
   searchArchiveForBorrow,
   type BorrowRow
 } from "@/server/archive/borrow";
+import { actionErrorMessage } from "@/lib/action-error";
 
 const STATUS_CN: Record<string, string> = {
   PENDING: "待审批", APPROVED: "借阅中", REJECTED: "已驳回", RETURNED: "已归还", EXPIRED: "已到期"
@@ -102,7 +103,7 @@ function ReturnButton({ id }: { id: string }) {
           await returnArchiveBorrow(id);
           toast.success("已标记归还，查阅资格即时不生效");
         } catch (err) {
-          toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
+          toast.error("操作失败", { description: actionErrorMessage(err) });
         }
       })}
     >
@@ -141,7 +142,7 @@ function DecideRow({ row }: { row: BorrowRow }) {
           toast.success("已驳回");
         }
       } catch (err) {
-        toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("操作失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -171,7 +172,7 @@ function BorrowApplyDialog({ open, onOpenChange }: { open: boolean; onOpenChange
         setResults(r);
         if (r.length === 0) toast.info("未找到匹配的已归档案卷");
       } catch (err) {
-        toast.error("检索失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("检索失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -184,7 +185,7 @@ function BorrowApplyDialog({ open, onOpenChange }: { open: boolean; onOpenChange
         setQ(""); setResults([]); setPicked(""); setReason("");
         onOpenChange(false);
       } catch (err) {
-        toast.error("提交失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("提交失败", { description: actionErrorMessage(err) });
       }
     });
   }

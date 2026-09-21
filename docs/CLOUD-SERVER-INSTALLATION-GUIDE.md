@@ -1,6 +1,6 @@
 # LawLink 云服务器安装指南（技术小白版）
 
-> 适用版本：LawLink `v2.0.0-rc.1`
+> 适用版本：LawLink `v2.0.0`
 >
 > 版本说明核对日期：2026-09-21
 >
@@ -8,7 +8,7 @@
 >
 > 适用对象：独立律师、中小律所负责人、没有 Linux / Docker 经验的安装人员
 
-> **候选版范围**：本指南仅用于 `v2.0.0-rc.1` 的独立空库安装试用，不用于覆盖现有 1.x 实例。整套云服务器 / Docker / Caddy 部署未在本次发布中实测，验证结果见[发布检查记录](./RELEASE-VALIDATION-v2.0.0-rc.1.md)。
+> **版本范围**：本指南用于 `v2.0.0` 全新安装；旧库升级须按第十五节及增量升级指南执行。整套云服务器 / Docker / Caddy 部署未在本次重跑，测试结果见[发布验证](./RELEASE-VALIDATION-v2.0.0.md)。
 >
 > 同目录 Word 安装指南是 v1.2 历史副本，未随本轮修订，不作为当前步骤依据。
 
@@ -161,12 +161,12 @@ sudo systemctl is-active docker
 
 ## 七、下载固定版本的 LawLink
 
-不要直接把持续变化的 `main` 分支用于真实案件。本指南对照 `v2.0.0-rc.1` 的源码编排，评估时固定安装该版本：
+不要直接把持续变化的 `main` 分支用于真实案件。本指南对照 `v2.0.0` 的源码编排，评估时固定安装该版本：
 
 ```bash
 sudo mkdir -p /opt/lawlink
 sudo chown -R "$(id -un)":"$(id -gn)" /opt/lawlink
-git clone --branch v2.0.0-rc.1 --depth 1 https://github.com/lawflow-boop/LawLink.git /opt/lawlink
+git clone --branch v2.0.0 --depth 1 https://github.com/lawflow-boop/LawLink.git /opt/lawlink
 cd /opt/lawlink
 ```
 
@@ -179,7 +179,7 @@ git describe --tags --exact-match
 应显示：
 
 ```text
-v2.0.0-rc.1
+v2.0.0
 ```
 
 ## 八、创建服务器专用的安全配置
@@ -557,11 +557,9 @@ sudo apt upgrade -y
 
 ## 十五、升级 LawLink
 
-**已有 1.x 部署请勿按本指南覆盖升级至候选版。** 当前仓库的 `0_init` 是新库完整结构，不包含从每个 1.x 标签出发的数据转换流程。仅标记基线已应用会跳过建表建列，不能证明实际数据库与程序一致。
+先备份数据库、附件和密钥，停止业务写入，并在隔离副本演练。[1.3.x 升级指南](./RELEASE-GUIDE-v1.3.md)规定：增量 SQL → 标记 0_init → 标记 archive_borrow 的完整迁移目录名 → deploy。仅更新代码或只做基线标记均不能完成升级。RC1 用户须先核对已应用迁移，不得套用 1.3.x 增量脚本。
 
-试用 2.0 时，请在独立服务器或隔离的 Compose 项目中使用新的数据库、存储卷与配置；保留原实例及其备份。不得将本版应用连接到原业务库试运行，不得通过清库或 `db push` 绕过升级问题。
-
-未来正式升级前，需先提供并验证针对起始版本的转换路径，完成数据、附件、权限及恢复核对。详见[升级边界](./RELEASE-GUIDE-v2.md#已有-1x-部署)。
+正式标签保留源码内部 1.4.0 名称；对外版本为 2.0.0。
 
 ## 十六、常见问题
 

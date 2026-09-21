@@ -11,6 +11,7 @@ import {executionTerminations} from '@/server/approval-permissions/termination';
 import {commissionPositions} from '@/server/finance/ledger-corrections';
 import {readLedger} from '@/server/finance/ledger-storage';
 import {auditTx} from '@/server/audit';
+import { ActionError } from "@/lib/action-error";
 export async function closureReady(db:Prisma.TransactionClient){const [r]=await db.$queryRaw<{ready:boolean}[]>`SELECT to_regclass('public."ArchiveClosurePlan"') IS NOT NULL AS ready`;return r?.ready===true;}
 export async function closureFacts(db:Prisma.TransactionClient,matterId:string){
  const procedures=await db.matterProcedure.findMany({where:{matterId,engagement:'ENGAGED',status:{not:'CONCLUDED'}},orderBy:{id:'asc'},select:{id:true,type:true,customLabel:true,status:true,leadLawyerId:true}});
@@ -34,18 +35,38 @@ export async function closureFacts(db:Prisma.TransactionClient,matterId:string){
  return {snapshot,fingerprint:fingerprint(snapshot),financeSnapshot:finance,blockers,financeOpen:[finance.outstanding,finance.unallocated,finance.commissionBalance,finance.invoiceOutstanding,finance.clientFundsReceived].some(n=>!new Prisma.Decimal(n).eq(0))};
 }
 export async function assertTailAuthority(db:Prisma.TransactionClient,userId:string,matterId:string){
- const u=await db.user.findUnique({where:{id:userId},select:{active:true,role:true}});if(!u?.active)throw new Error('收尾负责人账号无效');
- const role=await resolveRoleUser(userId,u.role,db);if(!role.enabled||scopeFor(role,'finance.tail')!=='ALL')throw new Error('归档后财务处理须独立的财务收尾权限');
- if(!await closureReady(db))throw new Error('归档收尾尚未启用');
+ const u=await db.user.findUnique({where:{id:userId},select:{active:true,role:true}});if(!u?.active)throw new ActionError('收尾负责人账号无效');
+ // 内置财务岗的 finance.tail 在代码目录（scopeFor 仅解析 CUSTOM，见 tailOwnerQualified 注释）
+ if(u.role!=='FINANCE'){const role=await resolveRoleUser(userId,u.role,db);if(!role.enabled||scopeFor(role,'finance.tail')!=='ALL')throw new ActionError('归档后财务处理须独立的财务收尾权限');}
+ if(!await closureReady(db))throw new ActionError('归档收尾尚未启用');
  const [plan]=await db.$queryRaw<{financeOwnerId:string|null}[]>`SELECT "financeOwnerId" FROM "ArchiveClosurePlan" WHERE "matterId"=${matterId}`;
- if(plan?.financeOwnerId!==userId)throw new Error('只有本案指定的财务收尾负责人可以追加财务业务');
+ if(plan?.financeOwnerId!==userId)throw new ActionError('只有本案指定的财务收尾负责人可以追加财务业务');
 }
 export const closureInput=z.object({matterId:z.string().cuid(),revision:z.number().int().nonnegative().nullable(),financeOwnerId:z.string().cuid().nullable(),serviceCompletedAt:z.coerce.date().refine(d=>d<=new Date(),'完成日期不能在未来'),reason:z.string().trim().min(1,'请说明服务完成及未结事项安排').max(2000)});
+
+/** 收尾人资格：内置财务岗的 finance.tail/finance.read(ALL) 在代码目录里（catalog 的
+ *  scopeFor 只解析 CUSTOM 角色的 RolePermission 表，对内置角色恒为 undefined——此前
+ *  按它判定会把内置财务静默判无，2026-09-21 全流程验收发现）。两类角色在此统一判定。 */
+async function tailOwnerQualified(db:Prisma.TransactionClient,userId:string,matterId:string):Promise<string|null>{
+ const owner=await db.user.findUnique({where:{id:userId},select:{active:true,role:true}});
+ if(!owner?.active)return '收尾负责人账号不存在或已停用';
+ const r=await resolveRoleUser(userId,owner.role,db);
+ if(!r.enabled)return '收尾负责人角色已停用';
+ if(owner.role==='CUSTOM'){
+  if(scopeFor(r,'finance.tail')!=='ALL')return '收尾负责人须有效并具有财务查看及独立收尾权限';
+  const read=scopeFor(r,'finance.read');
+  if(!read)return '收尾负责人须有效并具有财务查看及独立收尾权限';
+  if(read!=='ALL'&&!await db.matter.count({where:{id:matterId,...matterAssociationFilter(userId)}}))return '收尾负责人的财务查看权限未覆盖本案，请先建立案件关联或授予全所财务查看';
+  return null;
+ }
+ if(owner.role!=='FINANCE')return '收尾负责人须有效并具有财务查看及独立收尾权限';
+ return null;
+}
 export async function saveClosureTx(db:Prisma.TransactionClient,userId:string,input:z.input<typeof closureInput>){
  const d=closureInput.parse(input);await db.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(72606101)`;
  const u=await db.user.findUniqueOrThrow({where:{id:userId},select:{role:true,active:true}}),role=await resolveRoleUser(userId,u.role,db);
- if(!u.active||!role.enabled||(u.role==='CUSTOM'&&!scopeFor(role,'archive.submit')))throw new Error('无提交归档权限');
- if(!await db.matter.count({where:{id:d.matterId,deletedAt:null,...matterAssociationFilter(userId)}}))throw new Error('仅本案经办可安排收尾');
+ if(!u.active||!role.enabled||(u.role==='CUSTOM'&&!scopeFor(role,'archive.submit')))throw new ActionError('无提交归档权限');
+ if(!await db.matter.count({where:{id:d.matterId,deletedAt:null,...matterAssociationFilter(userId)}}))throw new ActionError('仅本案经办可安排收尾');
  // P1-4（C 批）：归档审批通过后收尾安排随案卷冻结，服务完成事实不可再改；
  // 但收尾责任本身必须可交接——原收尾人离职/失能时若无出口，带未结财务的案件将无人能合法收尾。
  // 受限模式：仅允许更换收尾人（须填交接理由），资格＝matters.transfer 持有者或当前收尾人本人。
@@ -54,26 +75,24 @@ export async function saveClosureTx(db:Prisma.TransactionClient,userId:string,in
  if(mstate?.status==='ARCHIVED'){
   const role=await resolveRoleUser(userId,u.role,db);
   const canTransfer=role.role==='CUSTOM'&&scopeFor(role,'matters.transfer')==='ALL';
-  if(!d.financeOwnerId)throw new Error('案件已归档，收尾安排已固定；仅可办理收尾责任交接（指定新收尾人）');
-  if(!plan||!plan.financeOwnerId)throw new Error('本案原收尾安排未指定收尾人，无法办理交接');
-  if(!canTransfer&&plan.financeOwnerId!==userId)throw new Error('归档后收尾交接须当前收尾人本人或持应急接管权限者办理');
+  if(!d.financeOwnerId)throw new ActionError('案件已归档，收尾安排已固定；仅可办理收尾责任交接（指定新收尾人）');
+  if(!plan||!plan.financeOwnerId)throw new ActionError('本案原收尾安排未指定收尾人，无法办理交接');
+  if(!canTransfer&&plan.financeOwnerId!==userId)throw new ActionError('归档后收尾交接须当前收尾人本人或持应急接管权限者办理');
   // 2026-09-20 第五轮审计 P2 修复：交接此前不校验新收尾人资格（对比下方首次指定的全校验），
   // 交接给无资格者要使用时才被拦、交接给不存在的 userId 因通知外键抛原始 Prisma 错误。
   const newOwner=await db.user.findUnique({where:{id:d.financeOwnerId},select:{active:true,role:true}});
-  if(!newOwner)throw new Error('新收尾负责人账号不存在');
-  const newRole=await resolveRoleUser(d.financeOwnerId,newOwner.role,db);
-  if(!newOwner.active||!newRole.enabled||scopeFor(newRole,'finance.tail')!=='ALL'||!scopeFor(newRole,'finance.read'))throw new Error('新收尾负责人须有效并具有财务查看及独立收尾权限');
-  // 复查 P3-7 补齐：与首次指定同口径——finance.read 非 ALL 时须关联本案
-  if(scopeFor(newRole,'finance.read')!=='ALL'&&!await db.matter.count({where:{id:d.matterId,...matterAssociationFilter(d.financeOwnerId)}}))throw new Error('新收尾负责人的财务查看权限未覆盖本案，请先建立案件关联或授予全所财务查看');
+  if(!newOwner)throw new ActionError('新收尾负责人账号不存在');
+  const newOwnerIssue=await tailOwnerQualified(db,d.financeOwnerId,d.matterId);
+  if(newOwnerIssue)throw new ActionError(newOwnerIssue);
   await db.$executeRaw`UPDATE "ArchiveClosurePlan" SET "financeOwnerId"=${d.financeOwnerId},reason=${d.reason},revision=revision+1,"updatedAt"=NOW() WHERE "matterId"=${d.matterId}`;
   await auditTx(db,{userId,action:'ARCHIVE_CLOSURE_HANDOVER',targetType:'Matter',targetId:d.matterId,detail:{previousFinanceOwnerId:plan.financeOwnerId,newFinanceOwnerId:d.financeOwnerId,reason:d.reason}});
   if(d.financeOwnerId!==userId)await db.notification.create({data:{userId:d.financeOwnerId,type:'SYSTEM',priority:'HIGH',title:'案件财务收尾责任已交接',content:d.reason,href:`/finance/reconciliation?matterId=${d.matterId}`,refType:'ArchiveClosurePlan',refId:d.matterId}});
   return {ok:true,handedOver:true};
  }
- if(!await closureReady(db))throw new Error('归档收尾尚未启用');
- if(d.financeOwnerId){const owner=await db.user.findUniqueOrThrow({where:{id:d.financeOwnerId},select:{active:true,role:true}}),r=await resolveRoleUser(d.financeOwnerId,owner.role,db);if(!owner.active||!r.enabled||scopeFor(r,'finance.tail')!=='ALL'||!scopeFor(r,'finance.read')||(scopeFor(r,'finance.read')!=='ALL'&&!await db.matter.count({where:{id:d.matterId,...matterAssociationFilter(d.financeOwnerId)}})))throw new Error('收尾负责人须有效并具有财务查看及独立收尾权限');}
- const facts=await closureFacts(db,d.matterId);if(facts.financeOpen&&!d.financeOwnerId)throw new Error('尚有未结财务，须明确有资格的收尾负责人');
- if((plan?.revision??null)!==d.revision)throw new Error('收尾安排已变化，请刷新');
+ if(!await closureReady(db))throw new ActionError('归档收尾尚未启用');
+ if(d.financeOwnerId){const ownerIssue=await tailOwnerQualified(db,d.financeOwnerId,d.matterId);if(ownerIssue)throw new ActionError(ownerIssue);}
+ const facts=await closureFacts(db,d.matterId);if(facts.financeOpen&&!d.financeOwnerId)throw new ActionError('尚有未结财务，须明确有资格的收尾负责人');
+ if((plan?.revision??null)!==d.revision)throw new ActionError('收尾安排已变化，请刷新');
  if(plan)await db.$executeRaw`UPDATE "ArchiveClosurePlan" SET "financeOwnerId"=${d.financeOwnerId},"serviceCompletedAt"=${d.serviceCompletedAt},reason=${d.reason},snapshot=${JSON.stringify(facts.snapshot)}::jsonb,fingerprint=${facts.fingerprint},revision=revision+1,"updatedAt"=NOW() WHERE "matterId"=${d.matterId}`;
  else await db.$executeRaw`INSERT INTO "ArchiveClosurePlan" (id,"matterId","financeOwnerId","serviceCompletedAt",reason,snapshot,fingerprint,"updatedAt") VALUES (${randomUUID()},${d.matterId},${d.financeOwnerId},${d.serviceCompletedAt},${d.reason},${JSON.stringify(facts.snapshot)}::jsonb,${facts.fingerprint},NOW())`;
  await auditTx(db,{userId,action:'ARCHIVE_CLOSURE_PLAN',targetType:'Matter',targetId:d.matterId,detail:{financeOwnerId:d.financeOwnerId,reason:d.reason,previousRevision:d.revision,fingerprint:facts.fingerprint}});
@@ -82,12 +101,12 @@ export async function saveClosureTx(db:Prisma.TransactionClient,userId:string,in
 }
 export async function assertClosureReady(db:Prisma.TransactionClient,matterId:string,expectedFingerprint?:string,options?:{supplement?:boolean}){
  if(!await closureReady(db))return null;
- const facts=await closureFacts(db,matterId);if(facts.blockers.length)throw new Error(`归档前请处置：${facts.blockers.join('；')}`);
+ const facts=await closureFacts(db,matterId);if(facts.blockers.length)throw new ActionError(`归档前请处置：${facts.blockers.join('；')}`);
  const [plan]=await db.$queryRaw<{financeOwnerId:string|null;serviceCompletedAt:Date;reason:string;fingerprint:string;revision:number}[]>`SELECT * FROM "ArchiveClosurePlan" WHERE "matterId"=${matterId}`;
- if(!plan)throw new Error('请先保存服务完成与财务收尾安排');
+ if(!plan)throw new ActionError('请先保存服务完成与财务收尾安排');
  // P1-4（C 批）：指纹只覆盖阻断性清单（财务已拆出）；补充归档不要求原收尾安排与当前一致——
  // 归档后 tail 收尾本就放行、财务必然漂移，原快照保持固定，本次补充另行冻结自己的快照。
- if(!options?.supplement&&plan.fingerprint!==facts.fingerprint)throw new Error('归档核对清单已变化，请重新保存收尾安排并送审');
+ if(!options?.supplement&&plan.fingerprint!==facts.fingerprint)throw new ActionError('归档核对清单已变化，请重新保存收尾安排并送审');
  // 2026-09-20 P3 修复：审批一致性指纹的 plan 键只取「影响归档核对语义」的字段
  // （serviceCompletedAt + 清单指纹）——收尾交接（ARCHIVE_CLOSURE_HANDOVER）只改
  // financeOwnerId/reason/revision，不再让送审中的补充归档申请在审批时意外失败
@@ -96,9 +115,12 @@ export async function assertClosureReady(db:Prisma.TransactionClient,matterId:st
  if(expectedFingerprint&&expectedFingerprint!==fingerprint({facts:facts.snapshot,plan:planKey})){
   // 复查 P3-8 兼容：升级前送审的存量申请按旧算法（全 plan 键）复核——送审后无变更
   // 的申请（主库实测存在 1 条 PENDING_REVIEW）两侧算法不同会误报「清单已变化」。
-  if(expectedFingerprint!==fingerprint({facts:facts.snapshot,plan}))throw new Error('归档核对清单已变化，请重新保存收尾安排并送审');
+  if(expectedFingerprint!==fingerprint({facts:facts.snapshot,plan}))throw new ActionError('归档核对清单已变化，请重新保存收尾安排并送审');
  }
- if(facts.financeOpen&&!plan.financeOwnerId)throw new Error('尚有未结财务，请指定收尾负责人');
+ if(facts.financeOpen&&!plan.financeOwnerId)throw new ActionError('尚有未结财务，请指定收尾负责人');
  if(plan.financeOwnerId)await assertTailAuthority(db,plan.financeOwnerId,matterId);
- return {facts:facts.snapshot,plan,fingerprint:fingerprint({facts:facts.snapshot,plan:planKey})};
+ // finance 随 workflowSnapshot 冻结供审批详情展示（不参与 fingerprint——P1-4 指纹只覆盖阻断性
+ // 清单）。2026-09-21 全流程验收发现：P1-4 把 finance 拆出 snapshot 后审批详情仍读
+ // facts.finance.outstanding，新申请的归档审批详情必 500、无法审批。
+ return {facts:facts.snapshot,finance:facts.financeSnapshot,plan,fingerprint:fingerprint({facts:facts.snapshot,plan:planKey})};
 }

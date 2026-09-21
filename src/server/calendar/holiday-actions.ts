@@ -9,6 +9,7 @@ import { requireSession } from "@/lib/auth/session";
 import { isSystemAdmin } from "@/lib/auth/system-role";
 import { audit } from "@/server/audit";
 import { civilFromKey, shParts } from "@/lib/ui/sh-time";
+import { ActionError } from "@/lib/action-error";
 
 const batchSchema = z.object({
   entries: z.array(z.object({
@@ -20,7 +21,7 @@ const batchSchema = z.object({
 
 async function requireAdmin() {
   const session = await requireSession();
-  if (!isSystemAdmin(session.user)) throw new Error("仅系统超级管理员可维护放假安排");
+  if (!isSystemAdmin(session.user)) throw new ActionError("仅系统超级管理员可维护放假安排");
   return session;
 }
 

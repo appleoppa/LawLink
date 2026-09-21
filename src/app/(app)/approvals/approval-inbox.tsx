@@ -6,6 +6,7 @@ import type { ApprovalAction } from "@prisma/client";
 import { toast } from "sonner";
 import { AlertTriangle, BookOpenCheck, ChevronRight, Clock3, FileCheck2, FileText, Paperclip, History, Search, ShieldCheck } from "lucide-react";
 import { ACTION_LABELS } from "@/lib/approvals/rules";
+import { actionErrorMessage } from "@/lib/action-error";
 
 /* 墨案 07：审批列表案卷脊——执行环节 teal、待审批琥珀、已批准绿、驳回红、归档金线 */
 const ACTION_TONE: Record<string, string> = {
@@ -64,7 +65,7 @@ export function ApprovalInbox({ data, initialSelection }: { data: Data; initialS
       try {
         const d = await getApprovalDetail(row);
         setSelected(row); setDetail(d); setNote(""); setFile(null); setInvoiceNo(""); setVerified(new Set()); setExceptionApproved(false);
-      } catch (e) { toast.error(e instanceof Error ? e.message : "无法读取申请"); }
+      } catch (e) { toast.error(e instanceof Error ? actionErrorMessage(e) : "无法读取申请"); }
     });
   }, []);
   useEffect(() => {
@@ -103,7 +104,7 @@ export function ApprovalInbox({ data, initialSelection }: { data: Data; initialS
         toast.success("处理完成，可在“我已处理”中查阅");
         setSelected(null); router.refresh();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "处理失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "处理失败");
         // 状态或权限已变化时重读详情，不能保留失效的处理按钮。
         try { setDetail(await getApprovalDetail(r)); } catch { setSelected(null); }
         router.refresh();
@@ -113,7 +114,7 @@ export function ApprovalInbox({ data, initialSelection }: { data: Data; initialS
   function applicantAction(action: "resubmit" | "cancel") {
     if (!selected) return;
     const id = selected.id;
-    start(async () => { try { if (action === "resubmit") { if (selected.action === "DOCUMENT_APPROVE") await submitDocumentForReview(id); else await resubmitIntake(id); } else await cancelSealRequest({ id }); toast.success(action === "resubmit" ? "已重新提交" : "已撤回申请"); setSelected(null); router.refresh(); } catch (e) { toast.error(e instanceof Error ? e.message : "操作失败"); } });
+    start(async () => { try { if (action === "resubmit") { if (selected.action === "DOCUMENT_APPROVE") await submitDocumentForReview(id); else await resubmitIntake(id); } else await cancelSealRequest({ id }); toast.success(action === "resubmit" ? "已重新提交" : "已撤回申请"); setSelected(null); router.refresh(); } catch (e) { toast.error(e instanceof Error ? actionErrorMessage(e) : "操作失败"); } });
   }
   const tabs = Object.entries(WORKSPACE_TABS).filter(([key]) => key !== "all" || data.canViewAll) as [WorkspaceTab, string][];
   function toggleVerification(id: string, checked: boolean) {

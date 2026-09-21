@@ -35,6 +35,7 @@ import type {
   ReviewSeverity
 } from "@/lib/ai/review-parser";
 import { cn, formatDateTime } from "@/lib/utils";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Props = {
   open: boolean;
@@ -112,7 +113,7 @@ export function DocumentReviewDialog({
       // 重新拉历史（新审查已落库）
       listReviewHistory({ documentId }).then(setHistory).catch(() => {});
     } catch (err) {
-      setError(err instanceof Error ? err.message : "AI 审查失败");
+      setError(err instanceof Error ? actionErrorMessage(err) : "AI 审查失败");
     } finally {
       setReviewing(false);
     }
@@ -134,7 +135,7 @@ export function DocumentReviewDialog({
       setSaved(false);
     } catch (err) {
       toast.error("加载历史详情失败", {
-        description: err instanceof Error ? err.message : ""
+        description: actionErrorMessage(err)
       });
     }
   }
@@ -153,7 +154,7 @@ export function DocumentReviewDialog({
       toast.success("已保存审查结果到本案", { description: res.documentName });
     } catch (err) {
       toast.error("保存失败", {
-        description: err instanceof Error ? err.message : ""
+        description: actionErrorMessage(err)
       });
     } finally {
       setSaving(false);

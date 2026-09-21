@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { installmentInput } from "./registration";
 import { actualDate } from "./corrections";
 import { moneyInput } from "./ledger";
+import { ActionError } from "@/lib/action-error";
 const id=z.string().min(1).max(80);
 const amount=z.union([z.string(),z.number()]).transform(String).refine(v=>/^(?:0|[1-9]\d{0,9})(?:\.\d{1,2})?$/.test(v),"金额须非负且最多两位小数");
 import { amendmentTypes } from "./contract-labels";
@@ -23,8 +24,8 @@ export const contractTermsInput=z.object({
 export type ContractTermsInput=z.input<typeof contractTermsInput>;
 export function amendmentResult(previous:Prisma.Decimal,type:typeof amendmentTypes[number],value:Prisma.Decimal){
  const result=type==="ADDITION"?previous.plus(value):type==="REDUCTION"?previous.minus(value):type==="SCOPE_ONLY"?previous:value;
- if(result.lt(0))throw new Error("调减不能超过当前合同总额");
- if(type==="SCOPE_ONLY"&&!value.eq(0))throw new Error("仅范围变更的变动金额必须为零");
+ if(result.lt(0))throw new ActionError("调减不能超过当前合同总额");
+ if(type==="SCOPE_ONLY"&&!value.eq(0))throw new ActionError("仅范围变更的变动金额必须为零");
  return {result,delta:result.minus(previous)};
 }
 /** 每条版本链只计已生效末版；草稿不覆盖现行总额。 */

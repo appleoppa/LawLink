@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { searchMattersForInvoice, getMatterFinance } from "@/server/finance/actions";
 import { AddFeeEntrySheet } from "@/app/(app)/matters/[id]/_components/finance-forms";
 import { toast } from "sonner";
+import { actionErrorMessage } from "@/lib/action-error";
 
 export function RecordFeeLauncher({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const router=useRouter();
@@ -40,7 +41,7 @@ export function RecordFeeLauncher({ open, onOpenChange }: { open: boolean; onOpe
       if(fin.ledgerReady){router.push(`/finance/reconciliation?matterId=${id}`);return;}
       setPicked({ id, billings: fin.billings.map((b) => ({ id: b.id, title: b.title })) });
     } catch (err) {
-      toast.error("无法读取该案件财务信息", { description: err instanceof Error ? err.message : "" });
+      toast.error("无法读取该案件财务信息", { description: actionErrorMessage(err) });
     }
   }
 

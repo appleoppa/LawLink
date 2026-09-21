@@ -26,6 +26,7 @@ import {
   saveVectorCaseToMatter
 } from "@/server/yuandian/save-case";
 import { cn } from "@/lib/utils";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Props = {
   matterId: string;
@@ -104,7 +105,7 @@ export function CaseSearchPanel({ matterId, matterCategory, defaultCauseName }: 
       });
     } catch (err) {
       toast.error("保存失败", {
-        description: err instanceof Error ? err.message : ""
+        description: actionErrorMessage(err)
       });
     } finally {
       setSavingId(null);
@@ -124,7 +125,7 @@ export function CaseSearchPanel({ matterId, matterCategory, defaultCauseName }: 
       });
     } catch (err) {
       toast.error("保存失败", {
-        description: err instanceof Error ? err.message : ""
+        description: actionErrorMessage(err)
       });
     } finally {
       setSavingId(null);
@@ -175,7 +176,7 @@ export function CaseSearchPanel({ matterId, matterCategory, defaultCauseName }: 
           if (r.items.length === 0) toast.info("未命中类案");
         }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "检索失败";
+        const msg = err instanceof Error ? actionErrorMessage(err) : "检索失败";
         setError(msg);
         toast.error("检索失败", { description: msg });
       }

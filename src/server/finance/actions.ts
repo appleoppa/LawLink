@@ -45,12 +45,13 @@ import {
 import { revalidateMatter } from "@/server/matters/route";
 import { allocateCommissions } from "./commissions";
 import { recordTimelineEvent } from "@/server/timeline/record";
+import { ActionError } from "@/lib/action-error";
 
 // ============ Billing ============
 
 export async function createBilling(input: BillingCreateInput) {
   const session = await requireSession("finance.write");
-  if(await financeLedgerReady(prisma))throw new Error("请在应收与收款分配页面登记收费及分期");
+  if(await financeLedgerReady(prisma))throw new ActionError("请在应收与收款分配页面登记收费及分期");
   const data = billingCreateSchema.parse(input);
   await assertMatterWritable(data.matterId, { allowFinanceRole: true });
 
@@ -104,7 +105,7 @@ export async function deleteBilling(id: string) {
   // P0-6：已签署的合同（收费安排）是已确认记录，不得物理删除；
   // 更正需求待 P1 核销/冲正机制，现阶段如需调整请联系管理员按审计流程处理。
   if (billing.signedAt) {
-    throw new Error("该合同已签署，属于已确认记录，不可删除");
+    throw new ActionError("该合同已签署，属于已确认记录，不可删除");
   }
 
   if (session.user.role === "FINANCE" || (session.user.role === "CUSTOM" && scopeFor(session.user, "finance.write") === "ALL")) {
@@ -134,7 +135,7 @@ export async function deleteBilling(id: string) {
  */
 export async function createFeeEntry(input: FeeEntryCreateInput) {
   const session = await requireSession("finance.write");
-  if(await financeLedgerReady(prisma))throw new Error("请在应收与收款分配页面登记收款；退款须通过财务更正处理");
+  if(await financeLedgerReady(prisma))throw new ActionError("请在应收与收款分配页面登记收款；退款须通过财务更正处理");
   const data = feeEntryCreateSchema.parse(input);
   await assertMatterWritable(data.matterId, { allowFinanceRole: true });
 
@@ -227,15 +228,15 @@ async function usersWhoCanConfirmReceipt(excludeUserId?: string): Promise<string
  */
 export async function confirmFeeEntry(id: string) {
   const session = await requireSession("finance.confirm");
-  if (!canConfirmReceipt(session.user)) throw new Error("仅具备「确认实收到账」权限的财务管理人员可确认实收");
+  if (!canConfirmReceipt(session.user)) throw new ActionError("仅具备「确认实收到账」权限的财务管理人员可确认实收");
   if(await financeLedgerReady(prisma)) {
     const result=await prisma.$transaction(tx=>confirmReceiptTx(tx,session.user.id,id),{isolationLevel:"Serializable",timeout:20000});
     await revalidateMatter(result.matterId);revalidatePath("/finance");revalidatePath("/finance/reconciliation");return {ok:true};
   }
   const entry = await prisma.feeEntry.findUnique({ where: { id }, select: { id: true, matterId: true, type: true, amount: true, occurredAt: true, billingId: true, confirmState: true } });
-  if (!entry) throw new Error("记录不存在");
-  if (entry.type !== "RECEIVED") throw new Error("只有实收需要确认");
-  if (entry.confirmState === "CONFIRMED") throw new Error("此笔已确认");
+  if (!entry) throw new ActionError("记录不存在");
+  if (entry.type !== "RECEIVED") throw new ActionError("只有实收需要确认");
+  if (entry.confirmState === "CONFIRMED") throw new ActionError("此笔已确认");
   await assertCanAccessMatterFinance(session.user.id, session.user.role, entry.matterId, session.user.rolePermissions);
   await assertMatterWritable(entry.matterId, { allowFinanceRole: true });
 
@@ -247,7 +248,7 @@ export async function confirmFeeEntry(id: string) {
       where: { id, confirmState: "PENDING" },
       data: { confirmState: "CONFIRMED", confirmedById: session.user.id, confirmedAt: new Date() }
     });
-    if (updated.count === 0) throw new Error("此笔已被处理，请刷新后重试");
+    if (updated.count === 0) throw new ActionError("此笔已被处理，请刷新后重试");
 
     const amount = Number(entry.amount);
     if (amount > 0) {
@@ -293,23 +294,23 @@ export async function confirmFeeEntry(id: string) {
 /** 退回待确认实收：删除该条并留审计与通知，登记人按实际到账重新登记 */
 export async function rejectFeeEntry(id: string, reason: string) {
   const session = await requireSession("finance.confirm");
-  if (!canConfirmReceipt(session.user)) throw new Error("仅具备「确认实收到账」权限的财务管理人员可退回实收");
+  if (!canConfirmReceipt(session.user)) throw new ActionError("仅具备「确认实收到账」权限的财务管理人员可退回实收");
   if(await financeLedgerReady(prisma)) {
     const result=await prisma.$transaction(tx=>rejectReceiptTx(tx,session.user.id,id,reason),{isolationLevel:"Serializable",timeout:20000});
     await revalidateMatter(result.matterId);revalidatePath("/finance");revalidatePath("/finance/reconciliation");return {ok:true};
   }
   const note = reason.trim();
-  if (!note) throw new Error("请填写退回原因");
+  if (!note) throw new ActionError("请填写退回原因");
   const entry = await prisma.feeEntry.findUnique({ where: { id }, select: { id: true, matterId: true, type: true, amount: true, confirmState: true, recordedById: true, matter: { select: { internalCode: true, title: true } } } });
-  if (!entry) throw new Error("记录不存在");
-  if (entry.type !== "RECEIVED" || entry.confirmState !== "PENDING") throw new Error("只有待确认的实收可以退回");
+  if (!entry) throw new ActionError("记录不存在");
+  if (entry.type !== "RECEIVED" || entry.confirmState !== "PENDING") throw new ActionError("只有待确认的实收可以退回");
   await assertCanAccessMatterFinance(session.user.id, session.user.role, entry.matterId, session.user.rolePermissions);
   await assertMatterWritable(entry.matterId, { allowFinanceRole: true });
 
   await prisma.$transaction(async (tx) => {
     await checkRoleMutation(tx, session.user, "finance.confirm");
     const removed = await tx.feeEntry.deleteMany({ where: { id, confirmState: "PENDING" } });
-    if (removed.count === 0) throw new Error("此笔已被处理，请刷新后重试");
+    if (removed.count === 0) throw new ActionError("此笔已被处理，请刷新后重试");
   });
 
   await audit({ userId: session.user.id, action: "FEE_ENTRY_REJECT", targetType: "FeeEntry", targetId: id, detail: { matterId: entry.matterId, amount: Number(entry.amount), reason: note } });
@@ -341,10 +342,10 @@ export async function rejectFeeEntry(id: string, reason: string) {
 
 export async function deleteFeeEntry(id: string) {
   const session = await requireSession("finance.write");
-  if(await financeLedgerReady(prisma))throw new Error("待确认实收请填写原因退回；已入账收付请通过财务更正处理");
+  if(await financeLedgerReady(prisma))throw new ActionError("待确认实收请填写原因退回；已入账收付请通过财务更正处理");
   if (session.user.role !== "CUSTOM" && !isManager(session.user.role) && session.user.role !== "FINANCE") {
     // 2026-09-20 文案对齐实际校验（合伙人岗位/管理权、财务、自定义角色；后续仍有本案经办复核）
-    throw new Error("仅合伙人、财务或经授权的自定义角色可删除收付记录");
+    throw new ActionError("仅合伙人、财务或经授权的自定义角色可删除收付记录");
   }
   const entry = await prisma.feeEntry.findUnique({
     where: { id },
@@ -356,24 +357,24 @@ export async function deleteFeeEntry(id: string) {
   // 属于已签署合同的条目、或已登记发票号的收款，均属已对外/已确认口径，
   // 更正需求待 P1 冲正机制，现阶段联系管理员按审计流程处理。
   if (entry.billing?.signedAt) {
-    throw new Error("该记录关联已签署合同，属于已确认记录，不可删除");
+    throw new ActionError("该记录关联已签署合同，属于已确认记录，不可删除");
   }
   if (entry.invoiceNo) {
-    throw new Error("该记录已登记发票号，属于已确认记录，不可删除");
+    throw new ActionError("该记录已登记发票号，属于已确认记录，不可删除");
   }
   // 已确认的实收在确认时已生成实收 Payment（可能已被核销）与分成条目，
   // 物理删除会让 FeeEntry 口径与 Payment / 应收核销口径对不上，只能走冲正。
   if (entry.type === "RECEIVED" && entry.confirmState === "CONFIRMED") {
-    throw new Error("该实收已确认到账并已入账，不可删除；如需更正请登记退款 / 冲正");
+    throw new ActionError("该实收已确认到账并已入账，不可删除；如需更正请登记退款 / 冲正");
   }
   // 待确认实收只能走「退回」：需确认权、填原因、通知登记人；删除会绕过这三条
   if (entry.type === "RECEIVED" && entry.confirmState === "PENDING") {
-    throw new Error("待确认实收请在财务页用「退回」处理，需填写原因并通知登记人");
+    throw new ActionError("待确认实收请在财务页用「退回」处理，需填写原因并通知登记人");
   }
   // 确认时自动派生的分成与父实收绑定：单独删会让分成合计与父实收对不上，
   // 只能随父实收整体冲正；无父条目的手工分成不受此限
   if (entry.type === "COMMISSION" && entry.parentFeeEntryId) {
-    throw new Error("该分成由实收确认时自动派生，不可单独删除；如需更正请登记退款 / 冲正");
+    throw new ActionError("该分成由实收确认时自动派生，不可单独删除；如需更正请登记退款 / 冲正");
   }
 
   await assertMatterWritable(entry.matterId, { allowFinanceRole: true });
@@ -389,7 +390,7 @@ export async function deleteFeeEntry(id: string) {
         OR: [{ billingId: null }, { billing: { is: { signedAt: null } } }]
       }
     });
-    if (removed.count === 0) throw new Error("该记录在此期间已对外开票或关联已签署合同，不可删除；如需更正请登记退款 / 冲正");
+    if (removed.count === 0) throw new ActionError("该记录在此期间已对外开票或关联已签署合同，不可删除；如需更正请登记退款 / 冲正");
   });
 
   await audit({
@@ -570,7 +571,7 @@ export async function getMatterInvoiceContext(matterId: string) {
       }
     }
   });
-  if (!m) throw new Error("案件不存在");
+  if (!m) throw new ActionError("案件不存在");
 
   // v0.42 项3：开票抬头下拉 = 本案关联的全部客户（去重，主要客户置顶）
   const clientMap = new Map<
@@ -648,29 +649,29 @@ export async function createInvoiceRequest(input: {
   } else {
     // 无关联案件开票仅财务 / 管理员 / 主任可发起，且必须说明原因
     if (!isManager(session.user.role) && session.user.role !== "FINANCE" && !(session.user.role === "CUSTOM" && scopeFor(session.user, "finance.write") === "ALL")) {
-      throw new Error("无关联案件开票仅财务 / 管理员 / 主任律师可发起");
+      throw new ActionError("无关联案件开票仅财务 / 管理员 / 主任律师可发起");
     }
     if (!input.noMatterReason?.trim()) {
-      throw new Error("无关联案件时必须填写原因说明");
+      throw new ActionError("无关联案件时必须填写原因说明");
     }
   }
 
-  if (input.amount <= 0) throw new Error("金额必须大于 0");
+  if (input.amount <= 0) throw new ActionError("金额必须大于 0");
   if (input.invoiceType !== "PLAIN" && input.invoiceType !== "SPECIAL") {
-    throw new Error("请选择开票类型");
+    throw new ActionError("请选择开票类型");
   }
-  if (!input.buyerName.trim()) throw new Error("请填写开票抬头");
+  if (!input.buyerName.trim()) throw new ActionError("请填写开票抬头");
   // 专票合规校验（《增值税专用发票使用与管理通知》第一条 + 购方六要素）
   if (input.invoiceType === "SPECIAL") {
-    if (!input.buyerTaxNo?.trim()) throw new Error("增值税专用发票必须填写纳税人识别号");
-    if (!input.buyerAddress?.trim()) throw new Error("增值税专用发票必须填写购方地址");
-    if (!input.buyerPhone?.trim()) throw new Error("增值税专用发票必须填写购方电话");
-    if (!input.buyerBank?.trim()) throw new Error("增值税专用发票必须填写开户银行");
-    if (!input.buyerBankAccount?.trim()) throw new Error("增值税专用发票必须填写银行账号");
+    if (!input.buyerTaxNo?.trim()) throw new ActionError("增值税专用发票必须填写纳税人识别号");
+    if (!input.buyerAddress?.trim()) throw new ActionError("增值税专用发票必须填写购方地址");
+    if (!input.buyerPhone?.trim()) throw new ActionError("增值税专用发票必须填写购方电话");
+    if (!input.buyerBank?.trim()) throw new ActionError("增值税专用发票必须填写开户银行");
+    if (!input.buyerBankAccount?.trim()) throw new ActionError("增值税专用发票必须填写银行账号");
   }
   // 关联案件时必须上传开票依据（委托合同等）；无关联案件以原因说明替代，依据可选
   if (input.matterId && (input.evidenceDocIds ?? []).length === 0) {
-    throw new Error("请上传至少一份开票依据（扫描版委托合同等）");
+    throw new ActionError("请上传至少一份开票依据（扫描版委托合同等）");
   }
 
   const isSpecial = input.invoiceType === "SPECIAL";
@@ -684,17 +685,17 @@ export async function createInvoiceRequest(input: {
         where: { id: { in: evidenceDocIds }, matterId: input.matterId, deletedAt: null },
         select: { id: true }
       });
-      if (docs.length !== new Set(evidenceDocIds).size) throw new Error("开票依据必须为本案有效材料");
+      if (docs.length !== new Set(evidenceDocIds).size) throw new ActionError("开票依据必须为本案有效材料");
     } else {
       const docs = await prisma.document.findMany({
         where: { id: { in: evidenceDocIds }, deletedAt: null },
         select: { id: true }
       });
-      if (docs.length !== new Set(evidenceDocIds).size) throw new Error("开票依据不存在或已删除");
+      if (docs.length !== new Set(evidenceDocIds).size) throw new ActionError("开票依据不存在或已删除");
     }
     for (const id of evidenceDocIds) {
       const doc = await prisma.document.findUnique({ where: { id } });
-      if (!doc || !await canReadDocument(session.user.id, doc)) throw new Error("开票依据不存在或无权访问");
+      if (!doc || !await canReadDocument(session.user.id, doc)) throw new ActionError("开票依据不存在或无权访问");
     }
   }
   const created = await prisma.invoiceRequest.create({
@@ -934,7 +935,7 @@ export async function getMonthlyRevenue(months = 6) {
 export async function getPersonalRevenue(userId: string) {
   const session = await requireSession("finance.read");
   if (!isManager(session.user) && session.user.id !== userId) {
-    throw new Error("只能查看自己的收入数据");
+    throw new ActionError("只能查看自己的收入数据");
   }
   const monthStart = shMonthStart(), yearStart = shYearStart();
   if(await financeLedgerReady(prisma)) {

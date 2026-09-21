@@ -23,6 +23,7 @@ import {
   type ContactInput,
   type ClientListQuery
 } from "./schemas";
+import { ActionError } from "@/lib/action-error";
 
 // 空字符串归 null（Prisma 不接受 "" 给可空字段）
 function emptyToNull<T extends Record<string, unknown>>(obj: T): T {
@@ -88,7 +89,7 @@ export async function getClientById(id: string) {
       },
       select: { id: true }
     });
-    if (!accessible) throw new Error("客户不存在");
+    if (!accessible) throw new ActionError("客户不存在");
   }
   const client = await prisma.client.findFirst({
     where: { id, deletedAt: null },
@@ -134,7 +135,7 @@ export async function getClientFinanceSummary(clientId: string) {
       },
       select: { id: true }
     });
-    if (!accessible) throw new Error("客户不存在");
+    if (!accessible) throw new ActionError("客户不存在");
   }
 
   const matterWhere: Prisma.MatterWhereInput = {
@@ -256,7 +257,7 @@ export async function createClient(input: ClientCreateInput) {
 export async function updateClient(input: ClientUpdateInput) {
   const session = await requireSession("clients.write");
   if (session.user.role !== "CUSTOM" && !isManager(session.user.role)) {
-    throw new Error("仅管理员或主办律师可编辑客户信息");
+    throw new ActionError("仅管理员或主办律师可编辑客户信息");
   }
   const data = clientUpdateSchema.parse(input);
   const { id, contacts, gender, idType, idNumber, ...rest } = data;
@@ -271,7 +272,7 @@ export async function updateClient(input: ClientUpdateInput) {
       select: { id: true, name: true, deletedAt: true }
     });
     if (dup) {
-      throw new Error(`该证件号码已登记于${dup.deletedAt ? "停用" : ""}客户「${dup.name}」，请通过恢复或合并处理`);
+      throw new ActionError(`该证件号码已登记于${dup.deletedAt ? "停用" : ""}客户「${dup.name}」，请通过恢复或合并处理`);
     }
   }
 
@@ -319,7 +320,7 @@ export async function updateClient(input: ClientUpdateInput) {
 export async function softDeleteClient(id: string) {
   const session = await requireSession("clients.write");
   if (session.user.role !== "CUSTOM" && !isManager(session.user.role)) {
-    throw new Error("只有合伙人或获授权岗位可以删除客户");
+    throw new ActionError("只有合伙人或获授权岗位可以删除客户");
   }
 
   await assertCustomClientWrite(session.user, id);
@@ -343,7 +344,7 @@ export async function softDeleteClient(id: string) {
 export async function addContact(clientId: string, input: ContactInput) {
   const session = await requireSession("clients.write");
   if (session.user.role !== "CUSTOM" && !isManager(session.user.role)) {
-    throw new Error("仅管理员或主办律师可编辑联系人");
+    throw new ActionError("仅管理员或主办律师可编辑联系人");
   }
   await assertCustomClientWrite(session.user, clientId);
   const data = contactInputSchema.parse(input);
@@ -364,7 +365,7 @@ export async function addContact(clientId: string, input: ContactInput) {
 export async function deleteContact(id: string) {
   const session = await requireSession("clients.write");
   if (session.user.role !== "CUSTOM" && !isManager(session.user.role)) {
-    throw new Error("仅管理员或主办律师可删除联系人");
+    throw new ActionError("仅管理员或主办律师可删除联系人");
   }
   const contact = await prisma.contact.findUnique({ where: { id } });
   if (!contact) return { ok: false };
@@ -385,5 +386,5 @@ async function assertCustomClientWrite(user: RoleUser & { id: string }, id: stri
   if (user.role !== "CUSTOM") return;
   const scope = scopeFor(user, "clients.write");
   const grants = scope ? [{ permissionKey: "clients.read" as const, scope }] : [];
-  if (!scope || !await prisma.client.count({ where: { id, deletedAt: null, ...clientVisibilityFilter(user.id, user.role, grants) } })) throw new Error("客户不存在或无权维护");
+  if (!scope || !await prisma.client.count({ where: { id, deletedAt: null, ...clientVisibilityFilter(user.id, user.role, grants) } })) throw new ActionError("客户不存在或无权维护");
 }

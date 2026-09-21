@@ -13,6 +13,7 @@ import path from "node:path";
 import { prisma } from "@/lib/prisma";
 import { createNotification } from "@/server/notifications/create";
 import { audit } from "@/server/audit";
+import { ActionError } from "@/lib/action-error";
 
 const BACKUP_SCRIPT = path.join(process.cwd(), "scripts", "backup.sh");
 const BACKUP_TIMEOUT_MS = 10 * 60 * 1000;
@@ -93,7 +94,7 @@ async function preflightBackup(script: string, baseDir: string): Promise<void> {
   }
 
   if (problems.length > 0) {
-    throw new Error(`备份前置检查未通过：${problems.join("；")}`);
+    throw new ActionError(`备份前置检查未通过：${problems.join("；")}`);
   }
 }
 
@@ -150,7 +151,7 @@ export async function runDatabaseBackup(): Promise<BackupResult> {
     await preflightBackup(BACKUP_SCRIPT, baseDir);
     const { code, output } = await runScript(baseDir);
     if (code !== 0) {
-      throw new Error(`backup.sh 退出码 ${code}：${output.slice(-500)}`);
+      throw new ActionError(`backup.sh 退出码 ${code}：${output.slice(-500)}`);
     }
     const removedOld = await pruneOldBackups(baseDir, keepCount());
 

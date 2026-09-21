@@ -6,6 +6,7 @@
 import { useState, useTransition } from "react";
 import { KeyRound, Loader2 } from "lucide-react";
 import { backfillClientIdEncryption } from "@/server/clients/backfill-crypto";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Stats = { pending: number; sealed: number; total: number };
 type RunResult = { scanned: number; sealed: number; skippedDuplicate: number; remaining: number };
@@ -40,7 +41,7 @@ export function ClientIdCryptoCard({ initialStats }: { initialStats: Stats }) {
                 setLastRun(r);
                 setStats(s => ({ ...s, pending: r.remaining, sealed: s.sealed + r.sealed }));
               } catch (e) {
-                setError(e instanceof Error ? e.message : "执行失败");
+                setError(e instanceof Error ? actionErrorMessage(e) : "执行失败");
               }
             });
           }}

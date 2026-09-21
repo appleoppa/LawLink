@@ -1,5 +1,6 @@
 /** 规则重算可写性守卫（自 confirm.ts 移入；本模块不标 "use server"，仅供服务端内部调用）。 */
 import { prisma } from "@/lib/prisma";
+import { ActionError } from "@/lib/action-error";
 
 /**
  * 规则侧/批量侧更新只允许作用于 PENDING 期限。
@@ -12,7 +13,7 @@ export async function assertDeadlineRecalcWritable(ids: string[]) {
     select: { id: true, confirmStatus: true }
   });
   if (protectedRows.length > 0) {
-    throw new Error(
+    throw new ActionError(
       `有 ${protectedRows.length} 条期限已经人工确认或调整，规则重算不得覆盖；请生成待复核记录`
     );
   }

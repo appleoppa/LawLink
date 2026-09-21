@@ -56,6 +56,7 @@ import { JurisdictionSelect } from "./jurisdiction-select";
 import type { TeamColleague } from "@/lib/teams/colleagues";
 import { ChoiceField } from "@/components/patterns/choice-field";
 import { shDayKey } from "@/lib/ui/sh-time";
+import { actionErrorMessage } from "@/lib/action-error";
 
 const CATEGORIES: MatterCategory[] = ["CIVIL_COMMERCIAL", "LABOR_ARBITRATION", "COMMERCIAL_ARBITRATION", "CRIMINAL", "ADMINISTRATIVE", "NON_LITIGATION", "LEGAL_COUNSEL", "SPECIAL_PROJECT"];
 const FEE_TYPES: FeeType[] = ["FIXED", "CONTINGENCY", "TIMED"];
@@ -391,7 +392,7 @@ export function IntakeWizard({
       }
       router.refresh();
     } catch (err) {
-      toast.error(editing?"补正未完成":"收案未送审", { description: err instanceof Error ? err.message : "" });
+      toast.error(editing?"补正未完成":"收案未送审", { description: actionErrorMessage(err) });
       if(savedId){onOpenChange(false);router.push(`/intakes/${savedId}`);router.refresh();}
     }
   }
@@ -498,7 +499,7 @@ export function IntakeWizard({
       const situationText = situationParts.join("\n");
       if (situationText && !watch("causeId")) triggerCauseRecommendation(category, situationText, firstProcedureType);
     } catch (err) {
-      toast.error("识别失败", { description: err instanceof Error ? err.message : "" });
+      toast.error("识别失败", { description: actionErrorMessage(err) });
     } finally {
       setOcrPending(false);
       if (pleadingRef.current) pleadingRef.current.value = "";
@@ -514,7 +515,7 @@ export function IntakeWizard({
     try {
       setAiRecCandidates(await recommendCause({ category: cat, procedureType: procType, situation }));
     } catch (err) {
-      setAiRecError(err instanceof Error ? err.message : "AI 推荐失败");
+      setAiRecError(err instanceof Error ? actionErrorMessage(err) : "AI 推荐失败");
     } finally {
       setAiRecLoading(false);
     }

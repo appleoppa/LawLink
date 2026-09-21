@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { moneyInput } from "./ledger";
+import { ActionError } from "@/lib/action-error";
 
 const id = z.string().min(1).max(80);
 const items = z.array(z.object({ targetId: id, amount: moneyInput })).max(100).default([]).superRefine((rows, ctx) => {
@@ -38,6 +39,6 @@ export function commissionPosition(original: Prisma.Decimal, adjustment: Prisma.
 }
 /** 累计目标额减去此前撤回额，原计提金额包含当时的分摊尾差。 */
 export function commissionReversal(original: Prisma.Decimal, base: Prisma.Decimal, cumulativeRefund: Prisma.Decimal, priorReversal: Prisma.Decimal) {
-  if (base.lte(0) || cumulativeRefund.gt(base) || cumulativeRefund.lt(0)) throw new Error("分成基数或退款金额不一致");
+  if (base.lte(0) || cumulativeRefund.gt(base) || cumulativeRefund.lt(0)) throw new ActionError("分成基数或退款金额不一致");
   return original.mul(cumulativeRefund).div(base).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP).minus(priorReversal);
 }

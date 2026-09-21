@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ActionError } from "@/lib/action-error";
 
 export const identityDocumentTypes = [
   "PRC_RESIDENT_ID",
@@ -93,16 +94,16 @@ function detectImageMime(buffer: Buffer): typeof IDENTITY_IMAGE_MIME_TYPES[numbe
 }
 
 export async function readAndValidateIdentityImage(file: File) {
-  if (!file.size) throw new Error("证件照片不能为空");
-  if (file.size > IDENTITY_IMAGE_MAX_BYTES) throw new Error("单张证件照片不能超过10MB");
+  if (!file.size) throw new ActionError("证件照片不能为空");
+  if (file.size > IDENTITY_IMAGE_MAX_BYTES) throw new ActionError("单张证件照片不能超过10MB");
   const buffer = Buffer.from(await file.arrayBuffer());
   const detectedMime = detectImageMime(buffer);
-  if (!detectedMime) throw new Error("证件照片仅支持 JPG、PNG 或 WebP");
+  if (!detectedMime) throw new ActionError("证件照片仅支持 JPG、PNG 或 WebP");
   if (file.type && file.type !== detectedMime && !(file.type === "image/jpg" && detectedMime === "image/jpeg")) {
-    throw new Error("证件照片格式与文件内容不一致");
+    throw new ActionError("证件照片格式与文件内容不一致");
   }
   const extension = file.name.toLowerCase().split(".").pop();
   const allowedExtensions = detectedMime === "image/jpeg" ? ["jpg", "jpeg"] : [detectedMime.split("/")[1]];
-  if (!extension || !allowedExtensions.includes(extension)) throw new Error("证件照片扩展名与文件内容不一致");
+  if (!extension || !allowedExtensions.includes(extension)) throw new ActionError("证件照片扩展名与文件内容不一致");
   return { buffer, mimeType: detectedMime };
 }

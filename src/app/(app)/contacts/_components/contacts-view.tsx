@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 import { PageHeader, Segmented } from "@/components/patterns/moan";
 import { confirmDialog, promptDialog } from "@/components/patterns/confirm-dialog";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type ColleagueItem = {
   id: string;
@@ -102,7 +103,7 @@ export function ContactsView({
       toast.success("已归档");
       router.refresh();
     } catch (err) {
-      toast.error("归档失败", { description: err instanceof Error ? err.message : "" });
+      toast.error("归档失败", { description: actionErrorMessage(err) });
     }
   }
 
@@ -113,7 +114,7 @@ export function ContactsView({
       toast.success("已通过");
       router.refresh();
     } catch (err) {
-      toast.error("审核失败", { description: err instanceof Error ? err.message : "" });
+      toast.error("审核失败", { description: actionErrorMessage(err) });
     }
   }
 
@@ -125,7 +126,7 @@ export function ContactsView({
       toast.success("已驳回");
       router.refresh();
     } catch (err) {
-      toast.error("审核失败", { description: err instanceof Error ? err.message : "" });
+      toast.error("审核失败", { description: actionErrorMessage(err) });
     }
   }
 

@@ -9,6 +9,7 @@ import { Loader2, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { saveWorkflowTogglesAction } from "@/server/settings/workflow-toggles-actions";
+import { actionErrorMessage } from "@/lib/action-error";
 
 export function WorkflowTogglesCard({
   initialExternalContactReview
@@ -29,7 +30,7 @@ export function WorkflowTogglesCard({
         toast.success(next ? "已开启联系人审核" : "已关闭联系人审核（新增直接通过）");
       } catch (err) {
         setExternalContactReview(prev);
-        toast.error("保存失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("保存失败", { description: actionErrorMessage(err) });
       }
     });
   }

@@ -15,6 +15,7 @@ import { identityDocumentInputSchema } from "@/lib/identity-documents";
 import { storeIdentityDocumentFiles } from "@/server/identity-documents/storage";
 import { adminProfileSchema } from "./profile-schema";
 import { saveBasicProfile } from "./profile-service";
+import { ActionError } from "@/lib/action-error";
 
 const userRoleSchema = z.enum([
   "CUSTOM",
@@ -142,15 +143,15 @@ export async function createUser(formData: FormData) {
   // 开通后可经「资料 → 身份证件」补充；号码与类型仍必填（身份标识）。
   const files = [formData.get("identityImagePrimary"), formData.get("identityImageSecondary")]
     .filter((file): file is File => file instanceof File && file.size > 0);
-  if (files.length > 2) throw new Error("最多上传两张证件照片");
+  if (files.length > 2) throw new ActionError("最多上传两张证件照片");
 
   const existing = await prisma.user.findUnique({ where: { email: data.email }, select: { id: true } });
-  if (existing) throw new Error("邮箱已被使用");
+  if (existing) throw new ActionError("邮箱已被使用");
   const existingIdentity = await prisma.user.findFirst({ where: {
     identityDocumentType: data.identityDocumentType,
     identityDocumentNumber: data.identityDocumentNumber
   }, select: { id: true } });
-  if (existingIdentity) throw new Error("该类型的证件号码已登记");
+  if (existingIdentity) throw new ActionError("该类型的证件号码已登记");
 
   const passwordHash = await bcrypt.hash(data.password, 12);
   let created: { id: string };
@@ -204,13 +205,13 @@ export async function updateUserRole(input: UserUpdateRoleInput) {
   const session = await requireAdmin();
   const data = userUpdateRoleSchema.parse(input);
   if (data.id === session.user.id) {
-    throw new Error("不能修改自己的角色");
+    throw new ActionError("不能修改自己的角色");
   }
 
   await approvalTransaction(async db => {
     await assertCurrentAdmin(db, session.user.id);
     const current = await db.user.findUniqueOrThrow({ where: { id: data.id }, select: { role: true, active: true, roleDefinitionId: true } });
-    if ((data.expectedRole && current.role !== data.expectedRole) || (data.expectedRoleDefinitionId !== undefined && current.roleDefinitionId !== data.expectedRoleDefinitionId)) throw new Error("账号角色已变化，请刷新后再修改");
+    if ((data.expectedRole && current.role !== data.expectedRole) || (data.expectedRoleDefinitionId !== undefined && current.roleDefinitionId !== data.expectedRoleDefinitionId)) throw new ActionError("账号角色已变化，请刷新后再修改");
     const assignment = await validateRoleAssignment(db, data);
     await db.user.update({ where: { id: data.id }, data: { ...assignment, sessionVersion: { increment: 1 } } });
     if(assignment.role==='CUSTOM'&&!await db.rolePermission.count({where:{roleId:assignment.roleDefinitionId!,permissionKey:'matters.write'}}))await recordOffboardingRisk(db,session.user.id,[data.id]);
@@ -223,33 +224,33 @@ export async function updateUserRole(input: UserUpdateRoleInput) {
 
 async function validateRoleAssignment(db: import("@prisma/client").Prisma.TransactionClient, data: { role: import("@prisma/client").UserRole; roleDefinitionId?: string | null }) {
   if (data.role !== "CUSTOM") {
-    if (data.roleDefinitionId) throw new Error("系统角色不能同时关联自定义角色");
+    if (data.roleDefinitionId) throw new ActionError("系统角色不能同时关联自定义角色");
     return { role: data.role, roleDefinitionId: null };
   }
-  if (!data.roleDefinitionId) throw new Error("请选择自定义角色");
+  if (!data.roleDefinitionId) throw new ActionError("请选择自定义角色");
   const role = await db.roleDefinition.findUnique({ where: { id: data.roleDefinitionId }, select: { active: true } });
-  if (!role?.active) throw new Error("角色不存在或已停用，请重新选择");
+  if (!role?.active) throw new ActionError("角色不存在或已停用，请重新选择");
   return { role: data.role, roleDefinitionId: data.roleDefinitionId };
 }
 
 async function assertCurrentAdmin(db: import("@prisma/client").Prisma.TransactionClient, id: string) {
   const actor = await db.user.findUnique({ where: { id }, select: { active: true, systemRole: true } });
-  if (!actor?.active || actor.systemRole !== "SUPER_ADMIN") throw new Error("系统管理权限已失效");
+  if (!actor?.active || actor.systemRole !== "SUPER_ADMIN") throw new ActionError("系统管理权限已失效");
 }
 async function protectLastSystemAdmin(db: import("@prisma/client").Prisma.TransactionClient) {
   if (await db.user.count({ where: { active: true, systemRole: "SUPER_ADMIN" } }) <= 1) {
-    throw new Error("必须保留至少一个有效系统超级管理员账号");
+    throw new ActionError("必须保留至少一个有效系统超级管理员账号");
   }
 }
 
 export async function updateUserSystemRole(input: UserUpdateSystemRoleInput) {
   const session = await requireAdmin();
   const data = userUpdateSystemRoleSchema.parse(input);
-  if (data.id === session.user.id) throw new Error("不能修改自己的系统管理身份");
+  if (data.id === session.user.id) throw new ActionError("不能修改自己的系统管理身份");
   await approvalTransaction(async db => {
     await assertCurrentAdmin(db, session.user.id);
     const current = await db.user.findUniqueOrThrow({ where: { id: data.id }, select: { active: true, systemRole: true } });
-    if (current.systemRole !== data.expectedSystemRole) throw new Error("系统管理身份已变化，请刷新后再修改");
+    if (current.systemRole !== data.expectedSystemRole) throw new ActionError("系统管理身份已变化，请刷新后再修改");
     if (current.active && current.systemRole === "SUPER_ADMIN" && data.systemRole !== "SUPER_ADMIN") {
       await protectLastSystemAdmin(db);
     }
@@ -276,7 +277,7 @@ export async function setUserManagerAuthorized(input: z.infer<typeof userUpdateM
   await approvalTransaction(async db => {
     await assertCurrentAdmin(db, session.user.id);
     const current = await db.user.findUniqueOrThrow({ where: { id: data.id }, select: { managerAuthorized: true } });
-    if (current.managerAuthorized !== data.expectedManagerAuthorized) throw new Error("业务管理权已变化，请刷新后再修改");
+    if (current.managerAuthorized !== data.expectedManagerAuthorized) throw new ActionError("业务管理权已变化，请刷新后再修改");
     if (current.managerAuthorized === data.managerAuthorized) return;
     await db.user.update({ where: { id: data.id }, data: { managerAuthorized: data.managerAuthorized } });
     await approvalAudit(db, session.user.id, "USER_MANAGER_AUTHORIZATION_UPDATE", data.id, { before: current.managerAuthorized, after: data.managerAuthorized });
@@ -288,7 +289,7 @@ export async function setUserManagerAuthorized(input: z.infer<typeof userUpdateM
 export async function setUserActive(input: { id: string; active: boolean }) {
   const session = await requireAdmin();
   const data = z.object({ id: z.string().cuid(), active: z.boolean() }).parse(input);
-  if (data.id === session.user.id && !data.active) throw new Error("不能禁用自己");
+  if (data.id === session.user.id && !data.active) throw new ActionError("不能禁用自己");
   await approvalTransaction(async db => {
     await assertCurrentAdmin(db, session.user.id);
     const current = await db.user.findUniqueOrThrow({ where: { id: data.id }, select: { active: true, systemRole: true } });
@@ -308,8 +309,8 @@ export async function unlockUserLogin(input: { id: string }) {
 
   await approvalTransaction(async db => {
     const user = await db.user.findUnique({ where: { id }, select: { lockedUntil: true, failedLoginAttempts: true } });
-    if (!user) throw new Error("账号不存在");
-    if (!user.lockedUntil) throw new Error("该账号未处于锁定状态");
+    if (!user) throw new ActionError("账号不存在");
+    if (!user.lockedUntil) throw new ActionError("该账号未处于锁定状态");
     await db.user.update({
       where: { id },
       data: { failedLoginAttempts: 0, lockedUntil: null }
@@ -355,10 +356,10 @@ export async function changeMyPassword(input: ChangeMyPasswordInput) {
     where: { id: session.user.id },
     select: { passwordHash: true }
   });
-  if (!me) throw new Error("用户不存在");
+  if (!me) throw new ActionError("用户不存在");
 
   const matches = await bcrypt.compare(data.currentPassword, me.passwordHash);
-  if (!matches) throw new Error("当前密码不正确");
+  if (!matches) throw new ActionError("当前密码不正确");
 
   const passwordHash = await bcrypt.hash(data.newPassword, 12);
   await approvalTransaction(async db => {
@@ -376,10 +377,10 @@ export async function saveMyAvatar(input: { avatar: string | null }) {
   let avatar = input.avatar;
   if (typeof avatar === "string" && avatar.length > 0) {
     if (!/^data:image\/(png|jpeg|jpg|webp|svg\+xml);base64,/.test(avatar)) {
-      throw new Error("头像必须是 PNG / JPG / WebP / SVG 图片");
+      throw new ActionError("头像必须是 PNG / JPG / WebP / SVG 图片");
     }
     if (avatar.length > AVATAR_MAX_CHARS) {
-      throw new Error("头像体积过大，请控制在约 180KB 以内");
+      throw new ActionError("头像体积过大，请控制在约 180KB 以内");
     }
   } else {
     avatar = null;
@@ -426,7 +427,7 @@ export async function forceEnforceTotp(input: TotpEnforceInput) {
       where: { id: data.id },
       select: { active: true, totpEnforced: true, totpEnabled: true }
     });
-    if (!current) throw new Error("账号不存在");
+    if (!current) throw new ActionError("账号不存在");
     if (current.totpEnforced === data.enabled) return; // 幂等：状态未变不重复审计
     await db.user.update({
       where: { id: data.id },

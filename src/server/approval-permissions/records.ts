@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { canApproveItem, canExecuteInvoice } from "@/lib/approvals/service";
 import { APPROVAL_EVENTS, approvalTargetType, canonicalApprovalAction, type ApprovalHistoryEntry, type ApprovalWorkspaceRow } from "@/lib/approvals/workspace";
 import { isSystemAdmin } from "@/lib/auth/system-role";
+import { ActionError } from "@/lib/action-error";
 
 export type ApprovalRecord = Omit<ApprovalWorkspaceRow, "task"> & {
   requesterId: string | null; intakeOwnerId?: string | null; history: ApprovalHistoryEntry[]; participantIds: string[];
@@ -85,8 +86,8 @@ export async function approvalRecordAccess(user: { id: string; role: string; sys
 
 export async function requireApprovalRecord(user: { id: string; role: string; systemRole: string }, input: { action: ApprovalAction; id: string }) {
   const row = (await loadApprovalRecords(input))[0];
-  if (!row) throw new Error("审批申请不存在或不可查看");
+  if (!row) throw new ActionError("审批申请不存在或不可查看");
   const access = await approvalRecordAccess(user, row);
-  if (!access.readable) throw new Error("审批申请不存在或不可查看");
+  if (!access.readable) throw new ActionError("审批申请不存在或不可查看");
   return { row, ...access };
 }

@@ -13,6 +13,7 @@ import { prisma } from "@/lib/prisma";
 import { requireSystemAdmin } from "@/lib/auth/session";
 import { auditTx } from "@/server/audit";
 import { revalidatePath } from "next/cache";
+import { ActionError } from "@/lib/action-error";
 
 const ruleInputSchema = z.object({
   name: z.string().min(1, "规则名称必填").max(60),
@@ -86,7 +87,7 @@ export async function updateDeadlineRule(input: DeadlineRuleInput & { id: string
   const data = ruleInputSchema.parse(rest);
 
   const existing = await prisma.deadlineRule.findUnique({ where: { id }, select: { isBuiltIn: true, code: true } });
-  if (!existing) throw new Error("规则不存在");
+  if (!existing) throw new ActionError("规则不存在");
 
   await prisma.$transaction(async tx => {
     await tx.deadlineRule.update({
@@ -122,7 +123,7 @@ export async function toggleDeadlineRule(input: { id: string; enabled: boolean }
   const data = z.object({ id: z.string().cuid(), enabled: z.boolean() }).parse(input);
 
   const existing = await prisma.deadlineRule.findUnique({ where: { id: data.id }, select: { code: true } });
-  if (!existing) throw new Error("规则不存在");
+  if (!existing) throw new ActionError("规则不存在");
 
   await prisma.$transaction(async tx => {
     await tx.deadlineRule.update({ where: { id: data.id }, data: { enabled: data.enabled } });
@@ -144,8 +145,8 @@ export async function deleteDeadlineRule(input: { id: string }) {
   const { id } = z.object({ id: z.string().cuid() }).parse(input);
 
   const existing = await prisma.deadlineRule.findUnique({ where: { id }, select: { isBuiltIn: true, code: true } });
-  if (!existing) throw new Error("规则不存在");
-  if (existing.isBuiltIn) throw new Error("内置规则不可删除，可停用或修正法条依据");
+  if (!existing) throw new ActionError("规则不存在");
+  if (existing.isBuiltIn) throw new ActionError("内置规则不可删除，可停用或修正法条依据");
 
   await prisma.$transaction(async tx => {
     await tx.deadlineRule.delete({ where: { id } });

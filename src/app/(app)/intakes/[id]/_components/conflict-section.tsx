@@ -30,6 +30,7 @@ import { conflictConclusionLabel, litigationStandingLabel, matterCategoryLabel, 
 import type { buildIntakeConflictQueries } from "@/lib/approvals/intake-detail";
 import { cn, formatDate as fmtDate, formatDateTime } from "@/lib/utils";
 import { matterHref } from "@/lib/matters/route";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Hit = {
   id: string;
@@ -123,7 +124,7 @@ export function ConflictSection({
         });
       } catch (err) {
         toast.error("检索失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });
@@ -147,7 +148,7 @@ export function ConflictSection({
         toast.success("结论已保存");
       } catch (err) {
         toast.error("保存失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });

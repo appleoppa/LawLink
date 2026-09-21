@@ -16,6 +16,7 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { auditTx } from "@/server/audit";
 import { assertCanReadMatter, assertCanHandleMatter } from "@/lib/permissions";
+import { ActionError } from "@/lib/action-error";
 
 const createSchema = z.object({
   matterId: z.string().cuid(),
@@ -46,8 +47,8 @@ export async function createEvidenceItem(input: CreateEvidenceItemInput) {
       where: { id: data.sourceDocumentId },
       select: { matterId: true, deletedAt: true }
     });
-    if (!doc || doc.deletedAt) throw new Error("来源材料不存在或已删除");
-    if (doc.matterId !== data.matterId) throw new Error("来源材料不属于该案件");
+    if (!doc || doc.deletedAt) throw new ActionError("来源材料不存在或已删除");
+    if (doc.matterId !== data.matterId) throw new ActionError("来源材料不属于该案件");
   }
 
   const created = await prisma.$transaction(async tx => {

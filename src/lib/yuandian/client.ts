@@ -7,6 +7,7 @@
 import { getYuandianSettings, type ResolvedYuandianSettings } from "./settings";
 import { withExternalCallLog } from "@/lib/external-call-log";
 import { assertSafeHttpUrl, safeFetch } from "@/lib/net/safe-url";
+import { ActionError } from "@/lib/action-error";
 
 export class YuandianNotConfiguredError extends Error {
   constructor() {
@@ -87,7 +88,7 @@ export async function searchPtalCases(
     (params.wszl?.length ?? 0) > 0 ||
     !!params.ja_start ||
     !!params.ja_end;
-  if (!hasAny) throw new Error("至少填写一个检索条件（案由 / 关键词 / 法院 / 地区 / 日期）");
+  if (!hasAny) throw new ActionError("至少填写一个检索条件（案由 / 关键词 / 法院 / 地区 / 日期）");
 
   const body: Record<string, unknown> = {};
   if (params.ay?.length) body.ay = params.ay;
@@ -204,7 +205,7 @@ export async function searchCasesByVector(
   const s = resolved ?? (await getYuandianSettings());
   if (!s.configured) throw new YuandianNotConfiguredError();
   const query = params.query.trim();
-  if (!query) throw new Error("语义检索 query 不能为空");
+  if (!query) throw new ActionError("语义检索 query 不能为空");
 
   const filter: Record<string, unknown> = {};
   if (params.ay?.length) filter.ay = params.ay;

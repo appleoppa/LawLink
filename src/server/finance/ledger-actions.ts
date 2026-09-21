@@ -2,6 +2,7 @@
 import {adjustInvoiceTx,invoiceAdjustmentInput,invoiceAdjustmentReady} from "@/server/invoices/adjustments";
 import { scopeFor } from "@/lib/roles/catalog";
 import { z } from "zod";
+import { actionErrorMessage } from "@/lib/action-error";
 import { bindContractScopeTx,draftAmendmentTx,activateAmendmentTx,cancelAmendmentTx } from "./ledger-contracts";
 import type { ContractTermsInput } from "@/lib/finance/contracts";
 import { commissionPositions, submitCorrectionTx, decideCorrectionTx, settleCommissionTx } from "./ledger-corrections";
@@ -18,12 +19,13 @@ import { readLedger } from "./ledger-storage";
 import { allocateLedgerTx } from "./ledger-mutations";
 import { closureReady } from "@/server/archive/closure";
 import { dueBucket, paymentBalance, receivableBalance, type AllocateLedgerInput } from "@/lib/finance/ledger";
+import { ActionError } from "@/lib/action-error";
 
 export async function getFinanceLedger(matterId?: string) {
   const session = await requireSession("finance.read");
   return prisma.$transaction(async db => {
     const matters = await db.matter.findMany({ where: { AND: [{ deletedAt: null }, matterFinanceVisibilityFilter(session.user.id,session.user.role,session.user.rolePermissions), ...(matterId ? [{ id: matterId }] : [])] }, select: { id: true, internalCode: true, title: true, status: true }, orderBy: { internalCode: "asc" } });
-    if (matterId && matters.length === 0) throw new Error("案件不存在或无权查看财务");
+    if (matterId && matters.length === 0) throw new ActionError("案件不存在或无权查看财务");
     const data = await readLedger(db, matters.map(m => m.id));
     const ids=matters.map(m=>m.id);
     const pending = data.ready && ids.length ? await db.$queryRaw<{id:string;matterId:string;amount:Prisma.Decimal;moneyKind:MoneyKind;occurredAt:Date;recordedById:string;name:string;payerOrPayee:string|null;note:string|null}[]>(Prisma.sql`
@@ -75,7 +77,7 @@ async function mutate(work: (db: Prisma.TransactionClient, userId: string) => Pr
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) return {ok:false as const,message:["P2034","P2002","P2025"].includes(error.code) || (error.code==="P2010" && ["40001","40P01","23505"].includes(String(error.meta?.code))) ? "账务或授权已变化，请刷新后重试" : "账务保存失败，未完成本次操作"};
     if(error instanceof z.ZodError) return {ok:false as const,message:error.issues[0]?.message ?? "请检查填写内容"};
-    return {ok:false as const,message:error instanceof Error?error.message:"操作失败，请重试"};
+    return {ok:false as const,message:error instanceof Error ? actionErrorMessage(error) :"操作失败，请重试"};
   }
 }
 export async function allocateLedger(input: AllocateLedgerInput) {
