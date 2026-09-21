@@ -1,6 +1,6 @@
 {
   "name": "lawlink",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "private": true,
   "license": "MIT",
   "engines": {
@@ -55,7 +55,7 @@
     "next-auth": "^4.24.15",
     "next-themes": "^0.4.6",
     "node-cron": "^4.2.1",
-    "nodemailer": "^7.0.13",
+    "nodemailer": "^10.0.10",
     "pdf-lib": "^1.17.1",
     "pizzip": "^3.2.0",
     "react": "^19.2.7",
@@ -97,6 +97,7 @@
   "overrides": {
     "postcss": "^8.5.28",
     "uuid": "^11.1.1",
-    "@radix-ui/react-dismissable-layer": "1.1.12"
+    "@radix-ui/react-dismissable-layer": "1.1.12",
+    "nodemailer": "^10.0.10"
   }
 }

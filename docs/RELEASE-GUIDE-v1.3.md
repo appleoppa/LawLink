@@ -1,6 +1,6 @@
 # LawLink v1.3 使用与升级说明
 
-适用版本：v1.3.0 / v1.3.1 / v1.3.2；核对日期：2026-09-13。v1.3.1 是公开说明与 CI 的维护版，业务功能与 v1.3.0 相同。
+适用版本：v1.3.0 / v1.3.1 / v1.3.2 / **v1.4.0**；核对日期：2026-09-21。v1.3.1 是公开说明与 CI 的维护版，业务功能与 v1.3.0 相同；v1.4.0 的升级须先做迁移基线标记，见本文「从 v1.3.x 升级：迁移基线重建」一节。
 
 ## 这一版改变了什么
 
@@ -45,6 +45,60 @@
 - 重跑 seed 不会重置已有管理员密码，也不是升级账号权限的替代办法；它可能更新内置案由、模板等基础配置，不能作为常规升级命令盲目执行。
 
 固定版本的操作步骤见[云服务器指南](./CLOUD-SERVER-INSTALLATION-GUIDE.md#十五升级-lawlink)。迁移后无法通过只切回旧代码可靠回退，须按已验证的备份恢复方案处理。
+
+## 从 v1.3.x 升级：迁移基线重建（必读，含手工步骤）
+
+本版把迁移链重建为单一基线 `0_init`，75 个历史迁移归档至 `prisma/migrations-archive-20260921/`（保留不删）。
+
+起因：旧链中 `2026*` 与 `v4*` 两套命名混排，Prisma 按名称排序执行，导致补强迁移排在建列迁移之前，**整条链在空库上无法从零重放**（`20260920000001_audit_fix_hardening` 处报 `column "confirmState" does not exist`）。已应用完毕的既有库不受该缺陷影响，但全新安装与灾难恢复重建都会失败。
+
+### 影响
+
+| 场景 | 影响 |
+|---|---|
+| **全新安装** | 已修复，`prisma migrate deploy` 正常跑通 |
+| **既有部署升级** | **需要一次手工标记**，否则升级中断（见下） |
+| 业务数据 | 无影响，基线重建不改变任何表结构或数据 |
+
+既有部署的 `_prisma_migrations` 表里没有 `0_init` 记录，`prisma migrate deploy` 会把它当作待应用迁移去执行，而库中的表和枚举都已存在，于是失败：
+
+```
+Error: P3018
+Database error code: 42710
+ERROR: type "UserRole" already exists
+```
+
+失败会被记入 `_prisma_migrations`，**在恢复之前后续迁移全部阻断**。
+
+### 升级步骤（既有部署）
+
+先备份数据库、`storage/` 与 `.env`，并在备份副本上演练一遍。然后：
+
+```bash
+# 1. 标记基线已应用（不执行任何 SQL，只写一行迁移记录）
+npx prisma migrate resolve --applied 0_init
+
+# 2. 正常执行后续迁移
+npx prisma migrate deploy
+
+# 3. 确认无待办
+npx prisma migrate status      # 期望：Database schema is up to date!
+```
+
+第 1 步必须在第 2 步之前。旧迁移记录保留在表中作为历史，不要删除。
+
+### 如果已经直接执行了 deploy 并失败
+
+失败本身不会损坏数据（`0_init` 在第一条 `CREATE TYPE` 就中止）。执行同样的标记即可恢复：
+
+```bash
+npx prisma migrate resolve --applied 0_init
+npx prisma migrate deploy
+```
+
+### 容器部署
+
+`docker compose` 场景在应用容器内执行上述命令，或在宿主机指向同一 `DATABASE_URL` 执行。不要用 `prisma db push` 代替——它会绕过迁移历史，使后续升级失去可重放基准。
 
 ## 外部服务、文件与备份
 

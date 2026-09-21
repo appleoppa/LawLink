@@ -8,7 +8,11 @@ LawLink 面向律师业务数据，默认把案件事实、客户信息、附件
 
 ## 依赖审计状态
 
-核对日期：2026-09-13；范围：v1.3.2 的锁文件。`npm audit`（包含开发依赖）与 `npm audit --omit=dev` 均报告 **0 个已知漏洞**。CI 对完整锁文件运行审计，新告警会阻止检查通过。
+核对日期：**2026-09-21**；范围：当前锁文件。`npm audit`（包含开发依赖）与 `npm audit --omit=dev` 均报告 **0 个已知漏洞**。CI 对完整锁文件运行审计，新告警会阻止检查通过。
+
+2026-09-21 复审发现 `nodemailer ≤9.1.0` 新增 2 项 high 级公告（SMTP 命令注入、CRLF 头注入、addressparser 复杂度 DoS 等共 10 条 CVE）。评估：本项目使用 Credentials Provider，不启用 NextAuth 的邮件登录；自身用法为固定配置的 `createTransport` + `sendMail`，收件地址取自管理员录入的用户表，多数公告在本项目的用法下不可直接触发。仍按"不留已知 high"的口径升级至 `nodemailer@10.0.10`，并在 `package.json` 的 `overrides` 中固定，避免 `next-auth@4` 的 `^7.0.7` peer 约束使部署方 `npm ci` 失败。升级后全量测试、typecheck 与生产构建均通过。
+
+此前记录（2026-09-13，v1.3.2）：
 
 v1.3.1 的生产依赖审计曾有 9 个受影响包；修复前全量审计有 14 个。本版在现有主版本内升级 Next.js 至 16.3.5、NextAuth 至 4.24.15、PostCSS 至 8.5.28、Vitest 至 4.1.11，并更新 sharp、XML 解析及其他传递依赖。请使用本版锁文件执行 `npm ci`，不要只修改版本号而保留旧安装目录。
 
