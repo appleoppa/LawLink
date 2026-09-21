@@ -293,9 +293,8 @@ export async function searchArchiveForBorrow(q: string) {
 
 /** 归档台账页数据（页面已放开为登录可进）：archive.read 持有者另见全量台账 */
 export async function listArchivePageData() {
-  await requireSession();
-  const { hasCustomPermission } = await import("@/lib/roles/catalog");
   const session = await requireSession();
+  const { hasCustomPermission } = await import("@/lib/roles/catalog");
   const hasArchiveRead = hasCustomPermission(session.user, "archive.read");
   const borrows = await listArchiveBorrows();
   return { hasArchiveRead, currentUserId: session.user.id, borrows };

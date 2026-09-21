@@ -209,6 +209,11 @@ v1 报告两条头牌 P1 经独立核对证伪/收窄后出 v2 修订版，本�
 - **F-6 归档借阅线实施**（docs/ARCHIVE-BORROW-PLAN-20260921.md 全量落地）：① Schema `ArchiveBorrowRequest`（迁移 `20260921000004_archive_borrow` 空库+主库已应用，含 `ReminderDeliveryObjectType` 增值 ARCHIVE_BORROW）；② 服务 `src/server/archive/borrow.ts`——申请（可见性校验+在途去重+事由必填）、审批（**复用 ARCHIVE_APPROVE 规则含自审批排除**，默认 30 天可 1–180）、归还、到期自动失效（读取入口顺带收敛）、案卷检索（最小披露：归档号/案号/案名）；③ **读取路径实时校验**：`assertCanReadMatter` 兜底分支查有效借阅单（APPROVED+未归还+未到期），到期即失效不靠隐藏入口；④ 到期提醒走 F-1 台账（审批时登记 T-3/T-0 未来 registeredAt 行，`registerReminderDelivery` 增 registeredAt 覆盖参数；投递器 ARCHIVE_BORROW 处理器复核借阅单有效后送达，归还即 CANCELLED）；⑤ UI：/archive 页放开为登录可进（台账表仍限 archive.read），新增借阅面板（借阅中查阅/归还、待我审批就地下钻、检索申请弹窗）。测试：archive-borrow 10 例 + team-access mock 适配（兜底分支）。终态 756 测试全绿、lint/typecheck/build 干净。
 - **第六轮至此全项清零**：P1×4、P2×5、P3×4、F-1~F-6 全部落地或核实豁免（F-4 经核实已被 09-19 责任体系覆盖）。
 
+### 对账页布局收敛（2026-09-21，用户反馈「应收与收款分配的页面过长」）
+
+- `/finance/reconciliation` 九区块单列堆叠改为**四个 Segmented 页签**（与 /finance 同款视觉）：总览与登记（指标卡 + 登记动作 + 三个待办区，默认页签）/ 应收与收款（两张表）/ 发票关联 / 合同与更正；案件范围选择器常驻页签之上。页签带计数徽标（待确认实收数、未结清应收数）。
+- **展示数量**：应收表与实收表默认 8 行、发票列表默认 6 张，超出折叠为「展开全部 N 条 / 收起」；表头副行显示「未结清 M 项 · 共 N 条 · 当前显示前 8 条」。分配弹窗与各工作区不变。
+
 ### 第四轮体检与法院短信专项（2026-09-20 确认）
 
 **A 批已实施（2026-09-20）**：12 项代码修复全部落地（权限收敛 `assertCanHandleMatter`、AI 逐件外发资格、程序门禁事务化+零写入回归测试、法人章三条件分立、旧开票入口停用、扣回上限 recoverable、退款免债按核销对应、合同三承接点复核门禁、日期出口归一+存量审计无迁移、责任失效可见最小版、日历搜索发票列表权限）；迁移 20260920000001 触发器修订版经叶森批准已执行（备份在 `backups/hardening-migration-20260920/`，主库 FK RESTRICT/默认 PENDING/AuditLog 触发器拒删三项验证通过，663 测试回归）。存量日期瞬间审计脚本 `scripts/audit-date-instants.ts`：三种瞬间出口归一后均正确，无需迁移。
