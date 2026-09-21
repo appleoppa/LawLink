@@ -20,12 +20,17 @@
  * 检索范围（2026-09-14 用户确认）：历史案件当事人、客户档案关联案件，以及尚未转为案件的在办收案
  * （INTAKE / PENDING_CONFIRMATION / NEEDS_REVISION）的当事人与委托方。在办收案命中只披露收案名称、
  * 登记人、状态、登记日期与命中角色（targetType = "Intake"），不开放收案内容。
+ *
+ * 名称匹配（2026-09-21 第六轮体检 P2-2）：单向 contains 改为「探针扩候选 + 归一双向比对」
+ * （src/lib/conflicts/name-normalize.ts）——全称/简称互查、组织后缀与括号地域差异不再漏检；
+ * 归一命中降一级严重度并标注「请人工核对」，由律师判断（宁可降级提示，不可静默漏检）。
  */
 
 import type { Prisma, PartyRole, LitigationStanding, MatterCategory, MatterStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { blindIdNumber } from "@/lib/clients/id-number-crypto";
 import { normalizeIdNumber } from "@/lib/clients/identity";
+import { buildNameProbes, nameMatchLevel, isNormalizedMatch } from "@/lib/conflicts/name-normalize";
 
 export type QueryItem = {
   role: PartyRole;
@@ -156,6 +161,11 @@ function bumpSeverity(s: ConflictHitDraft["severity"]): ConflictHitDraft["severi
   return SEV_BY_ORDER[Math.min(SEV_ORDER[s] + 1, 3)];
 }
 
+/** 归一化命中降一级（第六轮体检 P2-2）：提示交律师判断，但不再直接阻断 */
+function downgradeSeverity(s: ConflictHitDraft["severity"]): ConflictHitDraft["severity"] {
+  return SEV_BY_ORDER[Math.max(SEV_ORDER[s] - 1, 0)];
+}
+
 function pickSeverity(
   candidateRole: PartyRole,
   historyRole: PartyRole
@@ -255,13 +265,15 @@ export async function runConflictCheck(queries: QueryItem[], options: { excludeI
       }
     }
 
-    // Party 姓名模糊匹配（限 3 字符以上，避免单字大量误命中）
-    if (name && name.length >= 3) {
+    // Party 姓名模糊匹配（P2-2：探针扩候选 + 归一双向比对——此前单向 contains，
+    // 查询全称/历史录简称（如「广东嘉吉贸易有限公司」vs「嘉吉贸易」）会整条漏检）
+    const probes = buildNameProbes(name);
+    if (probes.length > 0) {
       const partiesFuzzy = await db.party.findMany({
         where: {
           matterId: { not: null },
           matter: { deletedAt: null, ...(options.excludeMatterId?{id:{not:options.excludeMatterId}}:{}) },
-          name: { contains: name, mode: "insensitive" },
+          OR: probes.map((p) => ({ name: { contains: p, mode: "insensitive" } })),
           NOT: { name }
         },
         select: {
@@ -277,6 +289,9 @@ export async function runConflictCheck(queries: QueryItem[], options: { excludeI
       });
       for (const p of partiesFuzzy) {
         if (!p.matter) continue;
+        const m = nameMatchLevel(name, p.name);
+        if (!m || m.level === "EXACT") continue; // 精确分支已记
+        const normalized = isNormalizedMatch(m);
         hits.push({
           hitType: "HISTORICAL_PARTY",
           targetType: "Matter",
@@ -284,9 +299,9 @@ export async function runConflictCheck(queries: QueryItem[], options: { excludeI
           matchedName: p.name,
           matchedField: "name",
           matchedValue: name,
-          matchedRatio: name.length / p.name.length,
-          severity: "LOW",
-          reason: `与案件「${p.matter.internalCode}」中 ${roleLabel(p.role)}「${p.name}」名称相似`,
+          matchedRatio: m.ratio,
+          severity: normalized ? downgradeSeverity(pickSeverity(q.role, p.role)) : "LOW",
+          reason: `与案件「${p.matter.internalCode}」中 ${roleLabel(p.role)}「${p.name}」${normalized ? "名称归一化匹配，请人工核对" : "名称相似"}`,
           matterInfo: toMatterInfo(p.matter, p.role, p.standing)
         });
       }
@@ -303,7 +318,8 @@ export async function runConflictCheck(queries: QueryItem[], options: { excludeI
     const clientWhere: Prisma.ClientWhereInput[] = [];
     if (name) clientWhere.push({ name });
     if (idBlind) clientWhere.push({ idNumberBlind: idBlind });
-    if (name && name.length >= 3) clientWhere.push({ name: { contains: name, mode: "insensitive" } });
+    // P2-2：探针扩候选（原名 + 归一核 + 去地域核），命中经 nameMatchLevel 分类
+    if (name) for (const p of probes) clientWhere.push({ name: { contains: p, mode: "insensitive" } });
 
     if (clientWhere.length > 0) {
       const clients = await db.client.findMany({
@@ -327,8 +343,6 @@ export async function runConflictCheck(queries: QueryItem[], options: { excludeI
         );
 
         const idHit = !!(idBlind && c.idNumberBlind === idBlind);
-        const nameExact = !!(name && c.name === name);
-        const nameFuzzy = !!(name && !nameExact && name.length >= 3);
 
         for (const m of matters) {
           const matterInfo = toMatterInfo(m, "CLIENT_PARTY", null);
@@ -348,32 +362,49 @@ export async function runConflictCheck(queries: QueryItem[], options: { excludeI
               matterInfo
             });
           }
-          if (nameExact) {
-            hits.push({
-              hitType: "HISTORICAL_PARTY",
-              targetType: "Matter",
-              targetId: m.id,
-              matchedName: c.name,
-              matchedField: "name",
-              matchedValue: name,
-              matchedRatio: 1,
-              severity: pickSeverity(q.role, "CLIENT_PARTY"),
-              reason: `与案件「${m.internalCode}」的委托方「${c.name}」同名`,
-              matterInfo
-            });
-          } else if (nameFuzzy) {
-            hits.push({
-              hitType: "HISTORICAL_PARTY",
-              targetType: "Matter",
-              targetId: m.id,
-              matchedName: c.name,
-              matchedField: "name",
-              matchedValue: name,
-              matchedRatio: name.length / c.name.length,
-              severity: "LOW",
-              reason: `与案件「${m.internalCode}」的委托方「${c.name}」名称相似`,
-              matterInfo
-            });
+          // P2-2：归一双向比对分级——归一命中降一级并标注人工核对
+          const match = name ? nameMatchLevel(name, c.name) : null;
+          if (match) {
+            if (match.level === "EXACT") {
+              hits.push({
+                hitType: "HISTORICAL_PARTY",
+                targetType: "Matter",
+                targetId: m.id,
+                matchedName: c.name,
+                matchedField: "name",
+                matchedValue: name,
+                matchedRatio: 1,
+                severity: pickSeverity(q.role, "CLIENT_PARTY"),
+                reason: `与案件「${m.internalCode}」的委托方「${c.name}」同名`,
+                matterInfo
+              });
+            } else if (match.level === "NORMALIZED_EQUAL") {
+              hits.push({
+                hitType: "HISTORICAL_PARTY",
+                targetType: "Matter",
+                targetId: m.id,
+                matchedName: c.name,
+                matchedField: "name",
+                matchedValue: name,
+                matchedRatio: 1,
+                severity: downgradeSeverity(pickSeverity(q.role, "CLIENT_PARTY")),
+                reason: `与案件「${m.internalCode}」的委托方「${c.name}」名称归一化匹配，请人工核对`,
+                matterInfo
+              });
+            } else {
+              hits.push({
+                hitType: "HISTORICAL_PARTY",
+                targetType: "Matter",
+                targetId: m.id,
+                matchedName: c.name,
+                matchedField: "name",
+                matchedValue: name,
+                matchedRatio: match.ratio,
+                severity: isNormalizedMatch(match) ? downgradeSeverity(pickSeverity(q.role, "CLIENT_PARTY")) : "LOW",
+                reason: `与案件「${m.internalCode}」的委托方「${c.name}」${isNormalizedMatch(match) ? "名称归一化匹配，请人工核对" : "名称相似"}`,
+                matterInfo
+              });
+            }
           }
         }
       }
@@ -412,10 +443,10 @@ async function collectIntakeHits(
     status: { in: [...IN_PROGRESS_INTAKE_STATUSES] },
     ...(excludeIntakeId ? { id: { not: excludeIntakeId } } : {})
   };
-  const push = (intake: SelectedIntakeInfo, matchedName: string, partyRole: PartyRole, standing: LitigationStanding | null, field: "name" | "idNumber", ratio: number) => {
+  const push = (intake: SelectedIntakeInfo, matchedName: string, partyRole: PartyRole, standing: LitigationStanding | null, field: "name" | "idNumber", ratio: number, normalized = false) => {
     const base = pickSeverity(q.role, partyRole);
-    const severity = field === "idNumber" ? bumpSeverity(base) : ratio < 1 ? "LOW" : base;
-    const what = field === "idNumber" ? "身份证 / 信用代码一致" : ratio < 1 ? "名称相似" : "同名";
+    const severity = field === "idNumber" ? bumpSeverity(base) : ratio < 1 || normalized ? (normalized ? downgradeSeverity(base) : "LOW") : base;
+    const what = field === "idNumber" ? "身份证 / 信用代码一致" : normalized ? (ratio < 1 ? "名称归一化匹配，请人工核对" : "名称归一化相同，请人工核对") : ratio < 1 ? "名称相似" : "同名";
     hits.push({
       hitType: "IN_PROGRESS_INTAKE",
       targetType: "Intake",
@@ -438,29 +469,35 @@ async function collectIntakeHits(
     exactOr.push({ idNumber }, { enterpriseSocialCode: idNumber });
     if (normId && normId !== idNumber) exactOr.push({ idNumber: normId }, { enterpriseSocialCode: normId });
   }
-  const fuzzyOr: Prisma.PartyWhereInput[] = name && name.length >= 3 ? [{ name: { contains: name, mode: "insensitive" } }] : [];
+  // P2-2：探针扩候选 + 归一双向比对分类
+  const probes = name ? buildNameProbes(name) : [];
+  const fuzzyOr: Prisma.PartyWhereInput[] = probes.map((p) => ({ name: { contains: p, mode: "insensitive" } }));
   if (exactOr.length || fuzzyOr.length) {
     // 精确/证件与模糊分两个查询：同名大姓的 contains 命中会把合并查询的 take:50 窗口挤满，
     // 静默挤掉证件级真命中；拆开后精确命中不受截断影响（与历史案件分支口径一致）
     const baseSelect = { id: true, name: true, idNumber: true, enterpriseSocialCode: true, role: true, standing: true, intake: { select: intakeInfoSelect } } as const;
     const parties = [
       ...await db.party.findMany({ where: { intakeId: { not: null }, intake: intakeScope, OR: exactOr }, select: baseSelect, take: 50 }),
-      ...await db.party.findMany({ where: { intakeId: { not: null }, intake: intakeScope, OR: fuzzyOr }, select: baseSelect, take: 20 })
+      ...await db.party.findMany({ where: { intakeId: { not: null }, intake: intakeScope, OR: fuzzyOr, NOT: name ? [{ name }] : [] }, select: baseSelect, take: 20 })
     ];
     const seen = new Set<string>();
     for (const p of parties) {
       if (!p.intake || seen.has(p.id)) continue;
       seen.add(p.id);
-      if (idNumber && (p.idNumber === idNumber || p.enterpriseSocialCode === idNumber || (normId && (p.idNumber === normId || p.enterpriseSocialCode === normId)))) push(p.intake, p.name, p.role, p.standing, "idNumber", 1);
-      if (name && p.name === name) push(p.intake, p.name, p.role, p.standing, "name", 1);
-      else if (name && name.length >= 3 && p.name.toLowerCase().includes(name.toLowerCase())) push(p.intake, p.name, p.role, p.standing, "name", name.length / p.name.length);
+      const idMatched = !!(idNumber && (p.idNumber === idNumber || p.enterpriseSocialCode === idNumber || (normId && (p.idNumber === normId || p.enterpriseSocialCode === normId))));
+      if (idMatched) push(p.intake, p.name, p.role, p.standing, "idNumber", 1);
+      const match = name ? nameMatchLevel(name, p.name) : null;
+      if (!match) continue;
+      if (match.level === "EXACT") push(p.intake, p.name, p.role, p.standing, "name", 1);
+      else if (match.level === "NORMALIZED_EQUAL") push(p.intake, p.name, p.role, p.standing, "name", 1, true);
+      else push(p.intake, p.name, p.role, p.standing, "name", match.ratio, isNormalizedMatch(match));
     }
   }
 
   // 收案关联的客户档案（部分收案委托方只挂 clientId、未落 Party 行）
   const clientOr: Prisma.ClientWhereInput[] = [];
   if (name) clientOr.push({ name });
-  if (name && name.length >= 3) clientOr.push({ name: { contains: name, mode: "insensitive" } });
+  for (const p of probes) clientOr.push({ name: { contains: p, mode: "insensitive" } });
   const idBlind = idNumber ? blindIdNumber(normalizeIdNumber(idNumber) ?? idNumber) : null;
   if (idBlind) clientOr.push({ idNumberBlind: idBlind });
   if (clientOr.length) {
@@ -473,8 +510,11 @@ async function collectIntakeHits(
       const c = intake.client;
       if (!c) continue;
       if (idBlind && c.idNumberBlind === idBlind) push(intake, c.name, "CLIENT_PARTY", null, "idNumber", 1);
-      if (name && c.name === name) push(intake, c.name, "CLIENT_PARTY", null, "name", 1);
-      else if (name && name.length >= 3 && c.name.toLowerCase().includes(name.toLowerCase())) push(intake, c.name, "CLIENT_PARTY", null, "name", name.length / c.name.length);
+      const match = name ? nameMatchLevel(name, c.name) : null;
+      if (!match) continue;
+      if (match.level === "EXACT") push(intake, c.name, "CLIENT_PARTY", null, "name", 1);
+      else if (match.level === "NORMALIZED_EQUAL") push(intake, c.name, "CLIENT_PARTY", null, "name", 1, true);
+      else push(intake, c.name, "CLIENT_PARTY", null, "name", match.ratio, isNormalizedMatch(match));
     }
   }
 }
