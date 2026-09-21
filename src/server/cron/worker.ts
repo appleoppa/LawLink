@@ -9,6 +9,7 @@ import { sendWebhookText } from "@/server/settings/webhook";
 import { prisma } from "@/lib/prisma";
 import { isEmailConfigured, sendReminderEmail } from "@/lib/notifications/email";
 import { saveWebhookLastResult, type ReminderWebhookLastResult } from "@/server/settings/webhook-last-result";
+import { saveEmailLastResult } from "@/server/settings/email-last-result";
 import { claimDueJobs, completeJob, failJob } from "./queue";
 import { shDayKey } from "@/lib/ui/sh-time";
 
@@ -42,9 +43,20 @@ const webhookDigestHandler: JobHandler = async (payload) => {
 };
 
 const emailDigestHandler: JobHandler = async () => {
-  // 个人邮件摘要：按当日站内通知按人聚合外发；未配置 SMTP 时以跳过完结
-  // （幂等键当日一次；重试退避与死信由队列兜底——提醒失败不可静默）。
-  if (!isEmailConfigured()) return;
+  // 个人邮件摘要：按当日站内通知按人聚合外发。
+  // 第六轮体检 P1-4：跳过也写台账——未配置 SMTP 时以「跳过」完结并在提醒
+  // 维护页可见，不再静默 return；重试退避与死信由队列兜底（提醒失败不可静默）。
+  if (!isEmailConfigured()) {
+    await saveEmailLastResult({
+      at: new Date().toISOString(),
+      configured: false,
+      skipped: true,
+      skipReason: "SMTP 未配置，邮件渠道停用（站内通知不受影响）",
+      sentCount: 0,
+      userCount: 0
+    });
+    return;
+  }
   // 按上海日界切「今日」——此前用服务器本地时区 new Date(y,m,d)，UTC 容器 0-8 点归错日
   const startOfToday = new Date(`${shDayKey(new Date())}T00:00:00+08:00`);
   const notes = await prisma.notification.findMany({
@@ -53,7 +65,17 @@ const emailDigestHandler: JobHandler = async () => {
     orderBy: { createdAt: "asc" },
     take: 500
   });
-  if (notes.length === 0) return;
+  if (notes.length === 0) {
+    await saveEmailLastResult({
+      at: new Date().toISOString(),
+      configured: true,
+      skipped: true,
+      skipReason: "今日无提醒",
+      sentCount: 0,
+      userCount: 0
+    });
+    return;
+  }
   const byUser = new Map<string, string[]>();
   for (const n of notes) {
     const arr = byUser.get(n.userId) ?? [];
@@ -64,11 +86,32 @@ const emailDigestHandler: JobHandler = async () => {
     where: { id: { in: [...byUser.keys()] }, active: true },
     select: { id: true, name: true, email: true }
   });
-  for (const u of users) {
-    const lines = byUser.get(u.id) ?? [];
-    if (!lines.length || !u.email) continue;
-    await sendReminderEmail({ to: u.email, userName: u.name, lines });
+  let sentCount = 0;
+  try {
+    for (const u of users) {
+      const lines = byUser.get(u.id) ?? [];
+      if (!lines.length || !u.email) continue;
+      await sendReminderEmail({ to: u.email, userName: u.name, lines });
+      sentCount++;
+    }
+  } catch (err) {
+    await saveEmailLastResult({
+      at: new Date().toISOString(),
+      configured: true,
+      skipped: false,
+      error: err instanceof Error ? err.message : String(err),
+      sentCount,
+      userCount: users.filter((u) => u.email).length
+    });
+    throw err; // 交给队列按退避重试
   }
+  await saveEmailLastResult({
+    at: new Date().toISOString(),
+    configured: true,
+    skipped: false,
+    sentCount,
+    userCount: users.filter((u) => u.email).length
+  });
 };
 
 const smsAttachmentFetchHandler: JobHandler = async (payload) => {

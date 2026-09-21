@@ -15,7 +15,9 @@ if [ -f .env ]; then
 fi
 
 DB_URL="${DATABASE_URL:-}"
-STORAGE_DIR="${STORAGE_PATH:-./storage}"
+# 2026-09-20 第六轮体检 P1-1：改读 APP_STORAGE_DIR（与应用和 compose 一致）。
+# 此前读 STORAGE_PATH——该变量在应用侧不存在，自定义存储目录时会静默打包空目录。
+STORAGE_DIR="${APP_STORAGE_DIR:-./storage}"
 
 if [ -z "$DB_URL" ]; then
   echo "错误: DATABASE_URL 未设置"

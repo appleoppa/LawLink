@@ -5,7 +5,9 @@
 import Link from "next/link";
 import { ChevronRight, Gavel, SquareCheck, Timer, TriangleAlert, Calendar as CalendarIcon, Landmark, Clock3, ChartColumn } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
+import { canEnterAdminWorkspace } from "@/lib/auth/system-role";
 import { hasCustomPermission } from "@/lib/roles/catalog";
+import { isEmailConfigured } from "@/lib/notifications/email";
 import { lunarDateLabel } from "@/lib/ui/lunar";
 import { ConflictSearchButton } from "@/components/dashboard/conflict-search-button";
 import { RevenueChart } from "@/components/dashboard/revenue-chart";
@@ -62,6 +64,17 @@ export default async function DashboardPage() {
 
   return (
     <div className="mo-dash">
+      {/* 提醒外发通道缺口（第六轮体检 P1-4）：仅管理身份可见——只有他们能改配置；
+          律师看到了也无力处置，徒增噪音 */}
+      {session?.user && canEnterAdminWorkspace(session.user) && !isEmailConfigured() ? (
+        <div className="card" style={{ borderColor: "var(--amber-line)", background: "var(--amber-bg)", display: "flex", alignItems: "center", gap: 10, padding: "10px 14px" }}>
+          <TriangleAlert className="shrink-0" width={16} height={16} strokeWidth={1.8} style={{ color: "var(--amber)" }} />
+          <span className="t-sm" style={{ flex: 1 }}>
+            提醒外发通道未配置：期限、开庭与保全提醒目前仅站内可见，律师不登录收不到。请在服务器 <span className="font-mono">.env</span> 配置 SMTP（<span className="font-mono">SMTP_HOST</span> / <span className="font-mono">MAIL_FROM</span>）后重启。
+          </span>
+          <Link href="/admin/reminders" className="btn btn-ghost btn-sm shrink-0">提醒维护</Link>
+        </div>
+      ) : null}
       {/* ① 今日行动与风险 */}
       <section className="hero">
         <div className="hero-greet">

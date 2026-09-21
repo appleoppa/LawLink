@@ -2,6 +2,7 @@
 import {closedHearingIds} from "@/server/reminders/responsibility";
 import { agingFromFacts } from "@/server/finance/facts-aging";
 import { getFinanceFacts, periodReceipts, sumAmounts, shMonthStart, financeTrend } from "@/server/finance/facts";
+import { Prisma } from "@prisma/client";
 
 import { customMatterFilter } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
@@ -520,8 +521,9 @@ export async function getDashboardOverdueReceivables(): Promise<{ amount: number
     },
     select: { amount: true, settledAmount: true, dueDate: true, matter: { select: { primaryClientId: true } } }
   });
-  const open = rows.filter((r) => Number(r.amount) - Number(r.settledAmount) > 0);
-  const amount = open.reduce((s, r) => s + Number(r.amount) - Number(r.settledAmount), 0);
+  // 第六轮体检 P3-2：与全系统 Decimal 口径一致（此前 Number() 浮点相减累加，展示层有误差）
+  const open = rows.filter((r) => r.amount.gt(r.settledAmount));
+  const amount = open.reduce((s, r) => s.plus(r.amount).minus(r.settledAmount), new Prisma.Decimal(0)).toNumber();
   const clientCount = new Set(open.map((r) => r.matter.primaryClientId ?? "none")).size;
   const oldest = open.reduce<number>((m, r) => Math.max(m, r.dueDate ? Math.floor((Date.now() - r.dueDate.getTime()) / 86_400_000) : 0), 0);
   return { amount, clientCount, oldestDays: oldest };

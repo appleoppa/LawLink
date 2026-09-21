@@ -153,6 +153,18 @@ LawLink/
 - **D 批（统计与效率）已实施**：① 本期应收核销率 KPI（本月新增律师费应收中已核销/有效额，同批口径，分母为零不显示）；② 收款分配「按最早到期自动填满」建议（生成→预览→确认，未分配余额保持可见，targets 按到期日排序）；③ 在办案件单案卷宗打包导出（`/api/matters/[id]/export-bundle`：manifest+材料+记录+财务摘要，权限与案件工作簿同口径，审计 MATER_BUNDLE_EXPORT，案件页「导出卷宗」按钮）；④ 低风险任务批量人工办结（`completeTasksBatch`：仅 Task 类型、必填统一处置结果、逐项走单条责任链、单条失败不阻断）；⑤ 对账页从案件入口进入时，登记类操作（登记实收/支出/收费、签署、退回、条件成就）保存成功后自动返回原案件（2026-09-20 第五轮审计修正表述：收款分配、退款与账务更正、分成结算、合同、发票更正的返回动线未实现，随财务批次补齐，不作整体声明）。
 - **本轮明确未做（如实声明）**：B2/B3（OCR 云 provider、文书阅读、匹配建议、一次确认应用）——短信专项的阅读与确认层是下一批独立交付；下载流式截断（现有 content-length+buffer 双重检查已限 20MB）；NEEDS_MATCH 私有来件区独立页签（现以状态徽标呈现）；历史统计时点快照（当前核销率为当前口径，历史回溯按 v3 §7 另行核对逐次记录）。
 
+### 第六轮审计修复批次（2026-09-20 晚，报告 `docs/SYSTEM-AUDIT-20260920-ROUND6-v2.md`）
+
+v1 报告两条头牌 P1 经独立核对证伪/收窄后出 v2 修订版，本批按 v2 §九顺序实施 P1 全部 + P2-5 + P3 批（叶森确认时区口径全系统为中国大陆）：
+
+- **P1-1 Docker 部署链**：① compose 的 mailpit 从顶级 `volumes:` 归位 `services:`（此前整个文件非法，`--profile full` 正式部署同样起不来；`docker compose config` 已验证通过）；② 新增 `backups` 命名卷挂 `/app/backups`，README 补「生产应改绑宿主机/异地路径」必读；③ Dockerfile runner 阶段 `apk add bash postgresql16-client`（对齐 postgres:16）+ `COPY scripts`（此前备份脚本根本不在镜像里）+ 预建 backups 目录授权（命名卷首次挂载继承属主）；④ `backup.sh` 变量 `STORAGE_PATH`→`APP_STORAGE_DIR`（与应用/compose 一致，此前自定义存储目录会打包空目录）；⑤ `backup-database.ts` 增加 preflightBackup 自检（脚本存在/bash 可用/pg_dump 可用/目录可写，逐项给出可定位错误）。
+- **P1-2+P1-3 保全提醒**：① 保全扫描提取为 `scanPreservationReminders`（`scan-due-reminders.ts`），调度器 2 分钟 worker 接入补扫（09:00 前仅当日关键档，档位/对象/当日去重幂等）——档位命中式触发不再因当日停机永久丢档；② 接收人校验统一走 `isReminderRecipientEnabled`（从 schedule.ts 提出共用）：有效保全负责人→有效案件主办，此前直接投 `ownerId` 不查在职；③ 全部失效时按 `recordOffboardingRisk` 口径升级（持 matters.transfer 资格者，无则 SUPER_ADMIN），记 `PRESERVATION_RECIPIENT_MISSING` 审计，当日去重；④ 过期未续封补团队负责人升级链：escalation.ts 重构出通用内核 `escalateToTeamLeaders`（期限包装行为不变、既有测试全过），新增 `escalateOverduePreservationToTeamLeaders`，未关联案件的孤儿保全跳过案件级访问校验（内容不含案件正文）。
+- **P1-4 邮件通道**：① `email-digest` 任务无条件入队（此前未配置 SMTP 连任务都不建）；② worker 跳过/成功/失败均写台账 `reminder-email-last-result`（新模块，SystemSetting 单 K-V）；③ 管理后台「提醒维护」页新增「邮件通道」状态卡（配置状态实时读 env + 最近一次摘要结果 + 未配置琥珀警示与配置指引）；④ 工作台顶部对可进管理后台的用户显示持续缺口警示横幅（律师不可配置，不展示）。
+- **P2-5 测试修复**：bugfix-regressions 补 `user.findMany` mock（「待确认实收通知」分支此前全程走 catch、断言在通知从未执行的情况下通过）；「通知发送失败不影响登记」用例改 mock 真实路径的 `createNotification` 并断言 `FEE_ENTRY_NOTIFY_FAILED` 审计（此前 mock 的 `notifyRoleApprovers` 根本不在此路径上）。
+- **P3 批**：auth 登录后状态更新改 await + 失败写 `LOGIN_POST_UPDATE_FAILED` 审计（此前 fire-and-forget 空吞，失败计数不清零可致误锁）；dashboard 逾期应收与 finance aging 回退路径改 Decimal 口径（此前 Number() 浮点累加）；`.env.example` 补 `AUDIT_RETENTION_DAYS` 与 `DISABLE_CRON`。
+- **新增测试**：`preservation-reminder.test.ts` 4 例（停用回退/全失效升级+当日去重/criticalOnly 档位补扫/EXPIRED+升级链）。终态：693 测试全绿（+4）、lint/typecheck/build 干净、`docker compose config` 通过、本地 dev 站点可达。
+- **未做（如实声明）**：完整镜像实构建并跑一次真实备份（已做容器级实测：`node:22-alpine` 内 `apk add bash postgresql16-client` 后 bash 5.3.9 与 pg_dump 16.15 均可执行、主版本对齐 postgres:16；Dockerfile COPY 清单静态核验；部署前仍应实构建走一遍 02:30 备份）；P2-1 服务端按规则重算 dueAt、P2-2 冲突名称归一化、P2-3 邮件摘要分页、P2-4 诉讼时效/举证期限预置规则、F-1 送达台账（结构性，含 Schema 走审批）、P3-3 SSRF TOCTOU、F-2~F-6 产品层建议——均按 v2 §九 进 backlog 排期。
+
 ### 第四轮体检与法院短信专项（2026-09-20 确认）
 
 **A 批已实施（2026-09-20）**：12 项代码修复全部落地（权限收敛 `assertCanHandleMatter`、AI 逐件外发资格、程序门禁事务化+零写入回归测试、法人章三条件分立、旧开票入口停用、扣回上限 recoverable、退款免债按核销对应、合同三承接点复核门禁、日期出口归一+存量审计无迁移、责任失效可见最小版、日历搜索发票列表权限）；迁移 20260920000001 触发器修订版经叶森批准已执行（备份在 `backups/hardening-migration-20260920/`，主库 FK RESTRICT/默认 PENDING/AuditLog 触发器拒删三项验证通过，663 测试回归）。存量日期瞬间审计脚本 `scripts/audit-date-instants.ts`：三种瞬间出口归一后均正确，无需迁移。

@@ -11,6 +11,13 @@ import { audit } from "@/server/audit";
 import { escalateOverdueDeadlineToTeamLeaders } from "./escalation";
 
 export type ScheduleKind = "Deadline" | "Hearing";
+
+/** 提醒接收人资格：账号有效，自定义角色还须角色定义仍启用。期限/开庭/保全共用（第六轮体检 P1-3 收敛口径）。 */
+export type ReminderRecipient = { id: string; active: boolean; role: string; roleDefinition?: { active: boolean } | null };
+export function isReminderRecipientEnabled(user: ReminderRecipient | null | undefined): boolean {
+  return Boolean(user?.active && (user.role !== "CUSTOM" || user.roleDefinition?.active));
+}
+
 export function shDayStart(date: Date): Date {
   return new Date(`${shDayKey(date)}T00:00:00+08:00`);
 }
@@ -45,9 +52,8 @@ export async function refreshScheduleReminder(kind: ScheduleKind, id: string, no
     const offsets = "remindDays" in row ? deadlineReminderOffsets(row.remindDays) : [-3, -1, 0];
     if (!offsets.includes(offset)) return null;
     // 当天新增但已经过时的开庭仍须提示人工核对，不能静默消失。
-    const isEnabled = (user: typeof row.procedure.leadLawyer) => user?.active && (user.role !== "CUSTOM" || user.roleDefinition?.active);
     const lead = row.procedure.isExternalLead ? null : row.procedure.leadLawyer;
-    const user = ownership.length ? (isEnabled(assigned)?assigned:null) : isEnabled(lead) ? lead : isEnabled(row.procedure.matter.owner) ? row.procedure.matter.owner : null;
+    const user = ownership.length ? (isReminderRecipientEnabled(assigned)?assigned:null) : isReminderRecipientEnabled(lead) ? lead : isReminderRecipientEnabled(row.procedure.matter.owner) ? row.procedure.matter.owner : null;
     if (!user) return null;
     if(ownership.length&&user.role==="CUSTOM"&&!await tx.user.count({where:{id:user.id,roleDefinition:{active:true,permissions:{some:{permissionKey:"matters.write"}}}}}))return null;
     const pending = "confirmStatus" in row && row.confirmStatus === "PENDING";

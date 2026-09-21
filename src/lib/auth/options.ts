@@ -114,13 +114,29 @@ export const authOptions: NextAuthOptions = {
           }
         }
 
-        // 更新最后登录时间 + 失败计数清零（异步，不阻塞）
-        prisma.user.update({
-          where: { id: user.id },
-          data: { lastLoginAt: new Date(), failedLoginAttempts: 0, lockedUntil: null }
-        }).catch(() => {
-          // 忽略更新失败
-        });
+        // 更新最后登录时间 + 失败计数清零。
+        // 第六轮体检 P3-1：此前 fire-and-forget 且空吞——更新失败时失败计数
+        // 不清零，用户后续少量失败即被锁定且无任何痕迹。改为等待完成；失败
+        // 不阻断登录（凭据已验证），但必须留审计供排查。
+        try {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { lastLoginAt: new Date(), failedLoginAttempts: 0, lockedUntil: null }
+          });
+        } catch (err) {
+          console.error("[auth] 登录后状态更新失败（失败计数未清零，可能引发误锁）：", err);
+          try {
+            await audit({
+              userId: user.id,
+              action: "LOGIN_POST_UPDATE_FAILED",
+              targetType: "User",
+              targetId: user.id,
+              detail: { reason: err instanceof Error ? err.message : String(err) }
+            });
+          } catch {
+            console.error("[auth] 登录后状态更新失败的审计写入也失败了", { userId: user.id });
+          }
+        }
 
         return {
           id: user.id,

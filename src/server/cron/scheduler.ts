@@ -24,7 +24,7 @@ import cron from "node-cron";
 import { runWeeklyReportPush } from "@/server/reports/weekly-push-core";
 import { scanArchiveOverdue } from "./jobs/archive-overdue";
 import { runAuditCleanup } from "./jobs/audit-cleanup";
-import { scanDueReminders } from "./jobs/scan-due-reminders";
+import { scanDueReminders, scanPreservationReminders } from "./jobs/scan-due-reminders";
 import { scanSealBackfillReminders } from "./jobs/scan-seal-backfill-reminders";
 import { runDatabaseBackup, backupCronEnabled } from "./jobs/backup-database";
 import { audit } from "@/server/audit";
@@ -162,6 +162,12 @@ export function registerCronJobs() {
           const now = new Date();
           // 09:00 前补当日紧急项，之后补所有应提醒档；保存后进程中断也不会等到次日。
           await runWithFailureAudit("日程提醒补扫", "SCHEDULE_REMINDER_CATCHUP_FAILED_CRON", () => scanScheduleReminders(now, shParts(now).hh < 9));
+          // 第六轮体检 P1-2：保全提醒同样每 2 分钟补扫——档位命中式触发对当日
+          // 停机无补偿（09:00 错过即永久跳过该档）；去重按（对象,档位,当日）幂等，
+          // 09:00 前仅补当日关键档（到期当天/逾期首日）。
+          await runWithFailureAudit("保全提醒补扫", "PRESERVATION_REMINDER_CATCHUP_FAILED_CRON", () =>
+            scanPreservationReminders({ criticalOnly: shParts(now).hh < 9 })
+          );
           return processDueJobs(10);
         })()
       ),

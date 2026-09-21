@@ -67,6 +67,8 @@ npm run dev
 
 个人资料与登录安全位于 `/settings/profile`。开发使用 `.next-dev`，生产构建使用 `.next-build`。
 
+> **备份（容器部署必读）**：`docker compose --profile full up` 的 app 容器每天 02:30 自动备份数据库与文件存储到 `/app/backups`（`BACKUP_DIR` 可改，`BACKUP_CRON_ENABLED=false` 可关）。compose 已挂载 `backups` 命名卷，但命名卷仍在 Docker 管理区——**生产部署应把该卷改为绑定宿主机目录或异地路径**，否则备份与数据同生共死。备份含凭据哈希与加密材料，建议设置 `BACKUP_PASSPHRASE` 自动加密后再外传（见 `scripts/backup.sh` 头部说明）。
+
 ## 验证
 
 ```bash
