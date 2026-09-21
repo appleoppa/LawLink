@@ -457,3 +457,12 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+### v2.0.0-rc.1 公开候选版（2026-09-21）
+
+- 用户已授权推送并更新 GitHub 发布信息；按本次沟通采用 `v2.0.0-rc.1` 预发布，正式稳定版待发布验收完成。
+- 从已提交基准 `33453f4` 在独立发布副本整理，避免与原工作区其他代理并发写入；不操作原工作区业务数据库或附件。
+- 发布说明存 `docs/RELEASE-NOTES-v2.0.0-rc.1.md`，当前安装与使用边界存 `docs/RELEASE-GUIDE-v2.md`，验证结果存 `docs/RELEASE-VALIDATION-v2.0.0-rc.1.md`；沿用 `docs/` 现有目录，不覆盖历史审计记录。
+- 1.4.0 是未发布的准备版本名称，本次统一改为 2.0.0-rc.1；既有公开标签保持不变。
+- `0_init` 为完整新库基线，不是 1.x 数据转换脚本。候选版面向独立空库试用；不向 1.x 用户提供仅 resolve 基线后 deploy 的通用升级步骤，不声称无损直接升级。
+- GitHub 发布不等于生产部署；本次不执行生产迁移、清库或修改用户密钥，不改变 CI/CD 配置。

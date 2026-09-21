@@ -1,14 +1,14 @@
 # LawLink 云服务器安装指南（技术小白版）
 
-> 适用版本：LawLink `v1.3.2`
+> 适用版本：LawLink `v2.0.0-rc.1`
 >
-> 版本说明核对日期：2026-09-13
+> 版本说明核对日期：2026-09-21
 >
 > 推荐系统：Ubuntu Server 24.04 LTS（64 位）
 >
 > 适用对象：独立律师、中小律所负责人、没有 Linux / Docker 经验的安装人员
 
-> **验证范围**：v1.3.2 已修复已知依赖问题，当日全量及生产依赖审计均为零已知告警，详见[安全说明](../SECURITY.md#依赖审计状态)。这不等于完成整体安全验收。本轮检查源码与本地生产启动，没有实测下列整套云服务器/Docker/Caddy 部署；正式使用前须在自己的环境验证权限、备份恢复和业务流程。
+> **候选版范围**：本指南仅用于 `v2.0.0-rc.1` 的独立空库安装试用，不用于覆盖现有 1.x 实例。整套云服务器 / Docker / Caddy 部署未在本次发布中实测，验证结果见[发布检查记录](./RELEASE-VALIDATION-v2.0.0-rc.1.md)。
 >
 > 同目录 Word 安装指南是 v1.2 历史副本，未随本轮修订，不作为当前步骤依据。
 
@@ -33,7 +33,7 @@ LawLink 当前仍属于早期版本。正式导入真实案件前，至少要完
 
 `律师的浏览器 → HTTPS 域名 → Caddy 安全入口 → LawLink → PostgreSQL 数据库 / 加密附件`
 
-日常使用时，律师只需要在浏览器打开自己的域名，不需要接触服务器命令。服务器命令主要在首次安装、备份和版本更新时使用。新版本的权限及首次配置步骤见[本版使用与升级说明](./RELEASE-GUIDE-v1.3.md)。
+日常使用时，律师只需要在浏览器打开自己的域名，不需要接触服务器命令。服务器命令主要在首次安装、备份和版本更新时使用。新版本的权限及首次配置步骤见[本版使用与升级说明](./RELEASE-GUIDE-v2.md)。
 
 ## 二、购买服务器和域名前怎么选
 
@@ -161,12 +161,12 @@ sudo systemctl is-active docker
 
 ## 七、下载固定版本的 LawLink
 
-不要直接把持续变化的 `main` 分支用于真实案件。本指南对照 `v1.3.2` 的源码编排，评估时固定安装该版本：
+不要直接把持续变化的 `main` 分支用于真实案件。本指南对照 `v2.0.0-rc.1` 的源码编排，评估时固定安装该版本：
 
 ```bash
 sudo mkdir -p /opt/lawlink
 sudo chown -R "$(id -un)":"$(id -gn)" /opt/lawlink
-git clone --branch v1.3.2 --depth 1 https://github.com/lawflow-boop/LawLink.git /opt/lawlink
+git clone --branch v2.0.0-rc.1 --depth 1 https://github.com/lawflow-boop/LawLink.git /opt/lawlink
 cd /opt/lawlink
 ```
 
@@ -179,7 +179,7 @@ git describe --tags --exact-match
 应显示：
 
 ```text
-v1.3.2
+v2.0.0-rc.1
 ```
 
 ## 八、创建服务器专用的安全配置
@@ -457,7 +457,7 @@ https://YOUR_DOMAIN/login
 
 1. 打开“个人设置 → 个人资料”（`/settings/profile`），核对本人信息和密码；
 2. 进入“管理后台 → 律所信息”（`/admin/firm-profile`）补齐本所资料；
-3. 在“用户管理、岗位角色、律师团队”设置独立账号及真实岗位。新账号须登记证件与照片，先确认本所采集和保管安排；
+3. 在“用户管理、岗位角色、律师团队”设置独立账号及真实岗位。新账号须登记证件类型与号码，证件照片选填；先确认本所采集和保管安排；
 4. 在“审批权限”（`/admin/approval-permissions`）配置合格审批人和具体事项；超级管理员也须获事项授权。单人执业若需自批须显式开启例外；
 5. 在“归档制度”（`/admin/archive-policy`）录入本所制度原文及清单，否则不能提交正式归档；
 6. 按需配置外部服务和提醒；“订阅日历”入口在日程页；
@@ -516,7 +516,7 @@ ls -lh "$LAWLINK_BACKUP_DIR"
 
 接下来必须把整个备份目录复制到服务器以外的加密存储，例如另一云账号的对象存储、NAS 的加密备份或加密移动硬盘。仅保存在同一台服务器上不算真正备份。
 
-默认 Docker 运行镜像未包含 `scripts/backup.sh` 和 `pg_dump`，应用里的备份定时任务注册不代表备份会成功。请在宿主机按上述命令设置独立备份任务，核对真实输出；本指南不将默认容器描述为自动完成备份。
+本版 Docker 运行镜像已包含 `scripts/backup.sh`、bash 和 PostgreSQL 16 客户端，Compose 为备份目录挂载命名卷。仍需检查实际备份结果并安排异地保存与恢复演练；定时任务注册不等于备份可恢复。上面的宿主机备份步骤仍可用于人工核验和独立备份。
 
 建议：
 
@@ -557,33 +557,11 @@ sudo apt upgrade -y
 
 ## 十五、升级 LawLink
 
-数据库迁移可能不可逆。升级前必须先完成第十三节的完整备份，并查看 `CHANGELOG.md`。不要直接执行 `git pull` 跟随 `main`。
+**已有 1.x 部署请勿按本指南覆盖升级至候选版。** 当前仓库的 `0_init` 是新库完整结构，不包含从每个 1.x 标签出发的数据转换流程。仅标记基线已应用会跳过建表建列，不能证明实际数据库与程序一致。
 
-升级前先读[本版迁移注意事项](./RELEASE-GUIDE-v1.3.md#从-v12-或更早版本升级)。v1.3 拆分系统管理员与业务岗位，旧管理网址、旧角色审批授权不再沿用；迁移后须核对账号岗位、审批权限组、待办申请和归档制度。
+试用 2.0 时，请在独立服务器或隔离的 Compose 项目中使用新的数据库、存储卷与配置；保留原实例及其备份。不得将本版应用连接到原业务库试运行，不得通过清库或 `db push` 绕过升级问题。
 
-下列命令以已完成隔离迁移演练、获得部署负责人确认的 `v1.3.2` 为例；先停止应用写入再迁移，保留 `.env`、覆盖配置和存储卷：
-
-```bash
-cd /opt/lawlink
-git fetch --tags
-git checkout v1.3.2
-sudo docker compose build app
-sudo docker compose stop app
-sudo docker compose run --rm app npx prisma migrate deploy
-sudo docker compose up -d
-```
-
-然后验证：
-
-```bash
-sudo docker compose ps
-curl -fsS http://127.0.0.1:3000/api/health
-curl -fsS https://YOUR_DOMAIN/api/health
-```
-
-最后在浏览器走一遍最常用流程：登录、客户列表、收案、案件详情、上传与下载测试文件、财务记录、退出登录。
-
-不要只因为新版本容器能启动就判断升级完成。数据库迁移后的版本不能通过“把代码切回旧标签”简单回退。
+未来正式升级前，需先提供并验证针对起始版本的转换路径，完成数据、附件、权限及恢复核对。详见[升级边界](./RELEASE-GUIDE-v2.md#已有-1x-部署)。
 
 ## 十六、常见问题
 

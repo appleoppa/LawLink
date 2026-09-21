@@ -1,6 +1,6 @@
 # LawLink Public Release Checklist
 
-This checklist applies to each public source release. Publishing source is separate from production deployment or security certification. Current user-facing behavior is documented in [the v1.3 release guide](./RELEASE-GUIDE-v1.3.md).
+This checklist applies to each public source release. Publishing source is separate from production deployment or security certification. Current user-facing behavior is documented in [the v2 release guide](./RELEASE-GUIDE-v2.md).
 
 ## What Must Not Be Published
 
