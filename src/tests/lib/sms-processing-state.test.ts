@@ -16,8 +16,10 @@ describe("deriveProcessingState（B1 状态机）", () => {
     expect(deriveProcessingState([r("DOWNLOADED"), r("LOGIN_REQUIRED")], true)).toBe("NEEDS_MANUAL_FETCH");
   });
 
-  it("全部失败 → 部分完成（可重试，不静默丢）", () => {
-    expect(deriveProcessingState([r("FAILED"), r("FAILED")], true)).toBe("PARTIAL");
+  it("全部链接访问失败 → 待人工取件（2026-09-20 P3：全失败标 PARTIAL 会误导「有文件落袋」）", () => {
+    expect(deriveProcessingState([r("FAILED"), r("FAILED")], true)).toBe("NEEDS_MANUAL_FETCH");
+    // 非失败非成功混合（含一条失败）仍归部分完成
+    expect(deriveProcessingState([r("FAILED"), r("NO_FILE_FOUND")], true)).toBe("PARTIAL");
   });
 
   it("部分成功部分失败 → 部分完成", () => {

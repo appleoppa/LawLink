@@ -13,7 +13,7 @@
  * 不显示为分析成功（v3 验收场景 9：AI 不可用时保存、取件与人工确认照常）。
  */
 import { prisma } from "@/lib/prisma";
-import { aiChat } from "@/lib/ai/client";
+import { aiVision } from "@/lib/ai/client";
 
 const OCR_SETTINGS_KEY = "ocrSettings";
 
@@ -70,16 +70,12 @@ export async function recognizeText(input: { data: Buffer; mimeType: string; hin
 
 async function aiVisionOcr(input: { data: Buffer; mimeType: string; hint?: string }): Promise<OcrResult> {
   const dataUrl = `data:${input.mimeType};base64,${input.data.toString("base64")}`;
-  const result = await aiChat({
-    messages: [
-      {
-        role: "user",
-        content: [
-          { type: "text", text: `请逐字识别这张${input.hint ?? "法院文书扫描件"}图片中的全部文字，按原文顺序输出纯文本，不要解释、不要总结、不要添加标点以外的内容。` },
-          { type: "image_url", image_url: { url: dataUrl } }
-        ]
-      }
-    ],
+  // 2026-09-20 第五轮审计 P2-1 修复：此前直接调 aiChat 未传 model，落到 textModel——
+  // 纯文本模型收到 image_url 多半报错（落 FAILED）。改走 aiVision（默认 visionModel），
+  // 与本文件头注「默认复用 AI 设置的 visionModel」的声明一致。
+  const result = await aiVision({
+    image: { dataUrl },
+    prompt: `请逐字识别这张${input.hint ?? "法院文书扫描件"}图片中的全部文字，按原文顺序输出纯文本，不要解释、不要总结、不要添加标点以外的内容。`,
     logAction: "sms-ocr-vision"
   });
   if (!result.content.trim()) throw new Error("OCR 未返回文本");
@@ -105,7 +101,12 @@ async function httpOcr(settings: StoredOcrSettings, input: { data: Buffer; mimeT
     const body = (await res.json()) as { text?: string; data?: { text?: string }[] };
     const text = body.text ?? body.data?.[0]?.text ?? "";
     if (!text.trim()) throw new Error("OCR 服务未返回文本");
-    return { text: text.trim(), engine: "http" };
+    // 2026-09-20 P3 修复：拒答文本（网关无法识别时返回的说明文字）不当有效 OCR 结果送 AI
+    const trimmed = text.trim();
+    if (/^(无法识别|识别失败|识别不到|请提供(更清晰|清晰)|图片(模糊|无法)|no text|unable to (recognize|read))/i.test(trimmed) && trimmed.length < 60) {
+      throw new Error("OCR 服务未能识别该文件（拒答），请人工核对或更换 OCR 配置");
+    }
+    return { text: trimmed, engine: "http" };
   } finally {
     clearTimeout(timer);
   }

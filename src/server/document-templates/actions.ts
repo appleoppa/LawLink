@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireSession, requireSystemAdmin } from "@/lib/auth/session";
 import { audit, auditTx } from "@/server/audit";
+import { shDayKey } from "@/lib/ui/sh-time";
 import { storage } from "@/lib/storage";
 import { assertMatterWritable } from "@/lib/archive/guard";
 import { assertCanLeadMatter } from "@/lib/permissions";
@@ -159,7 +160,7 @@ export async function renderTemplate(input: z.infer<typeof templateRenderSchema>
     }
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = shDayKey(new Date());
   const fileName = `${tmpl.name}_${matter.internalCode}_${today}.docx`;
 
   const doc = await prisma.document.create({

@@ -4,25 +4,9 @@
  * 案卷工作台「案件档案」页签（默认首屏，docs/UI-MATTER-DOSSIER-PLAN.md 第二版）：
  * 基本信息 → 当事人完整卡片 → 本程序信息 → 委托与收费 → 承办团队 → 自定义字段。
  */
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import Link from "next/link";
-import { BadgeCheck, FileText, Landmark, Loader2, Pencil, RotateCcw, UserRound, Users, Wallet } from "lucide-react";
+import { FileText, Landmark, Pencil, UserRound, Users, Wallet } from "lucide-react";
 import { FieldGrid, FieldItem, InitialAvatar } from "@/components/patterns/moan";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
-import { confirmDialog } from "@/components/patterns/confirm-dialog";
-import { activateMatterService, completeMatterService } from "@/server/matters/lifecycle";
 import { avatarTone } from "@/lib/ui/moan-tones";
 import { feeTypeLabel, litigationStandingLabel, matterCategoryKind, matterCategoryLabel, partyTypeLabel, procedureTypeLabel } from "@/lib/enums";
 import { clientIdTypeLabel } from "@/lib/clients/person-id";
@@ -138,108 +122,6 @@ function PartyBlock({ party, standings, clientHref }: { party: PartyRow; standin
   );
 }
 
-/**
- * 服务轴区块（v1.x 状态轴分离最小版，2026-09-20 从页头菜单迁入档案页签）：
- * 与程序轴（页头的暂停/结案/归档）分离——完成服务只标记律师交付完成，
- * 不改案件办理状态、不校验款项结清，可随时恢复。
- */
-function ServiceAxisGroup({ matterId, serviceStatus, canEdit }: { matterId: string; serviceStatus: MatterPayload["serviceStatus"]; canEdit: boolean }) {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [note, setNote] = useState("");
-  const [isPending, startTransition] = useTransition();
-  const done = serviceStatus === "SERVICE_COMPLETED";
-
-  function handleComplete() {
-    startTransition(async () => {
-      try {
-        await completeMatterService({ id: matterId, note });
-        toast.success("律师服务已标记完成");
-        setOpen(false);
-        setNote("");
-        router.refresh();
-      } catch (err) {
-        toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
-      }
-    });
-  }
-
-  async function handleRestore() {
-    if (!(await confirmDialog({ title: "恢复律师服务为「进行中」？", description: "程序与归档状态不变。", confirmText: "恢复" }))) return;
-    startTransition(async () => {
-      try {
-        await activateMatterService(matterId);
-        toast.success("服务已恢复进行中");
-        router.refresh();
-      } catch (err) {
-        toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
-      }
-    });
-  }
-
-  return (
-    <Group
-      icon={BadgeCheck}
-      title="服务状态"
-      hint="服务轴，与结案分列"
-      action={
-        canEdit ? (
-          done ? (
-            <button type="button" className="btn btn-ghost btn-sm" onClick={handleRestore} disabled={isPending}>
-              <RotateCcw />
-              恢复进行中
-            </button>
-          ) : (
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setNote(""); setOpen(true); }} disabled={isPending}>
-              <BadgeCheck />
-              完成服务
-            </button>
-          )
-        ) : null
-      }
-    >
-      <FieldGrid cols={2} className="mo-field-grid-auto">
-        <FieldItem label="律师服务">
-          <span className={cn("badge", done ? "b-green" : "b-teal")}>
-            <span className="bdot" />
-            {done ? "已完成" : "进行中"}
-          </span>
-        </FieldItem>
-        <FieldItem label="与结案的关系">完成服务只标记律师交付完成，不改案件办理状态；办理结束走页头「结案」</FieldItem>
-      </FieldGrid>
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>完成律师服务</DialogTitle>
-            <DialogDescription>
-              服务轴与程序轴分离：标记服务完成不改案件办理状态，也不校验款项结清；可随时恢复。
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-1.5">
-            <Label className="text-xs">服务完成备注（可选）</Label>
-            <Textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="如：全部委托事项已办结，客户确认无需继续跟进"
-              rows={5}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)} disabled={isPending}>
-              取消
-            </Button>
-            <Button onClick={handleComplete} disabled={isPending}>
-              {isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-              确认完成服务
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </Group>
-  );
-}
-
 export function MatterArchive({
   matter,
   currentProcedure,
@@ -248,8 +130,6 @@ export function MatterArchive({
   contractDocs,
   canReadFinance,
   onOpenFinance,
-  serviceStatus,
-  canEditService,
   customFieldDefs,
   customValues,
   canEdit,
@@ -266,9 +146,6 @@ export function MatterArchive({
   contractDocs: { id: string; name: string; createdAt: Date; mimeType: string | null }[];
   canReadFinance: boolean;
   onOpenFinance: () => void;
-  /** 服务轴（与程序轴分列）；入口自页头菜单迁入（2026-09-20 用户确认） */
-  serviceStatus: MatterPayload["serviceStatus"];
-  canEditService: boolean;
   customFieldDefs: React.ComponentProps<typeof CustomFieldsPanel>["defs"];
   customValues: Record<string, string>;
   canEdit: boolean;
@@ -471,8 +348,6 @@ export function MatterArchive({
               </FieldItem>
             </FieldGrid>
           </Group>
-
-          <ServiceAxisGroup matterId={matter.id} serviceStatus={serviceStatus} canEdit={canEditService} />
 
           <Group
             icon={FileText}

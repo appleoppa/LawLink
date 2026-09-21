@@ -76,7 +76,8 @@ export async function downloadSmsAttachments({
   userId,
   parsed,
   matterId,
-  procedureId
+  procedureId,
+  actor
 }: {
   smsId: string;
   userId: string;
@@ -84,8 +85,12 @@ export async function downloadSmsAttachments({
   /** B1 先取件后匹配：null 时文件入私有暂存，不再要求先关联案件（v3 §4.1） */
   matterId: string | null;
   procedureId?: string | null;
+  /** 复查修复 P2-3：cron 队列取件重试无请求上下文，显式传操作人替代 guard 内 requireSession */
+  actor?: { id: string; role: string; managerAuthorized?: boolean };
 }): Promise<SmsAttachmentResult[]> {
-  if (matterId) await assertDocumentWritable(matterId, { kind: "upload" });
+  // 2026-09-20 第五轮审计 P2-2 修复：合伙人粘贴含他人经办案件案号的短信自动取件，
+  // 此前被 associate 口径的 guard 拒绝（与外层 handle 断言口径冲突）。
+  if (matterId) await assertDocumentWritable(matterId, { kind: "upload", allowPrincipal: true, actor });
 
   const links = parsed.documentLinks.length > 0
     ? parsed.documentLinks
@@ -175,7 +180,18 @@ async function downloadFromUrl(
         checkedAt: new Date().toISOString()
       }];
     }
-    const html = await response.text();
+    // 2026-09-20 P3 修复：HTML 分支此前用 response.text() 只查 Content-Length 头，
+    // 谎报长度的响应可无界读入内存——改走与附件相同的流式限量读取。
+    const htmlBuf = await readBodyWithLimit(response, MAX_HTML_BYTES);
+    if (!htmlBuf) {
+      return [{
+        url,
+        status: "NO_FILE_FOUND",
+        message: "送达页面实际大小超过上限，未自动解析页面内附件",
+        checkedAt: new Date().toISOString()
+      }];
+    }
+    const html = htmlBuf.toString("utf8");
     const allCandidates = extractFileLinksFromHtml(html, finalUrl);
     const candidates = allCandidates.slice(0, MAX_PAGE_FILE_CANDIDATES);
     if (candidates.length) {

@@ -2,6 +2,8 @@
 import {assertExecutionOpen} from "@/server/approval-permissions/termination";
 import { checkRoleMutation } from "@/lib/roles/service";
 import { isManager } from "@/lib/permissions";
+import { shParts } from "@/lib/ui/sh-time";
+import { shMonthStart } from "@/server/finance/facts";
 import { approvalTransaction, approvalAudit, assertApprovalItem, approvalContextFor, requireApprovalRoute, canApproveItem, approvalRecipients } from "@/lib/approvals/service";
 import { selfConfirmEligible } from "@/lib/approvals/self-confirm";
 import { canReadDocument } from "@/lib/approvals/documents";
@@ -44,7 +46,8 @@ function assertPdfDocument(file: { name?: string | null; type?: string | null; m
 // 流水号 SEAL-YYYY-NNNN
 // ============================================================
 async function generateSealCode(): Promise<string> {
-  const year = new Date().getFullYear();
+  // 2026-09-20 第五轮审计时区修复：编号年份按上海（元旦 0-8 点不再生成去年编号、落去年计数器）
+  const year = shParts(new Date()).y;
   const key = `seal-counter-${year}`;
   const next = await prisma.$transaction(
     async (tx) => {
@@ -130,7 +133,8 @@ export async function listSealTypeConfigs() {
 
 export async function getSealStats() {
   const rows = await listSealRequests({ scope: "all" });
-  const now = new Date(); const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  // 2026-09-20 第五轮审计时区修复：本月窗口按上海月首
+  const monthStart = shMonthStart();
   return { monthStamped: rows.filter(r => r.status === "STAMPED" && r.stampedAt && r.stampedAt >= monthStart).length,
     pendingApprovalCount: rows.filter(r => r.canApprove).length, waitingStampCount: rows.filter(r => r.canStamp).length };
 }

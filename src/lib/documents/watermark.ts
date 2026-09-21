@@ -6,6 +6,7 @@
  * 非法/损坏 PDF 原样返回（水印失败不阻断合法下载，审计仍记录原件哈希）。
  */
 import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
+import { shDayKey, shTime } from "@/lib/ui/sh-time";
 
 export interface WatermarkInput {
   buf: Buffer;
@@ -52,10 +53,11 @@ export async function watermarkPdf({ buf, text }: WatermarkInput): Promise<Buffe
 
 /** 水印行文案（页脚用 ASCII 安全；中文场景传英文/编号） */
 export function watermarkLine(parts: { firm?: string | null; userName?: string | null; at?: Date }): string {
+  // 2026-09-20 时区收尾：水印时刻打印给用户看，按上海口径（此前 UTC 取 16 位）
   const segs = [
     parts.firm?.trim(),
     parts.userName?.trim(),
-    parts.at ? parts.at.toISOString().slice(0, 16).replace("T", " ") : undefined
+    parts.at ? `${shDayKey(parts.at)} ${shTime(parts.at)}` : undefined
   ].filter(Boolean) as string[];
   return segs.join(" | ");
 }

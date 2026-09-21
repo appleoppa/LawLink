@@ -108,6 +108,7 @@ export async function aiVision(input: {
   model?: string;
   maxTokens?: number;
   timeoutMs?: number;
+  logAction?: string;
 }): Promise<AiChatResult> {
   const s = await getAiSettings();
   if (!s.configured) throw new AiNotConfiguredError();
@@ -128,7 +129,8 @@ export async function aiVision(input: {
     messages,
     model: input.model || s.visionModel,
     maxTokens: input.maxTokens ?? 2000,
-    timeoutMs: input.timeoutMs ?? 30_000
+    timeoutMs: input.timeoutMs ?? 30_000,
+    logAction: input.logAction
   });
 }
 

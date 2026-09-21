@@ -11,7 +11,7 @@ import { requireSession } from "@/lib/auth/session";
 import { refreshScheduleReminderAfterSave, retireScheduleReminders } from "@/server/reminders/schedule";
 import { audit } from "@/server/audit";
 import { assertMatterWritable } from "@/lib/archive/guard";
-import { assertCanModifyMatter, assertCanAssociateMatter, assertCanLeadMatter } from "@/lib/permissions";
+import { assertCanHandleMatter, assertCanLeadMatter } from "@/lib/permissions";
 import { assertAgencyAllowedForProcedure, normalizeJurisdictionForAgency } from "@/lib/china-regions";
 import {
   defaultStageNamesForProcedure,
@@ -48,7 +48,7 @@ function emptyToNull<T extends Record<string, unknown>>(obj: T): T {
 export async function addProcedure(input: ProcedureCreateInput) {
   const session = await requireSession("schedule.write");
   const data = procedureCreateSchema.parse(input);
-  await assertCanModifyMatter(session.user.id, session.user.role, data.matterId);
+  await assertCanHandleMatter(session.user, data.matterId);
   await assertMatterWritable(data.matterId);
   assertAgencyAllowedForProcedure(data.handlingAgency, data.type);
 
@@ -109,7 +109,7 @@ export async function updateProcedure(input: ProcedureUpdateInput) {
     select: { matterId: true, type: true, jurisdiction: true, handlingAgency: true,status:true }
   });
   if (!existing) throw new Error("程序不存在");
-  await assertCanModifyMatter(session.user.id, session.user.role, existing.matterId);
+  await assertCanHandleMatter(session.user, existing.matterId);
   await assertMatterWritable(existing.matterId);
   assertAgencyAllowedForProcedure(rest.handlingAgency ?? existing.handlingAgency, rest.type ?? existing.type);
 
@@ -162,7 +162,7 @@ export async function deleteProcedure(id: string) {
   const procedure = await prisma.matterProcedure.findUnique({ where: { id } });
   if (!procedure) return { ok: false };
 
-  await assertCanModifyMatter(session.user.id, session.user.role, procedure.matterId);
+  await assertCanHandleMatter(session.user, procedure.matterId);
   await assertMatterWritable(procedure.matterId);
   await assertCanLeadMatter(session.user.id, procedure.matterId, "仅案件主办/协办可以删除程序");
 
@@ -194,7 +194,7 @@ async function materializeProcedureStage(
   });
   if (!procedure) throw new Error("程序不存在");
 
-  await assertCanAssociateMatter(session.user.id, procedure.matterId);
+  await assertCanHandleMatter(session.user, procedure.matterId);
   await assertMatterWritable(procedure.matterId);
 
   const targetName = data.name.trim();
@@ -348,7 +348,7 @@ export async function removeProcedureStage(input: ProcedureStageRemoveInput) {
   });
   if (!stage) return { ok: false };
 
-  await assertCanAssociateMatter(session.user.id, stage.procedure.matterId);
+  await assertCanHandleMatter(session.user, stage.procedure.matterId);
   await assertMatterWritable(stage.procedure.matterId);
 
   const preset = stagePresetForName(stage.procedure.type, stage.name);
@@ -441,7 +441,7 @@ export async function addDeadline(input: DeadlineCreateInput) {
     select: { matterId: true }
   });
   if (!procedureForGuard) throw new Error("程序不存在");
-  await assertCanModifyMatter(session.user.id, session.user.role, procedureForGuard.matterId);
+  await assertCanHandleMatter(session.user, procedureForGuard.matterId);
   await assertMatterWritable(procedureForGuard.matterId);
 
   const created = await roleMutation(session.user, "schedule.write", async roleDb => roleDb.deadline.create({
@@ -497,7 +497,7 @@ export async function toggleDeadlineCompleted(id: string) {
     include: { procedure: { select: { matterId: true } } }
   });
   if (!current) return { ok: false };
-  await assertCanModifyMatter(session.user.id, session.user.role, current.procedure.matterId);
+  await assertCanHandleMatter(session.user, current.procedure.matterId);
   await assertMatterWritable(current.procedure.matterId);
 
   if(await responsibilityReady(prisma)){
@@ -532,7 +532,7 @@ export async function deleteDeadline(id: string) {
     include: { procedure: { select: { matterId: true } } }
   });
   if (!current) return { ok: false };
-  await assertCanModifyMatter(session.user.id, session.user.role, current.procedure.matterId);
+  await assertCanHandleMatter(session.user, current.procedure.matterId);
   await assertMatterWritable(current.procedure.matterId);
 
   await prisma.$transaction(async (tx) => {
@@ -561,7 +561,7 @@ export async function addHearing(input: HearingCreateInput) {
     select: { matterId: true }
   });
   if (!procedureForGuard) throw new Error("程序不存在");
-  await assertCanModifyMatter(session.user.id, session.user.role, procedureForGuard.matterId);
+  await assertCanHandleMatter(session.user, procedureForGuard.matterId);
   await assertMatterWritable(procedureForGuard.matterId);
 
   const created = await roleMutation(session.user, "schedule.write", async roleDb => roleDb.hearing.create({
@@ -615,7 +615,7 @@ export async function deleteHearing(id: string) {
     include: { procedure: { select: { matterId: true } } }
   });
   if (!current) return { ok: false };
-  await assertCanModifyMatter(session.user.id, session.user.role, current.procedure.matterId);
+  await assertCanHandleMatter(session.user, current.procedure.matterId);
   await assertMatterWritable(current.procedure.matterId);
 
   await prisma.$transaction(async (tx) => {
@@ -649,7 +649,7 @@ export async function addProcedureMemo(input: {
     select: { matterId: true }
   });
   if (!proc) throw new Error("程序不存在");
-  await assertCanModifyMatter(session.user.id, session.user.role, proc.matterId);
+  await assertCanHandleMatter(session.user, proc.matterId);
   await assertMatterWritable(proc.matterId);
 
   const created = await roleMutation(session.user, "schedule.write", async roleDb => roleDb.procedureMemo.create({
@@ -670,7 +670,7 @@ export async function toggleProcedureMemo(id: string) {
     include: { procedure: { select: { matterId: true } } }
   });
   if (!current) return { ok: false };
-  await assertCanModifyMatter(session.user.id, session.user.role, current.procedure.matterId);
+  await assertCanHandleMatter(session.user, current.procedure.matterId);
   await assertMatterWritable(current.procedure.matterId);
 
   const next = !current.done;
@@ -689,7 +689,7 @@ export async function deleteProcedureMemo(id: string) {
     include: { procedure: { select: { matterId: true } } }
   });
   if (!current) return { ok: false };
-  await assertCanModifyMatter(session.user.id, session.user.role, current.procedure.matterId);
+  await assertCanHandleMatter(session.user, current.procedure.matterId);
   await assertMatterWritable(current.procedure.matterId);
 
   await roleMutation(session.user, "schedule.write", async roleDb => roleDb.procedureMemo.delete({ where: { id } }));

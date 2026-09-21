@@ -5,6 +5,7 @@ import type { MoneyKind } from "@/lib/finance/ledger-labels";
 import { confirmReceiptTx,rejectReceiptTx,deleteBillingDraftTx } from "./ledger-registration";
 import { commissionPositions } from "./ledger-corrections";
 import { getFinanceFacts, periodReceipts, sumAmounts, shMonthStart, shYearStart, financeTrend } from "./facts";
+import { shParts } from "@/lib/ui/sh-time";
 import { roleMutation, checkRoleMutation } from "@/lib/roles/service";
 import { scopeFor } from "@/lib/roles/catalog";
 import { canReadDocument } from "@/lib/approvals/documents";
@@ -342,7 +343,8 @@ export async function deleteFeeEntry(id: string) {
   const session = await requireSession("finance.write");
   if(await financeLedgerReady(prisma))throw new Error("待确认实收请填写原因退回；已入账收付请通过财务更正处理");
   if (session.user.role !== "CUSTOM" && !isManager(session.user.role) && session.user.role !== "FINANCE") {
-    throw new Error("仅管理员、主办律师或财务可删除收付记录");
+    // 2026-09-20 文案对齐实际校验（合伙人岗位/管理权、财务、自定义角色；后续仍有本案经办复核）
+    throw new Error("仅合伙人、财务或经授权的自定义角色可删除收付记录");
   }
   const entry = await prisma.feeEntry.findUnique({
     where: { id },
@@ -902,18 +904,22 @@ export async function getMonthlyRevenue(months = 6) {
   });
 
   const buckets: { month: string; received: number; receivable: number }[] = [];
+  // 2026-09-20 第五轮审计时区修复：桶标签与分桶索引按上海年月（start 是上海月首
+  // = 上月 16:00Z，UTC 容器本地取月会整体错一个月）
+  const startParts = shParts(start);
+  const firstYm = startParts.y * 12 + (startParts.m - 1);
   for (let i = 0; i < months; i++) {
-    const d = new Date(start.getFullYear(), start.getMonth() + i, 1);
+    const ym = firstYm + i;
     buckets.push({
-      month: `${d.getMonth() + 1}月`,
+      month: `${(ym % 12) + 1}月`,
       received: 0,
       receivable: 0
     });
   }
 
   for (const e of entries) {
-    const d = new Date(e.occurredAt);
-    const idx = (d.getFullYear() - start.getFullYear()) * 12 + d.getMonth() - start.getMonth();
+    const p = shParts(e.occurredAt);
+    const idx = p.y * 12 + (p.m - 1) - firstYm;
     if (idx < 0 || idx >= months) continue;
     if (e.type === "RECEIVED") buckets[idx].received += Number(e.amount);
     if (e.type === "RECEIVABLE") buckets[idx].receivable += Number(e.amount);

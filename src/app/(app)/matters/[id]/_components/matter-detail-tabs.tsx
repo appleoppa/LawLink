@@ -410,7 +410,6 @@ export function MatterDetailTabs({
               {money(matter.claimAmount) ? <span className="badge b-white">{categoryKind === "litigation" ? "标的" : "金额"} <span className="mono">{money(matter.claimAmount)}</span></span> : null}
               {allowed("finance.read") && money(finance.stats.contractAmount) ? <span className="badge b-white">合同额 <span className="mono">{money(finance.stats.contractAmount)}</span></span> : null}
               {matter.intakeDate ? <span className="badge b-white">收案 <span className="mono">{formatShortDate(matter.intakeDate)}</span></span> : null}
-              {matter.serviceStatus === "SERVICE_COMPLETED" ? <span className="badge b-green" title="服务轴与程序轴分离：律师服务已完成">服务已完成</span> : null}
               {archiveBadge ? (
                 <span className={cn("badge", `b-${archiveBadge.tone}`)}>
                   <Archive className="h-3 w-3" />
@@ -531,7 +530,6 @@ export function MatterDetailTabs({
         viewCounts={{ seal: sealContracts.filter((sc) => sc.status === "PENDING").length }}
         waiting={waiting}
         archiveNode={<>
-          {conflictNode}
           <MatterArchive
             matter={matter}
             currentProcedure={currentProcedure}
@@ -542,8 +540,6 @@ export function MatterDetailTabs({
               .map((d: { id: string; name: string; createdAt: Date; mimeType: string | null }) => ({ id: d.id, name: d.name, createdAt: d.createdAt, mimeType: d.mimeType }))}
             canReadFinance={allowed("finance.read")}
             onOpenFinance={() => setView("money")}
-            serviceStatus={matter.serviceStatus}
-            canEditService={canLeadThisMatter && !isArchived}
             customFieldDefs={customFieldDefs}
             customValues={customValues}
             canEdit={canOpenUnifiedEditor}
@@ -553,7 +549,7 @@ export function MatterDetailTabs({
           />
           {closureNode}
         </>}
-        archiveRailTop={<TeamRailCard matter={matter} canManage={canOwnThisMatter} onManage={() => setMatterEditorOpen(true)} />}
+        archiveRailTop={<><TeamRailCard matter={matter} canManage={canOwnThisMatter} onManage={() => setMatterEditorOpen(true)} />{conflictNode}</>}
         expresses={expresses}
         onAddLedger={canAssociateThisMatter && currentProcedure ? (type) => setLedgerAdd(type) : undefined}
         materialsExtra={reviewNode}

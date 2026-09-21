@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import ExcelJS from "exceljs";
 
 import { prisma } from "@/lib/prisma";
+import { shDayKey } from "@/lib/ui/sh-time";
 import { requireSession } from "@/lib/auth/session";
 import { isSystemAdmin } from "@/lib/auth/system-role";
 import { audit } from "@/server/audit";
@@ -37,10 +38,9 @@ async function requireManager() {
 function cellToString(value: ExcelJS.CellValue): string {
   if (value === null || value === undefined) return "";
   if (value instanceof Date) {
-    const y = value.getFullYear();
-    const m = String(value.getMonth() + 1).padStart(2, "0");
-    const d = String(value.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
+    // 2026-09-20 第五轮审计时区修复：ExcelJS 日期单元格是 UTC 午夜真瞬间，
+    // 本地取日在西于 UTC 的部署会差一天——统一上海日键
+    return shDayKey(value);
   }
   if (typeof value === "object") {
     // 富文本 / 公式结果

@@ -9,6 +9,7 @@ import {responsibilityReady,closedHearingIds} from "@/server/reminders/responsib
 import { resolveRoleUser } from "@/lib/roles/service";
 import { customMatterFilter } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { shDayKey } from "@/lib/ui/sh-time";
 import { matterAssociationFilter, matterReadVisibilityFilter } from "@/lib/permissions";
 
 export type ScheduleItem = {
@@ -39,7 +40,9 @@ export async function queryScheduleItems(
     includeTeam?: boolean;
   } = {}
 ): Promise<ScheduleItem[]> {
-  const from = params.from ?? new Date(new Date().setHours(0, 0, 0, 0));
+  // 2026-09-20 第五轮审计时区修复：默认起点按上海今日零点（此前服务器本地午夜，
+  // UTC 容器窗口整体偏 8 小时；当前调用方都显式传参，属防御性修正）
+  const from = params.from ?? new Date(`${shDayKey(new Date())}T00:00:00+08:00`);
   const to = params.to ?? new Date(from.getTime() + 365 * 24 * 60 * 60 * 1000);
   const access = await resolveRoleUser(userId, role);
   if (!access.enabled) return [];

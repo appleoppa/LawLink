@@ -14,7 +14,7 @@ import { audit } from "@/server/audit";
 import { prisma } from "@/lib/prisma";
 import {
   assertCanAccessMatter,
-  assertCanModifyMatter
+  assertCanHandleMatter
 } from "@/lib/permissions";
 import { revalidateMatter } from "@/server/matters/route";
 
@@ -117,11 +117,8 @@ export async function bindPartyToEnterprise(input: {
 }): Promise<{ ok: true }> {
   const session = await requireSession("matters.write");
   const party = await loadPartyWithMatter(input.partyId);
-  await assertCanModifyMatter(
-    session.user.id,
-    session.user.role,
-    party.matterId!
-  );
+  // 2026-09-20 口径统一：当事人结构性数据写入走 handle 断言（主办/成员 + 合伙人例外）
+  await assertCanHandleMatter(session.user, party.matterId!);
 
   await roleMutation(session.user, "matters.write", async roleDb => roleDb.party.update({
     where: { id: party.id },
@@ -161,11 +158,8 @@ export async function unbindPartyEnterprise(
 ): Promise<{ ok: true }> {
   const session = await requireSession("matters.write");
   const party = await loadPartyWithMatter(partyId);
-  await assertCanModifyMatter(
-    session.user.id,
-    session.user.role,
-    party.matterId!
-  );
+  // 2026-09-20 口径统一：当事人结构性数据写入走 handle 断言（主办/成员 + 合伙人例外）
+  await assertCanHandleMatter(session.user, party.matterId!);
 
   await roleMutation(session.user, "matters.write", async roleDb => roleDb.party.update({
     where: { id: partyId },

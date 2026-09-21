@@ -57,6 +57,14 @@ export async function saveClosureTx(db:Prisma.TransactionClient,userId:string,in
   if(!d.financeOwnerId)throw new Error('案件已归档，收尾安排已固定；仅可办理收尾责任交接（指定新收尾人）');
   if(!plan||!plan.financeOwnerId)throw new Error('本案原收尾安排未指定收尾人，无法办理交接');
   if(!canTransfer&&plan.financeOwnerId!==userId)throw new Error('归档后收尾交接须当前收尾人本人或持应急接管权限者办理');
+  // 2026-09-20 第五轮审计 P2 修复：交接此前不校验新收尾人资格（对比下方首次指定的全校验），
+  // 交接给无资格者要使用时才被拦、交接给不存在的 userId 因通知外键抛原始 Prisma 错误。
+  const newOwner=await db.user.findUnique({where:{id:d.financeOwnerId},select:{active:true,role:true}});
+  if(!newOwner)throw new Error('新收尾负责人账号不存在');
+  const newRole=await resolveRoleUser(d.financeOwnerId,newOwner.role,db);
+  if(!newOwner.active||!newRole.enabled||scopeFor(newRole,'finance.tail')!=='ALL'||!scopeFor(newRole,'finance.read'))throw new Error('新收尾负责人须有效并具有财务查看及独立收尾权限');
+  // 复查 P3-7 补齐：与首次指定同口径——finance.read 非 ALL 时须关联本案
+  if(scopeFor(newRole,'finance.read')!=='ALL'&&!await db.matter.count({where:{id:d.matterId,...matterAssociationFilter(d.financeOwnerId)}}))throw new Error('新收尾负责人的财务查看权限未覆盖本案，请先建立案件关联或授予全所财务查看');
   await db.$executeRaw`UPDATE "ArchiveClosurePlan" SET "financeOwnerId"=${d.financeOwnerId},reason=${d.reason},revision=revision+1,"updatedAt"=NOW() WHERE "matterId"=${d.matterId}`;
   await auditTx(db,{userId,action:'ARCHIVE_CLOSURE_HANDOVER',targetType:'Matter',targetId:d.matterId,detail:{previousFinanceOwnerId:plan.financeOwnerId,newFinanceOwnerId:d.financeOwnerId,reason:d.reason}});
   if(d.financeOwnerId!==userId)await db.notification.create({data:{userId:d.financeOwnerId,type:'SYSTEM',priority:'HIGH',title:'案件财务收尾责任已交接',content:d.reason,href:`/finance/reconciliation?matterId=${d.matterId}`,refType:'ArchiveClosurePlan',refId:d.matterId}});
@@ -80,8 +88,17 @@ export async function assertClosureReady(db:Prisma.TransactionClient,matterId:st
  // P1-4（C 批）：指纹只覆盖阻断性清单（财务已拆出）；补充归档不要求原收尾安排与当前一致——
  // 归档后 tail 收尾本就放行、财务必然漂移，原快照保持固定，本次补充另行冻结自己的快照。
  if(!options?.supplement&&plan.fingerprint!==facts.fingerprint)throw new Error('归档核对清单已变化，请重新保存收尾安排并送审');
- if(expectedFingerprint&&expectedFingerprint!==fingerprint({facts:facts.snapshot,plan}))throw new Error('归档核对清单已变化，请重新保存收尾安排并送审');
+ // 2026-09-20 P3 修复：审批一致性指纹的 plan 键只取「影响归档核对语义」的字段
+ // （serviceCompletedAt + 清单指纹）——收尾交接（ARCHIVE_CLOSURE_HANDOVER）只改
+ // financeOwnerId/reason/revision，不再让送审中的补充归档申请在审批时意外失败
+ // （此前含 revision/收尾人，交接后审批必败且报错引导「重新保存」在归档后无出口）。
+ const planKey={serviceCompletedAt:plan.serviceCompletedAt,fingerprint:plan.fingerprint};
+ if(expectedFingerprint&&expectedFingerprint!==fingerprint({facts:facts.snapshot,plan:planKey})){
+  // 复查 P3-8 兼容：升级前送审的存量申请按旧算法（全 plan 键）复核——送审后无变更
+  // 的申请（主库实测存在 1 条 PENDING_REVIEW）两侧算法不同会误报「清单已变化」。
+  if(expectedFingerprint!==fingerprint({facts:facts.snapshot,plan}))throw new Error('归档核对清单已变化，请重新保存收尾安排并送审');
+ }
  if(facts.financeOpen&&!plan.financeOwnerId)throw new Error('尚有未结财务，请指定收尾负责人');
  if(plan.financeOwnerId)await assertTailAuthority(db,plan.financeOwnerId,matterId);
- return {facts:facts.snapshot,plan,fingerprint:fingerprint({facts:facts.snapshot,plan})};
+ return {facts:facts.snapshot,plan,fingerprint:fingerprint({facts:facts.snapshot,plan:planKey})};
 }

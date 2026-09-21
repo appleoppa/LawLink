@@ -13,7 +13,7 @@ import { decryptBuffer, encryptBuffer, sha256 } from "@/lib/storage/crypto";
 import { buildContext, renderDocxBuffer, type RenderContext } from "@/lib/template-engine";
 import { suggestFolderByTemplateCategory } from "@/lib/default-folders";
 import { CLOSED_REASON_CN } from "./schemas";
-import { shParts } from "@/lib/ui/sh-time";
+import { shParts, shDayKey } from "@/lib/ui/sh-time";
 import type { ArchiveClosedReason } from "@prisma/client";
 
 const CATEGORY_CN_DOC: Record<string, string> = {
@@ -200,7 +200,7 @@ export async function renderArchiveCatalog(
     seq: i + 1,
     name: d.name,
     categoryCN: CATEGORY_CN_DOC[d.category] ?? d.category,
-    uploadDate: d.createdAt.toISOString().slice(0, 10),
+    uploadDate: shDayKey(d.createdAt),
     pages: "",
     remark: ""
   }));

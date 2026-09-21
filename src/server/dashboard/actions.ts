@@ -8,7 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { matterFinanceVisibilityFilter, matterReadVisibilityFilter, intakeReadVisibilityFilter } from "@/lib/permissions";
 import { matterCategoryColor, matterCategoryLabel, matterCategoryShort, procedureTypeLabel } from "@/lib/enums";
-import { shDayKey } from "@/lib/ui/sh-time";
+import { shDayKey, shParts as shPartsOf } from "@/lib/ui/sh-time";
 import { matterHref } from "@/lib/matters/route";
 
 // ============ Types ============
@@ -67,7 +67,9 @@ export async function getDashboardKpis(): Promise<KpiItem[]> {
 
   const now = new Date();
   const in7d = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  // 2026-09-20 第五轮审计时区修复：facts 缺失时的回退窗口此前本地取月（UTC 容器
+  // 漏掉每月 1 日 0-8 点实收），统一上海月首
+  const monthStart = shMonthStart(now);
 
   const [inProgress, pending, deadlines, received] = await Promise.all([
     prisma.matter.count({
@@ -147,7 +149,12 @@ export async function getDashboardRevenueTrend(months = 6) {
   const facts=await getFinanceFacts({deletedAt:null,...visFilter});
   if(facts)return financeTrend(facts,Math.max(1,Math.min(36,Math.floor(months))));
   const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
+  // 2026-09-20 第五轮审计时区修复：回退路径的窗口、桶标签、分桶索引全部按上海年月，
+  // 不再依赖服务器本地时区（UTC 容器 1 日 0-8 点条目会进上一个月桶）
+  const nowParts = shPartsOf(now);
+  const baseYm = nowParts.y * 12 + (nowParts.m - 1);
+  const firstYm = baseYm - (months - 1);
+  const start = shMonthStart(now, -(months - 1));
 
   const entries = await prisma.feeEntry.findMany({
     where: {
@@ -161,17 +168,17 @@ export async function getDashboardRevenueTrend(months = 6) {
 
   const buckets: { month: string; received: number; receivable: number }[] = [];
   for (let i = 0; i < months; i++) {
-    const d = new Date(start.getFullYear(), start.getMonth() + i, 1);
+    const ym = firstYm + i;
     buckets.push({
-      month: `${d.getMonth() + 1}月`,
+      month: `${(ym % 12) + 1}月`,
       received: 0,
       receivable: 0
     });
   }
 
   for (const e of entries) {
-    const d = new Date(e.occurredAt);
-    const idx = (d.getFullYear() - start.getFullYear()) * 12 + d.getMonth() - start.getMonth();
+    const p = shPartsOf(e.occurredAt);
+    const idx = p.y * 12 + (p.m - 1) - firstYm;
     if (idx < 0 || idx >= months) continue;
     // 以元为单位返回，与财务页同一图表组件口径一致（坐标轴自行缩写为 K）
     const val = Number(e.amount);
@@ -526,8 +533,8 @@ export async function getDashboardClientSources(): Promise<{ source: string; cou
   const { hasCustomPermission } = await import("@/lib/roles/catalog");
   if (!hasCustomPermission(session.user, "clients.read")) return [];
   const { clientVisibilityFilter } = await import("@/lib/permissions");
-  const since = new Date();
-  since.setMonth(since.getMonth() - 12);
+  // 2026-09-20 时区收尾：近 12 个月窗口按上海月界（此前 setMonth 本地取月）
+  const since = shMonthStart(new Date(), -12);
   const rows = await prisma.client.findMany({
     where: { AND: [clientVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions)], deletedAt: null, createdAt: { gte: since } },
     select: { source: true }

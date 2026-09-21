@@ -74,10 +74,23 @@ const emailDigestHandler: JobHandler = async () => {
 const smsAttachmentFetchHandler: JobHandler = async (payload) => {
   // B1：来件附件取件重试（粘贴同步取件失败后的队列补漏）。幂等由
   // SmsInboundFile (smsId, sha256) 唯一约束 + attachmentResults 按 url 合并承担。
+  // 2026-09-20 第五轮审计 P2-4 修复：cron 无请求上下文，不能调用 requireSession 的
+  // server action 壳——改以入队粘贴人身份复跑核心（校验 userId 必须是来件收件人）。
   const smsId = String(payload.smsId ?? "");
+  const userId = String(payload.userId ?? "");
   if (!smsId) throw new Error("sms.attachment_fetch 缺少 smsId");
-  const { extractSmsAttachments } = await import("@/server/sms/actions");
-  await extractSmsAttachments({ id: smsId });
+  if (!userId) throw new Error("sms.attachment_fetch 缺少 userId（旧任务 payload 无操作人，请手动重试取件）");
+  const { prisma } = await import("@/lib/prisma");
+  const { resolveRoleUser } = await import("@/lib/roles/service");
+  const { runSmsAttachmentExtraction } = await import("@/server/sms/extract-core");
+  const sms = await prisma.smsMessage.findUnique({ where: { id: smsId }, select: { receivedById: true } });
+  if (!sms) return; // 来件已删除：任务作废，不算失败
+  if (sms.receivedById !== userId) throw new Error("sms.attachment_fetch 操作人须为来件收件人");
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, active: true } });
+  if (!user || !user.active) throw new Error("sms.attachment_fetch 操作人账号已不存在或停用");
+  const actor = await resolveRoleUser(userId, user.role);
+  if (!actor.enabled) throw new Error("sms.attachment_fetch 操作人角色已停用");
+  await runSmsAttachmentExtraction({ smsId, actor: { id: userId, role: actor.role, roleName: actor.roleName, managerAuthorized: actor.managerAuthorized, rolePermissions: actor.rolePermissions }, source: "queue" });
 };
 
 /** B2：来件阅读分析（取件成功后入队；AI/OCR 未配置时文件降级 NEEDS_OCR 可见，不报错重试浪费） */
@@ -86,8 +99,10 @@ const smsFileAnalysisHandler: JobHandler = async (payload) => {
   if (!smsId) throw new Error("sms.file_analysis 缺少 smsId");
   const { prisma } = await import("@/lib/prisma");
   const { analyzeInboundFile } = await import("@/server/sms/analysis");
+  // 2026-09-20 P2-3：排除已入卷文件（documentId 非空）——其 storageKey 指向卷宗存储，
+  // 密文部署下读出密文；建议在转正前的暂存文件上产生。
   const files = await prisma.smsInboundFile.findMany({
-    where: { smsId, state: { in: ["PENDING_REVIEW", "FILED"] }, analysisState: "PENDING" },
+    where: { smsId, state: { in: ["PENDING_REVIEW", "FILED"] }, analysisState: "PENDING", documentId: null, storageKey: { not: "" } },
     select: { id: true }
   });
   for (const f of files) await analyzeInboundFile(f.id);

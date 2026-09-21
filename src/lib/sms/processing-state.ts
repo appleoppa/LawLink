@@ -11,7 +11,10 @@ export function deriveProcessingState(
   if (results.some(r => r.status === "LOGIN_REQUIRED")) return "NEEDS_MANUAL_FETCH";
   if (results.length === 0) return "READY_FOR_REVIEW";
   const anySuccess = results.some(r => r.status === "DOWNLOADED" || r.status === "ALREADY_DOWNLOADED");
-  if (!anySuccess) return "PARTIAL";
+  // 2026-09-20 P3 修复：全部链接访问失败时此前也标 PARTIAL（「部分完成」语义误导，
+  // 用户以为有文件落袋）——全 FAILED 转「待人工取件」引导人工接续补传；
+  // NO_FILE_FOUND / UNSUPPORTED_TYPE 等非失败非成功仍归 PARTIAL。
+  if (!anySuccess) return results.every(r => r.status === "FAILED") ? "NEEDS_MANUAL_FETCH" : "PARTIAL";
   if (results.some(r => r.status === "FAILED")) return "PARTIAL";
   return hasMatchedMatter ? "READY_FOR_REVIEW" : "NEEDS_MATCH";
 }

@@ -12,6 +12,8 @@ const saveSchema = z.object({
 });
 
 export async function getOcrSettingsPublic() {
+  // 2026-09-20 P3 修复：补系统管理鉴权（同文件 save 有 requireSystemAdmin，读取此前裸导出）
+  await requireSystemAdmin();
   const stored = await readOcrSettings();
   return {
     endpoint: stored?.endpoint ?? "",

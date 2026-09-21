@@ -33,7 +33,7 @@ export async function analyzeDocumentText(text: string, hint?: string): Promise<
       {
         role: "system",
         content:
-          "你是法院文书结构化助手。只输出一个 JSON 对象，不要输出任何其他文字。字段：docType（文书类型，如 受理通知书/传票/举证通知书/缴费通知书/判决书/裁定书/送达回证/其他）、suggestedName（规范文件名或 null）、fields（数组，每项 {key,value,page,excerpt}，key 限 caseNumber/courtName/acceptedAt/judgeName/clerkPhone/courtRoom）、events（数组，每项 {kind:HEADING|DEADLINE 修正为 HEARING|DEADLINE,title,dateText,timeText,note}，仅来自文书的明确安排）、caseNumbers（文书中出现的全部案号）、court（法院名称或 null）。dateText 用 YYYY-MM-DD；无把握的值不要编造，省略该字段。kind 只能是 HEARING 或 DEADLINE。"
+          "你是法院文书结构化助手。只输出一个 JSON 对象，不要输出任何其他文字。字段：docType（文书类型，如 受理通知书/传票/举证通知书/缴费通知书/判决书/裁定书/送达回证/其他）、suggestedName（规范文件名或 null）、fields（数组，每项 {key,value,page,excerpt}，key 限 caseNumber/courtName/acceptedAt/judgeName/clerkPhone/courtRoom）、events（数组，每项 {kind:HEADING|DEADLINE 修正为 HEARING|DEADLINE,title,dateText,timeText,note}，仅来自文书的明确安排）、caseNumbers（文书中出现的全部案号）、court（法院名称或 null）。dateText 用 YYYY-MM-DD；timeText 用 24 小时制 HH:MM（如 09:30、14:00），无法确定具体时刻则省略该字段，不要输出「9时」「14:30:00」等其他形态。无把握的值不要编造，省略该字段。kind 只能是 HEARING 或 DEADLINE。"
       },
       { role: "user", content: `文书文本（\\f 分页，页码按出现顺序递增）：\n${clipped}${hint ? `\n\n上下文提示：${hint}` : ""}` }
     ],
@@ -96,6 +96,16 @@ export async function analyzeInboundFile(fileId: string): Promise<{ state: strin
 
   await prisma.smsInboundFile.update({ where: { id: fileId }, data: { analysisState: "ANALYZING", analysisError: null } });
   try {
+    // 2026-09-20 第五轮审计 P2-3 修复：两类行读不到可分析内容——
+    // ① ALREADY_DOWNLOADED 合并行 storageKey 为空串（readFile("") 读目录报错）；
+    // ② 已入卷文件（storageKey=卷宗密文路径）在启用存储加密的部署读出的是密文，
+    //    会被当文本喂给 AI。前者落 FAILED 说明，后者仅密文部署防御（明文部署可直接读）。
+    if (!file.storageKey) {
+      throw new Error("该文件为重复送达合并记录，无独立存储内容，无需分析");
+    }
+    if (file.documentId && process.env.STORAGE_ENCRYPTION_KEY) {
+      throw new Error("已入卷加密文件不支持从暂存盘重读（内容已在案件卷宗，可人工查看）");
+    }
     const buffer = await storage.readFile(file.storageKey);
     let text: string;
     let pageCount: number | null = null;
@@ -172,16 +182,25 @@ async function persistSuggestions(
       orderBy: { order: "asc" },
       select: { id: true, caseNumber: true, handlingAgency: true, type: true, procedureParties: { select: { party: { select: { name: true } } } } }
     });
-    const primary = procedures[0];
-    if (primary) {
+    // 2026-09-20 P3 修复：字段修正挂到「文书案号所属的程序」（找不到再退第一个），
+    // 不再恒指 procedures[0]——文书案号属第二程序时建议不再错指主程序。
+    const caseMatched = analyzed.caseNumbers.length
+      ? procedures.find(p => {
+          const cn = p.caseNumber;
+          if (!cn) return false;
+          return analyzed.caseNumbers.some(x => cn === x || cn.includes(x) || x.includes(cn));
+        })
+      : undefined;
+    const target = caseMatched ?? procedures[0];
+    if (target) {
       for (const f of analyzed.fields) {
         if (f.key === "caseNumber") {
-          if (f.value && (!primary.caseNumber || primary.caseNumber !== f.value)) {
-            rows.push({ smsId, fileId, kind: "FIELD_CHANGE", targetType: "MatterProcedure", targetId: primary.id, fieldKey: "caseNumber", currentValue: primary.caseNumber ?? "", suggestedValue: f.value, sourcePage: f.page, sourceExcerpt: f.excerpt });
+          if (f.value && (!target.caseNumber || target.caseNumber !== f.value)) {
+            rows.push({ smsId, fileId, kind: "FIELD_CHANGE", targetType: "MatterProcedure", targetId: target.id, fieldKey: "caseNumber", currentValue: target.caseNumber ?? "", suggestedValue: f.value, sourcePage: f.page, sourceExcerpt: f.excerpt });
           }
         } else if (f.key === "courtName") {
-          if (f.value && (!primary.handlingAgency || !primary.handlingAgency.includes(f.value))) {
-            rows.push({ smsId, fileId, kind: "FIELD_CHANGE", targetType: "MatterProcedure", targetId: primary.id, fieldKey: "handlingAgency", currentValue: primary.handlingAgency ?? "", suggestedValue: f.value, sourcePage: f.page, sourceExcerpt: f.excerpt });
+          if (f.value && (!target.handlingAgency || !target.handlingAgency.includes(f.value))) {
+            rows.push({ smsId, fileId, kind: "FIELD_CHANGE", targetType: "MatterProcedure", targetId: target.id, fieldKey: "handlingAgency", currentValue: target.handlingAgency ?? "", suggestedValue: f.value, sourcePage: f.page, sourceExcerpt: f.excerpt });
           }
         }
       }

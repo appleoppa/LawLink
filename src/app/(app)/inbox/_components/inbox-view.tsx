@@ -684,9 +684,9 @@ function SmsCard({
               size="sm"
               variant="outline"
               onClick={onExtractAttachments}
-              disabled={pending || !sms.matchedMatter}
+              disabled={pending}
               className="h-7 gap-1 text-[11px]"
-              title={sms.matchedMatter ? "提取短信中的送达附件" : "先关联案件后再提取附件"}
+              title="提取短信中的送达附件（未匹配案件时文件入私有来件暂存，匹配后再转正）"
             >
               {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileDown className="h-3 w-3" />}
               提取附件

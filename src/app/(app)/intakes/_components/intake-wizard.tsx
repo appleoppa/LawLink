@@ -352,6 +352,8 @@ export function IntakeWizard({
       }
       // 冲突预检：自动携带收案全部主体发起检索（结果挂在收案上，审批时直接复核）
       let conflictText = "";
+      let conflictHits = 0;
+      let conflictCheckRan = true;
       if (res.id && !editing) {
         const queries = buildIntakeConflictQueries({
           client: { name: values.clientName ?? "", idNumber: values.clientIdNumber || null },
@@ -360,21 +362,27 @@ export function IntakeWizard({
         if (queries.length > 0) {
           try {
             const check = await runCheckAndSave({ intakeId: res.id, queries });
+            conflictHits = check.hits.length;
             conflictText = check.hits.length ? ` · 冲突预检命中 ${check.hits.length} 条，请在收案详情作出结论` : " · 冲突预检未命中";
           } catch {
             conflictText = " · 冲突预检未能自动发起，请在收案详情手动检索";
+            conflictCheckRan = false;
           }
         }
       }
       // P2-5（2026-09-20 C 批）：冲突预检有命中时不自动送审——结论只能在意向可编辑状态给出，
       // 直接送审会形成「结论恒 PENDING、无法转案」的无效轮次，每个命中收案被迫撤回-补结论-重提空转一轮。
-      const conflictHit = conflictText.includes("命中") && !conflictText.includes("未命中");
-      if(res.workflowEnabled&&!editing&&!conflictHit) await resubmitIntake(res.id);
+      // 2026-09-20 P3 修复：命中判定不再解析 toast 文案（结构化计数）；预检发起失败同样停草稿，
+      // 由律师手动检索后再送审（此前仍尝试自动送审，只靠服务端报错兜底）。
+      const conflictHit = conflictHits > 0;
+      if(res.workflowEnabled&&!editing&&conflictCheckRan&&!conflictHit) await resubmitIntake(res.id);
       toast.success(editing
         ? "补正已保存，请在详情复核检索后重新提交"
         : conflictHit
           ? `收案已保存为草稿${contracts.length > 0 ? `，上传 ${contracts.length} 份合同` : ""}${conflictText}。请先在收案详情作出冲突结论，再提交送审。`
-          : `收案已提交审批${contracts.length > 0 ? `，上传 ${contracts.length} 份合同` : ""}${conflictText}`);
+          : conflictCheckRan
+            ? `收案已提交审批${contracts.length > 0 ? `，上传 ${contracts.length} 份合同` : ""}${conflictText}`
+            : `收案已保存为草稿${conflictText}。请先在收案详情手动完成冲突检索，再提交送审。`);
       resetAll();
       onOpenChange(false);
       if (res.id) {

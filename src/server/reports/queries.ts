@@ -13,6 +13,7 @@ import { getFinanceFacts, periodReceipts } from "@/server/finance/facts";
 import type { ReportAccess } from "@/lib/roles/report-scope";
 import { prisma } from "@/lib/prisma";
 import type { MatterCategory } from "@prisma/client";
+import { shParts } from "@/lib/ui/sh-time";
 
 export type ReportPeriod = {
   label: string;
@@ -20,30 +21,36 @@ export type ReportPeriod = {
   end: Date;
 };
 
+/** 上海月首（本地构造在 UTC 容器会把「本月」窗口起点偏到 1 日 08:00） */
+function shMonthStart(y: number, m: number): Date {
+  return new Date(`${y}-${String(m).padStart(2, "0")}-01T00:00:00+08:00`);
+}
+
 export function periodPresets(now = new Date()): Record<"month" | "quarter" | "year" | "lastYear", ReportPeriod> {
-  const y = now.getFullYear();
-  const m = now.getMonth();
-  const q = Math.floor(m / 3);
+  // 2026-09-20 第五轮审计时区修复：报表窗口此前按服务器本地年月构造（UTC 容器
+  // 每月 1 日 0-8 点的收款/立案落入上月、标签也显示上期），统一上海口径
+  const { y, m } = shParts(now);
+  const q = Math.floor((m - 1) / 3);
   return {
     month: {
-      label: `${y} 年 ${m + 1} 月`,
-      start: new Date(y, m, 1),
-      end: new Date(y, m + 1, 1)
+      label: `${y} 年 ${m} 月`,
+      start: shMonthStart(y, m),
+      end: shMonthStart(y + (m === 12 ? 1 : 0), m === 12 ? 1 : m + 1)
     },
     quarter: {
       label: `${y} 年 Q${q + 1}`,
-      start: new Date(y, q * 3, 1),
-      end: new Date(y, q * 3 + 3, 1)
+      start: shMonthStart(y, q * 3 + 1),
+      end: shMonthStart(y + (q === 3 ? 1 : 0), q === 3 ? 1 : q * 3 + 4)
     },
     year: {
       label: `${y} 年度`,
-      start: new Date(y, 0, 1),
-      end: new Date(y + 1, 0, 1)
+      start: shMonthStart(y, 1),
+      end: shMonthStart(y + 1, 1)
     },
     lastYear: {
       label: `${y - 1} 年度`,
-      start: new Date(y - 1, 0, 1),
-      end: new Date(y, 0, 1)
+      start: shMonthStart(y - 1, 1),
+      end: shMonthStart(y, 1)
     }
   };
 }
@@ -59,11 +66,15 @@ export function customPeriod(startStr: string, endStr: string): ReportPeriod {
   if (!re.test(startStr) || !re.test(endStr)) {
     throw new Error("日期格式不合法，需要 yyyy-MM-dd");
   }
-  const [sy, sm, sd] = startStr.split("-").map(Number);
-  const [ey, em, ed] = endStr.split("-").map(Number);
-  const start = new Date(sy, sm - 1, sd);
+  // 2026-09-20 第五轮审计时区修复：自定义区间按上海日界解释（用户选 2026-09-20
+  // 即上海 09-20 00:00 起，不再随服务器时区整体偏移）；非法月日由 Date 解析为 NaN 拦截
+  const start = new Date(`${startStr}T00:00:00+08:00`);
   // end 解释为"含当天"，转半开区间需 +1 天
-  const end = new Date(ey, em - 1, ed + 1);
+  const end = new Date(`${endStr}T00:00:00+08:00`);
+  end.setUTCDate(end.getUTCDate() + 1);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    throw new Error("日期格式不合法，需要 yyyy-MM-dd");
+  }
   if (end.getTime() <= start.getTime()) {
     throw new Error("结束日期必须晚于起始日期");
   }

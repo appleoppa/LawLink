@@ -13,6 +13,7 @@
  */
 import type { MatterCategory } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
+import { shParts } from "@/lib/ui/sh-time";
 
 const CATEGORY_SHORT: Record<MatterCategory, string> = {
   CIVIL_COMMERCIAL: "民",
@@ -34,7 +35,8 @@ export async function nextArchiveNo(
   category: MatterCategory,
   archivedAt: Date = new Date()
 ): Promise<string> {
-  const year = archivedAt.getFullYear();
+  // 2026-09-20 第五轮审计时区修复：归档号年份按上海（真瞬间本地取年在 UTC 容器元旦 0-8 点取去年）
+  const year = shParts(archivedAt).y;
   const short = categoryShort(category);
   const prefix = `${year}-${short}-`;
 

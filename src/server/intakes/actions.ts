@@ -2,7 +2,7 @@
 import {insertFinanceRowTx} from "@/server/finance/allocation-internals";
 import { assertNoOpenIntakeUrgency, transferIntakeUrgency } from "@/server/reminders/urgent";
 import { recordMatterReviewTx } from "@/server/conflicts/matter-review";
-import { assertLiveAssignees, currentActor, intakeWorkflowReady, submitIntakeTx, assertIntakeConvertible } from "./workflow";
+import { assertLiveAssignees, currentActor, intakeWorkflowReady, submitIntakeTx, assertIntakeConvertible, assertIntakeEditor } from "./workflow";
 import { hasCustomPermission, scopeFor } from "@/lib/roles/catalog";
 import { clientVisibilityFilter } from "@/lib/permissions";
 import { normalizeIdNumber, duplicateWhereInput, suggestIdType } from "@/lib/clients/identity";
@@ -545,6 +545,9 @@ export async function voidIntake(input: { id: string; reason: string }) {
   const session = await requireSession("intakes.create");
   if (!input.reason.trim()) throw new Error("请填写作废原因");
   await approvalTransaction(async tx => {
+    // 2026-09-20 第五轮审计 P2 修复：此前只有 requireSession("intakes.create")，
+    // 任何持收案权账号可作废他人草稿（状态条件更新不构成授权）——补申请人/当前主办归属校验
+    await assertIntakeEditor(tx, session.user.id, input.id, ["INTAKE"], "intakes.create");
     await assertNoOpenIntakeUrgency(tx, input.id);
     await tx.intake.update({
       where: { id: input.id, status: "INTAKE" },

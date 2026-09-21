@@ -173,8 +173,10 @@ export async function completeTasksBatch(input: { ids: string[]; reason: string 
   const reason = input.reason.trim();
   if (!reason) throw new Error("请填写批量办结的统一处置结果或原因");
   if (!input.ids.length) throw new Error("请先选择要办结的任务");
+  // 2026-09-20 P3 修复：超过单批上限直接报错引导分批（此前静默截断到 100，被丢条目无提示）
+  if (input.ids.length > 100) throw new Error(`单次批量办结最多 100 条（已选 ${input.ids.length} 条），请分批处理`);
   const results: { id: string; ok: boolean; error?: string }[] = [];
-  for (const id of input.ids.slice(0, 100)) {
+  for (const id of input.ids) {
     try {
       const current = await prisma.task.findUnique({ where: { id } });
       if (!current) throw new Error("任务不存在");

@@ -91,7 +91,7 @@ export async function saveReviewToMatter(input: {
   const buf = Buffer.from(md, "utf-8");
   const path = await storage.writeFile(`m_${input.matterId}`, buf);
   const hash = sha256(buf);
-  const ts = new Date().toISOString().slice(0, 10);
+  const ts = shDayKey(new Date());
   const docName = `AI审查_${safeFileName(input.reviewedDocName)}_${ts}.md`;
 
   const doc = await roleMutation(session.user, "documents.write", async roleDb => roleDb.document.create({

@@ -12,7 +12,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { auditTx } from "@/server/audit";
-import { matterReadVisibilityFilter } from "@/lib/permissions";
+import { assertCanHandleMatter } from "@/lib/permissions";
 
 const createSchema = z.object({
   clientId: z.string().cuid(),
@@ -30,12 +30,11 @@ export async function createEngagement(input: z.input<typeof createSchema>) {
   const client = await prisma.client.findUnique({ where: { id: data.clientId }, select: { id: true, name: true, deletedAt: true } });
   if (!client || client.deletedAt) throw new Error("客户不存在或已停用");
 
-  // 关联事项必须可见（防越权挂链）
-  if (data.matterIds.length > 0) {
-    const visible = await prisma.matter.count({
-      where: { id: { in: data.matterIds }, deletedAt: null, ...matterReadVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions) }
-    });
-    if (visible !== data.matterIds.length) throw new Error("存在无权关联的案件");
+  // 关联事项属结构性写入（挂链展示在案件档案）：逐案经办断言
+  // （主办/成员 + 合伙人例外）。2026-09-20 第五轮审计 P2 修复：此前用读可见性
+  // count 校验当写守卫——managerAuthorized/团队只读用户可把非经办案件挂入委托。
+  for (const matterId of data.matterIds) {
+    await assertCanHandleMatter(session.user, matterId);
   }
 
   const created = await prisma.$transaction(async tx => {
@@ -74,15 +73,11 @@ export async function linkEngagementMatter(input: z.infer<typeof linkSchema>) {
   const session = await requireSession("matters.write");
   const data = linkSchema.parse(input);
 
-  const [eng, matterVisible] = await Promise.all([
-    prisma.engagement.findUnique({ where: { id: data.engagementId }, select: { id: true, endedAt: true } }),
-    prisma.matter.count({
-      where: { id: data.matterId, deletedAt: null, ...matterReadVisibilityFilter(session.user.id, session.user.role, session.user.rolePermissions) }
-    })
-  ]);
+  const eng = await prisma.engagement.findUnique({ where: { id: data.engagementId }, select: { id: true, endedAt: true } });
   if (!eng) throw new Error("委托不存在");
   if (eng.endedAt) throw new Error("委托已终止，不可再关联事项");
-  if (matterVisible !== 1) throw new Error("无权关联该案件");
+  // 2026-09-20 第五轮审计 P2 修复：挂链是结构性写入，读可见性不当写守卫（见 createEngagement）
+  await assertCanHandleMatter(session.user, data.matterId);
 
   await prisma.$transaction(async tx => {
     await tx.engagementMatter.upsert({
@@ -114,9 +109,31 @@ export async function terminateEngagement(input: z.infer<typeof terminateSchema>
   const session = await requireSession("matters.write");
   const data = terminateSchema.parse(input);
 
-  const eng = await prisma.engagement.findUnique({ where: { id: data.engagementId }, select: { endedAt: true } });
+  const eng = await prisma.engagement.findUnique({
+    where: { id: data.engagementId },
+    select: { endedAt: true, matters: { select: { matterId: true } } }
+  });
   if (!eng) throw new Error("委托不存在");
   if (eng.endedAt) throw new Error("委托已终止");
+
+  // 2026-09-20 第五轮审计 P2 修复：终止此前完全没有对象级校验——任何持
+  // matters.write 的账号（含律师助理）可终止任意客户的任意委托。口径：
+  // 已挂案件的委托须任一关联案件经办/合伙人；未挂案件的委托仅合伙人岗位。
+  if (eng.matters.length > 0) {
+    let allowed = false;
+    for (const link of eng.matters) {
+      try {
+        await assertCanHandleMatter(session.user, link.matterId);
+        allowed = true;
+        break;
+      } catch {
+        // 该案件无经办权，试下一件
+      }
+    }
+    if (!allowed) throw new Error("仅该委托关联案件的经办律师或合伙人可终止委托");
+  } else if (session.user.role !== "PRINCIPAL_LAWYER") {
+    throw new Error("未关联案件的委托仅合伙人可终止");
+  }
 
   await prisma.$transaction(async tx => {
     await tx.engagement.update({

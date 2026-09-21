@@ -6,6 +6,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/server/audit";
+import { shDayKey } from "@/lib/ui/sh-time";
 
 const DEFAULT_RETENTION_DAYS = 365;
 
@@ -34,7 +35,7 @@ export async function runAuditCleanup(): Promise<AuditCleanupResult> {
     targetId: "retention",
     detail: {
       retentionDays,
-      cutoffDate: cutoff.toISOString().slice(0, 10),
+      cutoffDate: shDayKey(cutoff),
       deleted: 0,
       eligibleForArchive
     }
@@ -44,6 +45,6 @@ export async function runAuditCleanup(): Promise<AuditCleanupResult> {
     retentionDays,
     deleted: 0,
     eligibleForArchive,
-    cutoffDate: cutoff.toISOString().slice(0, 10)
+    cutoffDate: shDayKey(cutoff)
   };
 }

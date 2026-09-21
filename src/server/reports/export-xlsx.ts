@@ -7,6 +7,7 @@ import { getFinanceFacts, periodReceipts } from "@/server/finance/facts";
 import type { ReportAccess } from "@/lib/roles/report-scope";
 import ExcelJS from "exceljs";
 import { prisma } from "@/lib/prisma";
+import { shDayKey } from "@/lib/ui/sh-time";
 import { matterCategoryLabel, matterStatusLabel } from "@/lib/enums";
 import type { ReportPeriod } from "./queries";
 import { getReportData } from "./queries";
@@ -59,9 +60,9 @@ export async function buildReportWorkbook(period: ReportPeriod, access: ReportAc
       client: m.primaryClient?.name ?? "",
       owner: m.owner?.name ?? "",
       status: matterStatusLabel[m.status],
-      createdAt: m.createdAt.toISOString().slice(0, 10),
-      closedAt: m.closedAt ? m.closedAt.toISOString().slice(0, 10) : "",
-      archivedAt: m.archivedAt ? m.archivedAt.toISOString().slice(0, 10) : ""
+      createdAt: shDayKey(m.createdAt),
+      closedAt: m.closedAt ? shDayKey(m.closedAt) : "",
+      archivedAt: m.archivedAt ? shDayKey(m.archivedAt) : ""
     });
   }
   sheetMatters.getRow(1).font = { bold: true };
@@ -108,7 +109,7 @@ export async function buildReportWorkbook(period: ReportPeriod, access: ReportAc
   ];
   for (const f of receivedFees) {
     sheetFees.addRow({
-      occurredAt: f.occurredAt.toISOString().slice(0, 10),
+      occurredAt: shDayKey(f.occurredAt),
       amount: Number(f.amount),
       note: f.note ?? "原始收款",
       client: f.matter?.primaryClient?.name ?? "",

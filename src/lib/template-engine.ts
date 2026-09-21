@@ -261,7 +261,7 @@ export async function buildContext(opts: {
 
   return {
     firm,
-    today: today.toISOString().slice(0, 10),
+    today: shDayKey(today),
     todayCN: toCNDate(today),
     lawyer: { name: user?.name ?? "", phone: user?.phone ?? "" },
     matter: {

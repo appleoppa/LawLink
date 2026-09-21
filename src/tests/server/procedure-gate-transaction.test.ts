@@ -19,7 +19,7 @@ vi.mock("@/server/reminders/responsibility", () => ({ responsibilityReady: gate.
 vi.mock("@/server/matters/route", () => ({ revalidateMatter: vi.fn() }));
 vi.mock("@/server/audit", () => ({ audit: vi.fn() }));
 vi.mock("@/server/timeline/record", () => ({ recordTimelineEvent: vi.fn() }));
-vi.mock("@/lib/permissions", () => ({ assertCanModifyMatter: vi.fn(), assertCanAssociateMatter: vi.fn(), assertCanLeadMatter: vi.fn() }));
+vi.mock("@/lib/permissions", () => ({ assertCanModifyMatter: vi.fn(), assertCanAssociateMatter: vi.fn(), assertCanLeadMatter: vi.fn(), assertCanHandleMatter: vi.fn() }));
 vi.mock("@/lib/archive/guard", () => ({ assertMatterWritable: vi.fn() }));
 import { updateProcedure } from "@/server/procedures/actions";
 

@@ -119,7 +119,9 @@ export async function saveMatterCustomValues(
   matterId: string,
   values: Record<string, string>
 ) {
-  const session = await requireSession();
+  // 2026-09-20 P3 修复：此前 requireSession() 不带权限键，自定义角色在会话解析层
+  // 被 fail-closed 一律拒绝（功能缺陷）；与案件编辑同 key
+  const session = await requireSession("matters.write");
   await assertMatterWritable(matterId);
   await assertCanLeadMatter(session.user.id, matterId, "仅案件主办/协办可编辑");
 

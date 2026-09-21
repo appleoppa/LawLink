@@ -5,14 +5,15 @@
  * 覆盖 TARGET-MODEL-PLAN 纵向样例：
  * - 样例 1：一份委托关联多个事项（创建时同时挂链 + 审计）；
  * - 样例 5：委托终止后不可再关联事项，但历史关联保留在列表中；
- * - 越权防线：关联不可见事项（matterReadVisibilityFilter 过滤）被拒。
+ * - 越权防线（2026-09-20 第五轮审计 P2 修复后口径）：挂链/终止按经办断言
+ *   （assertCanHandleMatter：主办/成员 + 合伙人例外），不再以读可见性当写守卫。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const { db, session } = vi.hoisted(() => {
   const db: Record<string, any> = {
     client: { findUnique: vi.fn() },
-    matter: { count: vi.fn() },
+    matter: { count: vi.fn(), findFirst: vi.fn() },
     engagement: { findUnique: vi.fn(), update: vi.fn() },
     engagementMatter: { upsert: vi.fn(), findMany: vi.fn() },
     $transaction: vi.fn()
@@ -40,15 +41,20 @@ function mockTx(overrides: Record<string, any> = {}) {
   db.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn({ ...db, ...overrides }));
 }
 
+/** 经办断言放行（LAWYER：matterAssociationFilter 命中） */
+function mockHandled() {
+  db.matter.findFirst.mockResolvedValue({ id: M1 });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockTx();
+  mockHandled();
 });
 
 describe("创建委托（样例 1：一委托多事项）", () => {
   it("创建委托并同时关联多个事项，写入挂链与审计", async () => {
     db.client.findUnique.mockResolvedValue({ id: CLIENT_ID, name: "客户甲", deletedAt: null });
-    db.matter.count.mockResolvedValue(2); // 两个事项均可见
     const create = vi.fn(async () => ({ id: ENG_ID }));
     mockTx({ engagement: { create } });
 
@@ -60,6 +66,8 @@ describe("创建委托（样例 1：一委托多事项）", () => {
     });
 
     expect(res).toEqual({ ok: true, id: ENG_ID });
+    // 逐案经办断言（挂链属结构性写入）
+    expect(db.matter.findFirst).toHaveBeenCalledTimes(2);
     // 挂链在同一事务内随委托创建
     expect(create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
@@ -84,7 +92,7 @@ describe("创建委托（样例 1：一委托多事项）", () => {
     expect(create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ matters: { create: [] } })
     }));
-    expect(db.matter.count).not.toHaveBeenCalled();
+    expect(db.matter.findFirst).not.toHaveBeenCalled();
   });
 
   it("客户不存在或已停用时拒绝", async () => {
@@ -95,20 +103,20 @@ describe("创建委托（样例 1：一委托多事项）", () => {
     await expect(createEngagement({ clientId: CLIENT_ID, title: "x" })).rejects.toThrow("客户不存在或已停用");
   });
 
-  it("关联不可见事项被拒（可见性过滤不满足）", async () => {
+  it("非经办事项被拒（读可见性不再是写守卫）", async () => {
     db.client.findUnique.mockResolvedValue({ id: CLIENT_ID, name: "客户甲", deletedAt: null });
-    db.matter.count.mockResolvedValue(1); // 2 个事项只可见 1 个
+    db.matter.findFirst.mockResolvedValue(null); // 经办断言不命中
 
     await expect(
       createEngagement({ clientId: CLIENT_ID, title: "越权委托", matterIds: [M1, M2] })
-    ).rejects.toThrow("存在无权关联的案件");
+    ).rejects.toThrow("案件不存在或无权关联");
     expect(db.$transaction).not.toHaveBeenCalled();
   });
 });
 
 describe("终止委托（样例 5：终止不校验财务，历史保留）", () => {
-  it("终止写入 endedAt 与原因，并记录审计（不做财务校验）", async () => {
-    db.engagement.findUnique.mockResolvedValue({ endedAt: null });
+  it("关联案件经办的律师可终止，写入 endedAt 与原因并记录审计（不做财务校验）", async () => {
+    db.engagement.findUnique.mockResolvedValue({ endedAt: null, matters: [{ matterId: M1 }] });
     db.engagement.update.mockResolvedValue({ id: ENG_ID });
 
     const res = await terminateEngagement({ engagementId: ENG_ID, reason: "委托期满" });
@@ -126,8 +134,25 @@ describe("终止委托（样例 5：终止不校验财务，历史保留）", ()
     expect(Object.keys(db).filter(k => /receivable|payment|billing|feeEntry/i.test(k)).length).toBe(0);
   });
 
+  it("关联案件均无经办的律师被拒（此前完全无对象校验）", async () => {
+    db.engagement.findUnique.mockResolvedValue({ endedAt: null, matters: [{ matterId: M1 }] });
+    db.matter.findFirst.mockResolvedValue(null);
+    await expect(terminateEngagement({ engagementId: ENG_ID, reason: "越权终止" })).rejects.toThrow("仅该委托关联案件的经办律师或合伙人可终止委托");
+    expect(db.engagement.update).not.toHaveBeenCalled();
+  });
+
+  it("未关联案件的委托仅合伙人可终止", async () => {
+    db.engagement.findUnique.mockResolvedValue({ endedAt: null, matters: [] });
+    await expect(terminateEngagement({ engagementId: ENG_ID, reason: "x" })).rejects.toThrow("未关联案件的委托仅合伙人可终止");
+
+    const { requireSession } = await import("@/lib/auth/session");
+    vi.mocked(requireSession).mockResolvedValueOnce({ user: { id: "clawyer0000000000000000001", role: "PRINCIPAL_LAWYER" } } as never);
+    db.engagement.update.mockResolvedValue({ id: ENG_ID });
+    await expect(terminateEngagement({ engagementId: ENG_ID, reason: "合伙人终止" })).resolves.toEqual({ ok: true });
+  });
+
   it("重复终止被拒绝", async () => {
-    db.engagement.findUnique.mockResolvedValue({ endedAt: new Date() });
+    db.engagement.findUnique.mockResolvedValue({ endedAt: new Date(), matters: [{ matterId: M1 }] });
     await expect(terminateEngagement({ engagementId: ENG_ID, reason: "再终止" })).rejects.toThrow("委托已终止");
   });
 
@@ -160,9 +185,8 @@ describe("终止委托（样例 5：终止不校验财务，历史保留）", ()
 });
 
 describe("补挂事项到既有委托", () => {
-  it("可见事项补挂成功（upsert + 审计）", async () => {
+  it("经办事项补挂成功（upsert + 审计）", async () => {
     db.engagement.findUnique.mockResolvedValue({ endedAt: null });
-    db.matter.count.mockResolvedValue(1);
     db.engagementMatter.upsert.mockResolvedValue({});
 
     const res = await linkEngagementMatter({ engagementId: ENG_ID, matterId: M2, validFrom: new Date("2026-03-01") });
@@ -177,12 +201,12 @@ describe("补挂事项到既有委托", () => {
     }));
   });
 
-  it("无权关联的案件被拒绝（可见性 count 为 0）", async () => {
+  it("非经办的案件被拒绝（读可见性不再是写守卫）", async () => {
     db.engagement.findUnique.mockResolvedValue({ endedAt: null });
-    db.matter.count.mockResolvedValue(0);
+    db.matter.findFirst.mockResolvedValue(null);
     await expect(
       linkEngagementMatter({ engagementId: ENG_ID, matterId: M1 })
-    ).rejects.toThrow("无权关联该案件");
+    ).rejects.toThrow("案件不存在或无权关联");
     expect(db.engagementMatter.upsert).not.toHaveBeenCalled();
   });
 

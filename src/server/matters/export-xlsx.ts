@@ -1026,16 +1026,11 @@ function resolveDateBoundary(input: string | undefined, endOfDay: boolean) {
   if (!input) return undefined;
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(input);
   if (!match) return undefined;
-  const [, year, month, day] = match;
-  return new Date(
-    Number(year),
-    Number(month) - 1,
-    Number(day),
-    endOfDay ? 23 : 0,
-    endOfDay ? 59 : 0,
-    endOfDay ? 59 : 0,
-    endOfDay ? 999 : 0
-  );
+  // 2026-09-20 第五轮审计时区修复：导出过滤边界按上海日界（此前服务器本地构造，
+  // UTC 容器用户选 2026-09-20 实际筛上海 09-20 08:00 起，漏当日 0-8 点）
+  return endOfDay
+    ? new Date(`${input}T23:59:59.999+08:00`)
+    : new Date(`${input}T00:00:00+08:00`);
 }
 
 function formatDate(date: Date | null | undefined) {

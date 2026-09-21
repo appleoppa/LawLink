@@ -6,6 +6,7 @@ import { getFinanceFacts } from "@/server/finance/facts";
  * 以及按需查看证件/电话明文（逐次审计）。可见性口径与 getClientById 一致。
  */
 import { prisma } from "@/lib/prisma";
+import { shParts } from "@/lib/ui/sh-time";
 import { requireSession } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import { hasCustomPermission } from "@/lib/roles/catalog";
@@ -121,7 +122,7 @@ export async function getClientInsights(clientId: string) {
         title: m.title,
         status: m.status,
         category: m.category,
-        year: (m.intakeDate ?? m.createdAt).getFullYear(),
+        year: shParts(m.intakeDate ?? m.createdAt).y,
         ownerName: m.owner?.name ?? null,
         procedure: p ? p.customLabel ?? procedureTypeLabel[p.type] ?? p.type : null,
         stage: p?.stages[0]?.name ?? null,

@@ -18,6 +18,7 @@ import PizZip from "pizzip";
 import { prisma } from "@/lib/prisma";
 import { decryptIdNumber } from "@/lib/clients/id-number-crypto";
 import { sha256 } from "@/lib/storage/crypto";
+import { shDayKey } from "@/lib/ui/sh-time";
 import { parseArchiveSnapshot } from "@/lib/archive/snapshot";
 import { verifyArchivePolicySource, verifyArchiveSnapshotDocuments } from "./verification";
 
@@ -224,9 +225,9 @@ export async function buildArchiveZip(archiveId: string): Promise<ZipResult> {
     "",
     `归档编号：**${archive.archiveNo}**  `,
     `案件编号：${matter.internalCode}  `,
-    `归档日期：${archive.archivedAt.toISOString().slice(0, 10)}  `,
+    `归档日期：${shDayKey(archive.archivedAt)}  `,
     `归档人：${archive.archivedBy}  `,
-    archive.completedAt ? `结案日期：${archive.completedAt.toISOString().slice(0, 10)}` : "",
+    archive.completedAt ? `结案日期：${shDayKey(archive.completedAt)}` : "",
     "",
     "## 结案小结",
     "",

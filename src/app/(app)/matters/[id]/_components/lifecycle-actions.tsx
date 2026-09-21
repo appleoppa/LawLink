@@ -55,7 +55,7 @@ export function LifecycleActions({
   canExportBundle?: boolean;
   /** 无主办/协办权限时只显示 extraItems（查看类入口） */
   canChangeStatus?: boolean;
-  /** 墨案 04 页头「···」菜单：页面级入口（编辑信息）。服务轴（完成/恢复服务）在案件档案页签 */
+  /** 墨案 04 页头「···」菜单：页面级入口（编辑信息）。服务轴 UI 已移除（2026-09-20 用户确认） */
   extraItems?: { key: string; label: string; icon: React.ComponentType<{ className?: string }>; onSelect: () => void }[];
 }) {
   const router = useRouter();

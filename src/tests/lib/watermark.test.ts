@@ -32,9 +32,9 @@ describe("下载水印（P1 §四）", () => {
     expect(marked).not.toBeNull(); // 内部已替换非 ASCII，加载成功
   });
 
-  it("水印行拼装：过滤空段、ISO 时间到分钟", () => {
+  it("水印行拼装：过滤空段、上海时刻到分钟（2026-09-20 时区收尾）", () => {
     expect(watermarkLine({ firm: "LawLink", userName: "Ye", at: new Date("2026-09-13T06:30:00Z") }))
-      .toBe("LawLink | Ye | 2026-09-13 06:30");
+      .toBe("LawLink | Ye | 2026-09-13 14:30");
     expect(watermarkLine({})).toBe("");
   });
 });

@@ -24,7 +24,17 @@ import {
   defaultDurationDays,
   defaultExpiryDate
 } from "@/lib/preservation-defaults";
+import { civilFromKey, shTodayCivil } from "@/lib/ui/sh-time";
 import { formatDate } from "@/lib/utils";
+
+/**
+ * 起算日的统一口径（2026-09-20 第五轮审计时区修复）：
+ * 输入框日期串转本地正午日历日（不落 UTC 午夜真瞬间），空值取上海今天——
+ * 非中国时区浏览器上起算日不再偏一天，与服务端口径一致。
+ */
+function startCivil(startDate: string): Date {
+  return startDate ? civilFromKey(startDate) : shTodayCivil();
+}
 
 // ── Case Dialog (create + edit) ──
 
@@ -71,7 +81,7 @@ export function PreservationCaseDialog({
   function handleSubmit() {
     startTransition(async () => {
       try {
-        const sd = startDate ? new Date(startDate) : new Date();
+        const sd = startCivil(startDate);
         const custom = parseInt(duration);
         // 未手填天数时按法定年限算（民诉法解释第 485 条），手填则以手填天数为准
         const ed =
@@ -156,7 +166,7 @@ export function PreservationCaseDialog({
               {target && (
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="财产类型 *">
-                    <Select value={propertyType} onValueChange={(v) => { setPropertyType(v as PropertyType); setDuration(String(defaultDurationDays(startDate ? new Date(startDate) : new Date(), v as PropertyType))); }}>
+                    <Select value={propertyType} onValueChange={(v) => { setPropertyType(v as PropertyType); setDuration(String(defaultDurationDays(startCivil(startDate), v as PropertyType))); }}>
                       <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {Object.entries(PROPERTY_TYPE_CN).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
@@ -166,7 +176,7 @@ export function PreservationCaseDialog({
                   <Field label="保全金额"><Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="h-9 text-xs font-mono" /></Field>
                   <Field label="财产详情"><Input value={propertyDetail} onChange={(e) => setPropertyDetail(e.target.value)} placeholder="如：账号/地址/车牌" className="h-9 text-xs" /></Field>
                   <Field label="生效日期"><Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-9 text-xs" /></Field>
-                  <Field label="保全期限（天）"><Input type="number" value={duration || String(defaultDurationDays(startDate ? new Date(startDate) : new Date(), propertyType))} onChange={(e) => setDuration(e.target.value)} className="h-9 text-xs font-mono" /></Field>
+                  <Field label="保全期限（天）"><Input type="number" value={duration || String(defaultDurationDays(startCivil(startDate), propertyType))} onChange={(e) => setDuration(e.target.value)} className="h-9 text-xs font-mono" /></Field>
                 </div>
               )}
             </div>
@@ -231,7 +241,7 @@ export function AddPropertyDialog({ open, onOpenChange, targetId }: { open: bool
   const [duration, setDuration] = useState("");
 
   function handleSubmit() {
-    const sd = startDate ? new Date(startDate) : new Date();
+    const sd = startCivil(startDate);
     const custom = parseInt(duration);
     // 同上：默认按法定年限，手填天数优先
     const ed =
@@ -270,7 +280,7 @@ export function AddPropertyDialog({ open, onOpenChange, targetId }: { open: bool
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <Field label="财产类型 *">
-              <Select value={propertyType} onValueChange={(v) => { setPropertyType(v as PropertyType); setDuration(String(defaultDurationDays(startDate ? new Date(startDate) : new Date(), v as PropertyType))); }}>
+              <Select value={propertyType} onValueChange={(v) => { setPropertyType(v as PropertyType); setDuration(String(defaultDurationDays(startCivil(startDate), v as PropertyType))); }}>
                 <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>{Object.entries(PROPERTY_TYPE_CN).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
               </Select>
@@ -278,7 +288,7 @@ export function AddPropertyDialog({ open, onOpenChange, targetId }: { open: bool
             <Field label="保全金额"><Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="h-9 text-xs font-mono" /></Field>
             <Field label="财产详情"><Input value={propertyDetail} onChange={(e) => setPropertyDetail(e.target.value)} placeholder="如：账号/地址" className="h-9 text-xs" /></Field>
             <Field label="生效日期"><Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-9 text-xs" /></Field>
-            <Field label="保全期限（天）"><Input type="number" value={duration || String(defaultDurationDays(startDate ? new Date(startDate) : new Date(), propertyType))} onChange={(e) => setDuration(e.target.value)} className="h-9 text-xs font-mono" /></Field>
+            <Field label="保全期限（天）"><Input type="number" value={duration || String(defaultDurationDays(startCivil(startDate), propertyType))} onChange={(e) => setDuration(e.target.value)} className="h-9 text-xs font-mono" /></Field>
           </div>
         </div>
         </FormDialogBody>

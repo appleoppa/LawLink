@@ -6,6 +6,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/options";
 import { hasCustomPermission } from "@/lib/roles/catalog";
 import { matterFinanceVisibilityFilter } from "@/lib/permissions";
+import { shDayKey } from "@/lib/ui/sh-time";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/server/audit";
 
@@ -79,7 +80,7 @@ export async function GET(req: Request) {
     detail: { rows: lines.length }
   });
 
-  const filename = `lawlink-收付流水-${new Date().toISOString().slice(0, 10)}.csv`;
+  const filename = `lawlink-收付流水-${shDayKey(new Date())}.csv`;
   return new NextResponse(csv, {
     status: 200,
     headers: {
