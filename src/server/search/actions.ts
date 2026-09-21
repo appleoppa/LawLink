@@ -14,7 +14,7 @@ import { normalizeIdNumber } from "@/lib/clients/identity";
 import { matterHref } from "@/lib/matters/route";
 import { customMatterFilter } from "@/lib/permissions";
 import { clientTypeLabel, deadlineCategoryLabel, intakeStatusLabel, matterStatusLabel } from "@/lib/enums";
-import type { DocumentSourceOrigin } from "@prisma/client";
+import type { DocumentSourceOrigin, Prisma } from "@prisma/client";
 
 export interface SearchResultItem {
   id: string;
@@ -48,6 +48,9 @@ export interface GlobalSearchResult {
   documentsFailedCount: number;
 }
 
+/** 文档检索候选窗口：粗过滤后仍大于展示上限，留出逐条精校被拒的余量 */
+const DOCUMENT_CANDIDATE_LIMIT = 200;
+
 /**
  * v1.x P0-2: 文档候选池检索——名称/标签命中，或抽取文本层命中（全文检索）。
  * 命中正文不等于可读正文：候选逐条经 canReadDocument（与下载同口径，
@@ -67,16 +70,43 @@ async function searchDocumentsAuthorized(
     return [];
   }
 
+  // 第八轮体检：取数窗口必须收窄到「可能可见」的集合。此前 take 在 canReadDocument
+  // 逐条过滤之前，全所最近 N 份文档若都不属于本人，本人自己案件里的材料会搜不到
+  // ——表现为「系统说没有」，比报错更难察觉，且律所越大漏得越狠。
+  //
+  // canReadDocument 含用印审批、审批历史等需额外查询的分支，无法完整下推为 where；
+  // 这里只下推可表达的归属条件作为**超集粗过滤**，精确判定仍由逐条 canReadDocument 负责。
+  // 复用 matterReadVisibilityFilter / intakeReadVisibilityFilter（已覆盖 CUSTOM 角色
+  // 与团队范围），合伙人/ALL 范围下两者返回 {}，等价于不收窄。
+  //
+  // 已知取舍：仅凭用印/审批通道可读、且既不挂案件也不挂收案、又非本人上传的孤立
+  // 文档，不进入候选池。这类文档通常仍挂在某案件下，实际影响有限；彻底解法需把
+  // 审批通道物化为可查询关联，另行排期。
+  const grants = rolePermissions as Parameters<typeof matterReadVisibilityFilter>[2];
+  const visibilityScope: Prisma.DocumentWhereInput = {
+    OR: [
+      { matter: { is: matterReadVisibilityFilter(userId, role, grants) } },
+      { intake: { is: intakeReadVisibilityFilter(userId, role, grants) } },
+      { uploadedById: userId },
+    ],
+  };
+
   const candidates = await prisma.document.findMany({
     where: {
       deletedAt: null,
-      OR: [
-        { name: { contains: q, mode: "insensitive" } },
-        { tags: { has: q } },
-        { textContent: { contains: q, mode: "insensitive" } },
+      // 必须用 AND 包裹：可见性与关键词都是 OR 组，平铺会让后写的 OR 覆盖前一个
+      AND: [
+        visibilityScope,
+        {
+          OR: [
+            { name: { contains: q, mode: "insensitive" } },
+            { tags: { has: q } },
+            { textContent: { contains: q, mode: "insensitive" } },
+          ],
+        },
       ],
     },
-    take: 40,
+    take: DOCUMENT_CANDIDATE_LIMIT,
     orderBy: { createdAt: "desc" },
     select: {
       id: true, name: true, category: true, textContent: true,

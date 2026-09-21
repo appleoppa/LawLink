@@ -52,7 +52,7 @@ export interface OcrResult {
 }
 
 /** 识别单张图片或（网关支持时）扫描 PDF。 */
-export async function recognizeText(input: { data: Buffer; mimeType: string; hint?: string }): Promise<OcrResult> {
+export async function recognizeText(input: { data: Buffer; mimeType: string; hint?: string; userId?: string }): Promise<OcrResult> {
   const settings = await readOcrSettings();
   const mime = input.mimeType.toLowerCase();
   const isImage = mime.startsWith("image/");
@@ -68,7 +68,7 @@ export async function recognizeText(input: { data: Buffer; mimeType: string; hin
   throw new OcrNotConfiguredError(`无文本层的 PDF 需要支持 PDF 的 OCR 服务端点（当前仅视觉模型可用，仅支持图片）`);
 }
 
-async function aiVisionOcr(input: { data: Buffer; mimeType: string; hint?: string }): Promise<OcrResult> {
+async function aiVisionOcr(input: { data: Buffer; mimeType: string; hint?: string; userId?: string }): Promise<OcrResult> {
   const dataUrl = `data:${input.mimeType};base64,${input.data.toString("base64")}`;
   // 2026-09-20 第五轮审计 P2-1 修复：此前直接调 aiChat 未传 model，落到 textModel——
   // 纯文本模型收到 image_url 多半报错（落 FAILED）。改走 aiVision（默认 visionModel），
@@ -76,7 +76,8 @@ async function aiVisionOcr(input: { data: Buffer; mimeType: string; hint?: strin
   const result = await aiVision({
     image: { dataUrl },
     prompt: `请逐字识别这张${input.hint ?? "法院文书扫描件"}图片中的全部文字，按原文顺序输出纯文本，不要解释、不要总结、不要添加标点以外的内容。`,
-    logAction: "sms-ocr-vision"
+    logAction: "sms-ocr-vision",
+    userId: input.userId // 第八轮体检：扫描件外发也记发起人
   });
   if (!result.content.trim()) throw new Error("OCR 未返回文本");
   return { text: result.content.trim(), engine: "ai-vision" };

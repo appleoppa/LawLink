@@ -27,6 +27,13 @@ export interface AiChatOptions {
   temperature?: number;
   timeoutMs?: number;
   logAction?: string; // 外部调用台账的业务动作名（如 review-document）
+  /**
+   * 发起人 id，落 ExternalCallLog.userId（第八轮体检）。
+   * 此前全部 AI 路径都不传，台账那一列恒为 null——台账只能回答「系统某时刻调了一次
+   * ai-chat、耗时多少」，答不了「谁发的」。律所需要能对客户说清材料由谁外发。
+   * 无请求上下文的后台任务（队列重跑等）可不传。
+   */
+  userId?: string;
 }
 
 export interface AiChatResult {
@@ -84,7 +91,7 @@ export async function aiChat(input: AiChatOptions): Promise<AiChatResult> {
 
   // v1.x P1: 外部调用台账（成败/耗时；失败不改变原有异常行为）
   const json = (await withExternalCallLog(
-    { service: "ai-chat", action: input.logAction },
+    { service: "ai-chat", action: input.logAction, userId: input.userId },
     () => callOpenAiCompatible({
       apiKey: s.apiKey,
       baseUrl: s.baseUrl,
@@ -109,6 +116,7 @@ export async function aiVision(input: {
   maxTokens?: number;
   timeoutMs?: number;
   logAction?: string;
+  userId?: string;
 }): Promise<AiChatResult> {
   const s = await getAiSettings();
   if (!s.configured) throw new AiNotConfiguredError();
@@ -130,7 +138,8 @@ export async function aiVision(input: {
     model: input.model || s.visionModel,
     maxTokens: input.maxTokens ?? 2000,
     timeoutMs: input.timeoutMs ?? 30_000,
-    logAction: input.logAction
+    logAction: input.logAction,
+    userId: input.userId
   });
 }
 

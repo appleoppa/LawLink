@@ -84,7 +84,7 @@ function mergeResults(results: ParsedPleading[]): ParsedPleading {
 }
 
 export async function parsePleading(form: FormData): Promise<ParsedPleading> {
-  await requireSession("intakes.create");
+  const session = await requireSession("intakes.create");
   const file = form.get("file");
   if (!(file instanceof File)) throw new Error("缺少文件");
 
@@ -101,6 +101,7 @@ export async function parsePleading(form: FormData): Promise<ParsedPleading> {
     if (isImage) {
       const dataUrl = `data:${file.type};base64,${buf.toString("base64")}`;
       const { content } = await aiVision({
+      userId: session.user.id,
         image: { dataUrl },
         prompt: SYSTEM_PROMPT,
         maxTokens: 1500
@@ -115,6 +116,7 @@ export async function parsePleading(form: FormData): Promise<ParsedPleading> {
 
     if (cleaned && cleaned.length >= 20) {
       const { content } = await aiChat({
+      userId: session.user.id,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: `下方为起诉状 / 申请书的全文：\n\n${cleaned.slice(0, 12000)}` }
@@ -137,6 +139,7 @@ export async function parsePleading(form: FormData): Promise<ParsedPleading> {
       });
       const dataUrl = `data:image/png;base64,${Buffer.from(arrayBuf).toString("base64")}`;
       const { content } = await aiVision({
+      userId: session.user.id,
         image: { dataUrl },
         prompt: `${SYSTEM_PROMPT}\n\n（这是扫描版起诉状 / 申请书第 ${i}/${pagesToRender} 页）`,
         maxTokens: 1500

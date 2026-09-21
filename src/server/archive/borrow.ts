@@ -58,6 +58,10 @@ async function expireOverdue(): Promise<number> {
   return r.count;
 }
 
+/** 待审取数窗口：大于展示窗口，避免逐条资格过滤把本人该审的挤出（见 listArchiveBorrows） */
+const PENDING_SCAN_LIMIT = 200;
+const PENDING_DISPLAY_LIMIT = 50;
+
 const borrowSelect = {
   id: true, status: true, reason: true, scope: true, revision: true,
   decidedAt: true, rejectReason: true, accessUntil: true, returnedAt: true, createdAt: true,
@@ -93,9 +97,12 @@ export async function listArchiveBorrows(): Promise<{
       where: { applicantId: session.user.id },
       orderBy: { createdAt: "desc" }, take: 50, select: borrowSelect
     }),
+    // 审批资格是逐条异步判定（canApproveContext），无法下推为 where 条件：
+    // 取数窗口必须大于展示窗口，否则待审总量超过窗口时，本人有资格审的条目
+    // 会被无资格条目挤出取数结果而永不可见（第七轮体检）。
     prisma.archiveBorrowRequest.findMany({
       where: { status: "PENDING" },
-      orderBy: { createdAt: "asc" }, take: 50, select: borrowSelect
+      orderBy: { createdAt: "asc" }, take: PENDING_SCAN_LIMIT, select: borrowSelect
     })
   ]);
   // 审批资格逐条判定（ARCHIVE_APPROVE 规则 + 自审批排除）
@@ -112,7 +119,7 @@ export async function listArchiveBorrows(): Promise<{
   return {
     expiredNow,
     mine: mine as unknown as BorrowRow[],
-    pending: pendingWithFlag.filter((r) => r.canDecide) as unknown as BorrowRow[],
+    pending: pendingWithFlag.filter((r) => r.canDecide).slice(0, PENDING_DISPLAY_LIMIT) as unknown as BorrowRow[],
     currentUserId: session.user.id
   };
 }
@@ -272,7 +279,7 @@ export async function searchArchiveForBorrow(q: string) {
   const session = await requireSession("matters.read");
   const term = q.trim();
   if (term.length < 2) return [];
-  return prisma.archiveRecord.findMany({
+  const rows = await prisma.archiveRecord.findMany({
     where: {
       status: "APPROVED",
       matter: { deletedAt: null },
@@ -289,6 +296,16 @@ export async function searchArchiveForBorrow(q: string) {
       matter: { select: { id: true, internalCode: true, title: true } }
     }
   });
+  // 借阅检索可跨本人经办范围查到全所已归档案卷（借阅功能的前提），故检索行为
+  // 本身留痕：只记检索词与命中数，不记命中的案名（第七轮体检 P3-6）。
+  await audit({
+    userId: session.user.id,
+    action: "ARCHIVE_BORROW_SEARCH",
+    targetType: "ArchiveRecord",
+    targetId: "",
+    detail: { term, hits: rows.length }
+  });
+  return rows;
 }
 
 /** 归档台账页数据（页面已放开为登录可进）：archive.read 持有者另见全量台账 */

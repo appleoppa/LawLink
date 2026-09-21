@@ -6,8 +6,10 @@
  * 后台每年录入；本引擎据此把届满日顺延到下一工作日（调休上班日 WORKDAY
  * 不视为休假日）。
  *
- * 降级约定：Holiday 表未建（迁移未执行）或查询失败时按「未配置」处理，
- * 返回原日期并 adjusted=false——既有「请人工核对顺延」提示逻辑不受影响。
+ * 降级约定：Holiday 表未建（迁移未执行）或查询失败时按「未配置」处理——
+ * 此时不掌握任何法定节假日安排，仅按周末顺延（周末属民诉法第八十五条第三款
+ * 的法定休假日），春节、国庆等假期不会被顺延，既有「请人工核对顺延」提示
+ * 因此仍然必要。注意此种情形下仍可能返回 adjusted=true（届满日落在周末）。
  */
 import { prisma } from "@/lib/prisma";
 import { civilFromKey, civilKey } from "@/lib/ui/sh-time";
@@ -25,8 +27,14 @@ export async function loadHolidayMap(fromKey: string, toKey: string): Promise<Ho
     for (const r of rows) {
       map.set(civilKey(r.date), { name: r.name, kind: r.kind === "WORKDAY" ? "WORKDAY" : "HOLIDAY" });
     }
-  } catch {
-    // 表未建（迁移未执行）——按未配置降级
+  } catch (err) {
+    // 表未建（迁移未执行，P2021）属预期降级；其余错误（连接失败、权限等）
+    // 不能静默——期限引擎按「未配置」降级意味着法定节假日不顺延，
+    // 必须留痕以免故障被当成正常状态（第七轮体检 P3-2）。
+    const code = (err as { code?: string } | null)?.code;
+    if (code !== "P2021") {
+      console.error("[holidays] 放假安排读取失败，本次按未配置降级（节假日不顺延）：", err);
+    }
   }
   return map;
 }
@@ -62,7 +70,8 @@ export type AdjustedDeadline = { key: string; adjusted: boolean; fromKey?: strin
 
 /**
  * 期限届满日按放假安排顺延（服务端重算与确认场景使用）。
- * 返回 adjusted=false 表示无需顺延或未配置。
+ * adjusted=false 表示无需顺延；adjusted=true 表示给出了建议顺延日——
+ * 调用方按「提示」口径使用，不得据此自动改写律师填写的 dueAt（第七轮体检 P2-3）。
  */
 export async function adjustDeadlineForHolidays(dueKey: string): Promise<AdjustedDeadline> {
   // 只需看届满日起一小段窗口（长假最长约 8 天，取 15 天余量）

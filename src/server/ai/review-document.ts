@@ -1,4 +1,5 @@
 "use server";
+import { audit } from "@/server/audit";
 import { roleMutation } from "@/lib/roles/service";
 
 /**
@@ -120,6 +121,7 @@ export async function reviewDocument(input: {
     let content = "";
     try {
       const res = await aiChat({
+      userId: session.user.id,
         messages: [
           { role: "system", content: systemPrompt },
           {
@@ -158,6 +160,27 @@ export async function reviewDocument(input: {
     }));
     recordId = rec.id;
   }
+
+  // 第八轮体检：ReviewRecord.matterId 必填且带外键，收案阶段（intakeId）的材料
+  // 送 AI 审查此前不留任何痕迹——而收案恰是客户身份证、合同草稿最集中的时候。
+  // 外发留痕改走 AuditLog（不可由业务代码删除，AGENTS §八），两条路径都记：
+  // ReviewRecord 是业务记录（供案件内回看），AuditLog 是合规留痕（答「谁把哪份
+  // 材料发给了外部模型」）。不改 Schema，因而无需迁移审批。
+  await audit({
+    userId: session.user.id,
+    action: "AI_REVIEW_DOCUMENT",
+    targetType: "Document",
+    targetId: doc.id,
+    detail: {
+      matterId: doc.matterId ?? null,
+      intakeId: doc.intakeId ?? null,
+      documentName: doc.name,
+      sentChars: raw.length,
+      truncated,
+      itemCount: items.length,
+      recordId
+    }
+  });
 
   return {
     documentName: doc.name,

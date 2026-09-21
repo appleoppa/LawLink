@@ -93,7 +93,7 @@ export async function recommendCause(input: {
   procedureType?: ProcedureType | null;
   situation: string;
 }): Promise<CauseRecommendation[]> {
-  await requireSession("intakes.create");
+  const session = await requireSession("intakes.create");
 
   const situation = input.situation.trim();
   if (situation.length < 5) {
@@ -103,6 +103,7 @@ export async function recommendCause(input: {
   let content = "";
   try {
     const res = await aiChat({
+      userId: session.user.id,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         {

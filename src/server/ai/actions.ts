@@ -70,6 +70,7 @@ export async function recognizeInvoiceFromImage(formData: FormData): Promise<
 
   try {
     const res = await aiVision({
+      userId: session.user.id,
       image: { dataUrl },
       prompt: PROMPT,
       timeoutMs: 30_000

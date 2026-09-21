@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { confirmDialog, promptDialog } from "@/components/patterns/confirm-dialog";
 import { formatDate } from "@/lib/utils";
 import { matterHref } from "@/lib/matters/route";
 import {
@@ -126,7 +126,16 @@ function DecideRow({ row }: { row: BorrowRow }) {
           await decideArchiveBorrow({ id: row.id, revision: row.revision, decision: "APPROVED", days: 30 });
           toast.success("已批准借阅");
         } else {
-          const reason = window.prompt("请填写驳回理由：");
+          const reason = await promptDialog({
+            title: `驳回借阅：${row.archiveRecord.matter.title}`,
+            description: "驳回理由会记入审计并对申请人可见。",
+            label: "驳回理由",
+            placeholder: "例如：该案卷涉及未了结的关联争议，暂不外借",
+            required: true,
+            maxLength: 500,
+            confirmText: "驳回",
+            danger: true
+          });
           if (!reason?.trim()) return;
           await decideArchiveBorrow({ id: row.id, revision: row.revision, decision: "REJECTED", rejectReason: reason });
           toast.success("已驳回");

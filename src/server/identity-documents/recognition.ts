@@ -70,6 +70,7 @@ export async function recognizeIdentityDocument(formData: FormData): Promise<
 {"documentType":"PRC_RESIDENT_ID | HK_MACAO_TAIWAN_RESIDENCE_PERMIT | PRC_HK_MACAO_TRAVEL_PERMIT | HK_MACAO_MAINLAND_TRAVEL_PERMIT | TAIWAN_MAINLAND_TRAVEL_PERMIT | PASSPORT | FOREIGN_PERMANENT_RESIDENT_ID | OTHER | UNKNOWN","name":"持证人姓名","documentNumber":"证件号码","confidence":"HIGH | MEDIUM | LOW"}
 不要返回住址、出生日期、民族、性别或其他个人信息。无法确认的字段使用空字符串，不能猜测。`;
     const response = await aiVision({
+      userId: session.user.id,
       image: { dataUrl: `data:image/jpeg;base64,${prepared.toString("base64")}` },
       prompt,
       maxTokens: 400,

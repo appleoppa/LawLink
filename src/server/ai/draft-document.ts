@@ -34,7 +34,7 @@ const SYSTEM_PROMPT = `你是一名资深中国执业律师，擅长起草各类
 4. 文末注明这是 AI 生成的草稿，需律师核校后使用。`;
 
 export async function draftDocument(input: DraftInput): Promise<DraftResult> {
-  await requireSession("documents.write");
+  const session = await requireSession("documents.write");
 
   const docType = input.docType?.trim();
   if (!docType) {
@@ -50,6 +50,7 @@ export async function draftDocument(input: DraftInput): Promise<DraftResult> {
 
   try {
     const { content } = await aiChat({
+      userId: session.user.id,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: lines.join("\n\n") }

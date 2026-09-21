@@ -465,10 +465,18 @@ export async function addDeadline(input: DeadlineCreateInput) {
       const adjusted = await adjustDeadlineForHolidays(rawKey);
       const submittedKey = shDayKey(data.dueAt);
       if (adjusted.key !== submittedKey) {
+        // 口径＝提示，不改写 dueAt（第七轮体检 P2-3）：法定休假日顺延在个案中
+        // 可能有例外（法院指定期间、当事人另有约定），系统不替律师改日期，
+        // 只给出建议值由律师核对后自行调整。文案据此写「建议顺延至」而非「已顺延至」。
         const note = adjusted.adjusted
-          ? `；系统按规则「${rule.name}」重算为 ${rawKey}，已按放假安排顺延至 ${adjusted.key}（${adjusted.reason}），与提交日期 ${submittedKey} 不一致，请核对`
+          ? `；系统按规则「${rule.name}」重算为 ${rawKey}，建议按放假安排顺延至 ${adjusted.key}（${adjusted.reason}），与提交日期 ${submittedKey} 不一致，请核对后自行调整`
           : `；系统按规则「${rule.name}」重算为 ${rawKey}，与提交日期 ${submittedKey} 不一致，请核对`;
-        basis = `${basis ?? ""}${note}`.slice(0, 300);
+        // 截断保护警告本身：此前 `${basis}${note}`.slice(0,300) 从尾部截，
+        // 恰好把最该被看见的不一致提示切掉。改为优先保留 note，截原 basis 尾部。
+        const LIMIT = 300;
+        basis = note.length >= LIMIT
+          ? note.slice(0, LIMIT)
+          : `${(basis ?? "").slice(0, LIMIT - note.length)}${note}`;
       }
     }
   }

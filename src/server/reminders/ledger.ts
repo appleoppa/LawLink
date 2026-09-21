@@ -73,11 +73,14 @@ export async function registerReminderDelivery(
     data: { status: "PENDING", registeredAt: new Date(), detail: Prisma.DbNull }
   });
   if (revived.count > 0) return "REGISTERED";
-  await db.reminderDelivery.updateMany({
+  // 失败行重武装同样是「本次产生了应发项」——必须返回 REGISTERED，否则调用方
+  // 按 === "REGISTERED" 的计数（escalationSent、registered）会漏记重试，
+  // 台账统计与实际投递分叉（第七轮体检 P2-2）。
+  const rearmed = await db.reminderDelivery.updateMany({
     where: { ...dedupeFields(key), status: "FAILED", attempts: { lt: MAX_ATTEMPTS } },
     data: { status: "PENDING" }
   });
-  return "ALREADY";
+  return rearmed.count > 0 ? "REGISTERED" : "ALREADY";
 }
 
 /** 作废某类对象的全部 PENDING 登记（作废矩阵的落库侧） */
@@ -107,7 +110,9 @@ export async function recordDeliveryOutcome(
 ): Promise<void> {
   const data: Record<string, unknown> = {
     status,
-    sentAt: status === "SENT" ? new Date() : null,
+    // 只在 SENT 时写入，其他状态不碰——台账是事实记录，
+    // 同键当日重跑由 SENT 转 FAILED 不应抹掉「曾经送达过」（第七轮体检 P3-1）
+    ...(status === "SENT" ? { sentAt: new Date() } : {}),
     ...(extra?.error !== undefined ? { lastError: extra.error } : {}),
     ...(extra?.detail !== undefined ? { detail: extra.detail } : {})
   };

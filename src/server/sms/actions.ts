@@ -82,7 +82,7 @@ export async function parseAndSaveSms(input: z.infer<typeof smsParseAndSaveSchem
     }
     let parsed: ParsedSms = parseSms(text);
     if (data.useAi) {
-      parsed = await enrichWithAi(text, parsed);
+      parsed = await enrichWithAi(text, parsed, session.user.id);
       if (parsed.aiEnriched) aiEnrichedCount++;
     }
     const matchedMatterId = await findMatchingMatter(parsed.caseNumbers);

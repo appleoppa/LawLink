@@ -67,9 +67,10 @@ export async function clearAiKeyAction(input: z.infer<typeof clearSchema>) {
 
 /** 测试连接：发一个 ping，验证 base_url + key + text_model 可用 */
 export async function testAiConnection() {
-  await requireSystemAdmin();
+  const session = await requireSystemAdmin();
   try {
     const res = await aiChat({
+      userId: session.user.id,
       messages: [
         { role: "system", content: "You are a connectivity probe. Reply only with 'pong'." },
         { role: "user", content: "ping" }

@@ -8,7 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { isSystemAdmin } from "@/lib/auth/system-role";
 import { audit } from "@/server/audit";
-import { civilFromKey } from "@/lib/ui/sh-time";
+import { civilFromKey, shParts } from "@/lib/ui/sh-time";
 
 const batchSchema = z.object({
   entries: z.array(z.object({
@@ -26,7 +26,10 @@ async function requireAdmin() {
 
 export async function listHolidays(year?: number) {
   await requireSession("personal");
-  const y = year ?? new Date().getFullYear() + (new Date().getMonth() >= 10 ? 1 : 0); // 默认看明年（每年 Q4 录入次年安排）
+  // 默认看明年（每年 Q4 录入次年安排）。年月按上海口径取——此前用服务器本地
+  // getFullYear/getMonth，UTC 容器下 11 月 1 日前后会跨月错判（第七轮体检 P3-4）。
+  const nowSh = shParts(new Date());
+  const y = year ?? nowSh.y + (nowSh.m >= 11 ? 1 : 0);
   const from = civilFromKey(`${y}-01-01`);
   const to = civilFromKey(`${y}-12-31`);
   const rows = await prisma.holiday.findMany({

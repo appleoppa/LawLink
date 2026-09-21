@@ -10,7 +10,12 @@ const targetLabels: Record<string, string> = {
   PreservationCase: "保全案件", PreservationProperty: "保全财产", Report: "报告", SealRequest: "用章申请",
   SmsMessage: "法院短信", StageTemplate: "阶段模板", SystemSetting: "系统设置", Task: "事项",
   Team: "律师团队", User: "用户", BuiltinRole: "内置角色", RoleDefinition: "自定义角色",
-  Engagement: "委托", EvidenceItem: "证据项"
+  Engagement: "委托", EvidenceItem: "证据项",
+  // 第七轮体检：补齐缺失对象标签（缺失时审计页显示「其他对象」）
+  ArchiveBorrowRequest: "案卷借阅申请", CommissionSettlement: "分成结算", DeadlineRule: "期限规则",
+  FeeEntryList: "收付记录列表", FinanceCorrection: "财务更正", Holiday: "放假安排",
+  Payment: "实收", Receivable: "应收", ReminderDelivery: "提醒送达台账",
+  UserIdentityDocument: "人员证件资料"
 };
 const words: Record<string, string> = {
   BUILTIN: "内置", ROLE: "角色", PRESENTATION: "显示资料", DEFINITION: "定义",
@@ -42,7 +47,20 @@ const words: Record<string, string> = {
   UPLOAD: "上传", USER: "用户", VALUES: "内容", VECTOR: "语义索引", VIEW: "查看", WEBHOOK: "群机器人",
   WEEKLY: "周报", WORKFLOW: "工作流", YUANDIAN: "元典", ADD: "添加", CLEANUP: "历史清理",
   ENGAGEMENT: "委托", EVIDENCE: "证据", TERMINATE: "终止", ACTIVATE: "启用", SERVICE: "服务",
-  ENFORCE: "强制", SKIP: "跳过", ESCALATION: "升级"
+  ENFORCE: "强制", SKIP: "跳过", ESCALATION: "升级",
+  // 第七轮体检：auditActionLabel 要求 action 的每个词都已登记，缺一个整条即降级为
+  // 「其他操作（详见技术详情）」。全仓 199 个 action 中 48 个命中该降级，其中含
+  // 证件号/电话明文查看、财务更正、二次验证变更等敏感操作。以下为一次补齐的清单。
+  ADJUST: "调整", ALLOCATION: "核销", AMENDMENT: "补充协议", BORROW: "借阅", BUNDLE: "卷宗包",
+  CANCEL: "取消", CHECKOUT: "取件", CONDITION: "条件", CONFIRM: "确认", CONFIRMED: "已确认",
+  CORRECTION: "更正", DESKTOP: "桌面连接器", DISABLE: "停用", DRAFT: "草稿", ENABLE: "启用",
+  ENCRYPT: "加密", ENFORCED: "强制要求", FETCH: "拉取", FINANCE: "财务", FROM: "来自",
+  HOLIDAY: "放假安排", ID: "证件号", INBOUND: "来件", ITEM: "条目", LEDGER: "台账",
+  LIST: "清单", LOCKED: "已锁定", MERGE: "合并", MISSING: "缺失", NEW: "新增",
+  NOTIFY: "通知", PHONE: "电话", PHOTO: "照片", POLICY: "制度", POST: "事后",
+  REBIND: "重新绑定", RECEIVABLE: "应收", RECIPIENT: "接收人", RENDER: "渲染", RESET: "重置",
+  RETURN: "归还", REVEAL: "查看明文", RULE: "规则", SAVED: "已保存", SCHEDULE: "日程",
+  SIGN: "签署", TEXT: "正文", TOTP: "二次验证", VERSION: "版本"
 };
 export function auditActionLabel(code: string): string {
   const parts = code.split("_");

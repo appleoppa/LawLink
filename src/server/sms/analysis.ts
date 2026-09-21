@@ -26,7 +26,7 @@ interface AnalyzedDoc {
 }
 
 /** 文本 → AI 结构化分析（纯函数化出口便于测试；AI 未配置抛 AiNotConfiguredError） */
-export async function analyzeDocumentText(text: string, hint?: string): Promise<AnalyzedDoc> {
+export async function analyzeDocumentText(text: string, hint?: string, userId?: string): Promise<AnalyzedDoc> {
   const clipped = text.slice(0, MAX_ANALYSIS_TEXT_CHARS);
   const result = await aiChat({
     messages: [
@@ -37,7 +37,10 @@ export async function analyzeDocumentText(text: string, hint?: string): Promise<
       },
       { role: "user", content: `文书文本（\\f 分页，页码按出现顺序递增）：\n${clipped}${hint ? `\n\n上下文提示：${hint}` : ""}` }
     ],
-    logAction: "sms-doc-analysis"
+    logAction: "sms-doc-analysis",
+    // 第八轮体检：外发台账记发起人。后台链路无 session，取来件的收件人
+    // （粘贴该短信进系统的律师）作为发起人，口径与取件/确认一致。
+    userId
   });
   const json = extractJson(result.content);
   return normalizeAnalyzed(json);
@@ -54,15 +57,30 @@ function extractJson(content: string): Record<string, unknown> {
   }
 }
 
+/**
+ * AI 输出上限（第八轮体检·提示词注入面）。
+ *
+ * 文书正文是不可信输入：伪造短信或在扫描件里嵌指令，都能让模型按攻击者的意图
+ * 输出。字段写入面已由双重白名单关闭（生成侧只认 caseNumber/courtName，应用侧
+ * 再校验 ["caseNumber","handlingAgency"]），但数量与长度此前无约束——一份文书
+ * 可产出任意多条建议淹没确认界面，超长字符串原样进库。这里补上限。
+ */
+const MAX_FIELDS = 30;
+const MAX_EVENTS = 20;
+const MAX_CASE_NUMBERS = 20;
+const MAX_TEXT_LEN = 200;
+const MAX_NOTE_LEN = 500;
+
 function normalizeAnalyzed(raw: Record<string, unknown>): AnalyzedDoc {
-  const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  const str = (v: unknown, max = MAX_TEXT_LEN) =>
+    typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null;
   const fields = Array.isArray(raw.fields)
     ? (raw.fields as Record<string, unknown>[]).map(f => ({
         key: str(f.key) ?? "",
         value: str(f.value) ?? "",
         page: typeof f.page === "number" ? f.page : undefined,
         excerpt: str(f.excerpt) ?? undefined
-      })).filter(f => f.key && f.value)
+      })).filter(f => f.key && f.value).slice(0, MAX_FIELDS)
     : [];
   const events = Array.isArray(raw.events)
     ? (raw.events as Record<string, unknown>[]).map(e => ({
@@ -70,15 +88,15 @@ function normalizeAnalyzed(raw: Record<string, unknown>): AnalyzedDoc {
         title: str(e.title) ?? "法院文书事项",
         dateText: str(e.dateText) ?? "",
         timeText: str(e.timeText) ?? undefined,
-        note: str(e.note) ?? undefined
-      })).filter(e => e.dateText)
+        note: str(e.note, MAX_NOTE_LEN) ?? undefined
+      })).filter(e => e.dateText).slice(0, MAX_EVENTS)
     : [];
   return {
     docType: str(raw.docType) ?? "其他",
     suggestedName: str(raw.suggestedName),
     fields,
     events,
-    caseNumbers: Array.isArray(raw.caseNumbers) ? (raw.caseNumbers as unknown[]).map(v => str(v)).filter((v): v is string => Boolean(v)) : [],
+    caseNumbers: Array.isArray(raw.caseNumbers) ? (raw.caseNumbers as unknown[]).map(v => str(v)).filter((v): v is string => Boolean(v)).slice(0, MAX_CASE_NUMBERS) : [],
     court: str(raw.court)
   };
 }
@@ -90,7 +108,7 @@ function normalizeAnalyzed(raw: Record<string, unknown>): AnalyzedDoc {
 export async function analyzeInboundFile(fileId: string): Promise<{ state: string; suggestionCount: number }> {
   const file = await prisma.smsInboundFile.findUnique({
     where: { id: fileId },
-    include: { sms: { select: { id: true, matchedMatterId: true, smsType: true, parsedJson: true } } }
+    include: { sms: { select: { id: true, matchedMatterId: true, smsType: true, parsedJson: true, receivedById: true } } }
   });
   if (!file) throw new Error("来件文件不存在");
 
@@ -115,11 +133,11 @@ export async function analyzeInboundFile(fileId: string): Promise<{ state: strin
       pageCount = extracted.pageCount;
     } catch (err) {
       if (err instanceof NoTextLayerError) {
-        const ocr = await recognizeText({ data: buffer, mimeType: file.mimeType, hint: file.displayName ?? file.originalName });
+        const ocr = await recognizeText({ data: buffer, mimeType: file.mimeType, hint: file.displayName ?? file.originalName, userId: file.sms.receivedById });
         text = ocr.text;
       } else if (err instanceof UnsupportedTextExtraction) {
         // 图片等非文档类型直接走 OCR
-        const ocr = await recognizeText({ data: buffer, mimeType: file.mimeType, hint: file.displayName ?? file.originalName });
+        const ocr = await recognizeText({ data: buffer, mimeType: file.mimeType, hint: file.displayName ?? file.originalName, userId: file.sms.receivedById });
         text = ocr.text;
       } else {
         throw err;
@@ -127,7 +145,7 @@ export async function analyzeInboundFile(fileId: string): Promise<{ state: strin
     }
     if (!text.trim()) throw new Error("未取得可分析文本");
 
-    const analyzed = await analyzeDocumentText(text, `来源：法院短信来件（${file.sms.smsType}）`);
+    const analyzed = await analyzeDocumentText(text, `来源：法院短信来件（${file.sms.smsType}）`, file.sms.receivedById);
     const pageCountFinal = pageCount ?? countPages(text);
 
     await prisma.smsInboundFile.update({

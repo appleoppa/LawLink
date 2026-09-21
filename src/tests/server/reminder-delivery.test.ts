@@ -344,3 +344,26 @@ it("开庭 OFFSET 行：文案含开庭信息，正常送达", async () => {
   expect(result).toMatchObject({ sent: 1 });
   expect(db.notification.createMany.mock.calls[0][0].data[0].title).toContain("开庭：庭审");
 });
+
+it("P2-1：上一轮 sweep 未结束时重入 → 整轮让开，不重复捞取未 finalize 的行", async () => {
+  // findMany 挂起，模拟一次尚未结束的 sweep（行仍是 PENDING，未 finalize）
+  let release: (v: unknown[]) => void = () => {};
+  db.reminderDelivery.findMany.mockImplementationOnce(
+    () => new Promise((resolve) => { release = resolve as (v: unknown[]) => void; })
+  );
+
+  const first = deliverPendingReminders();
+  // node-cron 每 2 分钟照常触发的下一轮：必须整轮让开
+  const second = await deliverPendingReminders();
+  expect(second.reentrantSkipped).toBe(true);
+  expect(second.processed).toBe(0);
+  expect(db.reminderDelivery.findMany).toHaveBeenCalledTimes(1); // 第二次没有再捞
+
+  release([]);
+  await first;
+
+  // 守卫在 finally 复位：下一轮正常工作
+  db.reminderDelivery.findMany.mockResolvedValue([]);
+  const third = await deliverPendingReminders();
+  expect(third.reentrantSkipped).toBeUndefined();
+});

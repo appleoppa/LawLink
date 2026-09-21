@@ -71,12 +71,42 @@ export const preservationDeliverySelect = {
   }
 } as const;
 
-export type DeliverySweepResult = { processed: number; sent: number; voided: number; skipped: number; failed: number };
+export type DeliverySweepResult = {
+  processed: number; sent: number; voided: number; skipped: number; failed: number;
+  /** 上一轮 sweep 仍在进行，本次整轮让开（重入守卫，见下） */
+  reentrantSkipped?: boolean;
+};
+
+/**
+ * 进程内重入守卫（第七轮体检 P2-1 的单进程部分）。
+ *
+ * sweep 没有「领取」动作：findMany PENDING → 逐行 finalize，行在处理期间仍是
+ * PENDING。node-cron 的每 2 分钟作业在上一次回调尚未结束时照常触发下一次，
+ * 重入的 sweep 会捞到同一批未 finalize 的行并重复投递——唯一约束挡不住，
+ * 它防的是同键重复「行」，不是同一行重复「发送」。
+ *
+ * 本标志只在单进程内有效（AGENTS：单体应用 + 单进程），足以消除 node-cron
+ * 重叠触发这一现实成因。多实例部署仍需数据库级租约，那需要 Schema 迁移，
+ * 走红线审批，见 docs/SYSTEM-AUDIT-20260921-ROUND7-v2.md §五。
+ */
+let sweepInFlight = false;
 
 /**
  * 投递器：sweep 到期 PENDING 行，逐行复核对象现值后发送并落终态。
  */
 export async function deliverPendingReminders(limit = 20): Promise<DeliverySweepResult> {
+  if (sweepInFlight) {
+    return { processed: 0, sent: 0, voided: 0, skipped: 0, failed: 0, reentrantSkipped: true };
+  }
+  sweepInFlight = true;
+  try {
+    return await sweepOnce(limit);
+  } finally {
+    sweepInFlight = false;
+  }
+}
+
+async function sweepOnce(limit: number): Promise<DeliverySweepResult> {
   const now = new Date();
   const rows = await prisma.reminderDelivery.findMany({
     where: { status: "PENDING", registeredAt: { lte: now } },

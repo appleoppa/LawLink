@@ -37,7 +37,7 @@ const PROMPT = `下方图片是一张中国法院传票（开庭传票）。请�
 - 仅 JSON，不要解释`;
 
 export async function parseSummons(form: FormData): Promise<ParsedSummons> {
-  await requireSession("documents.write");
+  const session = await requireSession("documents.write");
   const file = form.get("file");
   if (!(file instanceof File)) throw new Error("缺少文件");
   if (!SUPPORTED.has(file.type)) {
@@ -50,6 +50,7 @@ export async function parseSummons(form: FormData): Promise<ParsedSummons> {
 
   try {
     const { content } = await aiVision({
+      userId: session.user.id,
       image: { dataUrl },
       prompt: PROMPT,
       maxTokens: 500
