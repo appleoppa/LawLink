@@ -201,11 +201,6 @@ type PreservationRecipientNode = {
   matter: { id: string; title: string; internalCode: string; owner: ReminderRecipient | null } | null;
 };
 
-/** 保全记录（含所属案件与案件主办）的扫描结构 */
-type PreservationCaseNode = PreservationRecipientNode & {
-  remindDays: number[];
-};
-
 /** 有效保全负责人优先，回退有效案件主办；全部失效返回 null（调用方升级） */
 function pickPreservationRecipient(cs: PreservationRecipientNode): ReminderRecipient | null {
   if (isReminderRecipientEnabled(cs.owner)) return cs.owner;
