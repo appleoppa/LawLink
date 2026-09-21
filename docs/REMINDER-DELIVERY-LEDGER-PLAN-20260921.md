@@ -1,80 +1,95 @@
-# 提醒送达台账（F-1）设计方案
+# 提醒送达台账（F-1）设计方案 v2
 
 > 日期：2026-09-21（上海）。来源：第六轮体检 F-1（`docs/SYSTEM-AUDIT-20260920-ROUND6-v2.md` §五）。
-> 状态：**设计冻结，迁移 SQL 待叶森审批**（`prisma/migrations/20260921000001_reminder_delivery_ledger/`，未执行）。
-> 配套已先行落地：P2-3（邮件摘要全局 500 条截断）不依赖本 Schema，已单独修复。
+> 状态：**v2 修订版（吸收叶森 8 条审查意见），迁移 SQL 待批**（`prisma/migrations/20260921000002_reminder_delivery_ledger/`，未执行；v1 的 20260921000001 已删除，从未在任何库执行）。
+> 配套已先行落地：P2-3（邮件摘要全局 500 条截断）不依赖本 Schema，已修复并带 4 例测试。
+>
+> **中间态约定**：model 在 schema、表在库里不存在的状态只在「待批窗口」内允许存在；若最终不批，整体摘除恢复一致，不留悬置。
 
----
+## v1 → v2 修订记录
 
-## 一、问题
+| # | 意见 | 修订 |
+|---|---|---|
+| 1 | Phase A「发送后补记」只交付发送日志，答不了「该发未发」，且会被 Phase C 推翻 | 分期重排：**保全单点做完整闭环（登记→投递→落结果）**，验证后再扩点；废弃全量补记方案 |
+| 2 | 无作废语义，Phase C 会投递已改期/已办结对象的旧提醒 | 状态补 `SUPERSEDED`/`CANCELLED`；作废触发矩阵（§四）；投递前复核对象当前状态（沿用 B3 原则） |
+| 3 | objectType 混装对象与事件 | 拆 `objectType`（DEADLINE/HEARING/PRESERVATION_PROPERTY/DIGEST）× `kind`（OFFSET/EXPIRED/ESCALATION/RECIPIENT_MISSING/DIGEST）二维，唯一键加 kind |
+| 4 | offset 语义过载 | kind 拆分后 offset 仅对 OFFSET/ESCALATION 有意义，其余恒 0 |
+| 5 | String + 代码层常量丢掉 DB 约束，库内 83 个 enum 的惯例被无故打破 | `objectType`/`kind`/`channel`/`status` 全部 Prisma enum |
+| 6 | scheduledAt「当日 09:00」与实际投递模型不符（期限/开走走保存即时触发+2 分钟补扫，仅保全走 09:00 扫描） | 改名 `registeredAt`＝登记时刻＝应发动的一刻：即时触发取保存时刻，档位扫描取扫描时刻；投递条件 `registeredAt <= now` |
+| 7 | 验收标准「与审计日志交叉核对」不可执行（站内提醒无逐条审计） | 改为与扫描汇总统计（`DUE_REMINDER_SCAN_CRON` detail / webhook last result）核对 |
+| 8 | 无保留/清理策略，将成为写入最密的表 | 明细保留 `REMINDER_LEDGER_RETENTION_DAYS`（默认 180 天），每日清理 job 删除超期行并审计计数；不做归档聚合表（台账卡只查近 7 天现场聚合，未来报表需要再议） |
 
-系统能回答「今天发了多少条提醒」，回答不了三个问题：
+## 一、问题（不变）
 
-1. 这条期限**应该**提醒几次？实际提醒了几次？
-2. 有没有哪条提醒**该发而没发**？
-3. 律师**看到**了吗（哪条通道、什么结果）？
+系统能回答「今天发了多少条提醒」，回答不了：该发几次/实发几次？有没有该发未发？律师经哪条通道收到、结果如何？现状「扫描 → 创建 Notification → 结束」没有送达概念。P1-2/P1-4/P2-3/P2-5 是同一缺失的不同表现。
 
-现状模型是「扫描 → 创建 Notification → 结束」：档位是否命中、外发是否成功、某个通道是否被跳过，都不成体系。第六轮的 P1-2（保全档位停机丢失）、P1-4（邮件静默跳过）、P2-3（摘要截断）、P2-5（通知失败不可见）都是这个缺失的不同表现。P1-2/P1-4 已按点修复（补扫 + 台账 SystemSetting），本方案是结构性收口。
+## 二、数据模型（v2）
 
-## 二、数据模型
+`ReminderDelivery`（表 `reminder_delivery`）：**对象 × 形态 × 档位 × 通道 × 上海日 × 接收人** 一行。
 
-`ReminderDelivery`（表 `reminder_delivery`，迁移 `20260921000001`）：**对象 × 档位 × 通道 × 上海日 × 接收人** 一行。
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `objectType` | enum `ReminderDeliveryObjectType` | DEADLINE / HEARING / PRESERVATION_PROPERTY / DIGEST |
+| `objectId` | string | 对象 id（DIGEST 行用 dayKey 语义） |
+| `kind` | enum `ReminderDeliveryKind` | OFFSET（档位提醒）/ EXPIRED（保全过期翻转）/ ESCALATION（逾期升级）/ RECIPIENT_MISSING（无接收人升级）/ DIGEST（汇总投递） |
+| `offset` | int | 仅 OFFSET/ESCALATION 有意义：负=提前天数，0=当天，正=逾期天数；其余恒 0 |
+| `channel` | enum `ReminderDeliveryChannel` | IN_APP / EMAIL / WEBHOOK |
+| `dayKey` | string | 上海日 YYYY-MM-DD，补发幂等自然键 |
+| `userId` | string | 接收人；通道级行用**空串**（NULL 在 Postgres 唯一约束下 NULLS DISTINCT 破坏幂等） |
+| `status` | enum `ReminderDeliveryStatus` | PENDING / SENT / SKIPPED / FAILED / **SUPERSEDED / CANCELLED** |
+| `registeredAt` | DateTime | **登记时刻＝应发动的一刻**：保存即时触发取保存时刻，档位扫描取扫描时刻；投递条件 `registeredAt <= now` |
+| `sentAt` / `attempts` / `lastError` / `detail` | | 实发时间、尝试次数、失败原因、通道级补充（SKIPPED 原因、Digest 计数） |
 
-| 字段 | 说明 |
-|---|---|
-| `objectType` | `Deadline` / `Hearing` / `PreservationProperty` / `PreservationExpired` / `DeadlineEscalation` / `PreservationEscalation` / `PreservationRecipientMissing` / `Digest`（封闭集合，代码层常量约束） |
-| `objectId` | 对象 id（`Digest` 行用 dayKey 语义） |
-| `offset` | 档位：负=提前天数，0=当天，正=逾期天数（Digest 恒 0） |
-| `channel` | `IN_APP` / `EMAIL` / `WEBHOOK` |
-| `dayKey` | 上海日 `YYYY-MM-DD`——补发幂等的自然键 |
-| `userId` | 接收人；通道级行（webhook、全所摘要）用**空串**而非 NULL（NULL 在 Postgres 唯一约束下 NULLS DISTINCT 会破坏幂等） |
-| `status` | `PENDING`（应发未发）/ `SENT` / `SKIPPED`（有原因的跳过）/ `FAILED` |
-| `scheduledAt` | 应发时间（当日 09:00 上海）——Phase C 对账扫描依据 |
-| `sentAt` / `attempts` / `lastError` | 实发时间、尝试次数、最近失败原因 |
-| `detail` | 通道级补充（如 Digest 行的 `sentCount`/`userCount`） |
+**唯一键** `(objectType, objectId, kind, offset, channel, dayKey, userId)`——登记、补扫、重试、手动重跑一律 upsert 幂等。**不建 User 外键**：台账记录历史事实，人员停用不抹除。
 
-**唯一约束** `(objectType, objectId, offset, channel, dayKey, userId)`——任何发送点重复执行（补扫、重试、手动重跑）天然幂等，`upsert` 即可。**不建 User 外键**：台账只记录历史事实，人员停用不抹除记录（与 AuditLog 同理），也避免反向关系噪音。
+## 三、投递模型
 
-## 三、分阶段实施
+1. **登记**：发送点（保存即时触发 / 档位扫描 / 过期翻转 / 升级判定）不再直接创建通知，改写 PENDING 行（含 registeredAt、接收人、内容素材入 detail）。
+2. **投递**：队列 worker 每 2 分钟 sweep `status=PENDING AND registeredAt <= now`（限量批取）。
+3. **复核**：投递前重读对象当前状态（§四矩阵）——对象已变/已逝 → 行改 SUPERSEDED/CANCELLED，**不发送**；接收人已失效 → 换人或作废，沿用 `isReminderRecipientEnabled` 与升级口径。
+4. **落结果**：SENT / FAILED（attempts+1，退避重试，超限置终态并可见）/ SKIPPED（原因入 detail）。
 
-### Phase A：台账记录（本批，迁移获批后实施）
+## 四、作废触发矩阵（SUPERSEDED / CANCELLED）
 
-各发送点在现有动作成功后**补记**台账行（best-effort：写失败不阻断发送，记 `REMINDER_LEDGER_WRITE_FAILED` 审计，与 P2-5 的 FEE_ENTRY_NOTIFY_FAILED 同款）：
+| 触发 | 行为 | 挂接点 |
+|---|---|---|
+| 期限/开庭改期、确认、办结 | 旧 PENDING 行 → SUPERSEDED | `retireScheduleReminders`（现 9 处调用点同步作废台账 PENDING 行） |
+| 案件交接/责任变更（接收人变化） | 旧 PENDING 行 → SUPERSEDED，按新接收人重新登记 | `matters/handover`、`reminders/responsibility` |
+| 保全 expiryDate / remindDays / 负责人变更 | 旧 OFFSET PENDING 行 → SUPERSEDED，重新登记 | 保全编辑路径 |
+| 保全状态离开 ACTIVE/RENEWED（EXPIRED 翻转、解除、删除） | OFFSET PENDING 行 → CANCELLED（EXPIRED 翻转自身产生 EXPIRED 行） | `scanPreservationReminders` lapsed 分支 + 保全处置路径 |
+| 期限/开庭删除 | PENDING 行 → CANCELLED | 各删除路径 |
 
-| 发送点 | objectType | channel | 状态 |
-|---|---|---|---|
-| `refreshScheduleReminder`（期限/开庭） | Deadline / Hearing | IN_APP | SENT |
-| 保全主循环档位提醒 | PreservationProperty | IN_APP | SENT |
-| 保全 EXPIRED 翻转通知 | PreservationExpired | IN_APP | SENT |
-| 期限/保全逾期升级 | *Escalation | IN_APP | SENT |
-| 保全无接收人升级 | PreservationRecipientMissing | IN_APP | SENT（每位接收人一行） |
-| email-digest worker | Digest | EMAIL | 每接收人一行 SENT/FAILED；无地址 SKIPPED；未配置 SMTP 通道级一行 SKIPPED（detail 记原因） |
-| webhook-digest worker | Digest | WEBHOOK | 通道级一行 SENT/FAILED/SKIPPED |
+复核步骤（§三.3）兜住「作废与投递之间」的竞态：sweep 取到行后再次确认对象现值，不符即作废不发送。
 
-管理后台「提醒维护」页新增**台账卡**：今日/近 7 天各通道 `SENT/SKIPPED/FAILED` 计数 + 最近失败列表（lastError 截断展示）。P2-5 的「通知失败可见」由审计日志升级为业务台账。
+## 五、分阶段实施（v2 重排）
 
-### Phase B：邮件摘要按人聚合（✅ 已先行落地，不依赖本表）
+| 阶段 | 内容 | 出口条件 |
+|---|---|---|
+| **一：保全单点闭环** | 保全全部四种 kind（OFFSET/EXPIRED/ESCALATION/RECIPIENT_MISSING）改「登记→投递→复核→落结果」；作废矩阵保全侧挂接；2 分钟补扫从「直接发」改「只登记」 | 验收 1–3 通过 |
+| **二：扩期限/开庭** | `refreshScheduleReminder` 改造为登记+投递；`retireScheduleReminders` 挂 SUPERSEDED/CANCELLED | 同上 + 既有 schedule 测试迁移 |
+| **三：Digest 通道行 + 台账卡** | EMAIL/WEBHOOK 每日投递落行；提醒维护页台账卡（近 7 天各通道×状态计数 + 最近失败）+ 保留清理 job | 验收 4–5 通过 |
 
-P2-3 修复与 Schema 解耦：worker 先取当日有通知的用户集（distinct userId），再逐人取通知（单人上限 50 条、文末标注截断），全局 take:500 已删除。Phase C 可把「当日该给谁发」的来源切到台账 IN_APP 行，进一步去掉对 Notification 的再查询。
+Phase B（邮件按人聚合）已先行落地，与 Schema 解耦，不变。**台账卡放最后**：阶段一、二完成前，卡的数字只覆盖部分通道，容易再次制造「看起来可观测」的错觉。
 
-### Phase C：对账式补发（独立批次，本表稳定后）
+## 六、保留与清理
 
-扫描职责一分为二：**登记**（每个命中档位 upsert PENDING 行，带 scheduledAt）与**投递**（worker 每 2 分钟扫 `status=PENDING AND scheduledAt <= now` 执行并落结果）。收益：任何应发未发（登记后进程崩溃、通道故障）在下一次 sweep 自动补发；「今天该发几条、实发几条、差几条」成为一条查询。现有档位匹配与去重逻辑保持不变，仅在其后追加登记。
+- 明细保留 `REMINDER_LEDGER_RETENTION_DAYS`（默认 180 天）；每日 03:10 清理 job（复用 audit-cleanup 模式：只删超期行、删除计数写审计、不碰 AuditLog）。
+- 不做归档聚合表：台账卡只查近 7 天现场聚合；未来报表确需长期序列再按日聚合归档，另行设计。
+- PENDING 超过 7 天的行由投递器置 FAILED（detail 记「长期未投递」），不无限滞留。
 
-## 四、不做（如实声明）
+## 七、不做（不变，略）
 
-- **不追溯历史**：表从空开始，只记实施后的投递；历史可观测性仍由审计日志承担。
-- **不改 Notification 表**：站内信仍是唯一通知载体，台账是投递事实记录，二者不合并（通知内容与送达状态分离，与「来源原件/AI/律师确认三层分离」同哲学）。
-- **不做已读回执**：`read` 状态已在 Notification 上，台账不重复记录「律师是否看过」——那是另一个产品问题（未读提醒聚合已有铃铛）。
-- **Phase C 前不动扫描逻辑**：P1-2 的补扫修复继续独立生效。
+不追溯历史；不改 Notification 表（站内信仍是通知载体，台账是投递事实）；不做已读回执；未列发送点（如备份 notifyAdmins、审批通知）不入台账——它们不是提醒体系。
 
-## 五、迁移（待批）
+## 八、迁移（待批，v2）
 
-`prisma/migrations/20260921000001_reminder_delivery_ledger/migration.sql`——`CREATE TABLE reminder_delivery` + 唯一索引 `reminder_delivery_dedupe` + 查询索引两条。**纯增量，无删改列、无数据转换、无默认回填**。执行方式：批准后 `prisma migrate deploy`。
+`prisma/migrations/20260921000002_reminder_delivery_ledger/migration.sql`：4 个 `CREATE TYPE` + `CREATE TABLE` + 唯一索引 + 2 条查询索引。**纯增量**，无删改列、无数据转换。v1 的 20260921000001 已删除且从未执行。批准后先独立测试库演练，再 `prisma migrate deploy`。
 
-## 六、验收标准
+## 九、验收标准（v2）
 
-1. Phase A 后：任一提醒发送（含补扫重试、手动「立即扫描」）在台账恰好一行；同日重跑不产生重复行（唯一约束）。
-2. 台账卡数字与当日审计日志计数可交叉核对。
-3. 未配置 SMTP 的日子：EMAIL 通道级 SKIPPED 行可见，不再需要翻 worker 代码确认。
-4. 全量测试/lint/typecheck/build 干净；`prisma migrate deploy` 在主库执行前于独立测试库演练一次（沿用既有流程）。
+1. 保全任一登记行同键重扫/重试 upsert 幂等，同日不重复发送；
+2. 保全改期/处置/过期后，旧 PENDING 行在下次投递前被作废——**已失效的档位提醒不再发出**（专项用例）；
+3. 投递前复核捕获作废-投递竞态（复核不符 → SUPERSEDED/CANCELLED，零发送）（专项用例）；
+4. 台账卡数字与 `DUE_REMINDER_SCAN_CRON` 汇总统计（preservationNotified/Expired/escalationSent）在保留窗口内可核对；
+5. 保留清理 job 生效：超期行删除、计数审计、AuditLog 不受影响；
+6. 全量测试 / lint / typecheck / build 干净；主库执行前独立测试库演练通过。

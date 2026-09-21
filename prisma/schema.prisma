@@ -2383,31 +2383,63 @@ model ExternalCallLog {
   @@index([service, createdAt])
 }
 
-// 提醒送达台账（第六轮体检 F-1，2026-09-21 设计，docs/REMINDER-DELIVERY-LEDGER-PLAN-20260921.md）：
-// 对象 × 档位 × 通道 × 上海日 一行，记录应发/实发/结果，把提醒从「创建即完成」
-// 变为可对账。Phase A 各发送点事后补记；Phase C 起扫描先落 PENDING 再由投递器补发。
-// userId 不建外键：台账只记录历史事实，人员停用不抹除记录；通道级行（webhook/全所摘要）
-// 用空串而非 NULL——可空列在 Postgres 唯一约束下 NULLS DISTINCT 会破坏幂等语义。
-model ReminderDelivery {
-  id          String    @id @default(cuid())
-  objectType  String // Deadline / Hearing / PreservationProperty / PreservationExpired / DeadlineEscalation / PreservationEscalation / PreservationRecipientMissing / Digest
-  objectId    String
-  offset      Int // 档位：负=提前天数，0=当天，正=逾期天数（Digest 恒 0）
-  channel     String // IN_APP / EMAIL / WEBHOOK
-  dayKey      String // 上海日 YYYY-MM-DD（补发幂等的自然键）
-  userId      String // 接收人；通道级行为空串
-  status      String    @default("PENDING") // PENDING / SENT / SKIPPED / FAILED
-  scheduledAt DateTime // 应发时间（当日 09:00 上海；Phase C 对账扫描依据）
-  sentAt      DateTime?
-  attempts    Int       @default(0)
-  lastError   String?
-  detail      Json? // 通道级补充（如 Digest 的 sentCount/userCount）
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+// 提醒送达台账（第六轮体检 F-1，2026-09-21 修订 v2，docs/REMINDER-DELIVERY-LEDGER-PLAN-20260921.md）：
+// 对象 × 形态(kind) × 档位 × 通道 × 上海日 × 接收人 一行。登记 PENDING → 投递器复核对象
+// 当前状态后发送 → 落终态；对象变更/消亡由作废触发同步 SUPERSEDED/CANCELLED，
+// 杜绝投递已失效的提醒（沿用 B3「发送前核实当前状态」原则）。
+// userId 不建外键：台账只记录历史事实，人员停用不抹除记录；通道级行用空串而非
+// NULL——可空列在 Postgres 唯一约束下 NULLS DISTINCT 会破坏幂等语义。
+enum ReminderDeliveryObjectType {
+  DEADLINE
+  HEARING
+  PRESERVATION_PROPERTY
+  DIGEST
+}
 
-  @@unique([objectType, objectId, offset, channel, dayKey, userId], map: "reminder_delivery_dedupe")
+enum ReminderDeliveryKind {
+  OFFSET // 档位提醒（offset 有意义：负=提前天数，0=当天，正=逾期天数）
+  EXPIRED // 过期翻转（保全自动置 EXPIRED）
+  ESCALATION // 逾期升级（团队负责人督办；offset=逾期天数）
+  RECIPIENT_MISSING // 无合格接收人升级
+  DIGEST // 汇总投递（offset 恒 0）
+}
+
+enum ReminderDeliveryChannel {
+  IN_APP
+  EMAIL
+  WEBHOOK
+}
+
+enum ReminderDeliveryStatus {
+  PENDING // 已登记应发未发（投递器 sweep 依据）
+  SENT
+  SKIPPED // 有原因的跳过（通道未配置/无邮箱等，原因记 detail）
+  FAILED
+  SUPERSEDED // 对象变更（改期/换接收人等），旧登记作废
+  CANCELLED // 对象消亡（完成/过期翻转/删除），登记取消
+}
+
+model ReminderDelivery {
+  id           String                    @id @default(cuid())
+  objectType   ReminderDeliveryObjectType
+  objectId     String
+  kind         ReminderDeliveryKind
+  offset       Int // 仅 OFFSET / ESCALATION 有意义，其余恒 0
+  channel      ReminderDeliveryChannel
+  dayKey       String // 上海日 YYYY-MM-DD（补发幂等的自然键）
+  userId       String // 接收人；通道级行（WEBHOOK/全所摘要）为空串
+  status       ReminderDeliveryStatus    @default(PENDING)
+  registeredAt DateTime // 登记时刻＝应发动的一刻：保存即时触发取保存时刻，档位扫描取扫描时刻；投递条件 registeredAt <= now
+  sentAt       DateTime?
+  attempts     Int                       @default(0)
+  lastError    String?
+  detail       Json? // 通道级补充（如 Digest 的 sentCount/userCount、SKIPPED 原因）
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+
+  @@unique([objectType, objectId, kind, offset, channel, dayKey, userId], map: "reminder_delivery_dedupe")
   @@index([dayKey, channel, status], map: "reminder_delivery_day_channel_status")
-  @@index([status, scheduledAt])
+  @@index([status, registeredAt])
   @@map("reminder_delivery")
 }
 

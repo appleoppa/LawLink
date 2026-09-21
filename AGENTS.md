@@ -166,10 +166,11 @@ v1 报告两条头牌 P1 经独立核对证伪/收窄后出 v2 修订版，本�
 - **部署链实测（事后补验，同日）**：实构建 `lawlink-app` 镜像（`docker compose --profile full build` 成功）+ 容器内以 nextjs 用户对运行中 db 真跑 `scripts/backup.sh`——bash/pg_dump 16.15 连库导出 739KB dump、manifest 的 `storage_path` 为 `/app/storage`（`APP_STORAGE_DIR` 变量修复生效）、`/app/backups` 目录可写、产物属主 nextjs；`--profile dev` 的 mailpit 服务启动 healthy（Web UI 200）。本机 1025 端口被系统进程占用，实测经临时端口覆盖完成，不影响 compose 服务定义；实测后 mailpit 已停删，lawlink-db 与 dev 服务未受影响。
 - **未做（如实声明）**：02:30 cron 自动备份的持续观察与真实生产部署；P2-1 服务端按规则重算 dueAt、P2-2 冲突名称归一化、P2-3 邮件摘要分页、P2-4 诉讼时效/举证期限预置规则、F-1 送达台账（结构性，含 Schema 走审批）、P3-3 SSRF TOCTOU、F-2~F-6 产品层建议——均按 v2 §九 进 backlog 排期。
 
-### F-1 送达台账批次（2026-09-21，设计冻结待批）
+### F-1 送达台账批次（2026-09-21，v2 设计冻结待批）
 
-- **P2-3 已先行修复（不依赖 Schema）**：email-digest worker 改为先取当日有通知的用户集（distinct userId）再逐人聚合（单人上限 50 条、文末标注），删除全局 take:500 截断；新增 `email-digest.test.ts` 4 例（按人聚合/超量标注/未配置跳过写台账/失败交队列重试）。
-- **ReminderDelivery 模型设计冻结**（`docs/REMINDER-DELIVERY-LEDGER-PLAN-20260921.md`）：对象×档位×通道×上海日×接收人一行，唯一约束幂等；userId 不建外键、通道级行用空串；Phase A 各发送点事后补记+提醒维护页台账卡，Phase C 对账式补发（登记 PENDING→worker sweep）独立批次。**迁移 `20260921000001_reminder_delivery_ledger` 已生成（纯增量建表+三索引），待叶森批准后 `prisma migrate deploy`，未执行。**
+- **P2-3 已先行修复（不依赖 Schema）**：email-digest worker 改为先取当日有通知的用户集（distinct userId）再逐人聚合（单人上限 50 条、文末标注），删除全局 take:500 截断；新增 `email-digest.test.ts` 4 例。
+- **ReminderDelivery v2**（`docs/REMINDER-DELIVERY-LEDGER-PLAN-20260921.md`，吸收叶森 8 条审查意见）：① objectType×kind 二维拆分（对象与事件分离，唯一键加 kind）；② 状态补 SUPERSEDED（对象变更）/CANCELLED（对象消亡），retireScheduleReminders 与保全处置路径挂作废，投递前复核对象现值（沿用 B3「发送前核实当前状态」）；③ 四个封闭集合字段全部 Prisma enum；④ scheduledAt 改 registeredAt＝登记时刻（即时触发取保存时刻、档位扫描取扫描时刻，修正「恒 09:00」错误）；⑤ 明细保留 180 天（可配）+ 每日清理 job；⑥ 分期改为**保全单点完整闭环 → 扩期限/开庭 → Digest 行+台账卡**（废弃 v1 全量事后补记——只记成功的台账答不了「该发未发」）。
+- **中间态约定**：model 在 schema、表在库不一致的状态只允许存在于待批窗口；不批则整体摘除。**迁移 `20260921000002_reminder_delivery_ledger` 已生成（4 enum + 建表 + 三索引，纯增量），v1 的 20260921000001 已删除从未执行；待叶森批准后独立测试库演练再 `prisma migrate deploy`。**
 
 
 
