@@ -36,6 +36,7 @@ import { revalidateMatter } from "@/server/matters/route";
 import { recordTimelineEvent } from "@/server/timeline/record";
 import { shDayKey, civilFromKey, civilKey } from "@/lib/ui/sh-time";
 import { computeDeadlineDate } from "@/lib/deadline-rules";
+import { adjustDeadlineForHolidays } from "@/lib/calendar/holidays";
 
 function emptyToNull<T extends Record<string, unknown>>(obj: T): T {
   const out: Record<string, unknown> = {};
@@ -457,12 +458,16 @@ export async function addDeadline(input: DeadlineCreateInput) {
       select: { name: true, periodValue: true, periodUnit: true }
     });
     if (rule) {
-      const computedKey = civilKey(computeDeadlineDate(
+      const rawKey = civilKey(computeDeadlineDate(
         civilFromKey(shDayKey(data.sourceTriggerDate)), rule.periodValue, rule.periodUnit
       ));
+      // F-5：已配置放假安排时按民诉法第八十五条第三款顺延届满日（未配置/表未建时原样返回）
+      const adjusted = await adjustDeadlineForHolidays(rawKey);
       const submittedKey = shDayKey(data.dueAt);
-      if (computedKey !== submittedKey) {
-        const note = `；系统按规则「${rule.name}」重算为 ${computedKey}，与提交日期 ${submittedKey} 不一致，请核对`;
+      if (adjusted.key !== submittedKey) {
+        const note = adjusted.adjusted
+          ? `；系统按规则「${rule.name}」重算为 ${rawKey}，已按放假安排顺延至 ${adjusted.key}（${adjusted.reason}），与提交日期 ${submittedKey} 不一致，请核对`
+          : `；系统按规则「${rule.name}」重算为 ${rawKey}，与提交日期 ${submittedKey} 不一致，请核对`;
         basis = `${basis ?? ""}${note}`.slice(0, 300);
       }
     }

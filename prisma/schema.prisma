@@ -2383,6 +2383,21 @@ model ExternalCallLog {
   @@index([service, createdAt])
 }
 
+// 法定放假安排（F-5，2026-09-21）：管理后台每年录入国务院通知，期限引擎据此把
+// 届满日为节假日的顺延到下一工作日并在依据标注（民诉法第八十五条第三款）。
+// 不内置硬编码表（每年调整会过期）；调休上班日 kind=WORKDAY 不视为休假日。
+// 表未建（迁移未执行）时引擎查询失败按「未配置」降级，不影响既有提示逻辑。
+model Holiday {
+  id        String   @id @default(cuid())
+  date      DateTime @unique
+  name      String
+  kind      String   @default("HOLIDAY") // HOLIDAY 放假 / WORKDAY 调休上班
+  createdAt DateTime @default(now())
+
+  @@index([date])
+  @@map("holiday")
+}
+
 // 提醒送达台账（第六轮体检 F-1，2026-09-21 修订 v2，docs/REMINDER-DELIVERY-LEDGER-PLAN-20260921.md）：
 // 对象 × 形态(kind) × 档位 × 通道 × 上海日 × 接收人 一行。登记 PENDING → 投递器复核对象
 // 当前状态后发送 → 落终态；对象变更/消亡由作废触发同步 SUPERSEDED/CANCELLED，

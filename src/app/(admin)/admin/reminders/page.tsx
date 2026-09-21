@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
-import { canEnterAdminWorkspace } from "@/lib/auth/system-role";
+import { canEnterAdminWorkspace, isSystemAdmin } from "@/lib/auth/system-role";
 import { prisma } from "@/lib/prisma";
 import { getWebhookSettings } from "@/server/settings/webhook";
 import { getWebhookLastResult } from "@/server/settings/webhook-last-result";
@@ -15,6 +15,8 @@ import { ReminderScanButton } from "./_components/reminder-scan-button";
 import { WebhookSettingsCard } from "./_components/webhook-settings-card";
 import { EmailChannelCard } from "./_components/email-channel-card";
 import { DeliveryLedgerCard } from "./_components/delivery-ledger-card";
+import { HolidayCard } from "./_components/holiday-card";
+import { listHolidays } from "@/server/calendar/holiday-actions";
 
 export default async function RemindersSettingsPage() {
   const session = await getSession();
@@ -23,7 +25,7 @@ export default async function RemindersSettingsPage() {
   const since = new Date(Date.now() - 30 * 86_400_000);
   // 台账近 7 天（含今日，上海日界）
   const ledgerSince = shDayKey(new Date(Date.now() - 6 * 86_400_000));
-  const [webhook, lastResult, emailLast, rules, deadJobs, grouped, ledgerRows, ledgerPending, ledgerFailures] = await Promise.all([
+  const [webhook, lastResult, emailLast, rules, deadJobs, grouped, ledgerRows, ledgerPending, ledgerFailures, holiday] = await Promise.all([
     getWebhookSettings(),
     getWebhookLastResult(),
     getEmailLastResult(),
@@ -32,7 +34,8 @@ export default async function RemindersSettingsPage() {
     prisma.jobQueue.groupBy({ by: ["status"], where: { type: "webhook-digest", createdAt: { gte: since } }, _count: { _all: true } }),
     prisma.reminderDelivery.groupBy({ by: ["dayKey", "channel", "status"], where: { dayKey: { gte: ledgerSince } }, _count: { _all: true } }),
     prisma.reminderDelivery.count({ where: { status: "PENDING", registeredAt: { lt: new Date(Date.now() - 10 * 60_000) } } }),
-    prisma.reminderDelivery.findMany({ where: { status: "FAILED" }, orderBy: { updatedAt: "desc" }, take: 5, select: { id: true, objectType: true, objectId: true, channel: true, lastError: true, updatedAt: true } })
+    prisma.reminderDelivery.findMany({ where: { status: "FAILED" }, orderBy: { updatedAt: "desc" }, take: 5, select: { id: true, objectType: true, objectId: true, channel: true, lastError: true, updatedAt: true } }),
+    listHolidays().catch(() => ({ year: new Date().getFullYear(), rows: [] as never[] })) // 表未建（迁移未批）时降级为空
   ]);
   const countOf = (...s: string[]) => grouped.filter((g) => s.includes(g.status)).reduce((n, g) => n + g._count._all, 0);
 
@@ -67,6 +70,7 @@ export default async function RemindersSettingsPage() {
         pendingBacklog={ledgerPending}
         failures={ledgerFailures}
       />
+      <HolidayCard year={holiday.year} rows={holiday.rows} canEdit={isSystemAdmin(session.user)} />
     </div>
   );
 }

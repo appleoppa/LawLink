@@ -13,7 +13,11 @@ const { db, net, store, guards } = vi.hoisted(() => ({
 vi.mock("@/lib/prisma", () => ({ prisma: db }));
 vi.mock("@/lib/storage", () => ({ storage: store }));
 vi.mock("@/lib/storage/crypto", () => ({ encryptBuffer: vi.fn(() => ({ ciphertext: Buffer.from("x"), algorithm: "aes-256-gcm", iv: Buffer.alloc(12), authTag: Buffer.alloc(16) })), sha256: vi.fn((b: Buffer) => `hash-${b.length}`) }));
-vi.mock("@/lib/net/safe-url", () => ({ assertSafeHttpUrl: guards.safeUrl }));
+// P3-3 后出站统一走 safeFetch（undici 钉扎），mock 模块并委托给 net.fetch 打桩
+vi.mock("@/lib/net/safe-url", () => ({
+  assertSafeHttpUrl: guards.safeUrl,
+  safeFetch: (u: string, init?: unknown) => net.fetch(new URL(u), init)
+}));
 vi.mock("@/lib/archive/guard", () => ({ assertDocumentWritable: guards.writable }));
 vi.mock("@/server/audit", () => ({ audit: vi.fn() }));
 vi.mock("@/server/timeline/record", () => ({ recordTimelineEvent: guards.timeline }));

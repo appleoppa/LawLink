@@ -193,6 +193,15 @@ v1 报告两条头牌 P1 经独立核对证伪/收窄后出 v2 修订版，本�
 - **P2-4 诉讼时效/举证期限预置规则**（律师执业风险最高的两类期限补齐，seed 已入库共 16 条）：① `CIVIL_LIMITATION_GENERAL` 三年普通时效（起算＝知道或应当知道权利受损及义务人之日）与 `CIVIL_LIMITATION_MAX` 二十年最长保护期（起算＝权利受到损害之日，特殊情况可申请延长），《民法典》第一百八十八条——经司法部公布民法典全文复核 + 第六轮体检北大法宝核验；② `EVIDENCE_DEADLINE_FIRST`（一审普通程序 ≥15 日）/`EVIDENCE_DEADLINE_SECOND`（二审新证据 ≥10 日），《民诉法解释》第九十九条——举证期限由法院指定因案而异，法律只定下限，规则明示「按法定下限推算默认值，以法院通知书为准」。applicableProcedures 空数组＝任意程序适用（时效不绑定程序阶段）。**未做（如实声明）**：繁简/劳动争议一年仲裁时效（另需核验《劳动争议调解仲裁法》27 条）；收案登记时的时效起算点提示（随 F-2 类产品项）。
 - **P2-1 服务端按规则重算 dueAt**：`deadlineCreateSchema` 增可选 `sourceTriggerDate`（仅随 sourceRuleId 发送，表单 applyRule 时写入）；`addDeadline` 服务端以上海日历口径（civilFromKey 正午载体 + computeDeadlineDate + civilKey，与生产客户端同一 civil 算法，时区无关）按规则重算并与提交值比对——**不一致不拒绝**（表单明示可人工调整），在 basis 追加「系统按规则重算为 X，与提交日期不一致，请核对」，确认律师核对时可见；无 sourceTriggerDate 或人工录入不触发。测试：`deadline-rules.test.ts` 改写为 civil 载体断言（任何 TZ 下直断上海日历结果，消除两端同源自洽盲区）+ `deadline-recompute.test.ts` 新增 5 例（一致/不一致标注/UTC 深夜跨日安全/旧客户端不触发/人工 CONFIRMED）。终态 734 测试全绿。
 
+### 第六轮收尾批次（2026-09-21：P3-3 + F-2~F-6，用户授权「解决所有问题」）
+
+- **P3-3 SSRF TOCTOU 关闭**：`safe-url.ts` 新增 `safeFetch`（undici 显式依赖 7.29.1）——连接时钉扎（connect 回调内完成解析、只连校验通过的 IP，TLS SNI/证书仍按原域名），预检与 fetch 自解析间的 DNS rebinding 窗口关闭；六个出站点全部切换（短信取件逐跳、OCR 网关、webhook、元典×2、AI 客户端）。受影响测试改 mock safe-url 模块（globalThis.fetch 打桩不再拦截 undici fetch）。`safe-fetch.test.ts` 4 例：rebinding 序列连接被拒、全内网拒绝、预检回归。
+- **F-2 保全到期日第一事实**：新建保全与添加财产两对话框改「**到期日（法院文书载明）必填**」，期限天数按到期日折算派生（不再双源）；法定上限（民诉法解释第 485 条）显示为参考，晚于上限须 confirmDialog 确认后保存（超出部分不受强制保护），短于上限仅提示（法院裁定更短常见）。
+- **F-4 认知修正（无需开发）**：第六轮 F-4「接管动作未实现」描述已过时——`getWorkBoard` 的 emergency（matters.transfer ALL）范围可见负责人失效项与全部交接单，日程页 WorkResponsibilityPanel 提供 PROPOSE/ACCEPT/办结/交接全套动作，offboarding 通知落点正确。09-19 责任体系重建已覆盖此缺口。
+- **F-5 放假安排（实现完成，迁移待批）**：`Holiday` 模型（date 唯一、HOLIDAY/WORKDAY 调休）+ 迁移 `20260921000003_holiday_calendar`（纯增量，**未执行**）；引擎 `lib/calendar/holidays.ts`（届满日按民诉法 85 条第 3 款顺延，调休上班日不视为休假日，**表未建时优雅降级为未配置**）；管理后台提醒维护页新增「法定放假安排」卡（按年查看 + 批量录入，仅超管）；`addDeadline` 服务端重算含顺延（依据栏标注「已按放假安排顺延至 X」）；HOLIDAY_NOTE 文案同步。`holidays.test.ts` 7 例。
+- **F-6 归档借阅 + 迁移链断裂**：设计/提案文档各一份待批——`docs/ARCHIVE-BORROW-PLAN-20260921.md`（借阅申请→审批→限时可读→留痕，含 Schema）、`docs/MIGRATION-CHAIN-REBASELINE-PROPOSAL-20260921.md`（2026* 与 v4* 命名混排致从零重放断裂；推荐方案 A 重建 0_init 基线，主库 resolve 标记需单独批准）。
+- 另：`finance-facts.test.ts` 经叶森确认为本仓库工作（非并发），单独提交归位（ba127b3）。终态 746 测试全绿、lint/typecheck/build 干净。
+
 ### 第四轮体检与法院短信专项（2026-09-20 确认）
 
 **A 批已实施（2026-09-20）**：12 项代码修复全部落地（权限收敛 `assertCanHandleMatter`、AI 逐件外发资格、程序门禁事务化+零写入回归测试、法人章三条件分立、旧开票入口停用、扣回上限 recoverable、退款免债按核销对应、合同三承接点复核门禁、日期出口归一+存量审计无迁移、责任失效可见最小版、日历搜索发票列表权限）；迁移 20260920000001 触发器修订版经叶森批准已执行（备份在 `backups/hardening-migration-20260920/`，主库 FK RESTRICT/默认 PENDING/AuditLog 触发器拒删三项验证通过，663 测试回归）。存量日期瞬间审计脚本 `scripts/audit-date-instants.ts`：三种瞬间出口归一后均正确，无需迁移。

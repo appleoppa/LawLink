@@ -83,12 +83,12 @@ async function aiVisionOcr(input: { data: Buffer; mimeType: string; hint?: strin
 }
 
 async function httpOcr(settings: StoredOcrSettings, input: { data: Buffer; mimeType: string; hint?: string }): Promise<OcrResult> {
-  const { assertSafeHttpUrl } = await import("@/lib/net/safe-url");
+  const { assertSafeHttpUrl, safeFetch } = await import("@/lib/net/safe-url");
   const url = await assertSafeHttpUrl(settings.endpoint);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 60_000);
   try {
-    const res = await fetch(url, {
+    const res = await safeFetch(url.toString(), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

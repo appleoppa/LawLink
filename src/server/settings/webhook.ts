@@ -7,7 +7,7 @@
  * 沿用 firm-profile 的「单 key + 类型化读写」范式。
  */
 import { prisma } from "@/lib/prisma";
-import { assertSafeHttpUrl } from "@/lib/net/safe-url";
+import { assertSafeHttpUrl, safeFetch } from "@/lib/net/safe-url";
 
 const WEBHOOK_KEY = "notifyWebhook";
 
@@ -62,7 +62,7 @@ export async function sendWebhookText(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
   try {
-    const response = await fetch(url.toString(), {
+    const response = await safeFetch(url.toString(), {
       method: "POST",
       // 不跟随重定向：已校验的地址被 30x 引到内网即构成 SSRF，直接报错
       redirect: "error",

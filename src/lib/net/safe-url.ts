@@ -4,9 +4,15 @@
  * 解析目标主机并做 DNS 解析：命中本机名、回环、私网/保留段（含 IPv4 映射与
  * NAT64 前缀）即拒绝。2026-09-19 审计：webhook、AI、元典等由管理端配置
  * baseUrl 的出站点此前未走该校验，配置被误填或滥用时可盲打内网。
+ *
+ * 2026-09-21 第六轮体检 P3-3：预检（lookup）与 fetch 自身的解析之间存在 DNS
+ * rebinding 窗口（TOCTOU）。safeFetch 在连接时钉扎：建连前完成解析、只连校验
+ * 通过的 IP（TLS 的 SNI/证书校验仍按原域名），窗口关闭。出站 fetch 应改走
+ * safeFetch；assertSafeHttpUrl 保留给仅做校验的场景（如配置保存时的预检）。
  */
 import { lookup } from "node:dns/promises";
 import net from "node:net";
+import { Agent, buildConnector, fetch as undiciFetch } from "undici";
 
 export async function assertSafeHttpUrl(input: string): Promise<URL> {
   let url: URL;
@@ -61,4 +67,43 @@ export function isPrivateAddress(address: string): boolean {
     return false;
   }
   return true;
+}
+
+
+/** 连接时钉扎的 dispatcher：只连解析校验通过的 IP，SNI/证书仍按原域名 */
+let pinnedAgent: Agent | undefined;
+function pinnedDispatcher(): Agent {
+  if (!pinnedAgent) {
+    const dial = buildConnector({});
+    pinnedAgent = new Agent({
+      connect: (opts, callback) => {
+        void (async () => {
+          try {
+            const originalHost = opts.hostname ?? opts.host ?? "";
+            const records = await lookup(originalHost, { all: true });
+            const safe = records.filter((r) => !isPrivateAddress(r.address));
+            if (safe.length === 0) {
+              callback(new Error("不允许访问本机或内网地址"), null);
+              return;
+            }
+            // 钉扎到校验通过的 IP；servername 留原域名以维持 SNI 与证书校验
+            dial({ ...opts, hostname: safe[0].address, servername: originalHost } as Parameters<typeof dial>[0], callback);
+          } catch (err) {
+            callback(err instanceof Error ? err : new Error(String(err)), null);
+          }
+        })();
+      }
+    });
+  }
+  return pinnedAgent;
+}
+
+/**
+ * 出站安全 fetch：assertSafeHttpUrl 预检 + 连接时钉扎（关 P3-3 TOCTOU 窗口）。
+ * 返回 undici Response（status/headers/body 流与全局 Response 同构，可直接交给
+ * 既有 readBodyWithLimit 等消费方）。
+ */
+export async function safeFetch(input: string, init?: Record<string, unknown>): Promise<Response> {
+  const url = await assertSafeHttpUrl(input);
+  return undiciFetch(url, { ...init, dispatcher: pinnedDispatcher() }) as unknown as Response;
 }

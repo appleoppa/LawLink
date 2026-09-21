@@ -10,7 +10,7 @@
  */
 import type { DeadlinePeriodUnit } from "@prisma/client";
 
-export const HOLIDAY_NOTE = "如届满日为法定休假日，以其后第一个工作日为届满日，请人工核对顺延";
+export const HOLIDAY_NOTE = "如届满日为法定休假日，以其后第一个工作日为届满日；已配置放假安排时由系统按其顺延并在依据标注，请核对";
 
 /** 去掉时间部分，按本地日期归一到当天 00:00 */
 function startOfDay(date: Date): Date {

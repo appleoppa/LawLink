@@ -7,7 +7,7 @@ import { storage } from "@/lib/storage";
 import { encryptBuffer, sha256 } from "@/lib/storage/crypto";
 import { ensureExt } from "@/lib/storage/mime-ext";
 import { normalizeUploadedFilename } from "@/lib/filename";
-import { assertSafeHttpUrl } from "@/lib/net/safe-url";
+import { assertSafeHttpUrl, safeFetch } from "@/lib/net/safe-url";
 import { audit } from "@/server/audit";
 import { assertDocumentWritable } from "@/lib/archive/guard";
 import { recordTimelineEvent } from "@/server/timeline/record";
@@ -373,7 +373,7 @@ async function fetchWithRedirects(url: string): Promise<{ response: Response; fi
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
     try {
-      const response = await fetch(safeUrl.toString(), {
+      const response = await safeFetch(safeUrl.toString(), {
         redirect: "manual",
         signal: controller.signal,
         headers: {
