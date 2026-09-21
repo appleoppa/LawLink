@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const { findFirst } = vi.hoisted(() => ({ findFirst: vi.fn() }));
-vi.mock("@/lib/prisma", () => ({ prisma: { matter: { findFirst } } }));
+const { findFirst, borrowFindFirst } = vi.hoisted(() => ({ findFirst: vi.fn(), borrowFindFirst: vi.fn() }));
+// F-6：assertCanReadMatter 兜底走归档借阅资格（实时校验），mock 一并覆盖
+vi.mock("@/lib/prisma", () => ({ prisma: { matter: { findFirst }, archiveBorrowRequest: { findFirst: borrowFindFirst } } }));
 import { assertCanReadMatter, assertCanAccessMatter, assertCanModifyMatter, assertCanLeadMatter } from "@/lib/permissions";
 import { groupColleagues } from "@/lib/teams/colleagues";
 import { teamInputSchema } from "@/server/teams/schemas";
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => { vi.clearAllMocks(); borrowFindFirst.mockResolvedValue(null); });
 describe("团队查看不授予经办或敏感数据权限", () => {
   it("仅团队可读的案件不会通过财务/材料访问或写入断言", async () => {
     findFirst.mockImplementation(({ where }) => Promise.resolve(where.AND ? { id: "matter" } : null));

@@ -41,7 +41,12 @@ function dedupeFields(key: DedupeKey) {
  * - 其余（PENDING/SENT/SKIPPED/超限 FAILED）→ ALREADY（这就是当日去重本身）。
  * 重新武装只在评估判定「当前应提醒」时可达，不会复活已消亡对象的提醒。
  */
-export async function registerReminderDelivery(key: DedupeKey, tx: Pick<typeof prisma, "reminderDelivery"> = prisma): Promise<"REGISTERED" | "ALREADY"> {
+export async function registerReminderDelivery(
+  key: DedupeKey,
+  tx: Pick<typeof prisma, "reminderDelivery"> = prisma,
+  /** 覆盖登记时刻：未来档位（如借阅 T-3/到期提醒）设为应发动的一刻，投递器到点才 sweep */
+  registeredAt: Date = new Date()
+): Promise<"REGISTERED" | "ALREADY"> {
   const db = tx;
   // 实现注记：必须用 createMany + skipDuplicates（ON CONFLICT DO NOTHING）而非
   // create-捕获 P2002——Postgres 事务内唯一冲突会毒化整个事务（25P02），catch
@@ -57,7 +62,7 @@ export async function registerReminderDelivery(key: DedupeKey, tx: Pick<typeof p
       dayKey: key.dayKey,
       userId: key.userId,
       status: "PENDING",
-      registeredAt: new Date()
+      registeredAt
     }],
     skipDuplicates: true
   });

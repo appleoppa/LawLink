@@ -202,6 +202,13 @@ v1 报告两条头牌 P1 经独立核对证伪/收窄后出 v2 修订版，本�
 - **F-6 归档借阅 + 迁移链断裂**：设计/提案文档各一份待批——`docs/ARCHIVE-BORROW-PLAN-20260921.md`（借阅申请→审批→限时可读→留痕，含 Schema）、`docs/MIGRATION-CHAIN-REBASELINE-PROPOSAL-20260921.md`（2026* 与 v4* 命名混排致从零重放断裂；推荐方案 A 重建 0_init 基线，主库 resolve 标记需单独批准）。
 - 另：`finance-facts.test.ts` 经叶森确认为本仓库工作（非并发），单独提交归位（ba127b3）。终态 746 测试全绿、lint/typecheck/build 干净。
 
+### 全项清零批次（2026-09-21 晚，用户授权「全部解决」：F-5 落库 + 迁移链重建基线 + F-6 借阅线）
+
+- **F-5 迁移落库**：`20260921000003_holiday_calendar` 克隆演练后执行主库（holiday 表已建）；执行前 pg_dump 全量文件备份 `backups/pre-rebaseline-20260921.dump`（1.2M，宿主无 pg_dump 故经容器导出）。
+- **迁移链重建基线（方案 A 执行完毕）**：主库与 Schema 零漂移核验后，`prisma migrate diff --from-empty` 生成 `0_init`（2931 行全量基线）；75 个旧迁移目录 `git mv` 归档至 `prisma/migrations-archive-20260921/`（保留不删，迁移目录仅余 0_init + lock）。三重验证：空库从零 deploy 仅跑 0_init 且零漂移（从零重放断裂修复）；克隆库 resolve+deploy 无重放；主库 `migrate resolve --applied 0_init` 标记 + deploy 无待办（旧记录保留作历史）。全新安装 `migrate deploy` 恢复可用。
+- **F-6 归档借阅线实施**（docs/ARCHIVE-BORROW-PLAN-20260921.md 全量落地）：① Schema `ArchiveBorrowRequest`（迁移 `20260921000004_archive_borrow` 空库+主库已应用，含 `ReminderDeliveryObjectType` 增值 ARCHIVE_BORROW）；② 服务 `src/server/archive/borrow.ts`——申请（可见性校验+在途去重+事由必填）、审批（**复用 ARCHIVE_APPROVE 规则含自审批排除**，默认 30 天可 1–180）、归还、到期自动失效（读取入口顺带收敛）、案卷检索（最小披露：归档号/案号/案名）；③ **读取路径实时校验**：`assertCanReadMatter` 兜底分支查有效借阅单（APPROVED+未归还+未到期），到期即失效不靠隐藏入口；④ 到期提醒走 F-1 台账（审批时登记 T-3/T-0 未来 registeredAt 行，`registerReminderDelivery` 增 registeredAt 覆盖参数；投递器 ARCHIVE_BORROW 处理器复核借阅单有效后送达，归还即 CANCELLED）；⑤ UI：/archive 页放开为登录可进（台账表仍限 archive.read），新增借阅面板（借阅中查阅/归还、待我审批就地下钻、检索申请弹窗）。测试：archive-borrow 10 例 + team-access mock 适配（兜底分支）。终态 756 测试全绿、lint/typecheck/build 干净。
+- **第六轮至此全项清零**：P1×4、P2×5、P3×4、F-1~F-6 全部落地或核实豁免（F-4 经核实已被 09-19 责任体系覆盖）。
+
 ### 第四轮体检与法院短信专项（2026-09-20 确认）
 
 **A 批已实施（2026-09-20）**：12 项代码修复全部落地（权限收敛 `assertCanHandleMatter`、AI 逐件外发资格、程序门禁事务化+零写入回归测试、法人章三条件分立、旧开票入口停用、扣回上限 recoverable、退款免债按核销对应、合同三承接点复核门禁、日期出口归一+存量审计无迁移、责任失效可见最小版、日历搜索发票列表权限）；迁移 20260920000001 触发器修订版经叶森批准已执行（备份在 `backups/hardening-migration-20260920/`，主库 FK RESTRICT/默认 PENDING/AuditLog 触发器拒删三项验证通过，663 测试回归）。存量日期瞬间审计脚本 `scripts/audit-date-instants.ts`：三种瞬间出口归一后均正确，无需迁移。

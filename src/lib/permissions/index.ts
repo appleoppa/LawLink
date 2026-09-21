@@ -129,7 +129,19 @@ export async function assertCanReadMatter(userId: string, role: string, matterId
     where: { id: matterId, deletedAt: null, ...matterReadVisibilityFilter(userId, role, grants) },
     select: { id: true }
   });
-  if (!row) throw new Error("案件不存在");
+  if (row) return;
+  // F-6 归档借阅：常规可见性不通过时，实时校验该案有效借阅单（已批准、未归还、
+  // 未到期）——到期即失效，不靠隐藏入口；借阅只读，不改变其余权限面
+  const borrowed = await prisma.archiveBorrowRequest.findFirst({
+    where: {
+      applicantId: userId,
+      status: "APPROVED",
+      accessUntil: { gte: new Date() },
+      archiveRecord: { status: "APPROVED", matterId }
+    },
+    select: { id: true }
+  });
+  if (!borrowed) throw new Error("案件不存在");
 }
 
 export async function hasMatterBusinessAccess(userId: string, role: string, matterId: string, grants?: RoleGrant[]): Promise<boolean> {

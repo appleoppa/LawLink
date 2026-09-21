@@ -97,6 +97,8 @@ export async function deliverPendingReminders(limit = 20): Promise<DeliverySweep
         outcome = await deliverPreservationRow(row, now);
       } else if (row.objectType === "DEADLINE" || row.objectType === "HEARING") {
         outcome = await deliverScheduleRow(row, now);
+      } else if (row.objectType === "ARCHIVE_BORROW") {
+        outcome = await deliverArchiveBorrowRow(row, now);
       } else {
         // 未接入的对象类型（如 DIGEST 行不经投递器）——防御性跳过
         await finalize(row, "SKIPPED", { reason: "UNSUPPORTED" });
@@ -349,6 +351,51 @@ async function deliverPreservationRow(row: SweepRow, now: Date): Promise<RowOutc
         refId: prop.id
       });
     }
+  }
+  await finalize(row, "SENT");
+  return "sent";
+}
+
+/** 借阅到期提醒（F-6）：复核借阅单仍 APPROVED 且未归还未过期后送达；否则作废 */
+async function deliverArchiveBorrowRow(row: SweepRow, now: Date): Promise<RowOutcome> {
+  const borrow = await prisma.archiveBorrowRequest.findUnique({
+    where: { id: row.objectId },
+    select: {
+      id: true, status: true, accessUntil: true, applicantId: true,
+      archiveRecord: { select: { archiveNo: true, matter: { select: { id: true, title: true, internalCode: true } } } }
+    }
+  });
+  if (!borrow) {
+    await finalize(row, "CANCELLED", { reason: "OBJECT_GONE" });
+    return "voided";
+  }
+  // 已归还/驳回/过期：到期提醒随对象消亡取消
+  if (borrow.status !== "APPROVED") {
+    await finalize(row, "CANCELLED", { reason: `BORROW_${borrow.status}` });
+    return "voided";
+  }
+  const until = borrow.accessUntil ? shDayKey(borrow.accessUntil) : null;
+  if (!until || borrow.accessUntil!.getTime() < now.getTime()) {
+    await finalize(row, "CANCELLED", { reason: "ALREADY_EXPIRED" });
+    return "voided";
+  }
+  const refType = "ArchiveBorrowDue";
+  const dup = await prisma.notification.findFirst({
+    where: { refType, refId: borrow.id, createdAt: { gte: shDayStart(now) } },
+    select: { id: true }
+  });
+  if (!dup) {
+    const isDueDay = row.offset === 0;
+    await createNotification({
+      userId: borrow.applicantId,
+      type: "SYSTEM",
+      priority: "HIGH",
+      title: isDueDay ? `借阅今日到期：${borrow.archiveRecord.matter.title}` : `借阅 3 天后到期：${borrow.archiveRecord.matter.title}`,
+      content: `${borrow.archiveRecord.archiveNo}（${borrow.archiveRecord.matter.internalCode}）的借阅将于 ${until} 到期，到期后自动失去查阅资格。请阅毕后在归档台账标记归还；仍需使用请重新申请。`,
+      href: "/archive",
+      refType,
+      refId: borrow.id
+    });
   }
   await finalize(row, "SENT");
   return "sent";

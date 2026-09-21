@@ -437,6 +437,8 @@ model RolePermission {
 }
 
 model User {
+  archiveBorrows ArchiveBorrowRequest[] @relation("ArchiveBorrowApplicant")
+  archiveBorrowApprovals ArchiveBorrowRequest[] @relation("ArchiveBorrowApprover")
   invoiceAdjustments InvoiceAdjustment[]
   outgoingIntakeHandovers IntakeHandover[] @relation("IntakeHandoverFrom")
   incomingIntakeHandovers IntakeHandover[] @relation("IntakeHandoverTo")
@@ -1771,6 +1773,7 @@ model ArchiveClosurePlan {
 }
 
 model ArchiveRecord {
+  borrows ArchiveBorrowRequest[]
   supplementOfId String?
   supplementOf ArchiveRecord? @relation("ArchiveSupplement", fields: [supplementOfId], references: [id], onDelete: Restrict)
   supplements ArchiveRecord[] @relation("ArchiveSupplement")
@@ -2383,6 +2386,35 @@ model ExternalCallLog {
   @@index([service, createdAt])
 }
 
+// 归档案卷借阅（F-6，2026-09-21，docs/ARCHIVE-BORROW-PLAN-20260921.md）：
+// 借阅申请 → 审批（复用 ARCHIVE_APPROVE 审批资格与自审批排除）→ 限时可读
+// （assertCanReadMatter 读取路径实时校验有效借阅单，到期自动失效）→ 归还/到期留痕。
+// 归档不可变性不变：只读在线访问，不复制不解包。
+model ArchiveBorrowRequest {
+  id              String        @id @default(cuid())
+  archiveRecordId String
+  archiveRecord   ArchiveRecord @relation(fields: [archiveRecordId], references: [id])
+  applicantId     String
+  applicant       User          @relation("ArchiveBorrowApplicant", fields: [applicantId], references: [id])
+  reason          String
+  scope           String        @default("WHOLE_VOLUME") // WHOLE_VOLUME 整卷 / LISTED 指定材料
+  documentIds     Json?
+  status          String        @default("PENDING") // PENDING / APPROVED / REJECTED / RETURNED / EXPIRED
+  approverId      String?
+  approver        User?         @relation("ArchiveBorrowApprover", fields: [approverId], references: [id])
+  decidedAt       DateTime?
+  rejectReason    String?
+  accessUntil     DateTime?
+  returnedAt      DateTime?
+  revision        Int           @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([status, accessUntil])
+  @@index([applicantId, createdAt])
+  @@map("archive_borrow_request")
+}
+
 // 法定放假安排（F-5，2026-09-21）：管理后台每年录入国务院通知，期限引擎据此把
 // 届满日为节假日的顺延到下一工作日并在依据标注（民诉法第八十五条第三款）。
 // 不内置硬编码表（每年调整会过期）；调休上班日 kind=WORKDAY 不视为休假日。
@@ -2408,6 +2440,7 @@ enum ReminderDeliveryObjectType {
   DEADLINE
   HEARING
   PRESERVATION_PROPERTY
+  ARCHIVE_BORROW
   DIGEST
 }
 

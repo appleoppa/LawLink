@@ -3,6 +3,8 @@ import { Download } from "lucide-react";
 import {
   listArchivedMatters
 } from "@/server/archive/actions";
+import { listArchivePageData } from "@/server/archive/borrow";
+import { BorrowPanel } from "./_components/borrow-panel";
 import { CLOSED_REASON_CN } from "@/server/archive/schemas";
 import { formatDate } from "@/lib/utils";
 import { requireSession } from "@/lib/auth/session";
@@ -12,9 +14,12 @@ import { matterHref } from "@/lib/matters/route";
 import { PageHeader } from "@/components/patterns/moan";
 
 export default async function ArchivePage() {
-  const session = await requireSession("archive.read");
+  // F-6：页面放开为登录可进——archive.read 持有者见全量台账；
+  // 其他成员经「案卷借阅」面板检索、申请、审批与限时查阅
+  const session = await requireSession();
+  const page = await listArchivePageData();
   const canAuditAll = isSystemAdmin(session.user);
-  const items = await listArchivedMatters();
+  const items = page.hasArchiveRead ? await listArchivedMatters() : [];
 
   return (
     <div className="space-y-4">
@@ -24,7 +29,9 @@ export default async function ArchivePage() {
         sub={<>已归档 <b>{items.length}</b> 件 · 按归档日期降序 · 点击进入案件可查看卷宗封皮与目录</>}
       />
 
-      {items.length === 0 ? (
+      <BorrowPanel mine={page.borrows.mine} pending={page.borrows.pending} canApply={!page.hasArchiveRead} />
+
+      {page.hasArchiveRead && items.length === 0 ? (
         <div className="card">
           <div className="empty">
             <div className="mo-empty-title">暂无已归档案件</div>
