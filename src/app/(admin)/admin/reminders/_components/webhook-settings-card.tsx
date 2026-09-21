@@ -15,6 +15,7 @@ import {
   saveWebhookSettingsAction,
   sendTestWebhookAction
 } from "@/server/settings/webhook-actions";
+import { actionErrorMessage } from "@/lib/action-error";
 
 export function WebhookSettingsCard({
   initialEnabled,
@@ -34,7 +35,7 @@ export function WebhookSettingsCard({
         await saveWebhookSettingsAction({ enabled, url: url.trim() });
         toast.success("推送配置已保存");
       } catch (err) {
-        toast.error("保存失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("保存失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -45,7 +46,7 @@ export function WebhookSettingsCard({
         await sendTestWebhookAction();
         toast.success("测试消息已发送，请到群里确认");
       } catch (err) {
-        toast.error("测试失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("测试失败", { description: actionErrorMessage(err) });
       }
     });
   }

@@ -21,6 +21,7 @@ import {
 } from "@/lib/clients/identity";
 import type { ClientIdType } from "@prisma/client";
 import { z } from "zod";
+import { ActionError } from "@/lib/action-error";
 
 const candidateSelect = {
   id: true,
@@ -78,15 +79,15 @@ export async function mergeClientsByCode(input: {
     where: { internalCode: code, deletedAt: null },
     select: { id: true, name: true }
   });
-  if (!target) throw new Error(`未找到编号为 ${code} 的有效客户`);
-  if (target.id === input.keepId) throw new Error("不能与自身合并");
+  if (!target) throw new ActionError(`未找到编号为 ${code} 的有效客户`);
+  if (target.id === input.keepId) throw new ActionError("不能与自身合并");
   return mergeClients({ keepId: input.keepId, mergeId: target.id, basis: input.basis });
 }
 
 export async function mergeClients(input: z.infer<typeof mergeSchema>) {
   const session = await requireSession("clients.write");
   if (session.user.role !== "CUSTOM" && !isManager(session.user.role)) {
-    throw new Error("仅管理员可合并客户档案");
+    throw new ActionError("仅管理员可合并客户档案");
   }
   const data = mergeSchema.parse(input);
 
@@ -95,8 +96,8 @@ export async function mergeClients(input: z.infer<typeof mergeSchema>) {
       tx.client.findUnique({ where: { id: data.keepId }, select: { id: true, name: true, deletedAt: true } }),
       tx.client.findUnique({ where: { id: data.mergeId }, select: { id: true, name: true, deletedAt: true, internalCode: true } })
     ]);
-    if (!keep || keep.deletedAt) throw new Error("保留的客户不存在或已删除");
-    if (!merge || merge.deletedAt) throw new Error("被合并的客户不存在或已删除");
+    if (!keep || keep.deletedAt) throw new ActionError("保留的客户不存在或已删除");
+    if (!merge || merge.deletedAt) throw new ActionError("被合并的客户不存在或已删除");
 
     // 1. 联系人迁移
     await tx.contact.updateMany({ where: { clientId: merge.id }, data: { clientId: keep.id } });

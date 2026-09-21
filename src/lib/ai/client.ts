@@ -9,6 +9,7 @@
 import { getAiSettings } from "./settings";
 import { withExternalCallLog } from "@/lib/external-call-log";
 import { assertSafeHttpUrl, safeFetch } from "@/lib/net/safe-url";
+import { ActionError } from "@/lib/action-error";
 
 export type ChatMessage =
   | { role: "system" | "user" | "assistant"; content: string }
@@ -70,7 +71,7 @@ async function callOpenAiCompatible(opts: {
     });
     if (!res.ok) {
       const body = await res.text();
-      throw new Error(`AI 请求失败 (${res.status}): ${body.slice(0, 200)}`);
+      throw new ActionError(`AI 请求失败 (${res.status}): ${body.slice(0, 200)}`);
     }
     return res.json();
   } finally {

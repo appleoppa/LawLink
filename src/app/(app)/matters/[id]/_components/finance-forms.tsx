@@ -41,6 +41,7 @@ import {
 import { uploadDocument } from "@/server/documents/actions";
 import { recognizeInvoiceFromImage, type RecognizedInvoice } from "@/server/ai/actions";
 import { shDayKey } from "@/lib/ui/sh-time";
+import { actionErrorMessage } from "@/lib/action-error";
 
 // ============ AddBillingSheet ============
 
@@ -97,7 +98,7 @@ export function AddBillingSheet({
         setContractFile(null);
         onOpenChange(false);
       } catch (err) {
-        toast.error("失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -272,7 +273,7 @@ export function AddFeeEntrySheet({
         reset();
         onOpenChange(false);
       } catch (err) {
-        toast.error("失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -470,7 +471,7 @@ function InvoiceOcrBlock({
       onRecognized(res.data);
       toast.success("已识别并自动填入");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "识别失败");
+      toast.error(e instanceof Error ? actionErrorMessage(e) : "识别失败");
     } finally {
       setBusy(false);
     }

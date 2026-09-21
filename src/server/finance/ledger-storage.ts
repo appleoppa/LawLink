@@ -1,6 +1,7 @@
 /** 候选结构的唯一接入层；结构就绪后直接读取新记录，不转换旧账。 */
 import { Prisma } from "@prisma/client";
 import { summarizeLedger, type LedgerReceivable, type LedgerPayment, type LedgerInvoice } from "@/lib/finance/ledger";
+import { ActionError } from "@/lib/action-error";
 
 export async function financeLedgerReady(db: Prisma.TransactionClient) {
   const [row] = await db.$queryRaw<{ ready: boolean }[]>`
@@ -17,7 +18,7 @@ export async function financeLedgerReady(db: Prisma.TransactionClient) {
   return row?.ready === true;
 }
 export async function requireFinanceLedger(db: Prisma.TransactionClient) {
-  if (!await financeLedgerReady(db)) throw new Error("应收与收款分配尚未启用，请由管理员完成已批准的财务升级后再操作");
+  if (!await financeLedgerReady(db)) throw new ActionError("应收与收款分配尚未启用，请由管理员完成已批准的财务升级后再操作");
 }
 
 export async function readLedger(db: Prisma.TransactionClient, matterIds: string[]) {

@@ -19,6 +19,7 @@ import { assertMatterWritable } from "@/lib/archive/guard";
 import { assertCanAccessMatterFinance } from "@/lib/permissions";
 import { financeLedgerReady } from "./ledger-storage";
 import { allocateLedger } from "./ledger-actions";
+import { ActionError } from "@/lib/action-error";
 
 const allocateSchema = z.object({
   paymentId: z.string().cuid(),
@@ -42,7 +43,7 @@ export async function allocatePayment(input: z.infer<typeof allocateSchema>) {
   const session = await requireSession("finance.write");
   const data = allocateSchema.parse(input);
   if (await financeLedgerReady(prisma)) {
-    if (data.revision === undefined) throw new Error("请从账务核对与分配页面刷新实收版本后操作");
+    if (data.revision === undefined) throw new ActionError("请从账务核对与分配页面刷新实收版本后操作");
     return allocateLedger({ paymentId: data.paymentId, revision: data.revision, kind: "RECEIVABLE", items: data.items.map(i => ({ targetId: i.receivableId, amount: i.amount })) });
   }
 
@@ -54,13 +55,13 @@ export async function allocatePayment(input: z.infer<typeof allocateSchema>) {
         where: { id: data.paymentId },
         select: { matterId: true, amount: true, allocatedAmount: true, status: true }
       });
-      if (payment.status === "FULLY_ALLOCATED") throw new Error("该笔实收已全额核销");
+      if (payment.status === "FULLY_ALLOCATED") throw new ActionError("该笔实收已全额核销");
       await assertMatterWritable(payment.matterId, { allowFinanceRole: true });
 
       const remaining = payment.amount.minus(payment.allocatedAmount);
       const total = data.items.reduce((s, i) => s + i.amount, 0);
       if (total > remaining.toNumber() + 1e-9) {
-        throw new Error(`核销合计 ${total.toFixed(2)} 超过该笔实收未核销余额 ${remaining.toNumber().toFixed(2)}`);
+        throw new ActionError(`核销合计 ${total.toFixed(2)} 超过该笔实收未核销余额 ${remaining.toNumber().toFixed(2)}`);
       }
 
       for (const item of data.items) {
@@ -68,11 +69,11 @@ export async function allocatePayment(input: z.infer<typeof allocateSchema>) {
           where: { id: item.receivableId },
           select: { matterId: true, title: true, amount: true, settledAmount: true, status: true }
         });
-        if (ar.matterId !== payment.matterId) throw new Error("应收与实收不属于同一案件");
-        if (ar.status === "CANCELLED") throw new Error(`应收「${ar.title}」已作废，不可核销`);
+        if (ar.matterId !== payment.matterId) throw new ActionError("应收与实收不属于同一案件");
+        if (ar.status === "CANCELLED") throw new ActionError(`应收「${ar.title}」已作废，不可核销`);
         const arRemaining = ar.amount.minus(ar.settledAmount).toNumber();
         if (item.amount > arRemaining + 1e-9) {
-          throw new Error(`「${ar.title}」核销 ${item.amount.toFixed(2)} 超过其未核销余额 ${arRemaining.toFixed(2)}`);
+          throw new ActionError(`「${ar.title}」核销 ${item.amount.toFixed(2)} 超过其未核销余额 ${arRemaining.toFixed(2)}`);
         }
       }
 
@@ -121,7 +122,7 @@ export async function allocatePayment(input: z.infer<typeof allocateSchema>) {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && ["P2034", "P2025"].includes(err.code)) {
-      throw new Error("实收或应收状态已变化，请刷新后重新核销");
+      throw new ActionError("实收或应收状态已变化，请刷新后重新核销");
     }
     throw err;
   }
@@ -140,7 +141,7 @@ const correctionSchema = z.object({
 export async function recordFinanceCorrection(input: z.infer<typeof correctionSchema>) {
   const session = await requireSession("finance.write");
   const data = correctionSchema.parse(input);
-  if (await financeLedgerReady(prisma)) throw new Error("请到“应收与收款分配”的退款与账务更正区提交申请，旧入口不直接更改余额");
+  if (await financeLedgerReady(prisma)) throw new ActionError("请到“应收与收款分配”的退款与账务更正区提交申请，旧入口不直接更改余额");
 
   return prisma.$transaction(async tx => {
     // 冲正必须挂在真实存在的记录上，否则只产出一行悬空审计与更正流水
@@ -150,7 +151,7 @@ export async function recordFinanceCorrection(input: z.infer<typeof correctionSc
         : data.targetType === "Payment"
           ? await tx.payment.findUnique({ where: { id: data.targetId }, select: { id: true, matterId: true } })
           : await tx.receivable.findUnique({ where: { id: data.targetId }, select: { id: true, matterId: true } });
-    if (!targetExists) throw new Error("更正对象不存在或已删除，请刷新后重试");
+    if (!targetExists) throw new ActionError("更正对象不存在或已删除，请刷新后重试");
     await assertMatterWritable(targetExists.matterId, { allowFinanceRole: true });
 
     const created = await insertFinanceRowTx(tx,'FinanceCorrection',{

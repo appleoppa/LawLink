@@ -2,6 +2,7 @@ import type { IdentityDocumentType, Prisma } from "@prisma/client";
 import { encryptBuffer, sha256 } from "@/lib/storage/crypto";
 import { storage } from "@/lib/storage";
 import { identityPageKindsFor, readAndValidateIdentityImage } from "@/lib/identity-documents";
+import { ActionError } from "@/lib/action-error";
 
 export async function storeIdentityDocumentFiles(input: {
   userId: string;
@@ -9,7 +10,7 @@ export async function storeIdentityDocumentFiles(input: {
   documentType: IdentityDocumentType;
   files: File[];
 }): Promise<Prisma.UserIdentityDocumentCreateManyInput[]> {
-  if (input.files.length < 1 || input.files.length > 2) throw new Error("请上传1至2张证件照片");
+  if (input.files.length < 1 || input.files.length > 2) throw new ActionError("请上传1至2张证件照片");
   const pageKinds = identityPageKindsFor(input.documentType);
   const result: Prisma.UserIdentityDocumentCreateManyInput[] = [];
   for (const [index, file] of input.files.entries()) {

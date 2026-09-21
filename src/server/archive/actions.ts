@@ -32,6 +32,7 @@ import { createArchiveDocumentSnapshots, verifyArchivePolicySource, verifyArchiv
 import { matterHref } from "@/lib/matters/route";
 import { revalidateMatter } from "@/server/matters/route";
 import { recordTimelineEvent } from "@/server/timeline/record";
+import { ActionError } from "@/lib/action-error";
 
 /**
  * v0.9.4 归档：完整流程
@@ -50,7 +51,7 @@ export async function archiveMatter(input: ArchiveSubmitInput) {
 
   const initial=await prisma.matter.findUniqueOrThrow({where:{id:data.matterId},select:{status:true}});
   const supplement=initial.status==='ARCHIVED';
-  if(supplement){if(scopeFor(session.user,'archive.supplement')!=='OWN')throw new Error('补充归档须独立授权');}
+  if(supplement){if(scopeFor(session.user,'archive.supplement')!=='OWN')throw new ActionError('补充归档须独立授权');}
   else await assertMatterWritable(data.matterId);
   await assertCanLeadMatter(session.user.id, data.matterId, "仅案件主办/协办可以提交归档申请");
 
@@ -58,21 +59,21 @@ export async function archiveMatter(input: ArchiveSubmitInput) {
     where: { id: data.matterId },
     select: { id: true, status: true, category: true, internalCode: true, title: true }
   });
-  if (!matter) throw new Error("案件不存在");
+  if (!matter) throw new ActionError("案件不存在");
   await requireApprovalRoute({ action: "ARCHIVE_APPROVE", category: matter.category, requesterId: session.user.id });
   const parent=supplement?await prisma.archiveRecord.findFirst({where:{matterId:matter.id,status:"APPROVED"},orderBy:{archivedAt:"asc"},select:{id:true}}):null;
-  if(supplement&&!parent)throw new Error("缺少已批准原归档");
+  if(supplement&&!parent)throw new ActionError("缺少已批准原归档");
   await assertClosureReady(prisma,matter.id,undefined,{supplement});
 
   const pending = await prisma.archiveRecord.findFirst({
     where: { matterId: matter.id, status: "PENDING_REVIEW" },
     select: { archiveNo: true }
   });
-  if (pending) throw new Error(`本案已有待审归档申请 ${pending.archiveNo}，请先完成该申请`);
+  if (pending) throw new ActionError(`本案已有待审归档申请 ${pending.archiveNo}，请先完成该申请`);
 
   const policy = await getArchivePolicy();
   if (!policy.configured || !policy.sourceFileId || !policy.sourceFileName || !policy.sourceFileSha256) {
-    throw new Error("律所尚未配置可核验的归档制度，请管理员先在“管理后台—归档制度”完成配置");
+    throw new ActionError("律所尚未配置可核验的归档制度，请管理员先在“管理后台—归档制度”完成配置");
   }
 
   const checklist = checklistForCategory(matter.category);
@@ -84,17 +85,17 @@ export async function archiveMatter(input: ArchiveSubmitInput) {
     };
     const documentIds = [...new Set(submitted.documentIds)];
     if (submitted.status === "ATTACHED" && documentIds.length === 0) {
-      throw new Error(`“${item.label}”标记为已有材料，但没有关联实际文件`);
+      throw new ActionError(`“${item.label}”标记为已有材料，但没有关联实际文件`);
     }
     if (submitted.status !== "ATTACHED" && documentIds.length > 0) {
-      throw new Error(`“${item.label}”已关联文件，不能同时标记为缺失或不适用`);
+      throw new ActionError(`“${item.label}”已关联文件，不能同时标记为缺失或不适用`);
     }
     if (submitted.status === "NOT_APPLICABLE" && !submitted.note) {
-      throw new Error(`请说明“${item.label}”不适用的理由`);
+      throw new ActionError(`请说明“${item.label}”不适用的理由`);
     }
     if (item.required && submitted.status !== "ATTACHED") {
-      if (!data.forceWithMissing) throw new Error(`必交项“${item.label}”没有实际材料`);
-      if (!submitted.note) throw new Error(`请逐项说明必交项“${item.label}”的缺项或不适用理由`);
+      if (!data.forceWithMissing) throw new ActionError(`必交项“${item.label}”没有实际材料`);
+      if (!submitted.note) throw new ActionError(`请逐项说明必交项“${item.label}”的缺项或不适用理由`);
     }
     return {
       id: item.id,
@@ -109,7 +110,7 @@ export async function archiveMatter(input: ArchiveSubmitInput) {
 
   const manualChecks = ARCHIVE_MANUAL_CHECKS.map((item) => {
     const submitted = data.manualChecks[item.id];
-    if (!submitted?.confirmed) throw new Error(`请完成归档核验：“${item.label}”`);
+    if (!submitted?.confirmed) throw new ActionError(`请完成归档核验：“${item.label}”`);
     return { id: item.id, label: item.label, confirmed: true, note: submitted.note };
   });
   const selectedDocumentIds = [...new Set(submittedItems.flatMap((item) => item.documentIds))];
@@ -144,7 +145,7 @@ export async function archiveMatter(input: ArchiveSubmitInput) {
       extras
     });
   } catch (err) {
-    throw new Error(`渲染卷宗封皮失败：${err instanceof Error ? err.message : String(err)}`);
+    throw new ActionError(`渲染卷宗封皮失败：${err instanceof Error ? err.message : String(err)}`);
   }
 
   let catalogDocId: string;
@@ -162,7 +163,7 @@ export async function archiveMatter(input: ArchiveSubmitInput) {
       where: { id: coverDocId },
       data: { deletedAt: new Date() }
     })).catch(() => null);
-    throw new Error(`渲染卷宗目录失败：${err instanceof Error ? err.message : String(err)}`);
+    throw new ActionError(`渲染卷宗目录失败：${err instanceof Error ? err.message : String(err)}`);
   }
 
   itemIdsByDocumentId.set(coverDocId, ["archive_cover"]);
@@ -239,13 +240,13 @@ export async function archiveMatter(input: ArchiveSubmitInput) {
   try {
     submitted = await prisma.$transaction(async (tx) => {
     await checkRoleMutation(tx, session.user, "archive.submit");
-    if(supplement){const actor=await tx.user.findUniqueOrThrow({where:{id:session.user.id},select:{role:true}});if(scopeFor(await resolveRoleUser(session.user.id,actor.role,tx),'archive.supplement')!=='OWN')throw new Error('补充归档须独立授权');}
+    if(supplement){const actor=await tx.user.findUniqueOrThrow({where:{id:session.user.id},select:{role:true}});if(scopeFor(await resolveRoleUser(session.user.id,actor.role,tx),'archive.supplement')!=='OWN')throw new ActionError('补充归档须独立授权');}
       const workflow=await assertClosureReady(tx,matter.id,undefined,{supplement});
       const alreadyPending = await tx.archiveRecord.findFirst({
         where: { matterId: matter.id, status: "PENDING_REVIEW" },
         select: { archiveNo: true }
       });
-      if (alreadyPending) throw new Error(`本案已有待审归档申请 ${alreadyPending.archiveNo}`);
+      if (alreadyPending) throw new ActionError(`本案已有待审归档申请 ${alreadyPending.archiveNo}`);
       const record = await tx.archiveRecord.create({
         data: {
           matterId: matter.id,
@@ -329,10 +330,10 @@ export async function approveArchiveRecord(input: ArchiveApproveInput) {
       archivedById: true
     }
   });
-  if (!record) throw new Error("归档记录不存在");
-  if (record.status !== "PENDING_REVIEW") throw new Error("此归档申请已审批");
+  if (!record) throw new ActionError("归档记录不存在");
+  if (record.status !== "PENDING_REVIEW") throw new ActionError("此归档申请已审批");
   const snapshot = parseArchiveSnapshot(record.checklistJson);
-  if (!snapshot) throw new Error("该历史归档申请没有固定实际材料，请驳回后重新提交");
+  if (!snapshot) throw new ActionError("该历史归档申请没有固定实际材料，请驳回后重新提交");
   const requiredIds = assertArchiveApprovalReady({ snapshot, verificationIds: data.verificationIds, exceptionApproved: data.exceptionApproved, note: data.note });
   await verifyArchivePolicySource(snapshot);
   await verifyArchiveSnapshotDocuments(snapshot, record.matterId);
@@ -343,7 +344,7 @@ export async function approveArchiveRecord(input: ArchiveApproveInput) {
     let supplementOfId:string|null=null;
     if(await closureReady(tx)){
       const [saved]=await tx.$queryRaw<{workflowSnapshot:{fingerprint:string}|null;supplementOfId:string|null}[]>`SELECT "workflowSnapshot","supplementOfId" FROM "ArchiveRecord" WHERE id=${record.id}`;
-      if(!saved?.workflowSnapshot)throw new Error('缺少归档核对快照，请退回重新送审');
+      if(!saved?.workflowSnapshot)throw new ActionError('缺少归档核对快照，请退回重新送审');
       await assertClosureReady(tx,record.matterId,saved.workflowSnapshot.fingerprint,{supplement:Boolean(saved.supplementOfId)});supplementOfId=saved.supplementOfId;
     }
     await approvalAudit(tx, session.user.id, "ARCHIVE_APPROVE", data.archiveId, {
@@ -415,7 +416,7 @@ export async function approveArchiveRecord(input: ArchiveApproveInput) {
  */
 export async function rejectArchiveRecord(input: { archiveId: string; note: string }) {
   const session = await requireSession("approval");
-  if (!input.note.trim()) throw new Error("请填写驳回原因");
+  if (!input.note.trim()) throw new ActionError("请填写驳回原因");
 
   const record = await prisma.archiveRecord.findUnique({
     where: { id: input.archiveId },
@@ -430,8 +431,8 @@ export async function rejectArchiveRecord(input: { archiveId: string; note: stri
       archivedById: true
     }
   });
-  if (!record) throw new Error("归档记录不存在");
-  if (record.status !== "PENDING_REVIEW") throw new Error("此归档申请已审批");
+  if (!record) throw new ActionError("归档记录不存在");
+  if (record.status !== "PENDING_REVIEW") throw new ActionError("此归档申请已审批");
 
   await approvalTransaction(async tx => {
     await assertApprovalItem(session.user.id, "ARCHIVE_APPROVE", input.archiveId, tx);
@@ -512,7 +513,7 @@ export async function getArchivePrepData(matterId: string) {
       }
     }
   });
-  if (!matter) throw new Error("案件不存在");
+  if (!matter) throw new ActionError("案件不存在");
 
   const checklist = checklistForCategory(matter.category);
 
@@ -683,7 +684,7 @@ export async function batchApproveArchiveRecords(input: {
   failed: { id: string; error: string }[];
 }> {
   void input;
-  throw new Error("归档申请必须逐件核对制度、材料和人工核验事项，不能批量通过");
+  throw new ActionError("归档申请必须逐件核对制度、材料和人工核验事项，不能批量通过");
 }
 
 /**
@@ -697,9 +698,9 @@ export async function batchRejectArchiveRecords(input: {
   failed: { id: string; error: string }[];
 }> {
   const session = await requireSession("approval");
-  if (!input.archiveIds.length) throw new Error("未选择任何归档申请");
-  if (input.archiveIds.length > 100) throw new Error("单次批量不超过 100 条");
-  if (!input.note.trim()) throw new Error("请填写驳回原因");
+  if (!input.archiveIds.length) throw new ActionError("未选择任何归档申请");
+  if (input.archiveIds.length > 100) throw new ActionError("单次批量不超过 100 条");
+  if (!input.note.trim()) throw new ActionError("请填写驳回原因");
 
   const succeeded: string[] = [];
   const failed: { id: string; error: string }[] = [];

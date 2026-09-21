@@ -3,6 +3,7 @@
  * 实际调用走 src/server/ai/review-document.ts
  */
 import { extractJson } from "./client";
+import { ActionError } from "@/lib/action-error";
 
 export type ReviewType = "MISSING" | "RISK" | "ISSUE" | "SUGGESTION";
 export type ReviewSeverity = "HIGH" | "MEDIUM" | "LOW";
@@ -33,7 +34,7 @@ const SEV_ORDER: Record<ReviewSeverity, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 }
 export function parseReviewItems(content: string): ReviewItem[] {
   const parsed = extractJson<unknown>(content);
   if (!Array.isArray(parsed)) {
-    throw new Error("AI 返回内容无法解析为审查清单");
+    throw new ActionError("AI 返回内容无法解析为审查清单");
   }
   const items: ReviewItem[] = [];
   for (const raw of parsed as Array<Record<string, unknown>>) {

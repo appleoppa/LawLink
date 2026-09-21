@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type PeriodKey = "month" | "quarter" | "year" | "lastYear" | "custom";
 
@@ -66,7 +67,7 @@ export function ReportsView({
           `归档逾期扫描完成：${r.scanned} 候选 / ${r.notified} 通知 / ${r.suppressed} 抑制`
         );
       } catch (err) {
-        toast.error("扫描失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("扫描失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -85,7 +86,7 @@ export function ReportsView({
           );
         }
       } catch (err) {
-        toast.error("推送失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("推送失败", { description: actionErrorMessage(err) });
       }
     });
   }

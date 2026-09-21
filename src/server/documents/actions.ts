@@ -24,6 +24,7 @@ import { extractDocumentTextLayer, ocrStatusFor } from "@/lib/documents/text-ext
 import { revalidateMatter } from "@/server/matters/route";
 import { assertDocumentNotInPendingArchive } from "@/server/archive/verification";
 import { recordTimelineEvent } from "@/server/timeline/record";
+import { ActionError } from "@/lib/action-error";
 
 const documentCategorySchema = z.enum([
   "EVIDENCE",
@@ -43,7 +44,7 @@ const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 async function documentMutation<T>(user:RoleUser&{id:string},subject:{intakeId:string|null;matterId:string|null;id?:string},write:(db:Prisma.TransactionClient)=>Promise<T>){
  if(subject.intakeId&&await intakeWorkflowReady(prisma))return approvalTransaction(async db=>{
    if(!subject.matterId)await assertIntakeDocumentChange(db,user.id,subject.intakeId!,subject.id);
-   else if(subject.id){const [used]=await db.$queryRaw<{count:bigint}[]>`SELECT COUNT(*) AS count FROM "IntakeRevision" WHERE "intakeId"=${subject.intakeId} AND snapshot->'documents' @> ${JSON.stringify([{id:subject.id}])}::jsonb`;if(Number(used.count))throw new Error('已送审材料原件须保留，请另传补充材料');}
+   else if(subject.id){const [used]=await db.$queryRaw<{count:bigint}[]>`SELECT COUNT(*) AS count FROM "IntakeRevision" WHERE "intakeId"=${subject.intakeId} AND snapshot->'documents' @> ${JSON.stringify([{id:subject.id}])}::jsonb`;if(Number(used.count))throw new ActionError('已送审材料原件须保留，请另传补充材料');}
    return write(db);
  });
  return roleMutation(user,'documents.write',write);
@@ -71,13 +72,13 @@ export async function uploadDocument(formData: FormData) {
       : null;
   const file = formData.get("file");
 
-  if (!(file instanceof File)) throw new Error("缺少文件");
+  if (!(file instanceof File)) throw new ActionError("缺少文件");
 
   const matterId = typeof matterIdRaw === "string" && matterIdRaw ? matterIdRaw : null;
   const intakeId = typeof intakeIdRaw === "string" && intakeIdRaw ? intakeIdRaw : null;
-  if (!matterId && !intakeId) throw new Error("matterId 或 intakeId 至少需要一个");
+  if (!matterId && !intakeId) throw new ActionError("matterId 或 intakeId 至少需要一个");
 
-  if (typeof name !== "string" || !name.trim()) throw new Error("材料名称必填");
+  if (typeof name !== "string" || !name.trim()) throw new ActionError("材料名称必填");
   const parsedCategory = documentCategorySchema.parse(category || "OTHER");
   const tags =
     typeof tagsRaw === "string" && tagsRaw
@@ -96,7 +97,7 @@ export async function uploadDocument(formData: FormData) {
       where: { id: matterId, deletedAt: null },
       select: { id: true, status: true }
     });
-    if (!matter) throw new Error("案件不存在");
+    if (!matter) throw new ActionError("案件不存在");
     // 上传属案件写入，统一走经办断言：合伙人全所、其余（含 managerAuthorized）须本案经办，
     // 管理权只放大「可见」不放大写入（AGENTS 业务管理权决议）。
     await assertCanHandleMatter(session.user, matterId);
@@ -107,7 +108,7 @@ export async function uploadDocument(formData: FormData) {
         select: { matterId: true, name: true }
       });
       if (!folder || folder.matterId !== matterId) {
-        throw new Error("目标卷宗与案件不匹配");
+        throw new ActionError("目标卷宗与案件不匹配");
       }
       folderName = folder.name;
     }
@@ -119,10 +120,10 @@ export async function uploadDocument(formData: FormData) {
         select: { procedureId: true, procedure: { select: { matterId: true } } }
       });
       if (!stage || stage.procedure.matterId !== matterId) {
-        throw new Error("归属环节与案件不匹配");
+        throw new ActionError("归属环节与案件不匹配");
       }
       if (typeof procedureId === "string" && procedureId && stage.procedureId !== procedureId) {
-        throw new Error("归属环节与程序不匹配");
+        throw new ActionError("归属环节与程序不匹配");
       }
     }
 
@@ -134,9 +135,9 @@ export async function uploadDocument(formData: FormData) {
       where: { id: intakeId },
       select: { id: true, status: true, createdById: true, ownerUserId: true, coUserIds: true }
     });
-    if (!intake) throw new Error("收案记录不存在");
+    if (!intake) throw new ActionError("收案记录不存在");
     if(!matterId&&await intakeWorkflowReady(prisma)) await approvalTransaction(db=>assertIntakeDocumentChange(db,session.user.id,intakeId));
-    if (intake.status === "DECLINED") throw new Error("已拒绝的收案不可上传材料");
+    if (intake.status === "DECLINED") throw new ActionError("已拒绝的收案不可上传材料");
     const uid = session.user.id;
     if (
       session.user.role !== "PRINCIPAL_LAWYER" &&
@@ -144,7 +145,7 @@ export async function uploadDocument(formData: FormData) {
       intake.ownerUserId !== uid &&
       !intake.coUserIds.includes(uid)
     ) {
-      throw new Error("无权向该收案上传材料");
+      throw new ActionError("无权向该收案上传材料");
     }
   }
 
@@ -270,7 +271,7 @@ export async function deleteDocument(id: string) {
     doc.uploadedById !== session.user.id &&
     session.user.role !== "PRINCIPAL_LAWYER"
   ) {
-    throw new Error("只能删除自己上传的材料");
+    throw new ActionError("只能删除自己上传的材料");
   }
 
   // 软删除（保留文件以备审计），如需物理删除走单独脚本
@@ -296,7 +297,7 @@ export async function deleteDocument(id: string) {
 export async function hardDeleteDocument(id: string) {
   const session = await requireSession("documents.write");
   if (session.user.role !== "PRINCIPAL_LAWYER") {
-    throw new Error("仅主任律师可彻底删除材料");
+    throw new ActionError("仅主任律师可彻底删除材料");
   }
   const doc = await prisma.document.findUnique({ where: { id } });
   if (!doc) return { ok: false };
@@ -365,12 +366,12 @@ export async function listAllDocuments(input: Partial<z.infer<typeof docListQuer
 export async function submitDocumentForReview(id: string) {
   const session = await requireSession("documents.write");
   const doc = await prisma.document.findUnique({ where: { id, deletedAt: null } });
-  if (!doc) throw new Error("材料不存在");
+  if (!doc) throw new ActionError("材料不存在");
   if (doc.matterId) {
     await assertCanHandleMatter(session.user, doc.matterId);
     await assertDocumentWritable(doc.matterId, { kind: "modify" });
   }
-  if (doc.uploadedById !== session.user.id) throw new Error("仅上传人可提交此材料审核");
+  if (doc.uploadedById !== session.user.id) throw new ActionError("仅上传人可提交此材料审核");
 
   // v1.x 4.3：自确认分支——命中清单的低影响文书送审由上传人自我确认，
   // 不进审批队列、不通知审批人；审计动作区分（DOCUMENT_SELF_CONFIRM）。
@@ -380,7 +381,7 @@ export async function submitDocumentForReview(id: string) {
     if (matterRow) docContext.category = matterRow.category;
   }
   if (await selfConfirmEligible(docContext, prisma)) {
-    if (doc.status !== "DRAFT") throw new Error("只有草稿状态的材料才能提交审核");
+    if (doc.status !== "DRAFT") throw new ActionError("只有草稿状态的材料才能提交审核");
     await approvalTransaction(async db => {
       await db.document.update({
         where: { id, status: "DRAFT", updatedAt: doc.updatedAt },
@@ -404,7 +405,7 @@ export async function submitDocumentForReview(id: string) {
   }
 
   await requireApprovalRoute(docContext);
-  if (doc.status !== "DRAFT") throw new Error("只有草稿状态的材料才能提交审核");
+  if (doc.status !== "DRAFT") throw new ActionError("只有草稿状态的材料才能提交审核");
 
   await documentMutation(session.user,doc, async roleDb => roleDb.document.update({
     where: { id, status: "DRAFT", updatedAt: doc.updatedAt },
@@ -428,8 +429,8 @@ export async function submitDocumentForReview(id: string) {
 export async function approveDocument(id: string, note?: string) {
   const session = await requireSession("approval");
   const doc = await prisma.document.findUnique({ where: { id, deletedAt: null } });
-  if (!doc) throw new Error("材料不存在");
-  if (doc.status !== "PENDING_REVIEW") throw new Error("材料不在待审核状态");
+  if (!doc) throw new ActionError("材料不存在");
+  if (doc.status !== "PENDING_REVIEW") throw new ActionError("材料不在待审核状态");
 
   await approvalTransaction(async tx => {
     await assertApprovalItem(session.user.id, "DOCUMENT_APPROVE", id, tx);
@@ -453,8 +454,8 @@ export async function approveDocument(id: string, note?: string) {
 export async function rejectDocument(id: string, reason?: string) {
   const session = await requireSession("approval");
   const doc = await prisma.document.findUnique({ where: { id, deletedAt: null } });
-  if (!doc) throw new Error("材料不存在");
-  if (doc.status !== "PENDING_REVIEW") throw new Error("材料不在待审核状态");
+  if (!doc) throw new ActionError("材料不存在");
+  if (doc.status !== "PENDING_REVIEW") throw new ActionError("材料不在待审核状态");
 
   await approvalTransaction(async tx => {
     await assertApprovalItem(session.user.id, "DOCUMENT_APPROVE", id, tx);
@@ -478,11 +479,11 @@ export async function rejectDocument(id: string, reason?: string) {
 export async function fileDocument(id: string) {
   const session = await requireSession("documents.write");
   const doc = await prisma.document.findUnique({ where: { id, deletedAt: null } });
-  if (!doc) throw new Error("材料不存在");
+  if (!doc) throw new ActionError("材料不存在");
   if (doc.matterId)
     // 材料归档属材料操作（P1-1）：合伙人全所口径，其余岗位（含管理权）须经办。
     await assertCanHandleMatter(session.user, doc.matterId);
-  if (doc.status !== "APPROVED") throw new Error("只有已审批的材料才能归档");
+  if (doc.status !== "APPROVED") throw new ActionError("只有已审批的材料才能归档");
 
   await documentMutation(session.user,doc, async roleDb => roleDb.document.update({
     where: { id },
@@ -520,8 +521,8 @@ export async function uploadNewVersion(input: {
   // 2026-09-19 审计修复：此前新版本不经任何类型/大小校验、落库 MIME 取客户端值。
   const validated = validateUploadedFile(input.file, { purpose: "document", maxBytes: MAX_FILE_SIZE });
   const prior = await prisma.document.findUnique({ where: { id: input.documentId } });
-  if (!prior || prior.deletedAt) throw new Error("原材料不存在");
-  if (!prior.isLatest) throw new Error("只能基于最新版本更新");
+  if (!prior || prior.deletedAt) throw new ActionError("原材料不存在");
+  if (!prior.isLatest) throw new ActionError("只能基于最新版本更新");
 
   if (prior.matterId) {
     // 替换材料内容属材料操作（P1-1）：合伙人全所口径，其余岗位（含管理权）须经办，
@@ -535,11 +536,11 @@ export async function uploadNewVersion(input: {
   let checkout: { jti: string; baselineVersion: number } | null = null;
   if (input.checkoutToken) {
     const payload = verifyCheckoutToken(input.checkoutToken);
-    if (!payload) throw new Error("取件令牌无效或已过期，请重新取件");
-    if (payload.docId !== input.documentId) throw new Error("令牌与材料不匹配");
-    if (payload.userId !== session.user.id) throw new Error("令牌不属于当前账号");
+    if (!payload) throw new ActionError("取件令牌无效或已过期，请重新取件");
+    if (payload.docId !== input.documentId) throw new ActionError("令牌与材料不匹配");
+    if (payload.userId !== session.user.id) throw new ActionError("令牌不属于当前账号");
     if (payload.baselineVersion !== prior.version) {
-      throw new Error(`文件已被他人更新为第 ${prior.version} 版（取件基线为第 ${payload.baselineVersion} 版）。请重新取件基于最新版另存副本，勿直接覆盖。`);
+      throw new ActionError(`文件已被他人更新为第 ${prior.version} 版（取件基线为第 ${payload.baselineVersion} 版）。请重新取件基于最新版另存副本，勿直接覆盖。`);
     }
     checkout = { jti: payload.jti, baselineVersion: payload.baselineVersion };
   }

@@ -1,3 +1,4 @@
+import { ActionError } from "@/lib/action-error";
 /**
  * 上传文件类型校验
  *
@@ -92,21 +93,21 @@ export function validateUploadedFile(
   file: File,
   opts: FileValidationOptions
 ): { ext: string; mimeType: string } {
-  if (file.size === 0) throw new Error("文件为空");
+  if (file.size === 0) throw new ActionError("文件为空");
   if (file.size > opts.maxBytes) {
-    throw new Error(
+    throw new ActionError(
       `文件超过 ${Math.round(opts.maxBytes / 1024 / 1024)}MB 限制`
     );
   }
   const ext = getExt(file.name);
-  if (!ext) throw new Error(`文件名缺少扩展名：${file.name}`);
+  if (!ext) throw new ActionError(`文件名缺少扩展名：${file.name}`);
   if (!ALLOWED[opts.purpose].has(ext)) {
-    throw new Error(
+    throw new ActionError(
       `不允许的文件类型：.${ext}（${opts.purpose}）`
     );
   }
   if (file.type && DANGEROUS_CLIENT_MIME.test(file.type)) {
-    throw new Error(`不允许的文件类型：${file.type}`);
+    throw new ActionError(`不允许的文件类型：${file.type}`);
   }
   return { ext, mimeType: EXT_MIME[ext] ?? "application/octet-stream" };
 }

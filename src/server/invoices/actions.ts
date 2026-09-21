@@ -25,6 +25,7 @@ import { validateUploadedFile } from "@/lib/storage/file-validator";
 import { encryptBuffer, sha256 } from "@/lib/storage/crypto";
 import { serializeDecimals } from "@/lib/decimal";
 import { revalidateMatter } from "@/server/matters/route";
+import { ActionError } from "@/lib/action-error";
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
 
@@ -80,7 +81,7 @@ export async function createInvoiceRequest(input: z.infer<typeof createSchema>) 
   // 无法满足「关联案件必传开票依据、专票校验购方六要素」的现行服务端规则。此入口已无页面
   // 引用（两个表单组件均使用 finance/actions 的完整版），剩余可达路径为直接 RPC——
   // 不以"UI 不引用"作为安全依据，一律明确报错并指引完整入口，不创建缺依据的申请。
-  throw new Error("旧版开票入口已停用：缺少开票类型、名目、抬头与开票依据。请在案件财务区或财务页使用完整开票表单提交");
+  throw new ActionError("旧版开票入口已停用：缺少开票类型、名目、抬头与开票依据。请在案件财务区或财务页使用完整开票表单提交");
 }
 
 export async function listInvoiceRequests(filter?: { status?: "PENDING" | "ISSUED" | "REJECTED" | "APPROVED" }) {
@@ -155,19 +156,19 @@ export async function approveInvoiceRequest(formData: FormData) {
   const session = await requireSession("approval");
 
   const requestId = formData.get("requestId");
-  if (typeof requestId !== "string" || !requestId) throw new Error("requestId 缺失");
+  if (typeof requestId !== "string" || !requestId) throw new ActionError("requestId 缺失");
 
   const existing = await prisma.invoiceRequest.findUnique({
     where: { id: requestId },
     select: { id: true, matterId: true, status: true, updatedAt: true, evidenceDocIds: true, contractScanId: true, invoiceFileId: true }
   });
-  if (!existing) throw new Error("申请不存在");
-  if (existing.status === "ISSUED") throw new Error("此申请已开具");
-  if (existing.status === "REJECTED") throw new Error("此申请已驳回");
+  if (!existing) throw new ActionError("申请不存在");
+  if (existing.status === "ISSUED") throw new ActionError("此申请已开具");
+  if (existing.status === "REJECTED") throw new ActionError("此申请已驳回");
 
   if (existing.status === "APPROVED") {
     await assertExecutionOpen(prisma,"INVOICE",requestId);
-    if (!await canExecuteInvoice(session.user.id, requestId)) throw new Error("没有此申请的开票执行权限");
+    if (!await canExecuteInvoice(session.user.id, requestId)) throw new ActionError("没有此申请的开票执行权限");
   } else {
     await assertApprovalItem(session.user.id, "INVOICE_APPROVE", requestId);
   }
@@ -177,12 +178,12 @@ export async function approveInvoiceRequest(formData: FormData) {
   // v0.14: 真实发票号（财务批准/开具时回填）
   const invoiceNo = formData.get("invoiceNo");
   const invoiceNoStr = typeof invoiceNo === "string" ? invoiceNo.trim() : "";
-  if (session.user.role === "CUSTOM" && existing.status === "PENDING" && invoiceFile instanceof File && invoiceFile.size > 0) throw new Error("请先完成审批，再由具备开票执行权限的人员上传发票");
+  if (session.user.role === "CUSTOM" && existing.status === "PENDING" && invoiceFile instanceof File && invoiceFile.size > 0) throw new ActionError("请先完成审批，再由具备开票执行权限的人员上传发票");
   if (invoiceFile instanceof File && invoiceFile.size > 0 && !invoiceNoStr) {
-    throw new Error("上传电子发票时必须填写发票号码");
+    throw new ActionError("上传电子发票时必须填写发票号码");
   }
 
-  if (existing.status === "APPROVED" && !(invoiceFile instanceof File && invoiceFile.size > 0)) throw new Error("申请已批准，请上传电子发票完成开具");
+  if (existing.status === "APPROVED" && !(invoiceFile instanceof File && invoiceFile.size > 0)) throw new ActionError("申请已批准，请上传电子发票完成开具");
 
   type FilePrep = { path: string; mimeType: string; size: number; sha256: string; enc: ReturnType<typeof encryptBuffer>; name: string };
   let contractScanPrep: FilePrep | null = null;
@@ -227,7 +228,7 @@ export async function approveInvoiceRequest(formData: FormData) {
   await approvalTransaction(async tx => {
     await assertExecutionOpen(tx,"INVOICE",requestId);
     if (existing.status === "APPROVED") {
-      if (!await canExecuteInvoice(session.user.id, requestId, tx)) throw new Error("开票执行权限已失效");
+      if (!await canExecuteInvoice(session.user.id, requestId, tx)) throw new ActionError("开票执行权限已失效");
     } else await assertApprovalItem(session.user.id, "INVOICE_APPROVE", requestId, tx);
     if (contractScanPrep) {
       const doc = await tx.document.create({
@@ -313,8 +314,8 @@ export async function rejectInvoiceRequest(input: z.infer<typeof rejectSchema>) 
     where: { id: data.requestId },
     select: { matterId: true, status: true, evidenceDocIds: true, contractScanId: true, invoiceFileId: true }
   });
-  if (!existing) throw new Error("申请不存在");
-  if (existing.status === "ISSUED") throw new Error("已开具的申请不可驳回");
+  if (!existing) throw new ActionError("申请不存在");
+  if (existing.status === "ISSUED") throw new ActionError("已开具的申请不可驳回");
 
   await approvalTransaction(async tx => {
     await assertApprovalItem(session.user.id, "INVOICE_APPROVE", data.requestId, tx);

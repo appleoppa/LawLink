@@ -14,6 +14,7 @@ import { scopeFor } from "@/lib/roles/catalog";
 import { requireSession } from "@/lib/auth/session";
 import { financeRoleAssociatesAnyMatter, matterAssociationFilter } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { ActionError } from "@/lib/action-error";
 
 type WritableGuardOptions = {
   allowedIfArchivedReason?: string;
@@ -53,12 +54,12 @@ export async function assertMatterWritable(
 ): Promise<void> {
   if (!matterId) return;
   const matter = await findWritableMatter(matterId, opts);
-  if (!matter) throw new Error("案件不存在或无权处理");
+  if (!matter) throw new ActionError("案件不存在或无权处理");
   if (matter.status === "ARCHIVED") {
     const detail = opts?.allowedIfArchivedReason
       ? `（${opts.allowedIfArchivedReason}除外）`
       : "";
-    throw new Error(`案件已归档，禁止修改${detail}`);
+    throw new ActionError(`案件已归档，禁止修改${detail}`);
   }
 }
 
@@ -82,15 +83,15 @@ export async function assertDocumentWritable(
 ): Promise<void> {
   if (!matterId) return;
   const matter = await findWritableMatter(matterId, opts);
-  if (!matter) throw new Error("案件不存在或无权处理");
+  if (!matter) throw new ActionError("案件不存在或无权处理");
   if (matter.status !== "ARCHIVED") return;
 
   const session = opts?.actor ? { user: opts.actor } : await requireSession("personal");
-  if(scopeFor(session.user,"archive.supplement")!=="OWN")throw new Error("归档后追加材料须单独授予补充归档权限");
+  if(scopeFor(session.user,"archive.supplement")!=="OWN")throw new ActionError("归档后追加材料须单独授予补充归档权限");
   if (opts.kind === "modify") {
-    throw new Error("案件已归档，材料不可修改或删除");
+    throw new ActionError("案件已归档，材料不可修改或删除");
   }
   if (opts.kind === "upload" && !isArchiveFolderName(opts.folderName)) {
-    throw new Error("案件已归档，仅允许补传材料到「结案」或「归档」卷宗");
+    throw new ActionError("案件已归档，仅允许补传材料到「结案」或「归档」卷宗");
   }
 }

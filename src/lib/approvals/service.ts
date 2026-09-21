@@ -4,6 +4,7 @@ import { Prisma, type ApprovalAction } from "@prisma/client";
 import { resolveRoleUser } from "@/lib/roles/service";
 import { prisma } from "@/lib/prisma";
 import { matchesApprovalRule, mayApproveSelf, type ApprovalContext } from "./rules";
+import { ActionError } from "@/lib/action-error";
 export type ApprovalDb = Prisma.TransactionClient;
 export const APPROVAL_SETTING_KEY = "approvalAuthorization";
 export async function approvalSettings(db: ApprovalDb = prisma) {
@@ -59,7 +60,7 @@ export async function canApproveItem(userId: string, action: ApprovalAction, id:
   return canApproveContext(userId, await approvalContextFor(action, id, db), db);
 }
 export async function assertApprovalItem(userId: string, action: ApprovalAction, id: string, db: ApprovalDb = prisma) {
-  if (!await canApproveItem(userId, action, id, db)) throw new Error("未获授此事项的审批权限，或申请人不能审批本人申请");
+  if (!await canApproveItem(userId, action, id, db)) throw new ActionError("未获授此事项的审批权限，或申请人不能审批本人申请");
 }
 export async function approvalRecipients(context: ApprovalContext, db: ApprovalDb = prisma) {
   const users = await db.user.findMany({ where: { active: true }, select: { id: true } });
@@ -67,7 +68,7 @@ export async function approvalRecipients(context: ApprovalContext, db: ApprovalD
   return checks.filter((id): id is string => id !== null);
 }
 export async function requireApprovalRoute(context: ApprovalContext, db: ApprovalDb = prisma) {
-  if (!(await approvalRecipients(context, db)).length) throw new Error("此事项尚无可审批人员，请联系管理员配置审批权限后再提交");
+  if (!(await approvalRecipients(context, db)).length) throw new ActionError("此事项尚无可审批人员，请联系管理员配置审批权限后再提交");
 }
 export async function approvalTransaction<T>(fn: (db: ApprovalDb) => Promise<T>) {
   try {
@@ -78,11 +79,11 @@ export async function approvalTransaction<T>(fn: (db: ApprovalDb) => Promise<T>)
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 20000 });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && ["P2034", "P2025"].includes(error.code)) {
-      throw new Error("权限或申请状态已发生变化，请刷新后重新处理");
+      throw new ActionError("权限或申请状态已发生变化，请刷新后重新处理");
     }
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      if (error.code === "P2002") throw new Error("名称已存在，请使用其他名称");
-      throw new Error("审批权限或处理结果未能保存，请稍后重试；如持续失败，请联系管理员检查数据库");
+      if (error.code === "P2002") throw new ActionError("名称已存在，请使用其他名称");
+      throw new ActionError("审批权限或处理结果未能保存，请稍后重试；如持续失败，请联系管理员检查数据库");
     }
     throw error;
   }

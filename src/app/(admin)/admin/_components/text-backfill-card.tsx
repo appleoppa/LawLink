@@ -7,6 +7,7 @@
 import { useState, useTransition } from "react";
 import { FileText, Loader2 } from "lucide-react";
 import { backfillDocumentTextLayers } from "@/server/documents/admin-text-backfill";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Stats = { pending: number; ready: number; failed: number; skip: number; total: number };
 type RunResult = { scanned: number; ready: number; skipped: number; failed: number; remaining: number };
@@ -31,7 +32,7 @@ export function TextBackfillCard({ initialStats }: { initialStats: Stats }) {
           skip: s.skip + result.skipped
         }));
       } catch (e) {
-        setError(e instanceof Error ? e.message : "执行失败");
+        setError(e instanceof Error ? actionErrorMessage(e) : "执行失败");
       }
     });
   }

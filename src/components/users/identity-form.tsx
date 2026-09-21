@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { getProfileIdentity, bindMyIdentity, correctUserIdentity } from "@/server/users/profile-actions";
 import { correctUserIdentityWithPhotos } from "@/server/identity-documents/actions";
 import { identityDocumentTypeLabel, identityDocumentTypes, type IdentityDocumentTypeValue } from "@/lib/identity-documents";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Summary = Awaited<ReturnType<typeof getProfileIdentity>>;
 export function IdentityForm({ adminTargetId }: { adminTargetId?: string }) {
@@ -29,7 +30,7 @@ export function IdentityForm({ adminTargetId }: { adminTargetId?: string }) {
   const prefix = `identity-${adminTargetId ?? "self"}`;
   const load = useCallback(async () => {
     try { setSummary(await getProfileIdentity(adminTargetId)); setError(""); }
-    catch (e) { setError(e instanceof Error ? e.message : "身份信息读取失败"); }
+    catch (e) { setError(e instanceof Error ? actionErrorMessage(e) : "身份信息读取失败"); }
   }, [adminTargetId]);
   useEffect(() => { void load(); }, [load]);
   function save(event?: React.FormEvent) {
@@ -62,7 +63,7 @@ export function IdentityForm({ adminTargetId }: { adminTargetId?: string }) {
         toast.success(adminTargetId ? "身份信息已更新并记录核对原因" : "身份证件已登记");
         router.refresh();
       } catch (e) {
-        const message = e instanceof Error ? e.message : "登记失败";
+        const message = e instanceof Error ? actionErrorMessage(e) : "登记失败";
         setSaveError(message);
         toast.error(message);
       }

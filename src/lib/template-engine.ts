@@ -12,6 +12,7 @@ import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import { shParts, shDayKey } from "@/lib/ui/sh-time";
 import { prisma } from "./prisma";
+import { ActionError } from "@/lib/action-error";
 
 const FIRM_NAME_KEY = "firmName";
 const FIRM_ADDRESS_KEY = "firmAddress";
@@ -230,7 +231,7 @@ export async function buildContext(opts: {
       procedures: { orderBy: { order: "asc" }, where: { engagement: "ENGAGED" }, take: 1 }
     }
   });
-  if (!matter) throw new Error("案件不存在");
+  if (!matter) throw new ActionError("案件不存在");
 
   const causeText = matter.cause?.name ?? matter.causeFreeText ?? "";
   const clientParty = matter.primaryClient
@@ -336,7 +337,7 @@ export function renderDocxBuffer(
   try {
     zip = new PizZip(templateBuffer);
   } catch (err) {
-    throw new Error(`模板文件损坏，无法解压：${err instanceof Error ? err.message : String(err)}`);
+    throw new ActionError(`模板文件损坏，无法解压：${err instanceof Error ? err.message : String(err)}`);
   }
 
   const doc = new Docxtemplater(zip, {
@@ -348,7 +349,7 @@ export function renderDocxBuffer(
   try {
     doc.render(context as unknown as Record<string, unknown>);
   } catch (err) {
-    throw new Error(`模板渲染失败：\n${formatDocxError(err)}`);
+    throw new ActionError(`模板渲染失败：\n${formatDocxError(err)}`);
   }
 
   return doc.getZip().generate({ type: "nodebuffer" }) as Buffer;

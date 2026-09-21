@@ -18,6 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { parseSms, splitSmsBatch } from "@/lib/sms-parser";
 import { parseAndSaveSms } from "@/server/sms/actions";
 import { SMS_TYPE_CN, SMS_TYPE_ACCENT } from "./sms-types";
+import { actionErrorMessage } from "@/lib/action-error";
 
 export function SmsPasteDialog({
   open,
@@ -53,7 +54,7 @@ export function SmsPasteDialog({
         setText("");
         onOpenChange(false);
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "保存失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "保存失败");
       }
     });
   };

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { assertCanAccessMatter } from "@/lib/permissions";
+import { ActionError } from "@/lib/action-error";
 
 const procedureIdSchema = z.object({ procedureId: z.string().cuid() });
 
@@ -23,7 +24,7 @@ export async function listDeadlineRulesForProcedure(input: { procedureId: string
       matter: { select: { category: true } }
     }
   });
-  if (!procedure) throw new Error("程序不存在");
+  if (!procedure) throw new ActionError("程序不存在");
   await assertCanAccessMatter(session.user.id, session.user.role, procedure.matterId, session.user.rolePermissions);
 
   return prisma.deadlineRule.findMany({

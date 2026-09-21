@@ -15,6 +15,7 @@ import { audit } from "@/server/audit";
 import { assertMatterWritable } from "@/lib/archive/guard";
 import { assertCanLeadMatter } from "@/lib/permissions";
 import { revalidateMatter } from "@/server/matters/route";
+import { ActionError } from "@/lib/action-error";
 
 const entitySchema = z.enum(["MATTER", "CLIENT"]);
 const typeSchema = z.enum(["TEXT", "NUMBER", "DATE", "SELECT"]);
@@ -47,7 +48,7 @@ export async function createCustomFieldDef(input: z.input<typeof defCreateSchema
   const session = await requireSystemAdmin();
   const data = defCreateSchema.parse(input);
   if (data.fieldType === "SELECT" && data.options.length === 0) {
-    throw new Error("下拉类型至少需要一个选项值");
+    throw new ActionError("下拉类型至少需要一个选项值");
   }
   const max = await prisma.customFieldDef.aggregate({
     where: { entityType: data.entityType },
@@ -80,7 +81,7 @@ export async function updateCustomFieldDef(input: z.input<typeof defUpdateSchema
   await requireSystemAdmin();
   const { id, ...rest } = defUpdateSchema.parse(input);
   if (rest.fieldType === "SELECT" && rest.options && rest.options.length === 0) {
-    throw new Error("下拉类型至少需要一个选项值");
+    throw new ActionError("下拉类型至少需要一个选项值");
   }
   await prisma.customFieldDef.update({
     where: { id },
@@ -135,7 +136,7 @@ export async function saveMatterCustomValues(
     const v = values[d.key];
     if (typeof v === "string" && v.trim() !== "") clean[d.key] = v.trim();
     if (d.required && !clean[d.key]) {
-      throw new Error(`「${d.label}」为必填项`);
+      throw new ActionError(`「${d.label}」为必填项`);
     }
   }
 

@@ -9,19 +9,20 @@ import {buildIntakeConflictQueries} from '@/lib/approvals/intake-detail';
 import {decryptIdNumber} from '@/lib/clients/id-number-crypto';
 import {runConflictCheck,conflictHitKey} from '@/server/conflicts/algorithm';
 import {auditTx} from '@/server/audit';
+import { ActionError } from "@/lib/action-error";
 export async function intakeWorkflowReady(db:Prisma.TransactionClient){const [r]=await db.$queryRaw<{ready:boolean}[]>`SELECT to_regclass('public."IntakeRevision"') IS NOT NULL AS ready`;return r?.ready===true;}
 export async function currentActor(db:Prisma.TransactionClient,userId:string,key:'matters.write'|'intakes.create'|'documents.write'|'schedule.write'){
  await db.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(72606101)`;
- const user=await db.user.findUnique({where:{id:userId},select:{id:true,active:true,role:true}});if(!user?.active)throw new Error('账号已停用');
- const current=await resolveRoleUser(user.id,user.role,db);if(!current.enabled||(user.role==='CUSTOM'&&!scopeFor(current,key)))throw new Error('当前岗位无权处理');return current;
+ const user=await db.user.findUnique({where:{id:userId},select:{id:true,active:true,role:true}});if(!user?.active)throw new ActionError('账号已停用');
+ const current=await resolveRoleUser(user.id,user.role,db);if(!current.enabled||(user.role==='CUSTOM'&&!scopeFor(current,key)))throw new ActionError('当前岗位无权处理');return current;
 }
 export async function assertIntakeEditor(db:Prisma.TransactionClient,userId:string,id:string,states=['INTAKE','NEEDS_REVISION'],key:'matters.write'|'intakes.create'|'documents.write'|'schedule.write'='matters.write'){
  await currentActor(db,userId,key);await db.$queryRaw`SELECT id FROM "Intake" WHERE id=${id} FOR UPDATE`;
- const intake=await db.intake.findUnique({where:{id}});if(!intake||(intake.createdById!==userId&&intake.ownerUserId!==userId))throw new Error('仅申请人或当前主办可以修改收案');
- if(!states.includes(intake.status))throw new Error('当前收案不可修改；待审批申请请先撤回');return intake;
+ const intake=await db.intake.findUnique({where:{id}});if(!intake||(intake.createdById!==userId&&intake.ownerUserId!==userId))throw new ActionError('仅申请人或当前主办可以修改收案');
+ if(!states.includes(intake.status))throw new ActionError('当前收案不可修改；待审批申请请先撤回');return intake;
 }
 export async function assertLiveAssignees(db:Prisma.TransactionClient,ids:string[]){
- for(const id of new Set(ids)){const u=await db.user.findUnique({where:{id},select:{active:true,role:true}});if(!u?.active)throw new Error('承办人员已停用或不存在，请重新指定');const role=await resolveRoleUser(id,u.role,db);if(!role.enabled||(u.role==='CUSTOM'&&!scopeFor(role,'matters.write')))throw new Error('承办人员已无办案权限，请重新指定');}
+ for(const id of new Set(ids)){const u=await db.user.findUnique({where:{id},select:{active:true,role:true}});if(!u?.active)throw new ActionError('承办人员已停用或不存在，请重新指定');const role=await resolveRoleUser(id,u.role,db);if(!role.enabled||(u.role==='CUSTOM'&&!scopeFor(role,'matters.write')))throw new ActionError('承办人员已无办案权限，请重新指定');}
 }
 export const intakeFields=['title','category','causeId','causeFreeText','description','receivedAt','clientId','clientType','contactName','contactPhone','firstProcedureType','firstAgency','jurisdiction','ourStanding','claimAmount','claimDescription','barFiling','counterclaim','businessType','serviceScope','deliverables','counselType','serviceStart','serviceEnd','feeType','feeAmount','contingencyTerms','feeSchedule','feeNote','ownerUserId','coUserIds'] as const;
 function ordered(value:unknown):unknown{if(Array.isArray(value))return value.map(ordered);if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>[k,ordered(v)]));return value;}
@@ -37,19 +38,19 @@ export async function intakeState(db:Prisma.TransactionClient,id:string){
 }
 export async function assertFreshIntakeCheck(db:Prisma.TransactionClient,id:string,requireConclusion=false){
  const state=await intakeState(db,id),check=await db.conflictCheck.findFirst({where:{intakeId:id},orderBy:{checkedAt:'desc'},include:{hits:true}});
- if(!check)throw new Error('请先运行本收案正式冲突检索');
+ if(!check)throw new ActionError('请先运行本收案正式冲突检索');
  const [meta]=await db.$queryRaw<{subjectFingerprint:string|null}[]>`SELECT "subjectFingerprint" FROM "ConflictCheck" WHERE id=${check.id}`;
- if(meta.subjectFingerprint!==state.subjectFingerprint)throw new Error('主体、角色或服务范围已变化，请重新检索');
- if(requireConclusion&&check.conclusion!=='DIFFERENT')throw new Error('冲突核查尚未确认可承接');
- if(requireConclusion&&check.hits.length&&!check.note?.trim())throw new Error('有命中时必须填写排除冲突的复核理由');
+ if(meta.subjectFingerprint!==state.subjectFingerprint)throw new ActionError('主体、角色或服务范围已变化，请重新检索');
+ if(requireConclusion&&check.conclusion!=='DIFFERENT')throw new ActionError('冲突核查尚未确认可承接');
+ if(requireConclusion&&check.hits.length&&!check.note?.trim())throw new ActionError('有命中时必须填写排除冲突的复核理由');
  const current=await runConflictCheck(state.queries,{excludeIntakeId:id,db});
  const prior=new Set(check.hits.map(h=>`${conflictHitKey(h)}|${h.severity}|${h.reason}`));
- if(current.hits.some(h=>!prior.has(`${conflictHitKey(h)}|${h.severity}|${h.reason}`)))throw new Error('出现新的或变化的冲突命中，请重新检索并复核');
+ if(current.hits.some(h=>!prior.has(`${conflictHitKey(h)}|${h.severity}|${h.reason}`)))throw new ActionError('出现新的或变化的冲突命中，请重新检索并复核');
  return {...state,check};
 }
 export async function submitIntakeTx(db:Prisma.TransactionClient,userId:string,id:string){
  await assertNoPendingIntakeHandover(db,id);
- if(!await intakeWorkflowReady(db))throw new Error('收案轮次功能尚未启用');
+ if(!await intakeWorkflowReady(db))throw new ActionError('收案轮次功能尚未启用');
  const i=await assertIntakeEditor(db,userId,id);
  await assertLiveAssignees(db,[i.ownerUserId??i.createdById,...i.coUserIds]);
  await requireApprovalRoute({action:'INTAKE_APPROVE',category:i.category,requesterId:i.createdById},db);
@@ -70,10 +71,10 @@ export async function assertIntakeConvertible(db:Prisma.TransactionClient,id:str
  const state=await assertFreshIntakeCheck(db,id,true);
  await assertLiveAssignees(db,[state.intake.ownerUserId??state.intake.createdById,...state.intake.coUserIds]);
  const [round]=await db.$queryRaw<{fingerprint:string;checkId:string}[]>`SELECT fingerprint,"checkId" FROM "IntakeRevision" WHERE "intakeId"=${id} ORDER BY round DESC LIMIT 1`;
- if(!round||round.fingerprint!==state.fingerprint||round.checkId!==state.check.id)throw new Error('送审内容已变化，请撤回并重新提交');
+ if(!round||round.fingerprint!==state.fingerprint||round.checkId!==state.check.id)throw new ActionError('送审内容已变化，请撤回并重新提交');
 }
 export async function withdrawIntakeTx(db:Prisma.TransactionClient,userId:string,id:string,reason:string){
- if(!reason.trim())throw new Error('请填写撤回原因');await assertIntakeEditor(db,userId,id,['PENDING_CONFIRMATION']);
+ if(!reason.trim())throw new ActionError('请填写撤回原因');await assertIntakeEditor(db,userId,id,['PENDING_CONFIRMATION']);
  await db.intake.update({where:{id},data:{status:'NEEDS_REVISION',declinedReason:reason.trim()}});
  await db.$executeRaw`UPDATE "Intake" SET "workflowRevision"="workflowRevision"+1 WHERE id=${id}`;
  await auditTx(db,{userId,action:'INTAKE_WITHDRAW',targetType:'Intake',targetId:id,detail:{reason:reason.trim()}});return {id};
@@ -81,5 +82,5 @@ export async function withdrawIntakeTx(db:Prisma.TransactionClient,userId:string
 export async function assertIntakeDocumentChange(db:Prisma.TransactionClient,userId:string,intakeId:string,documentId?:string){
  if(!await intakeWorkflowReady(db))return;
  await assertIntakeEditor(db,userId,intakeId,undefined,'documents.write');
- if(documentId){const [used]=await db.$queryRaw<{count:bigint}[]>`SELECT COUNT(*) AS count FROM "IntakeRevision" WHERE "intakeId"=${intakeId} AND snapshot->'documents' @> ${JSON.stringify([{id:documentId}])}::jsonb`;if(Number(used.count))throw new Error('该材料已固定于送审轮次，请保留原件并上传补正材料');}
+ if(documentId){const [used]=await db.$queryRaw<{count:bigint}[]>`SELECT COUNT(*) AS count FROM "IntakeRevision" WHERE "intakeId"=${intakeId} AND snapshot->'documents' @> ${JSON.stringify([{id:documentId}])}::jsonb`;if(Number(used.count))throw new ActionError('该材料已固定于送审轮次，请保留原件并上传补正材料');}
 }

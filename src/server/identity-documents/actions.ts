@@ -7,6 +7,7 @@ import { approvalAudit } from "@/lib/approvals/service";
 import { correctIdentitySchema } from "@/server/users/profile-schema";
 import { assertProfileActor, assertProfileVersion, identitySummary, profileTransaction } from "@/server/users/profile-service";
 import { storeIdentityDocumentFiles } from "./storage";
+import { ActionError } from "@/lib/action-error";
 
 export async function correctUserIdentityWithPhotos(formData: FormData) {
   const session = await requireSession();
@@ -20,7 +21,7 @@ export async function correctUserIdentityWithPhotos(formData: FormData) {
   });
   const files = [formData.get("identityImagePrimary"), formData.get("identityImageSecondary")]
     .filter((file): file is File => file instanceof File && file.size > 0);
-  if (!files.length) throw new Error("请上传新的证件照片");
+  if (!files.length) throw new ActionError("请上传新的证件照片");
   for (const file of files) await readAndValidateIdentityImage(file);
 
   const result = await profileTransaction(async db => {

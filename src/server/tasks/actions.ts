@@ -13,6 +13,7 @@ import { assertMatterWritable } from "@/lib/archive/guard";
 import { assertCanAssociateMatter } from "@/lib/permissions";
 import { matterHrefById, revalidateMatter } from "@/server/matters/route";
 import { recordTimelineEvent } from "@/server/timeline/record";
+import { ActionError } from "@/lib/action-error";
 
 const taskCreateSchema = z.object({
   matterId: z.string().cuid(),
@@ -37,7 +38,7 @@ async function assertTaskStage(matterId: string, stageId?: string) {
     where: { id: stageId, procedure: { matterId } },
     select: { id: true }
   });
-  if (!stage) throw new Error("阶段不存在或不属于当前案件");
+  if (!stage) throw new ActionError("阶段不存在或不属于当前案件");
 }
 
 export async function createTask(input: TaskCreateInput) {
@@ -101,11 +102,11 @@ export async function updateTask(input: TaskUpdateInput) {
     where: { id: data.id },
     select: { matterId: true, assigneeId: true }
   });
-  if (!current || current.matterId !== data.matterId) throw new Error("事项不存在或不属于当前案件");
+  if (!current || current.matterId !== data.matterId) throw new ActionError("事项不存在或不属于当前案件");
   await assertCanAssociateMatter(session.user.id, current.matterId);
   await assertMatterWritable(current.matterId);
   await assertTaskStage(current.matterId, data.stageId);
-  if(await responsibilityReady(prisma)&&data.assigneeId!==current.assigneeId)throw new Error("变更责任人请从事项责任面板发起交接，接收后生效");
+  if(await responsibilityReady(prisma)&&data.assigneeId!==current.assigneeId)throw new ActionError("变更责任人请从事项责任面板发起交接，接收后生效");
   const { id, matterId, ...rest } = data;
 
   await roleMutation(session.user, "schedule.write", async roleDb => roleDb.task.update({
@@ -139,8 +140,8 @@ export async function toggleTaskCompleted(id: string) {
   await assertMatterWritable(current.matterId);
 
   if(await responsibilityReady(prisma)){
-    if(current.completed)throw new Error("重新办理请从事项责任面板填写原因");
-    await approvalTransaction(async db=>{const w=(await readWorkRows(db)).find(w=>w.kind==='Task'&&w.targetId===id);if(!w)throw new Error('事项责任缺失');await changeWorkTx(db,session.user.id,{id:w.id,revision:w.revision,action:'COMPLETE',reason:'经办通过完成操作确认已办结'});});
+    if(current.completed)throw new ActionError("重新办理请从事项责任面板填写原因");
+    await approvalTransaction(async db=>{const w=(await readWorkRows(db)).find(w=>w.kind==='Task'&&w.targetId===id);if(!w)throw new ActionError('事项责任缺失');await changeWorkTx(db,session.user.id,{id:w.id,revision:w.revision,action:'COMPLETE',reason:'经办通过完成操作确认已办结'});});
     await revalidateMatter(current.matterId);return {ok:true};
   }
   const next = !current.completed;
@@ -171,22 +172,22 @@ export async function toggleTaskCompleted(id: string) {
 export async function completeTasksBatch(input: { ids: string[]; reason: string }) {
   const session = await requireSession("schedule.write");
   const reason = input.reason.trim();
-  if (!reason) throw new Error("请填写批量办结的统一处置结果或原因");
-  if (!input.ids.length) throw new Error("请先选择要办结的任务");
+  if (!reason) throw new ActionError("请填写批量办结的统一处置结果或原因");
+  if (!input.ids.length) throw new ActionError("请先选择要办结的任务");
   // 2026-09-20 P3 修复：超过单批上限直接报错引导分批（此前静默截断到 100，被丢条目无提示）
-  if (input.ids.length > 100) throw new Error(`单次批量办结最多 100 条（已选 ${input.ids.length} 条），请分批处理`);
+  if (input.ids.length > 100) throw new ActionError(`单次批量办结最多 100 条（已选 ${input.ids.length} 条），请分批处理`);
   const results: { id: string; ok: boolean; error?: string }[] = [];
   for (const id of input.ids) {
     try {
       const current = await prisma.task.findUnique({ where: { id } });
-      if (!current) throw new Error("任务不存在");
+      if (!current) throw new ActionError("任务不存在");
       if (current.completed) { results.push({ id, ok: true }); continue; }
       await assertCanAssociateMatter(session.user.id, current.matterId);
       await assertMatterWritable(current.matterId);
       if (await responsibilityReady(prisma)) {
         await approvalTransaction(async db => {
           const w = (await readWorkRows(db)).find(w => w.kind === "Task" && w.targetId === id);
-          if (!w) throw new Error("事项责任缺失");
+          if (!w) throw new ActionError("事项责任缺失");
           await changeWorkTx(db, session.user.id, { id: w.id, revision: w.revision, action: "COMPLETE", reason });
         });
       } else {
@@ -206,7 +207,7 @@ export async function completeTasksBatch(input: { ids: string[]; reason: string 
 }
 
 export async function deleteTask(id: string) {
-  if(await responsibilityReady(prisma))throw new Error("请在事项责任面板取消任务并填写原因，原记录保留");
+  if(await responsibilityReady(prisma))throw new ActionError("请在事项责任面板取消任务并填写原因，原记录保留");
   const session = await requireSession("schedule.write");
   const current = await prisma.task.findUnique({ where: { id } });
   if (!current) return { ok: false };

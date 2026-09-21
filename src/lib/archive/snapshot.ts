@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ActionError } from "@/lib/action-error";
 
 export const ARCHIVE_SNAPSHOT_VERSION = 2 as const;
 
@@ -124,12 +125,12 @@ export function assertArchiveApprovalReady(input: {
   const requiredIds = requiredArchiveVerificationIds(input.snapshot);
   const verified = new Set(input.verificationIds);
   const missing = requiredIds.filter((id) => !verified.has(id));
-  if (missing.length) throw new Error(`仍有 ${missing.length} 项材料或核验事项未完成审阅`);
+  if (missing.length) throw new ActionError(`仍有 ${missing.length} 项材料或核验事项未完成审阅`);
   if (archiveHasExceptions(input.snapshot) && !input.exceptionApproved) {
-    throw new Error("该申请存在缺项或不适用项目，请明确核准例外");
+    throw new ActionError("该申请存在缺项或不适用项目，请明确核准例外");
   }
   if (archiveHasExceptions(input.snapshot) && !input.note?.trim()) {
-    throw new Error("核准缺项或不适用例外时必须填写审批意见");
+    throw new ActionError("核准缺项或不适用例外时必须填写审批意见");
   }
   return requiredIds;
 }

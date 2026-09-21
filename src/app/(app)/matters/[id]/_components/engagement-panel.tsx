@@ -39,6 +39,7 @@ import {
   listActiveEngagementsForClient
 } from "@/server/engagements/actions";
 import { formatDate } from "@/lib/utils";
+import { actionErrorMessage } from "@/lib/action-error";
 
 export type EngagementRow = {
   validFrom: Date | null;
@@ -132,7 +133,7 @@ export function EngagementPanel({
         closeDialog();
         router.refresh();
       } catch (err) {
-        toast.error("创建失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("创建失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -151,7 +152,7 @@ export function EngagementPanel({
         closeDialog();
         router.refresh();
       } catch (err) {
-        toast.error("关联失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("关联失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -166,7 +167,7 @@ export function EngagementPanel({
         closeDialog();
         router.refresh();
       } catch (err) {
-        toast.error("终止失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("终止失败", { description: actionErrorMessage(err) });
       }
     });
   }

@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { RadioChips } from "@/components/ui/radio-chips";
 import { formatDate } from "@/lib/utils";
 import { submitCorrection, decideCorrection, settleCommission, type getFinanceLedger } from "@/server/finance/ledger-actions";
+import { actionErrorMessage } from "@/lib/action-error";
 type Data = Awaited<ReturnType<typeof getFinanceLedger>>;
 const types = { EXPENSE_REVERSAL:"支出误录冲销", REFUND:"退款", DISCOUNT:"应收折让", REVERSAL:"误录冲销" };
 const states: Record<string,string> = { PENDING:"待确认", CONFIRMED:"已确认", REJECTED:"已退回", CANCELLED:"已撤销" };
@@ -38,7 +39,7 @@ export function CorrectionWorkspace({data,canWrite,canCorrect,canSettle}:{data:D
         : mode==="settle"&&commission ? await settleCommission({commissionEntryId:commission.id,revision:commission.revision,kind,amount,occurredAt:new Date(`${date}T00:00:00+08:00`),voucherReference:voucher,note:reason}) : null;
       if(!result?.ok)throw new Error(result?.message??"请选择账务对象");
       toast.success(mode==="request"?"已提交，确认前不改变余额":"处理已保存");setDialogOpen(false);router.refresh();
-    } catch(e) {toast.error(e instanceof Error?e.message:"保存失败");}finally{setBusy(false);}
+    } catch(e) {toast.error(e instanceof Error ? actionErrorMessage(e) :"保存失败");}finally{setBusy(false);}
   }
   const amountFields=(title:string,items:{id:string;label:string;amount:string}[],values:Record<string,string>,change:(v:Record<string,string>)=>void)=><fieldset className="space-y-2 rounded-lg border p-3"><legend className="px-1 text-sm font-medium">{title}</legend>{items.map(i=><div key={i.id}><Label htmlFor={`${title}-${i.id}`}>{i.label} · 当前 {yuan(i.amount)}</Label><Input id={`${title}-${i.id}`} inputMode="decimal" placeholder="本次金额，不处理留空" value={values[i.id]??""} onChange={e=>change({...values,[i.id]:e.target.value})}/></div>)}{!items.length&&<p className="text-sm text-muted-foreground">暂无关联记录</p>}</fieldset>;
   return <>

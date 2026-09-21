@@ -27,6 +27,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
 import { shMonthDay, shTodayCivil } from "@/lib/ui/sh-time";
+import { actionErrorMessage } from "@/lib/action-error";
 
 export type AdminDeadlineRule = {
   id: string; code: string; name: string; description: string | null;
@@ -121,7 +122,7 @@ export function DeadlineRulesCard({ rules, rail, headerActions }: { rules: Admin
         toast.success("规则已保存");
         router.refresh();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "保存失败");
+        setError(e instanceof Error ? actionErrorMessage(e) : "保存失败");
       }
     });
   }
@@ -132,7 +133,7 @@ export function DeadlineRulesCard({ rules, rail, headerActions }: { rules: Admin
         await toggleDeadlineRule({ id: rule.id, enabled });
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "操作失败");
+        toast.error(err instanceof Error ? actionErrorMessage(err) : "操作失败");
       }
     });
   }
@@ -144,7 +145,7 @@ export function DeadlineRulesCard({ rules, rail, headerActions }: { rules: Admin
         await deleteDeadlineRule({ id: rule.id });
         router.refresh();
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "删除失败");
+        toast.error(err instanceof Error ? actionErrorMessage(err) : "删除失败");
       }
     });
   }

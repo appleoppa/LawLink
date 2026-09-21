@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PERSON_ID_TYPES, clientIdTypeLabel, personIdError, sanitizePersonIdInput, type PersonIdType } from "@/lib/clients/person-id";
 import { ChoiceField } from "@/components/patterns/choice-field";
 import { searchEnterpriseCandidates, getEnterpriseDetail, type EnterpriseSearchItem } from "@/server/yuandian/enterprise";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Props = {
   index: number;
@@ -128,7 +129,7 @@ export function PartyCard({
           toast.success(`已回填：${item.name}`);
         }
       } catch (err) {
-        toast.warning("法代 / 地址自动填充失败，可手动补充", { description: err instanceof Error ? err.message : "" });
+        toast.warning("法代 / 地址自动填充失败，可手动补充", { description: actionErrorMessage(err) });
       }
     });
   }

@@ -37,6 +37,7 @@ import { recordTimelineEvent } from "@/server/timeline/record";
 import { shDayKey, civilFromKey, civilKey } from "@/lib/ui/sh-time";
 import { computeDeadlineDate } from "@/lib/deadline-rules";
 import { adjustDeadlineForHolidays } from "@/lib/calendar/holidays";
+import { ActionError } from "@/lib/action-error";
 
 function emptyToNull<T extends Record<string, unknown>>(obj: T): T {
   const out: Record<string, unknown> = {};
@@ -111,7 +112,7 @@ export async function updateProcedure(input: ProcedureUpdateInput) {
     where: { id },
     select: { matterId: true, type: true, jurisdiction: true, handlingAgency: true,status:true }
   });
-  if (!existing) throw new Error("程序不存在");
+  if (!existing) throw new ActionError("程序不存在");
   await assertCanHandleMatter(session.user, existing.matterId);
   await assertMatterWritable(existing.matterId);
   assertAgencyAllowedForProcedure(rest.handlingAgency ?? existing.handlingAgency, rest.type ?? existing.type);
@@ -134,14 +135,14 @@ export async function updateProcedure(input: ProcedureUpdateInput) {
     const locked = await db.$queryRaw<{ status: ProcedureStatus; engagement: string; matterId: string }[]>`
       SELECT status::text, engagement::text, "matterId" FROM "MatterProcedure" WHERE id = ${id} FOR UPDATE`;
     const current = locked[0];
-    if (!current) throw new Error("程序不存在");
-    if (current.matterId !== existing.matterId) throw new Error("程序归属已变化，请刷新");
+    if (!current) throw new ActionError("程序不存在");
+    if (current.matterId !== existing.matterId) throw new ActionError("程序归属已变化，请刷新");
     if (rest.status === "IN_PROGRESS" && current.status !== "IN_PROGRESS" && current.engagement === "ENGAGED" && await responsibilityReady(db)) {
       await assertProcedureCovered(db, id);
       await assertMatterReviewCurrent(db, current.matterId);
     }
     const result = await db.matterProcedure.updateMany({ where: { id, status: current.status }, data: emptyToNull(normalizedRest) });
-    if (result.count === 0) throw new Error("程序状态已变化，请刷新后重试");
+    if (result.count === 0) throw new ActionError("程序状态已变化，请刷新后重试");
     return { matterId: current.matterId };
   }, { isolationLevel: "Serializable", timeout: 20000 });
 
@@ -159,7 +160,7 @@ export async function updateProcedure(input: ProcedureUpdateInput) {
 export async function deleteProcedure(id: string) {
   // 级联删除期限/开庭会撞 WorkResponsibility 的 Restrict 外键（英文 P2003），先按同族入口拦截
   if (await responsibilityReady(prisma) && await prisma.deadline.count({ where: { procedureId: id } }) + await prisma.hearing.count({ where: { procedureId: id } }) > 0) {
-    throw new Error("该程序含期限/开庭事项，请先在事项责任面板逐项取消后再删除程序");
+    throw new ActionError("该程序含期限/开庭事项，请先在事项责任面板逐项取消后再删除程序");
   }
   const session = await requireSession("schedule.write");
   const procedure = await prisma.matterProcedure.findUnique({ where: { id } });
@@ -195,7 +196,7 @@ async function materializeProcedureStage(
     where: { id: data.procedureId },
     select: { matterId: true, type: true }
   });
-  if (!procedure) throw new Error("程序不存在");
+  if (!procedure) throw new ActionError("程序不存在");
 
   await assertCanHandleMatter(session.user, procedure.matterId);
   await assertMatterWritable(procedure.matterId);
@@ -224,7 +225,7 @@ async function materializeProcedureStage(
       if (options.allowExisting) {
         return { stage: existing, created: false, revived: false, materializedCount: 0 };
       }
-      throw new Error("该环节已存在");
+      throw new ActionError("该环节已存在");
     }
 
     if (existingStages.length === 0) {
@@ -252,7 +253,7 @@ async function materializeProcedureStage(
         }
       }
 
-      if (!targetStage) throw new Error("环节创建失败");
+      if (!targetStage) throw new ActionError("环节创建失败");
       return { stage: targetStage, created: true, revived: false, materializedCount: names.length };
     }
 
@@ -356,7 +357,7 @@ export async function removeProcedureStage(input: ProcedureStageRemoveInput) {
 
   const preset = stagePresetForName(stage.procedure.type, stage.name);
   if (preset?.kind === "required") {
-    throw new Error("必备环节不能移除");
+    throw new ActionError("必备环节不能移除");
   }
 
   // v0.48: 关联材料按 stageId 外键统计（标签仅作展示），环节改名不再影响判定
@@ -443,7 +444,7 @@ export async function addDeadline(input: DeadlineCreateInput) {
     where: { id: data.procedureId },
     select: { matterId: true }
   });
-  if (!procedureForGuard) throw new Error("程序不存在");
+  if (!procedureForGuard) throw new ActionError("程序不存在");
   await assertCanHandleMatter(session.user, procedureForGuard.matterId);
   await assertMatterWritable(procedureForGuard.matterId);
 
@@ -538,8 +539,8 @@ export async function toggleDeadlineCompleted(id: string) {
   await assertMatterWritable(current.procedure.matterId);
 
   if(await responsibilityReady(prisma)){
-    if(current.completed)throw new Error("重新办理请从事项责任面板填写原因");
-    await approvalTransaction(async db=>{const w=(await readWorkRows(db)).find(w=>w.kind==='Deadline'&&w.targetId===id);if(!w)throw new Error('事项责任缺失');await changeWorkTx(db,session.user.id,{id:w.id,revision:w.revision,action:'COMPLETE',reason:'经办通过完成操作确认已办结'});});
+    if(current.completed)throw new ActionError("重新办理请从事项责任面板填写原因");
+    await approvalTransaction(async db=>{const w=(await readWorkRows(db)).find(w=>w.kind==='Deadline'&&w.targetId===id);if(!w)throw new ActionError('事项责任缺失');await changeWorkTx(db,session.user.id,{id:w.id,revision:w.revision,action:'COMPLETE',reason:'经办通过完成操作确认已办结'});});
     await revalidateMatter(current.procedure.matterId);return {ok:true};
   }
   const next = !current.completed;
@@ -562,7 +563,7 @@ export async function toggleDeadlineCompleted(id: string) {
 }
 
 export async function deleteDeadline(id: string) {
-  if(await responsibilityReady(prisma))throw new Error("请在事项责任面板取消期限并填写原因，原记录保留");
+  if(await responsibilityReady(prisma))throw new ActionError("请在事项责任面板取消期限并填写原因，原记录保留");
   const session = await requireSession("schedule.write");
   const current = await prisma.deadline.findUnique({
     where: { id },
@@ -597,7 +598,7 @@ export async function addHearing(input: HearingCreateInput) {
     where: { id: data.procedureId },
     select: { matterId: true }
   });
-  if (!procedureForGuard) throw new Error("程序不存在");
+  if (!procedureForGuard) throw new ActionError("程序不存在");
   await assertCanHandleMatter(session.user, procedureForGuard.matterId);
   await assertMatterWritable(procedureForGuard.matterId);
 
@@ -645,7 +646,7 @@ export async function addHearing(input: HearingCreateInput) {
 }
 
 export async function deleteHearing(id: string) {
-  if(await responsibilityReady(prisma))throw new Error("请在事项责任面板取消开庭并填写原因，原记录保留");
+  if(await responsibilityReady(prisma))throw new ActionError("请在事项责任面板取消开庭并填写原因，原记录保留");
   const session = await requireSession("schedule.write");
   const current = await prisma.hearing.findUnique({
     where: { id },
@@ -678,14 +679,14 @@ export async function addProcedureMemo(input: {
 }) {
   const session = await requireSession("schedule.write");
   const content = input.content.trim();
-  if (!content) throw new Error("备忘内容不能为空");
-  if (content.length > 1000) throw new Error("备忘内容过长（≤1000字）");
+  if (!content) throw new ActionError("备忘内容不能为空");
+  if (content.length > 1000) throw new ActionError("备忘内容过长（≤1000字）");
 
   const proc = await prisma.matterProcedure.findUnique({
     where: { id: input.procedureId },
     select: { matterId: true }
   });
-  if (!proc) throw new Error("程序不存在");
+  if (!proc) throw new ActionError("程序不存在");
   await assertCanHandleMatter(session.user, proc.matterId);
   await assertMatterWritable(proc.matterId);
 

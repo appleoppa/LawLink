@@ -1,6 +1,7 @@
 import { scopeFor, type RoleGrant, type PermissionKey } from "@/lib/roles/catalog";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { ActionError } from "@/lib/action-error";
 
 /**
  * 业务管理判定：合伙人岗位，或获按人授予的业务管理权（User.managerAuthorized，
@@ -141,7 +142,7 @@ export async function assertCanReadMatter(userId: string, role: string, matterId
     },
     select: { id: true }
   });
-  if (!borrowed) throw new Error("案件不存在");
+  if (!borrowed) throw new ActionError("案件不存在");
 }
 
 export async function hasMatterBusinessAccess(userId: string, role: string, matterId: string, grants?: RoleGrant[]): Promise<boolean> {
@@ -164,7 +165,7 @@ export async function assertCanAccessMatter(
       where: { id: matterId, deletedAt: null },
       select: { id: true }
     });
-    if (!exists) throw new Error("案件不存在");
+    if (!exists) throw new ActionError("案件不存在");
     return;
   }
   const row = await prisma.matter.findFirst({
@@ -175,17 +176,17 @@ export async function assertCanAccessMatter(
     },
     select: { id: true }
   });
-  if (!row) throw new Error("案件不存在");
+  if (!row) throw new ActionError("案件不存在");
 }
 
 /** 财务授权仅用于财务字段，不能作为案件正文或材料访问授权。 */
 export async function assertCanAccessMatterFinance(userId: string, role: string, matterId: string, grants?: RoleGrant[]): Promise<void> {
   if (role === "CUSTOM") {
-    if (!await prisma.matter.count({ where: { id: matterId, deletedAt: null, ...matterFinanceVisibilityFilter(userId, role, grants) } })) throw new Error("案件不存在或无财务权限");
+    if (!await prisma.matter.count({ where: { id: matterId, deletedAt: null, ...matterFinanceVisibilityFilter(userId, role, grants) } })) throw new ActionError("案件不存在或无财务权限");
     return;
   }
   if (role === "FINANCE") {
-    if (!await prisma.matter.count({ where: { id: matterId, deletedAt: null } })) throw new Error("案件不存在");
+    if (!await prisma.matter.count({ where: { id: matterId, deletedAt: null } })) throw new ActionError("案件不存在");
     return;
   }
   await assertCanAccessMatter(userId, role, matterId);
@@ -220,7 +221,7 @@ export async function assertCanAssociateMatter(
     },
     select: { id: true }
   });
-  if (!row) throw new Error("案件不存在或无权关联");
+  if (!row) throw new ActionError("案件不存在或无权关联");
 }
 
 /** 案件处理断言（并入 2026-09-20 A 批 assertCanHandleMatter）：合伙人全所、其余须经办。 */
@@ -276,7 +277,7 @@ export async function assertCanModifyMatter(
     },
     select: { id: true }
   });
-  if (!matter) throw new Error("案件不存在");
+  if (!matter) throw new ActionError("案件不存在");
 }
 
 // ============ 收案可见性 ============
@@ -329,7 +330,7 @@ export function clientVisibilityFilter(
 export function assertManagerOrRole(role: string, ...allowed: string[]): void {
   if (isManager(role)) return;
   if (allowed.includes(role)) return;
-  throw new Error("权限不足");
+  throw new ActionError("权限不足");
 }
 
 /** 自定义角色的全所查看只影响读取，不替代案件经办与独立业务授权。 */

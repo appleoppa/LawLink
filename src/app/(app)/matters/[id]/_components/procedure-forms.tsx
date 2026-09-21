@@ -48,6 +48,7 @@ import {
 } from "@/lib/deadline-rules";
 import { procedureTypeLabel } from "@/lib/enums";
 import type { z } from "zod";
+import { actionErrorMessage } from "@/lib/action-error";
 
 // 开庭表单的客户端形态：startsAt 走 datetime-local 字符串 state（上海时区解析），不进 zod
 const hearingFormSchema = hearingCreateSchema.omit({ startsAt: true });
@@ -171,7 +172,7 @@ export function AddProcedureSheet({
         onOpenChange(false);
       } catch (err) {
         toast.error("添加失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });
@@ -479,7 +480,7 @@ export function AddDeadlineDialog({
         onOpenChange(false);
       } catch (err) {
         toast.error("添加失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });
@@ -753,7 +754,7 @@ export function AddHearingDialog({
         toast.success("传票识别完成，请核对信息");
       } catch (err) {
         toast.error("传票识别失败", {
-          description: err instanceof Error ? err.message : "请手动填写"
+          description: err instanceof Error ? actionErrorMessage(err) : "请手动填写"
         });
       } finally {
         setOcrLoading(false);
@@ -785,7 +786,7 @@ export function AddHearingDialog({
         onOpenChange(false);
       } catch (err) {
         toast.error("添加失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });

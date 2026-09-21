@@ -7,6 +7,7 @@
  */
 import { z } from "zod";
 import { Prisma, type SmsSuggestion } from "@prisma/client";
+import { ActionError } from "@/lib/action-error";
 
 type SuggestionRow = SmsSuggestion & { sms: { id: string; receivedById: string; matchedMatterId: string | null; generatedHearingId: string | null; generatedDeadlineId: string | null } };
 import { prisma } from "@/lib/prisma";
@@ -31,9 +32,9 @@ const decisionInput = z.object({
 export async function listSmsSuggestions(smsId: string) {
   const session = await requireSession("matters.write");
   const sms = await prisma.smsMessage.findUnique({ where: { id: smsId }, select: { receivedById: true, matchedMatterId: true } });
-  if (!sms) throw new Error("来件不存在");
+  if (!sms) throw new ActionError("来件不存在");
   if (sms.receivedById !== session.user.id) {
-    if (!sms.matchedMatterId) throw new Error("只能处理本人收到的来件");
+    if (!sms.matchedMatterId) throw new ActionError("只能处理本人收到的来件");
     await assertCanAssociateMatter(session.user.id, sms.matchedMatterId);
   }
   return prisma.smsSuggestion.findMany({
@@ -47,9 +48,9 @@ export async function listSmsSuggestions(smsId: string) {
 export async function analyzeSmsInboundFiles(input: { smsId: string; fileIds?: string[] }) {
   const session = await requireSession("matters.write");
   const sms = await prisma.smsMessage.findUnique({ where: { id: input.smsId }, select: { receivedById: true, matchedMatterId: true } });
-  if (!sms) throw new Error("来件不存在");
+  if (!sms) throw new ActionError("来件不存在");
   if (sms.receivedById !== session.user.id) {
-    if (!sms.matchedMatterId) throw new Error("只能处理本人收到的来件");
+    if (!sms.matchedMatterId) throw new ActionError("只能处理本人收到的来件");
     await assertCanAssociateMatter(session.user.id, sms.matchedMatterId);
   }
   const { analyzeInboundFile } = await import("./analysis");
@@ -71,20 +72,20 @@ export async function decideSmsSuggestions(input: z.input<typeof decisionInput>)
     where: { id: { in: data.ids }, status: "PENDING" },
     include: { sms: { select: { id: true, receivedById: true, matchedMatterId: true, generatedHearingId: true, generatedDeadlineId: true } } }
   });
-  if (rows.length !== data.ids.length) throw new Error("部分建议已处理或不存在，请刷新");
+  if (rows.length !== data.ids.length) throw new ActionError("部分建议已处理或不存在，请刷新");
   // 2026-09-20 第五轮审计 P1-2 修复：下方收件人/案件校验只基于第一条建议所属来件，
   // 混入其他来件的建议可越过对象校验（REJECTED 分支曾无任何复核即改状态）——
   // 一次只允许处理同一条来件的建议，混批直接拒绝。
-  if (new Set(rows.map(r => r.smsId)).size > 1) throw new Error("一次只能处理同一条来件的建议");
+  if (new Set(rows.map(r => r.smsId)).size > 1) throw new ActionError("一次只能处理同一条来件的建议");
   // 复查修复 P2-1/P3-4：findMany 无 orderBy，返回序不可靠——「归属+事项」建议同批确认时
   // 事项类若先执行会因归属未落库整批回滚；双 MATTER_MATCH 指向不同案件则事务内互相
   // 覆盖归属。MATTER_MATCH 排最前（稳定排序保持其余相对序），多条且目标不一致直接拒绝。
   const matchTargets = new Set(rows.filter(r => r.kind === "MATTER_MATCH").map(r => r.targetId));
-  if (matchTargets.size > 1) throw new Error("本批包含指向不同案件的匹配建议，请逐条确认归属");
+  if (matchTargets.size > 1) throw new ActionError("本批包含指向不同案件的匹配建议，请逐条确认归属");
   const ordered = [...rows].sort((a, b) => (a.kind === "MATTER_MATCH" ? 0 : 1) - (b.kind === "MATTER_MATCH" ? 0 : 1));
 
   const sms = rows[0].sms;
-  if (sms.receivedById !== session.user.id && !sms.matchedMatterId) throw new Error("只能处理本人收到的来件");
+  if (sms.receivedById !== session.user.id && !sms.matchedMatterId) throw new ActionError("只能处理本人收到的来件");
   const targetMatterId = sms.matchedMatterId ?? (rows.find(r => r.kind === "MATTER_MATCH")?.targetId ?? null);
   if (targetMatterId) await assertCanHandleMatter(session.user, targetMatterId);
 
@@ -98,7 +99,7 @@ export async function decideSmsSuggestions(input: z.input<typeof decisionInput>)
       }
       // 应用前复核目标当前状态（条件更新 + 状态守卫）
       const fresh = await tx.smsSuggestion.findUnique({ where: { id: row.id }, select: { status: true } });
-      if (fresh?.status !== "PENDING") throw new Error("建议已被处理，请刷新后重试");
+      if (fresh?.status !== "PENDING") throw new ActionError("建议已被处理，请刷新后重试");
       const applied2 = await applySuggestion(tx, row);
       await tx.smsSuggestion.update({ where: { id: row.id }, data: { status: "ACCEPTED", decidedById: session.user.id, decidedAt: new Date() } });
       if (applied2?.matterId) touchedMatters.add(applied2.matterId);
@@ -149,7 +150,7 @@ async function applySuggestion(tx: Prisma.TransactionClient, row: SuggestionRow)
   if (row.kind === "DOC_TYPE") return undefined; // 展示类：分析时已落 file.docType
 
   if (row.kind === "MATTER_MATCH") {
-    if (!row.targetId) throw new Error("匹配建议缺少目标案件");
+    if (!row.targetId) throw new ActionError("匹配建议缺少目标案件");
     // 2026-09-20 第五轮审计 P2-2 修复：内层复核此前用 associate 口径（仅主办/成员），
     // 比外层 assertCanHandleMatter 更严——合伙人确认非经办案件建议必被整批回滚。改用
     // 同口径（allowPrincipal），与外层一致，归档拦截仍由 guard 承担。
@@ -163,14 +164,14 @@ async function applySuggestion(tx: Prisma.TransactionClient, row: SuggestionRow)
   // 开庭/字段建议」时，事务外预载快照的 matchedMatterId 仍是 null 会误拒整批。
   const smsNow = await tx.smsMessage.findUnique({ where: { id: row.smsId }, select: { matchedMatterId: true, generatedHearingId: true, generatedDeadlineId: true } });
   const matterId = smsNow?.matchedMatterId ?? null;
-  if (!matterId) throw new Error("请先确认来件归属案件，再应用档案修正与事项建议");
+  if (!matterId) throw new ActionError("请先确认来件归属案件，再应用档案修正与事项建议");
   await assertMatterWritable(matterId, { allowPrincipal: true });
 
   if (row.kind === "FIELD_CHANGE") {
-    if (!row.targetId || !row.fieldKey || !row.suggestedValue) throw new Error("字段建议不完整");
+    if (!row.targetId || !row.fieldKey || !row.suggestedValue) throw new ActionError("字段建议不完整");
     const proc = await tx.matterProcedure.findUnique({ where: { id: row.targetId }, select: { matterId: true, caseNumber: true, handlingAgency: true } });
-    if (!proc || proc.matterId !== matterId) throw new Error("目标程序不再属于本案，请刷新");
-    if (!["caseNumber", "handlingAgency"].includes(row.fieldKey)) throw new Error(`不支持自动修正字段：${row.fieldKey}`);
+    if (!proc || proc.matterId !== matterId) throw new ActionError("目标程序不再属于本案，请刷新");
+    if (!["caseNumber", "handlingAgency"].includes(row.fieldKey)) throw new ActionError(`不支持自动修正字段：${row.fieldKey}`);
     // 2026-09-20 P3 修复：复核建议时原值——建议创建后律师手工改过的案号/法院
     // 不被确认动作静默覆盖（此前无条件整串替换）。复查补充：建议值已生效（同批
     // 前一条或此前确认过同值）时跳过而非拒绝，避免同字段多条建议互相顶死无出路。
@@ -178,7 +179,7 @@ async function applySuggestion(tx: Prisma.TransactionClient, row: SuggestionRow)
     if (current === row.suggestedValue) return { matterId };
     if (current !== (row.currentValue ?? "")) {
       const label = row.fieldKey === "caseNumber" ? "案号" : "法院";
-      throw new Error(`程序${label}在建议生成后已被修改（现为「${current || "空"}」），请重新检索生成建议`);
+      throw new ActionError(`程序${label}在建议生成后已被修改（现为「${current || "空"}」），请重新检索生成建议`);
     }
     await tx.matterProcedure.update({ where: { id: row.targetId }, data: { [row.fieldKey]: row.suggestedValue } });
     await recordTimelineEvent(tx, { matterId, eventType: "PROCEDURE_UPDATED", title: `来件确认修正：${row.fieldKey === "caseNumber" ? "案号" : "法院"} → ${row.suggestedValue}`, occurredAt: new Date(), refType: "SmsSuggestion", refId: row.id });
@@ -217,24 +218,24 @@ async function applySuggestion(tx: Prisma.TransactionClient, row: SuggestionRow)
     return { matterId, deadlineId: deadline.id };
   }
 
-  throw new Error(`未知建议类型：${row.kind}`);
+  throw new ActionError(`未知建议类型：${row.kind}`);
 }
 
 async function defaultProcedureId(tx: Prisma.TransactionClient, matterId: string): Promise<string> {
   const proc = await tx.matterProcedure.findFirst({ where: { matterId, engagement: "ENGAGED" }, orderBy: { order: "asc" }, select: { id: true } });
-  if (!proc) throw new Error("本案还没有代理程序，请先建立程序再确认事项建议");
+  if (!proc) throw new ActionError("本案还没有代理程序，请先建立程序再确认事项建议");
   return proc.id;
 }
 
 function parseDateTime(dateText: string, timeText: string): Date {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateText.trim());
-  if (!m) throw new Error(`文书日期格式无法解析：${dateText}，请人工核对后手工登记`);
+  if (!m) throw new ActionError(`文书日期格式无法解析：${dateText}，请人工核对后手工登记`);
   // 2026-09-20 P3 修复：时刻存在但格式不合法时不再静默回退 09:00（开庭时刻可能错），
   // 抛错让律师人工核对；缺省（传 "09:00"）仍为合法默认。复查补充：校验范围（24:30、
   // 09:99 这类过正则的越界值此前交给 Date 构造抛底层错误）。
   const t = /^(\d{1,2}):(\d{2})$/.exec(timeText.trim());
-  if (!t) throw new Error(`文书时刻格式无法解析：${timeText}，请人工核对后手工登记`);
+  if (!t) throw new ActionError(`文书时刻格式无法解析：${timeText}，请人工核对后手工登记`);
   const hh = Number(t[1]), mm = Number(t[2]);
-  if (hh > 23 || mm > 59) throw new Error(`文书时刻越界：${timeText}，请人工核对后手工登记`);
+  if (hh > 23 || mm > 59) throw new ActionError(`文书时刻越界：${timeText}，请人工核对后手工登记`);
   return new Date(`${m[1]}-${m[2]}-${m[3]}T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00+08:00`);
 }

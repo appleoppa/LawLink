@@ -7,6 +7,7 @@ import {
   type ArchiveDocumentSnapshot,
   type ArchiveReviewSnapshot
 } from "@/lib/archive/snapshot";
+import { ActionError } from "@/lib/action-error";
 
 type StoredArchiveDocument = {
   id: string;
@@ -30,7 +31,7 @@ type StoredArchiveDocument = {
 export async function readArchiveDocument(doc: StoredArchiveDocument): Promise<Buffer> {
   const stored = await storage.readFile(doc.path);
   if (!doc.encrypted) return stored;
-  if (!doc.iv || !doc.authTag) throw new Error(`材料“${doc.name}”的加密元数据损坏`);
+  if (!doc.iv || !doc.authTag) throw new ActionError(`材料“${doc.name}”的加密元数据损坏`);
   return decryptBuffer(stored, doc.iv, doc.authTag);
 }
 
@@ -49,14 +50,14 @@ export async function createArchiveDocumentSnapshots(input: {
       folder: { select: { name: true } }
     }
   });
-  if (rows.length !== uniqueIds.length) throw new Error("部分归档材料不存在、已删除或不属于本案");
+  if (rows.length !== uniqueIds.length) throw new ActionError("部分归档材料不存在、已删除或不属于本案");
   const byId = new Map(rows.map((row) => [row.id, row]));
   return Promise.all(uniqueIds.map(async (id, index) => {
     const doc = byId.get(id)!;
     const buffer = await readArchiveDocument(doc);
     const contentHash = sha256(buffer);
     if (doc.sha256 && doc.sha256 !== contentHash) {
-      throw new Error(`材料“${doc.name}”的内容与登记校验值不一致`);
+      throw new ActionError(`材料“${doc.name}”的内容与登记校验值不一致`);
     }
     return {
       id: doc.id,
@@ -88,18 +89,18 @@ export async function verifyArchiveSnapshotDocuments(
       folder: { select: { name: true } }
     }
   });
-  if (rows.length !== ids.length) throw new Error("送审材料已缺失、删除或不再属于本案，请退回补正");
+  if (rows.length !== ids.length) throw new ActionError("送审材料已缺失、删除或不再属于本案，请退回补正");
   const storedById = new Map(rows.map((row) => [row.id, row]));
   const snapshotsById = new Map(snapshot.documents.map((doc) => [doc.id, doc]));
   const buffers = new Map<string, Buffer>();
   for (const id of ids) {
     const stored = storedById.get(id);
     const expected = snapshotsById.get(id);
-    if (!stored || !expected) throw new Error("归档材料快照结构不完整，请退回补正");
+    if (!stored || !expected) throw new ActionError("归档材料快照结构不完整，请退回补正");
     const buffer = await readArchiveDocument(stored);
     const hash = sha256(buffer);
     if (buffer.byteLength !== expected.size || hash !== expected.sha256) {
-      throw new Error(`送审材料“${expected.name}”内容已变化，请退回补正`);
+      throw new ActionError(`送审材料“${expected.name}”内容已变化，请退回补正`);
     }
     buffers.set(id, buffer);
   }
@@ -111,11 +112,11 @@ export async function verifyArchivePolicySource(snapshot: ArchiveReviewSnapshot)
     where: { id: snapshot.policy.sourceFileId },
     select: { id: true, name: true, path: true, sha256: true }
   });
-  if (!source) throw new Error("送审所依据的归档制度原文已不存在，请退回补正");
+  if (!source) throw new ActionError("送审所依据的归档制度原文已不存在，请退回补正");
   const buffer = await storage.readFile(source.path);
   const hash = sha256(buffer);
   if (hash !== snapshot.policy.sourceFileSha256 || (source.sha256 && source.sha256 !== hash)) {
-    throw new Error("归档制度原文内容已变化，请退回补正并重新提交");
+    throw new ActionError("归档制度原文内容已变化，请退回补正并重新提交");
   }
 }
 
@@ -125,7 +126,7 @@ export async function assertDocumentNotInPendingArchive(documentId: string) {
     select: { archiveNo: true, checklistJson: true }
   });
   const record = records.find((item) => archiveSnapshotDocumentIds(item.checklistJson).includes(documentId));
-  if (record) throw new Error(`该材料已列入待审归档申请 ${record.archiveNo}，请先驳回或处理该申请`);
+  if (record) throw new ActionError(`该材料已列入待审归档申请 ${record.archiveNo}，请先驳回或处理该申请`);
 }
 
 export async function assertFirmFileNotUsedByArchivePolicy(fileId: string) {
@@ -137,8 +138,8 @@ export async function assertFirmFileNotUsedByArchivePolicy(fileId: string) {
     ? setting.value as Record<string, unknown>
     : null;
   if (currentPolicy?.sourceFileId === fileId) {
-    throw new Error("该文件是当前归档制度原文，请先启用新的制度版本");
+    throw new ActionError("该文件是当前归档制度原文，请先启用新的制度版本");
   }
   const record = records.find((item) => parseArchiveSnapshot(item.checklistJson)?.policy.sourceFileId === fileId);
-  if (record) throw new Error(`该制度原文已被归档记录 ${record.archiveNo} 固定引用，不能删除；请上传并启用新版`);
+  if (record) throw new ActionError(`该制度原文已被归档记录 ${record.archiveNo} 固定引用，不能删除；请上传并启用新版`);
 }

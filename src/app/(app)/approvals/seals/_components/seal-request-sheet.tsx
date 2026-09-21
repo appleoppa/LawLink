@@ -27,6 +27,7 @@ import {
   SEAL_TYPE_CN
 } from "./seal-types";
 import { MatterCombobox } from "./matter-combobox";
+import { actionErrorMessage } from "@/lib/action-error";
 
 
 function isPdfFile(file: File) {
@@ -153,7 +154,7 @@ export function SealRequestSheet({
         onOpenChange(false);
         if (onSubmitted) onSubmitted(res.id); else router.refresh();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "提交失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "提交失败");
       }
     });
   };

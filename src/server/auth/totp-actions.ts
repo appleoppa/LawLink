@@ -15,6 +15,7 @@ import {
   generateTotpSecret, verifyTotp, otpauthUri,
   generateRecoveryCodes, matchRecoveryCode
 } from "@/lib/auth/totp";
+import { ActionError } from "@/lib/action-error";
 
 /** 登录页预检：该账号是否已开启双步验证（仅返回布尔，防枚举只暴露 TOTP 开关） */
 export async function checkLoginRequiresTotp(email: string): Promise<boolean> {
@@ -53,18 +54,18 @@ export async function enrollStartTotp(input?: { code?: string }): Promise<{ secr
     });
     if (current?.totpEnabled) {
       const code = (input?.code ?? "").trim();
-      if (!code) throw new Error("双步验证已开启，重新绑定需先验证当前动态码或恢复码");
+      if (!code) throw new ActionError("双步验证已开启，重新绑定需先验证当前动态码或恢复码");
       const secretOk = current.totpSecret && verifyTotp(decryptSecret(current.totpSecret), code);
       if (!secretOk) {
         const hashes = current.recoveryCodeHashes ?? [];
         const idx = matchRecoveryCode(hashes, code);
-        if (idx === null) throw new Error("验证失败：动态码或恢复码不正确");
+        if (idx === null) throw new ActionError("验证失败：动态码或恢复码不正确");
         const hash = hashes[idx];
         const updated = await prisma.$executeRaw`
           UPDATE "User"
           SET "recoveryCodeHashes" = array_remove("recoveryCodeHashes", ${hash})
           WHERE id = ${session.user.id} AND ${hash} = ANY("recoveryCodeHashes")`;
-        if (updated === 0) throw new Error("该恢复码已被使用，请换一枚或输入动态码");
+        if (updated === 0) throw new ActionError("该恢复码已被使用，请换一枚或输入动态码");
       }
       await prisma.$transaction(async tx => {
         await tx.user.update({

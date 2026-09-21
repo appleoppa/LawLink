@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/select";
 import { createExpress } from "@/server/express/actions";
 import { parseExpressLabel } from "@/server/ai/parse-express";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type DocLite = { id: string; name: string; size: number | null; createdAt: Date };
 
@@ -282,7 +283,7 @@ function AddExpressDialog({
         if (r.companyCode) setCompanyCode(r.companyCode);
       } catch (err) {
         toast.error("识别失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });
@@ -314,7 +315,7 @@ function AddExpressDialog({
         router.refresh();
       } catch (err) {
         toast.error("创建失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });

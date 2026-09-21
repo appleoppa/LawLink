@@ -25,11 +25,12 @@ import {
   type RawRow,
   type NormalizedRow
 } from "@/lib/imports/matter-import";
+import { ActionError } from "@/lib/action-error";
 
 async function requireManager() {
   const session = await requireSession();
   if (!isSystemAdmin(session.user) && !isManager(session.user)) {
-    throw new Error("仅系统超级管理员 / 主任律师可批量导入案件");
+    throw new ActionError("仅系统超级管理员 / 主任律师可批量导入案件");
   }
   return session;
 }
@@ -59,7 +60,7 @@ async function readSheet(file: File): Promise<{ rowNo: number; raw: RawRow }[]> 
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buf as unknown as ArrayBuffer);
   const sheet = wb.worksheets[0];
-  if (!sheet) throw new Error("文件中没有工作表");
+  if (!sheet) throw new ActionError("文件中没有工作表");
 
   // 表头 → 列索引（去掉必填星号，匹配 IMPORT_COLUMNS.header）
   const headerByIndex = new Map<number, string>(); // colIndex → field key
@@ -70,7 +71,7 @@ async function readSheet(file: File): Promise<{ rowNo: number; raw: RawRow }[]> 
     if (col) headerByIndex.set(colNumber, col.key);
   });
   if (headerByIndex.size === 0) {
-    throw new Error("未识别到表头，请使用下载的模板填写");
+    throw new ActionError("未识别到表头，请使用下载的模板填写");
   }
 
   const rows: { rowNo: number; raw: RawRow }[] = [];
@@ -106,11 +107,11 @@ export interface ImportPreview {
 export async function parseMatterImportAction(formData: FormData): Promise<ImportPreview> {
   await requireManager();
   const file = formData.get("file");
-  if (!(file instanceof File)) throw new Error("缺少文件");
+  if (!(file instanceof File)) throw new ActionError("缺少文件");
 
   const parsed = await readSheet(file);
   if (parsed.length === 0) {
-    throw new Error("未读取到数据行（请在模板第 2 行起填写，并删除示例行）");
+    throw new ActionError("未读取到数据行（请在模板第 2 行起填写，并删除示例行）");
   }
 
   // 预取主办律师邮箱，用于校验
@@ -148,7 +149,7 @@ async function createOneMatter(n: NormalizedRow, currentUserId: string) {
       where: { email: { equals: n.ownerEmail, mode: "insensitive" } },
       select: { id: true }
     });
-    if (!lawyer) throw new Error(`主办律师邮箱「${n.ownerEmail}」未匹配到用户`);
+    if (!lawyer) throw new ActionError(`主办律师邮箱「${n.ownerEmail}」未匹配到用户`);
     ownerId = lawyer.id;
   }
 
@@ -322,7 +323,7 @@ export async function commitMatterImportAction(input: {
   rows: { rowNo: number; raw: RawRow }[];
 }): Promise<ImportResult> {
   const session = await requireManager();
-  if ((await approvalSettings()).enabled) throw new Error("按事项审批已启用，批量直接立案已停用，请使用收案审批流程");
+  if ((await approvalSettings()).enabled) throw new ActionError("按事项审批已启用，批量直接立案已停用，请使用收案审批流程");
   const succeeded: ImportResult["succeeded"] = [];
   const failed: ImportResult["failed"] = [];
 

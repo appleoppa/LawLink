@@ -8,6 +8,7 @@ import { assertLedgerWrite } from "./ledger-access";
 import { requireFinanceLedger } from "./ledger-storage";
 import { assertPaymentSource, assertAllocationTotals } from "./ledger-mutations";
 import { auditTx } from "@/server/audit";
+import { ActionError } from "@/lib/action-error";
 
 const civilDay = (d: Date) => Math.floor((d.getTime() + 8 * 3600000) / 86400000);
 const D = (n: Prisma.Decimal.Value) => new Prisma.Decimal(n);
@@ -20,10 +21,10 @@ type Effect = { kind: "EXPENSE_REVERSAL" | "PAYMENT_REFUND" | "RECEIVABLE_ADJUST
 export async function correctionPlan(db: Prisma.TransactionClient, matterId: string, data: z.output<typeof correctionInput>) {
   if (data.targetKind === "EXPENSE") {
     const [entry]=await db.$queryRaw<{id:string;type:string;matterId:string;amount:Prisma.Decimal;revision:number;occurredAt:Date}[]>`SELECT * FROM "FeeEntry" WHERE id=${data.targetId} FOR UPDATE`;
-    if(!entry || entry.matterId!==matterId || entry.type!=="COST" || entry.revision!==data.revision)throw new Error("原支出不存在或已变化");
+    if(!entry || entry.matterId!==matterId || entry.type!=="COST" || entry.revision!==data.revision)throw new ActionError("原支出不存在或已变化");
     const [prior]=await db.$queryRaw<{amount:Prisma.Decimal}[]>`SELECT COALESCE(SUM(delta),0) AS amount FROM "FinanceCorrectionEffect" WHERE "expenseEntryId"=${entry.id}`;
-    if(!D(data.amount).eq(entry.amount.minus(prior.amount)) || prior.amount.gt(0))throw new Error("支出冲销须为原支出全部金额且只能一次");
-    if(civilDay(data.occurredAt)<civilDay(entry.occurredAt))throw new Error("冲销日期不能早于原支出");
+    if(!D(data.amount).eq(entry.amount.minus(prior.amount)) || prior.amount.gt(0))throw new ActionError("支出冲销须为原支出全部金额且只能一次");
+    if(civilDay(data.occurredAt)<civilDay(entry.occurredAt))throw new ActionError("冲销日期不能早于原支出");
     return {snapshot:createHash("sha256").update(JSON.stringify(entry)).digest("hex"),effects:[{kind:"EXPENSE_REVERSAL",column:"expenseEntryId",id:entry.id,delta:D(data.amount)}] as Effect[],arReversed:new Map<string,Prisma.Decimal>(),arAdjusted:new Map<string,Prisma.Decimal>(),paymentReversed:new Map<string,Prisma.Decimal>(),touchedPayments:new Set<string>()};
   }
   // 同案件固定次序读取并锁定；所有新财务写入均先取得共同授权锁。
@@ -35,65 +36,65 @@ export async function correctionPlan(db: Prisma.TransactionClient, matterId: str
   const snapshot = createHash("sha256").update(JSON.stringify({ payments, ars, links, invoices, commissions })).digest("hex");
   const pmap = new Map(payments.map(p => [p.id, p])), amap = new Map(ars.map(a => [a.id, a]));
   const root = data.type === "DISCOUNT" ? amap.get(data.targetId) : pmap.get(data.targetId);
-  if (!root || root.revision !== data.revision) throw new Error("目标账务已变化，请刷新后重新申请");
+  if (!root || root.revision !== data.revision) throw new ActionError("目标账务已变化，请刷新后重新申请");
   const amount = D(data.amount), effects: Effect[] = [];
   const arReversed = new Map<string, Prisma.Decimal>(), paymentReversed = new Map<string, Prisma.Decimal>();
   const arAdjusted = new Map<string, Prisma.Decimal>();
   const add = (map: Map<string, Prisma.Decimal>, id: string, value: Prisma.Decimal) => map.set(id, (map.get(id) ?? D(0)).plus(value));
-  if (sum(data.allocationReversals).gt(amount) || sum(data.invoiceReversals).gt(amount)) throw new Error("撤回关联合计不能超过本次更正金额");
+  if (sum(data.allocationReversals).gt(amount) || sum(data.invoiceReversals).gt(amount)) throw new ActionError("撤回关联合计不能超过本次更正金额");
   for (const item of data.allocationReversals) {
     const link = links.find(l => l.id === item.targetId), value = D(item.amount);
-    if (!link || (data.type === "DISCOUNT" ? link.receivableId !== root.id : link.paymentId !== root.id)) throw new Error("核销关系不属于本次更正对象");
-    if (value.gt(link.amount.minus(link.reversedAmount))) throw new Error("撤回金额超过有效核销");
+    if (!link || (data.type === "DISCOUNT" ? link.receivableId !== root.id : link.paymentId !== root.id)) throw new ActionError("核销关系不属于本次更正对象");
+    if (value.gt(link.amount.minus(link.reversedAmount))) throw new ActionError("撤回金额超过有效核销");
     add(arReversed, link.receivableId, value); add(paymentReversed, link.paymentId, value);
     effects.push({ kind: "ALLOCATION_REVERSAL", column: "allocationId", id: link.id, delta: value });
   }
   for (const item of data.invoiceReversals) {
     const link = invoices.find(l => l.id === item.targetId), value = D(item.amount);
-    if (!link || link.paymentId !== root.id) throw new Error("票款关系不属于本次更正实收");
-    if (value.gt(link.amount.minus(link.reversedAmount))) throw new Error("撤回金额超过有效票款关联");
+    if (!link || link.paymentId !== root.id) throw new ActionError("票款关系不属于本次更正实收");
+    if (value.gt(link.amount.minus(link.reversedAmount))) throw new ActionError("撤回金额超过有效票款关联");
     effects.push({ kind: "INVOICE_ALLOCATION_REVERSAL", column: "invoiceAllocationId", id: link.id, delta: value });
   }
   if (data.type === "DISCOUNT") arAdjusted.set(root.id, amount.negated());
   else {
     const payment = pmap.get(root.id)!;
-    if (civilDay(data.occurredAt) < civilDay(payment.occurredAt)) throw new Error("更正发生日期不能早于原收款");
+    if (civilDay(data.occurredAt) < civilDay(payment.occurredAt)) throw new ActionError("更正发生日期不能早于原收款");
     const net = payment.amount.minus(payment.refundedAmount);
-    if (amount.gt(net)) throw new Error("更正金额超过原收款剩余净额");
-    if (data.type === "REVERSAL" && !amount.eq(net)) throw new Error("误录冲销须冲销原收款全部剩余净额");
-    if (payment.allocatedAmount.minus(paymentReversed.get(payment.id) ?? 0).gt(net.minus(amount))) throw new Error("请明确撤回足额核销，再处理退款或冲销");
+    if (amount.gt(net)) throw new ActionError("更正金额超过原收款剩余净额");
+    if (data.type === "REVERSAL" && !amount.eq(net)) throw new ActionError("误录冲销须冲销原收款全部剩余净额");
+    if (payment.allocatedAmount.minus(paymentReversed.get(payment.id) ?? 0).gt(net.minus(amount))) throw new ActionError("请明确撤回足额核销，再处理退款或冲销");
     const invoiceTotal = sum(invoices.filter(l => l.paymentId === payment.id).map(l => ({ amount: l.amount.minus(l.reversedAmount) })));
-    if (invoiceTotal.minus(sum(data.invoiceReversals)).gt(net.minus(amount))) throw new Error("请明确撤回足额票款关联，再处理退款或冲销");
+    if (invoiceTotal.minus(sum(data.invoiceReversals)).gt(net.minus(amount))) throw new ActionError("请明确撤回足额票款关联，再处理退款或冲销");
     if (data.debtTreatment === "WAIVE_DEBT") {
-      if (!sum(data.waivers).eq(amount)) throw new Error("免除应收合计必须等于退款金额");
+      if (!sum(data.waivers).eq(amount)) throw new ActionError("免除应收合计必须等于退款金额");
       for (const item of data.waivers) {
         // 默认按原核销对应关系免除（2026-09-20 A 批）：被免的应收必须曾由本笔实收核销且
         // 有效核销额足以覆盖；「退 A 款免 B 债」须作为明确、独立的更正决定另行处理。
         const covered = sum(links.filter(l => l.receivableId === item.targetId && l.paymentId === root.id).map(l => ({ amount: l.amount.minus(l.reversedAmount) })));
-        if (D(item.amount).gt(covered)) throw new Error("免除应收须对应本笔实收的原核销关系；跨应收减免请作为独立更正决定另行处理");
+        if (D(item.amount).gt(covered)) throw new ActionError("免除应收须对应本笔实收的原核销关系；跨应收减免请作为独立更正决定另行处理");
         arAdjusted.set(item.targetId, D(item.amount).negated());
       }
     }
     effects.push({ kind: "PAYMENT_REFUND", column: "paymentId", id: payment.id, delta: amount });
     for (const commission of commissions.filter(c => c.parentFeeEntryId === payment.feeEntryId)) {
-      if (!commission.commissionBaseSnapshot?.eq(payment.amount)) throw new Error("原分成基数与收款不一致");
+      if (!commission.commissionBaseSnapshot?.eq(payment.amount)) throw new ActionError("原分成基数与收款不一致");
       const delta = commissionReversal(commission.amount, commission.commissionBaseSnapshot, payment.refundedAmount.plus(amount), commission.adjustment.negated());
-      if (delta.lt(0)) throw new Error("原分成调整明细不一致");
+      if (delta.lt(0)) throw new ActionError("原分成调整明细不一致");
       if (delta.gt(0)) effects.push({ kind: "COMMISSION_ADJUSTMENT", column: "commissionEntryId", id: commission.id, delta: delta.negated() });
     }
   }
   const touchedPayments = new Set([...paymentReversed.keys(), ...(data.type !== "DISCOUNT" ? [root.id] : [])]);
   for (const id of touchedPayments) {
-    const p = pmap.get(id); if (!p || p.moneyKind !== root.moneyKind) throw new Error("关联收款不存在或款项性质不同");
+    const p = pmap.get(id); if (!p || p.moneyKind !== root.moneyKind) throw new ActionError("关联收款不存在或款项性质不同");
     await assertPaymentSource(db, p); await assertAllocationTotals(db, p);
   }
   for (const id of new Set([...arReversed.keys(), ...arAdjusted.keys()])) {
     const ar = amap.get(id);
-    if (!ar || ar.moneyKind !== root.moneyKind || ar.status === "CANCELLED") throw new Error("应收须为本案有效且同类款项");
+    if (!ar || ar.moneyKind !== root.moneyKind || ar.status === "CANCELLED") throw new ActionError("应收须为本案有效且同类款项");
     const linked = sum(links.filter(l => l.receivableId === id).map(l => ({ amount: l.amount.minus(l.reversedAmount) })));
-    if (!linked.eq(ar.settledAmount)) throw new Error("应收核销明细与余额不符");
+    if (!linked.eq(ar.settledAmount)) throw new ActionError("应收核销明细与余额不符");
     const effective = ar.amount.plus(ar.adjustmentAmount).plus(arAdjusted.get(id) ?? 0), settled = ar.settledAmount.minus(arReversed.get(id) ?? 0);
-    if (effective.lt(0) || settled.lt(0) || settled.gt(effective)) throw new Error("减免超过有效应收，或尚需解除已核销金额");
+    if (effective.lt(0) || settled.lt(0) || settled.gt(effective)) throw new ActionError("减免超过有效应收，或尚需解除已核销金额");
   }
   for (const [id, delta] of arAdjusted) effects.push({ kind: "RECEIVABLE_ADJUSTMENT", column: "receivableId", id, delta });
   return { snapshot, effects, arReversed, arAdjusted, paymentReversed, touchedPayments };
@@ -102,7 +103,7 @@ export async function correctionPlan(db: Prisma.TransactionClient, matterId: str
 export async function submitCorrectionTx(db: Prisma.TransactionClient, userId: string, input: CorrectionInput) {
   const data = correctionInput.parse(input); await requireFinanceLedger(db);
   const target = data.targetKind === "EXPENSE" ? await db.feeEntry.findUnique({where:{id:data.targetId},select:{matterId:true}}) : data.type === "DISCOUNT" ? await db.receivable.findUnique({ where: { id: data.targetId }, select: { matterId: true } }) : await db.payment.findUnique({ where: { id: data.targetId }, select: { matterId: true } });
-  if (!target) throw new Error("原账务对象不存在");
+  if (!target) throw new ActionError("原账务对象不存在");
   await assertLedgerWrite(db, userId, target.matterId, "finance.write");
   const plan = await correctionPlan(db, target.matterId, data), id = randomUUID();
   const ar = data.type === "DISCOUNT", expense = data.targetKind === "EXPENSE";
@@ -115,14 +116,14 @@ export async function submitCorrectionTx(db: Prisma.TransactionClient, userId: s
 export async function decideCorrectionTx(db: Prisma.TransactionClient, userId: string, input: z.input<typeof correctionDecision>) {
   const data = correctionDecision.parse(input); await requireFinanceLedger(db);
   const [target] = await db.$queryRaw<{ matterId: string }[]>`SELECT "matterId" FROM "FinanceCorrection" WHERE id=${data.id}`;
-  if (!target) throw new Error("更正申请不存在");
+  if (!target) throw new ActionError("更正申请不存在");
   await assertLedgerWrite(db, userId, target.matterId, data.decision === "CANCELLED" ? "finance.write" : "finance.correct");
   const [row] = await db.$queryRaw<{ id: string; matterId: string; revision: number; status: string; createdById: string; requestPayload: { input: CorrectionInput; snapshot: string } }[]>`SELECT * FROM "FinanceCorrection" WHERE id=${data.id} FOR UPDATE`;
-  if (row.status !== "PENDING" || row.revision !== data.revision) throw new Error("更正申请已处理或发生变化");
-  if (data.decision === "CANCELLED" && row.createdById !== userId) throw new Error("只有申请人可以撤销更正");
+  if (row.status !== "PENDING" || row.revision !== data.revision) throw new ActionError("更正申请已处理或发生变化");
+  if (data.decision === "CANCELLED" && row.createdById !== userId) throw new ActionError("只有申请人可以撤销更正");
   if (data.decision === "CONFIRMED") {
     const request = correctionInput.parse(row.requestPayload.input), plan = await correctionPlan(db, row.matterId, request);
-    if (plan.snapshot !== row.requestPayload.snapshot) throw new Error("申请后账务已变化，请退回后重新申请");
+    if (plan.snapshot !== row.requestPayload.snapshot) throw new ActionError("申请后账务已变化，请退回后重新申请");
     await applyCorrectionPlan(db,row.id,plan,request.type!=="DISCOUNT" && request.targetKind!=="EXPENSE" ? {id:request.targetId,amount:D(request.amount)} : undefined);
   }
   await db.$executeRaw`UPDATE "FinanceCorrection" SET status=${data.decision}::"FinanceCorrectionStatus",revision=revision+1,"resolutionNote"=${data.note},"confirmedById"=${data.decision === "CONFIRMED" ? userId : null},"confirmedAt"=${data.decision === "CONFIRMED" ? new Date() : null} WHERE id=${row.id}`;
@@ -161,19 +162,19 @@ export async function commissionPositions(db: Prisma.TransactionClient, matterId
 export async function settleCommissionTx(db: Prisma.TransactionClient, userId: string, input: SettlementInput) {
   const data = settlementInput.parse(input); await requireFinanceLedger(db);
   const target = await db.feeEntry.findUnique({ where: { id: data.commissionEntryId }, select: { matterId: true } });
-  if (!target) throw new Error("分成计提不存在");
+  if (!target) throw new ActionError("分成计提不存在");
   await assertLedgerWrite(db, userId, target.matterId, "finance.settle");
   await db.$queryRaw`SELECT id FROM "FeeEntry" WHERE id=${data.commissionEntryId} FOR UPDATE`;
   const position = (await commissionPositions(db, [target.matterId])).find(p => p.id === data.commissionEntryId);
-  if (!position || position.revision !== data.revision) throw new Error("分成账务已变化，请刷新");
-  if (civilDay(data.occurredAt) < civilDay(position.occurredAt)) throw new Error("支付日期不能早于分成计提");
+  if (!position || position.revision !== data.revision) throw new ActionError("分成账务已变化，请刷新");
+  if (civilDay(data.occurredAt) < civilDay(position.occurredAt)) throw new ActionError("支付日期不能早于分成计提");
   const amount = D(data.amount);
   // 扣回上限取 recoverable（= max(0, netPaid − accrued)）：退款已把有效计提压到已支付净额之下时，
   // 超额扣回会让 payable 重新大于 0，形成「多扣的钱又变成待支付」的错账回路（2026-09-20 A 批 P2-1）。
   if (amount.gt(data.kind === "PAID" ? position.payable : position.recoverable)) throw new Error(data.kind === "PAID" ? "支付超过当前待支付金额" : "扣回超过当前待扣回金额");
   if (data.kind === "RECOVERED") {
     const [latest] = await db.$queryRaw<{ date: Date | null }[]>`SELECT MAX("occurredAt") AS date FROM "CommissionSettlement" WHERE "commissionEntryId"=${position.id} AND "voidedAt" IS NULL`;
-    if (latest.date && civilDay(data.occurredAt) < civilDay(latest.date)) throw new Error("扣回日期不能早于已有支付或扣回");
+    if (latest.date && civilDay(data.occurredAt) < civilDay(latest.date)) throw new ActionError("扣回日期不能早于已有支付或扣回");
   }
   const id = randomUUID();
   await db.$executeRaw`INSERT INTO "CommissionSettlement" (id,"commissionEntryId",kind,amount,"occurredAt","recordedById","voucherReference",note) VALUES (${id},${position.id},${data.kind}::"CommissionSettlementKind",${amount},${data.occurredAt},${userId},${data.voucherReference},${data.note})`;

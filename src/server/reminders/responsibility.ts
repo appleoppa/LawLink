@@ -5,6 +5,7 @@ import {matterAssociationFilter} from '@/lib/permissions';
 import {currentActor,assertLiveAssignees} from '@/server/intakes/workflow';
 import {retireScheduleReminders} from './schedule';
 import {auditTx} from '@/server/audit';
+import { ActionError } from "@/lib/action-error";
 export async function responsibilityReady(db:Prisma.TransactionClient){const [r]=await db.$queryRaw<{ready:boolean}[]>`SELECT to_regclass('public."WorkResponsibility"') IS NOT NULL AS ready`;return r?.ready===true;}
 export type WorkRow={id:string;targetId:string;kind:'Task'|'Deadline'|'Hearing'|'Urgent';matterId:string|null;intakeId:string|null;title:string;dueAt:Date|null;assigneeId:string;name:string;active:boolean;proposedAssigneeId:string|null;proposedName:string|null;acceptedAt:Date|null;state:'OPEN'|'DONE'|'CANCELLED';revision:number;reason:string|null};
 /** 已有对象权限由调用方进一步按 matterId/intakeId/assignee 限定。 */
@@ -16,27 +17,27 @@ export async function readWorkRows(db:Prisma.TransactionClient){
 export const workChangeInput=z.object({id:z.string().min(1),revision:z.number().int().nonnegative(),action:z.enum(['ACCEPT','PROPOSE','DECLINE','RESCHEDULE','COMPLETE','CANCEL','REOPEN']),reason:z.string().trim().max(1000).default(''),assigneeId:z.string().min(1).optional(),dueAt:z.coerce.date().optional()}).superRefine((v,c)=>{if(v.action!=='ACCEPT'&&!v.reason)c.addIssue({code:'custom',message:'请填写变更或处理原因'});if(v.action==='PROPOSE'&&!v.assigneeId)c.addIssue({code:'custom',message:'请选择接收人'});if(v.action==='RESCHEDULE'&&!v.dueAt)c.addIssue({code:'custom',message:'请填写新日期'});});
 export async function changeWorkTx(db:Prisma.TransactionClient,userId:string,input:z.input<typeof workChangeInput>){
  const d=workChangeInput.parse(input);await currentActor(db,userId,'schedule.write');
- if(!await responsibilityReady(db))throw new Error('事项责任功能尚未启用');
- const row=(await readWorkRows(db)).find(r=>r.id===d.id);if(!row)throw new Error('事项不存在');
+ if(!await responsibilityReady(db))throw new ActionError('事项责任功能尚未启用');
+ const row=(await readWorkRows(db)).find(r=>r.id===d.id);if(!row)throw new ActionError('事项不存在');
  const table=row.kind==='Urgent'?'IntakeUrgentItem':'WorkResponsibility';
  await db.$queryRaw(Prisma.sql`SELECT id FROM ${Prisma.raw(`"${table}"`)} WHERE id=${row.id} FOR UPDATE`);
- if(row.revision!==d.revision)throw new Error('事项已变化，请刷新');
+ if(row.revision!==d.revision)throw new ActionError('事项已变化，请刷新');
  // 归档案件：正常变更通道关闭，但保留 CANCEL 兜底——否则混合迁移状态下遗留的
  // OPEN 事项既不能办结也不能作废，提醒永不停（2026-09-19 审计）。
- if(row.matterId&&await db.matter.count({where:{id:row.matterId,status:'ARCHIVED'}})&&d.action!=='CANCEL')throw new Error('归档案件的办案事项不可变更，仅可作废');
+ if(row.matterId&&await db.matter.count({where:{id:row.matterId,status:'ARCHIVED'}})&&d.action!=='CANCEL')throw new ActionError('归档案件的办案事项不可变更，仅可作废');
  const recipient=(d.action==='ACCEPT'||d.action==='DECLINE')&&row.proposedAssigneeId===userId;
  if(!recipient){
-  if(row.matterId){if(!await db.matter.count({where:{id:row.matterId,deletedAt:null,...matterAssociationFilter(userId)}}))throw new Error('无权处理此案件事项');}
-  else {const intake=row.intakeId?await db.intake.findUnique({where:{id:row.intakeId},select:{createdById:true,ownerUserId:true,coUserIds:true}}):null;if(!intake||![intake.createdById,intake.ownerUserId,...intake.coUserIds].includes(userId))throw new Error('无权处理此收案事项');}
+  if(row.matterId){if(!await db.matter.count({where:{id:row.matterId,deletedAt:null,...matterAssociationFilter(userId)}}))throw new ActionError('无权处理此案件事项');}
+  else {const intake=row.intakeId?await db.intake.findUnique({where:{id:row.intakeId},select:{createdById:true,ownerUserId:true,coUserIds:true}}):null;if(!intake||![intake.createdById,intake.ownerUserId,...intake.coUserIds].includes(userId))throw new ActionError('无权处理此收案事项');}
  }
- if(d.action==='REOPEN'){if(row.state==='OPEN')throw new Error('事项仍在办理');}
- else if(row.state!=='OPEN')throw new Error('事项已结束，请先重开');
- if(d.action==='ACCEPT'&&userId!==(row.proposedAssigneeId??row.assigneeId))throw new Error('只有指定责任人可以承接');
- if(d.action==='DECLINE'&&userId!==row.proposedAssigneeId)throw new Error('只有待接收人可以退回交接');
+ if(d.action==='REOPEN'){if(row.state==='OPEN')throw new ActionError('事项仍在办理');}
+ else if(row.state!=='OPEN')throw new ActionError('事项已结束，请先重开');
+ if(d.action==='ACCEPT'&&userId!==(row.proposedAssigneeId??row.assigneeId))throw new ActionError('只有指定责任人可以承接');
+ if(d.action==='DECLINE'&&userId!==row.proposedAssigneeId)throw new ActionError('只有待接收人可以退回交接');
  if(d.action==='PROPOSE'){
-  await assertLiveAssignees(db,[d.assigneeId!]);if(d.assigneeId===row.assigneeId)throw new Error('接收人与原责任人相同');
-  if(row.matterId&&!await db.matter.count({where:{id:row.matterId,...matterAssociationFilter(d.assigneeId!)}}))throw new Error('请先将接收人加入本案团队');
-  if(!row.matterId){const intake=await db.intake.findUniqueOrThrow({where:{id:row.intakeId!}});if(![intake.createdById,intake.ownerUserId,...intake.coUserIds].includes(d.assigneeId!))throw new Error('接收人须为本收案经办');}
+  await assertLiveAssignees(db,[d.assigneeId!]);if(d.assigneeId===row.assigneeId)throw new ActionError('接收人与原责任人相同');
+  if(row.matterId&&!await db.matter.count({where:{id:row.matterId,...matterAssociationFilter(d.assigneeId!)}}))throw new ActionError('请先将接收人加入本案团队');
+  if(!row.matterId){const intake=await db.intake.findUniqueOrThrow({where:{id:row.intakeId!}});if(![intake.createdById,intake.ownerUserId,...intake.coUserIds].includes(d.assigneeId!))throw new ActionError('接收人须为本收案经办');}
  }
  const nextOwner=d.action==='ACCEPT'?(row.proposedAssigneeId??row.assigneeId):row.assigneeId;
  if(d.action==='ACCEPT'||d.action==='REOPEN')await assertLiveAssignees(db,[nextOwner]);

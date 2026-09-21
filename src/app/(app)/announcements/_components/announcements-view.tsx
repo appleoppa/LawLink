@@ -10,6 +10,7 @@ import { archiveAnnouncement } from "@/server/announcements/actions";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
 import { useTopbarAction } from "@/components/layout/topbar-action";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type AnnouncementItem = {
   id: string;
@@ -43,7 +44,7 @@ export function AnnouncementsView({
       toast.success("已归档");
       router.refresh();
     } catch (err) {
-      toast.error("归档失败", { description: err instanceof Error ? err.message : "" });
+      toast.error("归档失败", { description: actionErrorMessage(err) });
     }
   }
 

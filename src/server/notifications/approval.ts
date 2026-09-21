@@ -6,6 +6,7 @@ import { approvalHref } from "@/lib/approvals/workspace";
 import type { NotificationPriority, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { createNotification } from "@/server/notifications/create";
+import { ActionError } from "@/lib/action-error";
 
 type ApprovalNotificationInput = {
   roles: UserRole[];
@@ -50,7 +51,7 @@ export async function notifyRoleApprovers(input: ApprovalNotificationInput) {
     await notifyUsers({ ...input, href: approvalHref(action, input.refId), userIds: await approvalRecipients(await approvalContextFor(action, input.refId)) });
     return;
   }
-  if (input.refType !== "ExternalContact") throw new Error("审批事项未配置，无法确定审批人员");
+  if (input.refType !== "ExternalContact") throw new ActionError("审批事项未配置，无法确定审批人员");
   const users = await prisma.user.findMany({
     where: {
       active: true,

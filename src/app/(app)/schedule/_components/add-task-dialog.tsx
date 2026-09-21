@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { createTask } from "@/server/tasks/actions";
 import { civilKey, shParts, WEEKDAY_CN } from "@/lib/ui/sh-time";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type MatterPickerItem = { id: string; internalCode: string; title: string };
 
@@ -96,7 +97,7 @@ export function AddTaskDialog({
         router.refresh();
       } catch (err) {
         toast.error("创建失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });

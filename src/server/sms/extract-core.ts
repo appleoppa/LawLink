@@ -17,6 +17,7 @@ import { audit } from "@/server/audit";
 import { parseSms, type ParsedSms } from "@/lib/sms-parser";
 import { deriveProcessingState } from "@/lib/sms/processing-state";
 import { downloadSmsAttachments } from "./attachments";
+import { ActionError } from "@/lib/action-error";
 
 export function normalizeStoredParsed(rawText: string, parsedJson: Prisma.JsonValue): ParsedSms {
   const parsed = parseSms(rawText);
@@ -115,9 +116,9 @@ export async function runSmsAttachmentExtraction({
     where: { id: smsId },
     select: { id: true, rawText: true, parsedJson: true, matchedMatterId: true }
   });
-  if (!sms) throw new Error("短信不存在");
+  if (!sms) throw new ActionError("短信不存在");
   const parsed = normalizeStoredParsed(sms.rawText, sms.parsedJson);
-  if (parsed.urls.length === 0) throw new Error("短信中没有可提取的链接");
+  if (parsed.urls.length === 0) throw new ActionError("短信中没有可提取的链接");
 
   const attachmentResults = await tryExtractAttachments({
     smsId: sms.id,

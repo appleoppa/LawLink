@@ -13,6 +13,7 @@ import { saveEmailLastResult } from "@/server/settings/email-last-result";
 import { recordDeliveryOutcome } from "@/server/reminders/ledger";
 import { claimDueJobs, completeJob, failJob } from "./queue";
 import { shDayKey } from "@/lib/ui/sh-time";
+import { ActionError } from "@/lib/action-error";
 
 type JobHandler = (payload: Record<string, unknown>) => Promise<void>;
 
@@ -170,25 +171,25 @@ const smsAttachmentFetchHandler: JobHandler = async (payload) => {
   // server action 壳——改以入队粘贴人身份复跑核心（校验 userId 必须是来件收件人）。
   const smsId = String(payload.smsId ?? "");
   const userId = String(payload.userId ?? "");
-  if (!smsId) throw new Error("sms.attachment_fetch 缺少 smsId");
-  if (!userId) throw new Error("sms.attachment_fetch 缺少 userId（旧任务 payload 无操作人，请手动重试取件）");
+  if (!smsId) throw new ActionError("sms.attachment_fetch 缺少 smsId");
+  if (!userId) throw new ActionError("sms.attachment_fetch 缺少 userId（旧任务 payload 无操作人，请手动重试取件）");
   const { prisma } = await import("@/lib/prisma");
   const { resolveRoleUser } = await import("@/lib/roles/service");
   const { runSmsAttachmentExtraction } = await import("@/server/sms/extract-core");
   const sms = await prisma.smsMessage.findUnique({ where: { id: smsId }, select: { receivedById: true } });
   if (!sms) return; // 来件已删除：任务作废，不算失败
-  if (sms.receivedById !== userId) throw new Error("sms.attachment_fetch 操作人须为来件收件人");
+  if (sms.receivedById !== userId) throw new ActionError("sms.attachment_fetch 操作人须为来件收件人");
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, active: true } });
-  if (!user || !user.active) throw new Error("sms.attachment_fetch 操作人账号已不存在或停用");
+  if (!user || !user.active) throw new ActionError("sms.attachment_fetch 操作人账号已不存在或停用");
   const actor = await resolveRoleUser(userId, user.role);
-  if (!actor.enabled) throw new Error("sms.attachment_fetch 操作人角色已停用");
+  if (!actor.enabled) throw new ActionError("sms.attachment_fetch 操作人角色已停用");
   await runSmsAttachmentExtraction({ smsId, actor: { id: userId, role: actor.role, roleName: actor.roleName, managerAuthorized: actor.managerAuthorized, rolePermissions: actor.rolePermissions }, source: "queue" });
 };
 
 /** B2：来件阅读分析（取件成功后入队；AI/OCR 未配置时文件降级 NEEDS_OCR 可见，不报错重试浪费） */
 const smsFileAnalysisHandler: JobHandler = async (payload) => {
   const smsId = String(payload.smsId ?? "");
-  if (!smsId) throw new Error("sms.file_analysis 缺少 smsId");
+  if (!smsId) throw new ActionError("sms.file_analysis 缺少 smsId");
   const { prisma } = await import("@/lib/prisma");
   const { analyzeInboundFile } = await import("@/server/sms/analysis");
   // 2026-09-20 P2-3：排除已入卷文件（documentId 非空）——其 storageKey 指向卷宗存储，

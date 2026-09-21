@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { actionErrorMessage } from "@/lib/action-error";
 
 export function OcrSettingsForm({ initial }: { initial: { endpoint: string; apiKey: string; supportsPdf: boolean } }) {
   const router = useRouter();
@@ -26,7 +27,7 @@ export function OcrSettingsForm({ initial }: { initial: { endpoint: string; apiK
         toast.success("OCR 设置已保存");
         router.refresh();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "保存失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "保存失败");
       }
     });
   }

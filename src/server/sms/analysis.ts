@@ -13,6 +13,7 @@ import { aiChat, AiNotConfiguredError } from "@/lib/ai/client";
 import { extractDocumentTextLayer, NoTextLayerError, UnsupportedTextExtraction } from "@/lib/documents/text-extraction";
 import { recognizeText, OcrNotConfiguredError } from "@/server/ocr/provider";
 import type { SmsSuggestionKind } from "@prisma/client";
+import { ActionError } from "@/lib/action-error";
 
 const MAX_ANALYSIS_TEXT_CHARS = 12_000;
 
@@ -49,11 +50,11 @@ export async function analyzeDocumentText(text: string, hint?: string, userId?: 
 function extractJson(content: string): Record<string, unknown> {
   const start = content.indexOf("{");
   const end = content.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new Error("AI 输出不含 JSON");
+  if (start < 0 || end <= start) throw new ActionError("AI 输出不含 JSON");
   try {
     return JSON.parse(content.slice(start, end + 1)) as Record<string, unknown>;
   } catch {
-    throw new Error("AI 输出 JSON 解析失败");
+    throw new ActionError("AI 输出 JSON 解析失败");
   }
 }
 
@@ -110,7 +111,7 @@ export async function analyzeInboundFile(fileId: string): Promise<{ state: strin
     where: { id: fileId },
     include: { sms: { select: { id: true, matchedMatterId: true, smsType: true, parsedJson: true, receivedById: true } } }
   });
-  if (!file) throw new Error("来件文件不存在");
+  if (!file) throw new ActionError("来件文件不存在");
 
   await prisma.smsInboundFile.update({ where: { id: fileId }, data: { analysisState: "ANALYZING", analysisError: null } });
   try {
@@ -119,10 +120,10 @@ export async function analyzeInboundFile(fileId: string): Promise<{ state: strin
     // ② 已入卷文件（storageKey=卷宗密文路径）在启用存储加密的部署读出的是密文，
     //    会被当文本喂给 AI。前者落 FAILED 说明，后者仅密文部署防御（明文部署可直接读）。
     if (!file.storageKey) {
-      throw new Error("该文件为重复送达合并记录，无独立存储内容，无需分析");
+      throw new ActionError("该文件为重复送达合并记录，无独立存储内容，无需分析");
     }
     if (file.documentId && process.env.STORAGE_ENCRYPTION_KEY) {
-      throw new Error("已入卷加密文件不支持从暂存盘重读（内容已在案件卷宗，可人工查看）");
+      throw new ActionError("已入卷加密文件不支持从暂存盘重读（内容已在案件卷宗，可人工查看）");
     }
     const buffer = await storage.readFile(file.storageKey);
     let text: string;
@@ -143,7 +144,7 @@ export async function analyzeInboundFile(fileId: string): Promise<{ state: strin
         throw err;
       }
     }
-    if (!text.trim()) throw new Error("未取得可分析文本");
+    if (!text.trim()) throw new ActionError("未取得可分析文本");
 
     const analyzed = await analyzeDocumentText(text, `来源：法院短信来件（${file.sms.smsType}）`, file.sms.receivedById);
     const pageCountFinal = pageCount ?? countPages(text);

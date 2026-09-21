@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { saveHolidayBatch } from "@/server/calendar/holiday-actions";
 import { formatDate } from "@/lib/utils";
+import { actionErrorMessage } from "@/lib/action-error";
 
 export type HolidayRow = { id: string; date: Date; name: string; kind: string };
 
@@ -45,7 +46,7 @@ export function HolidayCard({ year, rows, canEdit }: { year: number; rows: Holid
         toast.success(`已保存 ${r.count} 条`);
         setText("");
       } catch (err) {
-        toast.error("保存失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("保存失败", { description: actionErrorMessage(err) });
       }
     });
   }

@@ -51,6 +51,7 @@ import { PageHeader } from "@/components/patterns/moan";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
 import { useTopbarAction } from "@/components/layout/topbar-action";
 import { useSearchParams, useRouter } from "next/navigation";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Tab = "unprocessed" | "needsManual" | "needsMatch" | "processed";
 
@@ -272,7 +273,7 @@ function SmsCard({
         await markSmsProcessed({ id: sms.id });
         toast.success("已标记处理");
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "失败");
       }
     });
 
@@ -283,7 +284,7 @@ function SmsCard({
         await deleteSms({ id: sms.id });
         toast.success("已删除");
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "失败");
       }
     });
   };
@@ -312,7 +313,7 @@ function SmsCard({
               : "附件提取已完成"
         );
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "提取失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "提取失败");
       }
     });
 
@@ -465,7 +466,7 @@ function SmsCard({
               toast.success(decision === "ACCEPTED" ? `已确认应用 ${res.count} 项建议${res.filedFiles ? `，转正 ${res.filedFiles} 个文件` : ""}` : `已拒绝 ${res.count} 项建议`);
               router.refresh();
             } catch (e) {
-              toast.error(e instanceof Error ? e.message : "处理失败");
+              toast.error(e instanceof Error ? actionErrorMessage(e) : "处理失败");
             }
           });
         return (
@@ -483,7 +484,7 @@ function SmsCard({
                       toast.success(`已完成分析 ${analyzed} 个文件${needsOcr ? `，${needsOcr} 个需人工（OCR 不可用）` : ""}，共产生 ${res.results.reduce((n, r) => n + r.suggestionCount, 0)} 项建议`);
                       router.refresh();
                     } catch (e) {
-                      toast.error(e instanceof Error ? e.message : "分析失败");
+                      toast.error(e instanceof Error ? actionErrorMessage(e) : "分析失败");
                     }
                   })
                 }>阅读并整理</button>
@@ -545,7 +546,7 @@ function SmsCard({
                     if (res.skippedDuplicates.length) toast.info(`重复跳过：${res.skippedDuplicates.join("、")}`);
                     startTransition(() => router.refresh());
                   })
-                  .catch((err) => toast.error(err instanceof Error ? err.message : "补传失败"))
+                  .catch((err) => toast.error(err instanceof Error ? actionErrorMessage(err) : "补传失败"))
                   .finally(() => setUploading(false));
               }}
             />
@@ -826,7 +827,7 @@ function MatterPicker({ sms, matters }: { sms: SmsRow; matters: MatterOption[] }
         toast.success("已关联案件");
         setOpen(false);
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "失败");
       }
     });
   };

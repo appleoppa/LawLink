@@ -33,6 +33,7 @@ import { CLOSED_REASON_CN } from "@/server/archive/schemas";
 import type { ArchiveChecklist, ArchiveChecklistItem } from "@/lib/archive/checklists";
 import type { ArchiveClosedReason } from "@prisma/client";
 import { ARCHIVE_MANUAL_CHECKS } from "@/lib/archive/snapshot";
+import { actionErrorMessage } from "@/lib/action-error";
 
 interface LinkedDoc {
   id: string;
@@ -127,7 +128,7 @@ export function ArchiveWizardDialog({ matterId, open, onOpenChange }: Props) {
     setForceWithMissing(false);
     refreshPrep(true)
       .catch((err) => {
-        toast.error("加载归档数据失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("加载归档数据失败", { description: actionErrorMessage(err) });
         onOpenChange(false);
       })
       .finally(() => setLoading(false));
@@ -159,7 +160,7 @@ export function ArchiveWizardDialog({ matterId, open, onOpenChange }: Props) {
       toast.success(`已上传：${item.label}`, { description: file.name });
       await refreshPrep();
     } catch (err) {
-      toast.error("上传失败", { description: err instanceof Error ? err.message : "" });
+      toast.error("上传失败", { description: actionErrorMessage(err) });
     } finally {
       setUploadingItemId(null);
     }
@@ -223,7 +224,7 @@ export function ArchiveWizardDialog({ matterId, open, onOpenChange }: Props) {
         onOpenChange(false);
         router.refresh();
       } catch (err) {
-        toast.error("归档失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("归档失败", { description: actionErrorMessage(err) });
       }
     });
   }

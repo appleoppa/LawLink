@@ -52,6 +52,7 @@ import { userRoleLabel } from "@/lib/enums";
 import { AdminPageHeader } from "@/components/layout/admin-page-header";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
 import { formatDate, formatDateTime } from "@/lib/utils";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type CustomRoleOption = { id: string; name: string; active: boolean };
 const assignment = (value: string) => ROLES.includes(value as UserRole) ? { role: value as UserRole, roleDefinitionId: null } : { role: "CUSTOM" as const, roleDefinitionId: value };
@@ -191,7 +192,7 @@ function UserRow({
         await updateUserRole({ id: user.id, ...assignment(value), expectedRole: user.role, expectedRoleDefinitionId: user.roleDefinitionId ?? null });
         toast.success("角色已更新");
       } catch (err) {
-        toast.error("更新失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("更新失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -204,7 +205,7 @@ function UserRow({
         await unlockUserLogin({ id: user.id });
         toast.success("已解除锁定");
       } catch (err) {
-        toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("操作失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -219,7 +220,7 @@ function UserRow({
         const res = await setUserActive({ id: user.id, active: !user.active });
         toast.success(res.active ? "已激活" : "已禁用");
       } catch (err) {
-        toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("操作失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -233,7 +234,7 @@ function UserRow({
         await updateUserSystemRole({ id: user.id, systemRole: next, expectedSystemRole: user.systemRole });
         toast.success(next === "SUPER_ADMIN" ? "已授予系统管理资格" : "已撤销系统管理资格");
       } catch (err) {
-        toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("操作失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -255,7 +256,7 @@ function UserRow({
         await setUserManagerAuthorized({ id: user.id, managerAuthorized: next, expectedManagerAuthorized: user.managerAuthorized === true });
         toast.success(next ? "已授予业务管理权" : "已撤销业务管理权");
       } catch (err) {
-        toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("操作失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -278,7 +279,7 @@ function UserRow({
         const res = await forceEnforceTotp({ id: user.id, enabled: next });
         toast.success(res.enforced ? "已要求开启双步验证" : "已解除强制要求");
       } catch (err) {
-        toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("操作失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -497,7 +498,7 @@ function CreateUserSheet({
         setIdentityErrors({});
         onOpenChange(false);
       } catch (err) {
-        toast.error("创建失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("创建失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -599,7 +600,7 @@ function ResetPasswordDialog({
         setPwd("");
         onClose();
       } catch (err) {
-        toast.error("失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("失败", { description: actionErrorMessage(err) });
       }
     });
   }

@@ -19,6 +19,7 @@ import {
   templateRenderSchema
 } from "./schemas";
 import { revalidateMatter } from "@/server/matters/route";
+import { ActionError } from "@/lib/action-error";
 
 export async function listTemplates(input?: z.input<typeof templateListFilterSchema>) {
   await requireSession("personal");
@@ -105,8 +106,8 @@ export async function renderTemplate(input: z.infer<typeof templateRenderSchema>
     where: { id: data.templateId },
     include: { docxBlob: true }
   });
-  if (!tmpl || !tmpl.enabled) throw new Error("模板不存在或已禁用");
-  if (!tmpl.docxBlob) throw new Error("模板源文件缺失");
+  if (!tmpl || !tmpl.enabled) throw new ActionError("模板不存在或已禁用");
+  if (!tmpl.docxBlob) throw new ActionError("模板源文件缺失");
 
   // 校验 folder 同案件
   if (data.folderId) {
@@ -115,7 +116,7 @@ export async function renderTemplate(input: z.infer<typeof templateRenderSchema>
       select: { matterId: true }
     });
     if (!folder || folder.matterId !== data.matterId) {
-      throw new Error("目标卷宗与案件不匹配");
+      throw new ActionError("目标卷宗与案件不匹配");
     }
   }
 
@@ -124,7 +125,7 @@ export async function renderTemplate(input: z.infer<typeof templateRenderSchema>
     where: { id: data.matterId },
     select: { internalCode: true, category: true }
   });
-  if (!matter) throw new Error("案件不存在");
+  if (!matter) throw new ActionError("案件不存在");
 
   const rawCt = await storage.readFile(tmpl.docxBlob.path);
   const templateBuffer = tmpl.docxBlob.encrypted
@@ -230,12 +231,12 @@ export async function uploadDocumentTemplate(formData: FormData) {
   });
 
   const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) throw new Error("请选择 docx 模板文件");
-  if (file.size > MAX_TEMPLATE_SIZE) throw new Error("模板文件不得超过 10MB");
+  if (!(file instanceof File) || file.size === 0) throw new ActionError("请选择 docx 模板文件");
+  if (file.size > MAX_TEMPLATE_SIZE) throw new ActionError("模板文件不得超过 10MB");
   const isDocx = file.type === DOCX_MIME || file.name.toLowerCase().endsWith(".docx");
-  if (!isDocx) throw new Error("仅支持 .docx 模板文件");
+  if (!isDocx) throw new ActionError("仅支持 .docx 模板文件");
   const buffer = Buffer.from(await file.arrayBuffer());
-  if (buffer.subarray(0, 2).toString("latin1") !== "PK") throw new Error("文件不是有效的 docx（ZIP 头缺失）");
+  if (buffer.subarray(0, 2).toString("latin1") !== "PK") throw new ActionError("文件不是有效的 docx（ZIP 头缺失）");
 
   const variables = [...new Set([...extractDocxVariables(buffer), ...data.extraVariables])].sort();
 

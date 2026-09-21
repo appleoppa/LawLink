@@ -11,6 +11,7 @@ import type { MatterCategory, ProcedureType } from "@prisma/client";
 import { aiChat, extractJson, AiNotConfiguredError } from "@/lib/ai/client";
 import { searchCauses, type CauseSearchResult } from "@/server/causes/actions";
 import { requireSession } from "@/lib/auth/session";
+import { ActionError } from "@/lib/action-error";
 
 export type CauseConfidence = "HIGH" | "MEDIUM" | "LOW";
 
@@ -97,7 +98,7 @@ export async function recommendCause(input: {
 
   const situation = input.situation.trim();
   if (situation.length < 5) {
-    throw new Error("案情描述太短，至少 5 个字");
+    throw new ActionError("案情描述太短，至少 5 个字");
   }
 
   let content = "";
@@ -122,7 +123,7 @@ export async function recommendCause(input: {
 
   const parsed = extractJson<LlmCandidate[]>(content);
   if (!Array.isArray(parsed)) {
-    throw new Error("AI 返回内容无法解析为候选列表");
+    throw new ActionError("AI 返回内容无法解析为候选列表");
   }
 
   const results: CauseRecommendation[] = [];
@@ -138,7 +139,7 @@ export async function recommendCause(input: {
   }
 
   if (results.length === 0) {
-    throw new Error("AI 推荐的案由都不在案由库中，请手动选择");
+    throw new ActionError("AI 推荐的案由都不在案由库中，请手动选择");
   }
 
   return results;

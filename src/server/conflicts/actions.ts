@@ -10,6 +10,7 @@ import { audit } from "@/server/audit";
 import { matterAssociationFilter, intakeVisibilityFilter } from "@/lib/permissions";
 import type { RoleGrant } from "@/lib/roles/catalog";
 import { runConflictCheck, conflictHitKey, type IntakeInfoForHit, type MatterInfoForHit, type QueryItem } from "./algorithm";
+import { ActionError } from "@/lib/action-error";
 
 /** 收案对象级授权：正式检索与结论只能作用于自己可见的收案，防止向他人收案挂记录、改写他人结论 */
 async function assertCanAccessIntake(userId: string, role: string, intakeId: string, grants?: RoleGrant[] | null) {
@@ -17,7 +18,7 @@ async function assertCanAccessIntake(userId: string, role: string, intakeId: str
     where: { id: intakeId, ...intakeVisibilityFilter(userId, role, grants ?? undefined) },
     select: { id: true }
   });
-  if (!row) throw new Error("收案不存在或无权访问");
+  if (!row) throw new ActionError("收案不存在或无权访问");
 }
 
 function serializeIntakeInfo(info: IntakeInfoForHit | null | undefined) {
@@ -195,8 +196,8 @@ export async function setConflictConclusion(input: z.infer<typeof conclusionSche
   const session = await requireSession("intakes.create");
   const data = conclusionSchema.parse(input);
   const target = await prisma.conflictCheck.findUnique({ where: { id: data.checkId }, select: { intakeId: true } });
-  if (!target) throw new Error("检索记录不存在");
-  if (!target.intakeId) throw new Error("冲突预检仅供了解情况，不出检索结论；正式结论请在收案中给出");
+  if (!target) throw new ActionError("检索记录不存在");
+  if (!target.intakeId) throw new ActionError("冲突预检仅供了解情况，不出检索结论；正式结论请在收案中给出");
   // 送审轮次已冻结结论（轮次只追加不覆盖）：PENDING_CONFIRMATION 期间改结论须先撤回
   await assertCanAccessIntake(session.user.id, session.user.role, target.intakeId, session.user.rolePermissions);
 
@@ -207,8 +208,8 @@ export async function setConflictConclusion(input: z.infer<typeof conclusionSche
       const state=await intakeState(roleDb,target.intakeId!);
       const latest=await roleDb.conflictCheck.findFirst({where:{intakeId:target.intakeId},orderBy:{checkedAt:'desc'},select:{id:true}});
       const [meta]=await roleDb.$queryRaw<{subjectFingerprint:string|null}[]>`SELECT "subjectFingerprint" FROM "ConflictCheck" WHERE id=${data.checkId}`;
-      if(latest?.id!==data.checkId||meta.subjectFingerprint!==state.subjectFingerprint)throw new Error('旧检索已失效，请重新检索');
-      if(data.conclusion==='DIFFERENT'&&!data.note?.trim()&&await roleDb.conflictHit.count({where:{checkId:data.checkId}}))throw new Error('请填写排除冲突的复核理由');
+      if(latest?.id!==data.checkId||meta.subjectFingerprint!==state.subjectFingerprint)throw new ActionError('旧检索已失效，请重新检索');
+      if(data.conclusion==='DIFFERENT'&&!data.note?.trim()&&await roleDb.conflictHit.count({where:{checkId:data.checkId}}))throw new ActionError('请填写排除冲突的复核理由');
     }
     return roleDb.conflictCheck.update({
     where: { id: data.checkId },

@@ -22,6 +22,7 @@ import {
   expressSettingsSaveSchema
 } from "./schemas";
 import { revalidateMatter } from "@/server/matters/route";
+import { ActionError } from "@/lib/action-error";
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 列表 / 查询
@@ -83,13 +84,13 @@ async function assertCanAccessExpressRecord(userId: string, id: string, user?: R
     where: { id },
     select: { id: true, matterId: true, createdById: true }
   });
-  if (!record) throw new Error("快递记录不存在");
+  if (!record) throw new ActionError("快递记录不存在");
   if (user?.role === "CUSTOM" && scopeFor(user, "express.manage") === "ALL") return record;
   if (record.matterId) {
     await assertCanAssociateMatter(userId, record.matterId);
     return record;
   }
-  if (record.createdById !== userId) throw new Error("无权操作此快递记录");
+  if (record.createdById !== userId) throw new ActionError("无权操作此快递记录");
   return record;
 }
 
@@ -110,7 +111,7 @@ export async function createExpress(input: z.infer<typeof expressCreateSchema>) 
       where: { id: data.matterId },
       select: { id: true }
     });
-    if (!m) throw new Error("关联案件不存在");
+    if (!m) throw new ActionError("关联案件不存在");
     await assertCanAssociateMatter(session.user.id, data.matterId);
     await assertMatterWritable(data.matterId);
   }

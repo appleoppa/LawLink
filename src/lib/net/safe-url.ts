@@ -13,23 +13,24 @@
 import { lookup } from "node:dns/promises";
 import net from "node:net";
 import { Agent, buildConnector, fetch as undiciFetch } from "undici";
+import { ActionError } from "@/lib/action-error";
 
 export async function assertSafeHttpUrl(input: string): Promise<URL> {
   let url: URL;
   try {
     url = new URL(input);
   } catch {
-    throw new Error("链接格式不正确");
+    throw new ActionError("链接格式不正确");
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("仅支持 HTTP/HTTPS 链接");
+    throw new ActionError("仅支持 HTTP/HTTPS 链接");
   }
   if (isLocalHostname(url.hostname)) {
-    throw new Error("不允许访问本机或内网地址");
+    throw new ActionError("不允许访问本机或内网地址");
   }
   const records = await lookup(url.hostname, { all: true });
   if (records.length === 0 || records.some((r) => isPrivateAddress(r.address))) {
-    throw new Error("不允许访问本机或内网地址");
+    throw new ActionError("不允许访问本机或内网地址");
   }
   return url;
 }

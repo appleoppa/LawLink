@@ -46,59 +46,75 @@
 
 固定版本的操作步骤见[云服务器指南](./CLOUD-SERVER-INSTALLATION-GUIDE.md#十五升级-lawlink)。迁移后无法通过只切回旧代码可靠回退，须按已验证的备份恢复方案处理。
 
-## 从 v1.3.x 升级：迁移基线重建（必读，含手工步骤）
+## 从 v1.3.x 升级：迁移基线重建（必读，含手工步骤与增量脚本）
 
 本版把迁移链重建为单一基线 `0_init`，75 个历史迁移归档至 `prisma/migrations-archive-20260921/`（保留不删）。
 
-起因：旧链中 `2026*` 与 `v4*` 两套命名混排，Prisma 按名称排序执行，导致补强迁移排在建列迁移之前，**整条链在空库上无法从零重放**（`20260920000001_audit_fix_hardening` 处报 `column "confirmState" does not exist`）。已应用完毕的既有库不受该缺陷影响，但全新安装与灾难恢复重建都会失败。
+起因：旧链中 `2026*` 与 `v4*` 两套命名混排，Prisma 按名称排序执行，导致补强迁移排在建列迁移之前，**整条链在空库上无法从零重放**。已应用完毕的既有库不受该缺陷影响，但全新安装与灾难恢复重建都会失败。
 
 ### 影响
 
 | 场景 | 影响 |
 |---|---|
-| **全新安装** | 已修复，`prisma migrate deploy` 正常跑通 |
-| **既有部署升级** | **需要一次手工标记**，否则升级中断（见下） |
-| 业务数据 | 无影响，基线重建不改变任何表结构或数据 |
+| **全新安装** | `prisma migrate deploy` 正常跑通（含守卫恢复迁移） |
+| **既有 v1.3.x 部署升级** | **必须执行增量脚本 + 两次手工标记**，只做标记会失败（见下） |
+| 业务数据 | 无表级删除；新增必填列由脚本按固定规则回填（见下） |
 
-既有部署的 `_prisma_migrations` 表里没有 `0_init` 记录，`prisma migrate deploy` 会把它当作待应用迁移去执行，而库中的表和枚举都已存在，于是失败：
+**为什么只做标记不够**：v1.3.x 部署的库停留在 v1.3.2 的结构，缺少 v1.4.0 全部新增的表、列与枚举。若只 `resolve --applied 0_init` 后直接 `migrate deploy`，后续迁移 `20260921000004_archive_borrow` 会在 `ALTER TYPE "ReminderDeliveryObjectType"` 处报 `42704: type does not exist`，失败写入迁移表并阻断后续全部迁移；即使跳过该迁移，应用也会因缺列无法运行。**此路径已在 v1.3.2 全链重放的副本库上实测复现，不是推测。**
 
-```
-Error: P3018
-Database error code: 42710
-ERROR: type "UserRole" already exists
-```
-
-失败会被记入 `_prisma_migrations`，**在恢复之前后续迁移全部阻断**。
-
-### 升级步骤（既有部署）
+### 升级步骤（既有 v1.3.x 部署）
 
 先备份数据库、`storage/` 与 `.env`，并在备份副本上演练一遍。然后：
 
 ```bash
-# 1. 标记基线已应用（不执行任何 SQL，只写一行迁移记录）
+# 1. 应用 v1.3.x → v1.4.0 的结构增量（全部建表/加列/枚举/索引，含数据回填）
+#    用 psql 连接业务库执行；不要包在事务里（脚本含 ALTER TYPE ADD VALUE）
+psql "$DATABASE_URL" -f prisma/upgrade/v1_3_x_to_v1_4_0.sql
+
+# 2. 标记基线已应用（不执行 SQL，只写迁移记录；注意必须是完整目录名）
 npx prisma migrate resolve --applied 0_init
 
-# 2. 正常执行后续迁移
+# 3. 标记 archive_borrow 迁移已应用（其内容已包含在增量脚本中；
+#    目录名必须完整，写成 20260921000004 会报 P3017 找不到迁移）
+npx prisma migrate resolve --applied 20260921000004_archive_borrow
+
+# 4. 正常部署（自动应用 20260921000005_restore_db_guards：恢复审计防删、
+#    事项责任、财务余额等数据库层守卫——这些对象 Prisma 基线无法表达）
 npx prisma migrate deploy
 
-# 3. 确认无待办
+# 5. 确认无待办
 npx prisma migrate status      # 期望：Database schema is up to date!
 ```
 
-第 1 步必须在第 2 步之前。旧迁移记录保留在表中作为历史，不要删除。
+### 增量脚本的回填规则
+
+v1.4.0 新增两处必填列 `moneyKind`（FeeEntry/Billing），脚本按 v1.3.2 的数据语义回填：
+
+- `FeeEntry.type='COST'`（办案支出）→ `EXPENSE_RECOVERY`；其余（RECEIVABLE / RECEIVED / REFUND / COMMISSION）→ `LAWYER_FEE`
+- `Billing`（委托收费约定）统一 → `LAWYER_FEE`
+
+如所内实际与此不符，可在执行前修改脚本中两处 `UPDATE ... SET "moneyKind"` 的映射。升级后历史实收的 `confirmState` 为 `PENDING`（v1.4.0 实收两步确认规则对存量数据同样生效），由持有「确认实收到账」权限的人员在财务页确认。
+
+### 实测记录（2026-09-21）
+
+在 v1.3.2 tag 全链重放的副本库（含用户/案件/财务/审计数据）上按上述步骤执行，验证五项全部通过：`migrate diff` 对 `schema.prisma` 零漂移；业务数据逐表保留；10 触发器 + 5 函数 + 25 CHECK 约束 + 8 部分唯一索引与开发库一致；`DELETE FROM "AuditLog"` 被触发器拒绝；v1.4.0 应用（Prisma Client）在升级库上查询正常。
 
 ### 如果已经直接执行了 deploy 并失败
 
-失败本身不会损坏数据（`0_init` 在第一条 `CREATE TYPE` 就中止）。执行同样的标记即可恢复：
+失败本身不会损坏数据（`0_init` 在第一条 `CREATE TYPE` 即中止）。先清除失败记录再按上文步骤重做：
 
 ```bash
-npx prisma migrate resolve --applied 0_init
-npx prisma migrate deploy
+# 若报 P3018 / 42710（type "UserRole" already exists）：失败的是 0_init
+npx prisma migrate resolve --rolled-back 0_init
+# 若报 42704（type "ReminderDeliveryObjectType" does not exist）：失败的是 20260921000004
+npx prisma migrate resolve --rolled-back 20260921000004_archive_borrow
 ```
+
+然后从步骤 1（增量脚本）开始重做。增量脚本未包事务，若中途中止请核对报错位置，或直接从备份副本重来。
 
 ### 容器部署
 
-`docker compose` 场景在应用容器内执行上述命令，或在宿主机指向同一 `DATABASE_URL` 执行。不要用 `prisma db push` 代替——它会绕过迁移历史，使后续升级失去可重放基准。
+`docker compose` 场景在应用容器内执行上述命令，或在宿主机指向同一 `DATABASE_URL` 执行；增量脚本可经 `docker exec -i <db容器> psql -U <用户> -d <库> -f - < prisma/upgrade/v1_3_x_to_v1_4_0.sql` 送入。不要用 `prisma db push` 代替——它会绕过迁移历史，使后续升级失去可重放基准。
 
 ## 外部服务、文件与备份
 

@@ -10,6 +10,7 @@
 import { createHmac } from "node:crypto";
 import { encryptBuffer, decryptBuffer } from "@/lib/storage/crypto";
 import { normalizeIdNumber } from "@/lib/clients/identity";
+import { ActionError } from "@/lib/action-error";
 
 /** 盲索引域密钥：从附件主密钥经域分离派生（缓存；部署环境变量不变时稳定） */
 let cachedBlindKey: Buffer | null = null;
@@ -18,7 +19,7 @@ function blindKey(): Buffer {
     // 复用 encryptBuffer 使用的密钥派生路径：以加密一个固定域标记取其 iv? 不行——
     // 直接从环境读取主密钥（与 storage/crypto 相同来源），HMAC 域分离。
     const master = process.env.STORAGE_ENCRYPTION_KEY;
-    if (!master) throw new Error("STORAGE_ENCRYPTION_KEY 未配置：证件号加密与盲索引不可用");
+    if (!master) throw new ActionError("STORAGE_ENCRYPTION_KEY 未配置：证件号加密与盲索引不可用");
     cachedBlindKey = createHmac("sha256", master).update("lawlink:client-id-blind:v1").digest();
   }
   return cachedBlindKey;

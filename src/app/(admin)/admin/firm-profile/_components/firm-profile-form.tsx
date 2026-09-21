@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { renderCaseNoTemplate } from "@/lib/matters/firm-caseno";
 import { shParts } from "@/lib/ui/sh-time";
 import { saveFirmProfileAction } from "@/server/settings/firm-profile-actions";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Category = { key: string; label: string; abbr: string; word: string };
 
@@ -81,7 +82,7 @@ export function FirmProfileForm({ initial }: { initial: Initial }) {
         });
         toast.success("律所信息已保存");
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "保存失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "保存失败");
       }
     });
   };

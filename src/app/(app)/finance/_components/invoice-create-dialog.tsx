@@ -32,6 +32,7 @@ import {
 } from "@/server/finance/actions";
 import { uploadDocument } from "@/server/documents/actions";
 import { cn } from "@/lib/utils";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type InvoiceType = "PLAIN" | "SPECIAL";
 type InvoiceItem = "LAWYER_FEE" | "CONSULTING_FEE" | "AGENCY_FEE" | "OTHER";
@@ -223,7 +224,7 @@ export function InvoiceCreateDialog({
         onOpenChange(false);
         if (onSubmitted) onSubmitted(created.id); else router.refresh();
       } catch (err) {
-        toast.error("提交失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("提交失败", { description: actionErrorMessage(err) });
       }
     });
   }

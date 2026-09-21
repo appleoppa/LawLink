@@ -28,6 +28,7 @@ import {
   createExternalContact,
   updateExternalContact
 } from "@/server/external-contacts/actions";
+import { actionErrorMessage } from "@/lib/action-error";
 
 const CATEGORY_OPTIONS: { value: ExternalContactCategory; label: string }[] = [
   { value: "COURT", label: "法院" },
@@ -130,7 +131,7 @@ export function ExternalContactDialog({
         router.refresh();
       } catch (err) {
         toast.error("保存失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });

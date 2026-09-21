@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { actionErrorMessage } from "@/lib/action-error";
 
 export function MergeBanner({
   keepId,
@@ -46,7 +47,7 @@ export function MergeBanner({
         setOpen(false);
         router.refresh();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "合并失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "合并失败");
       }
     });
   }
@@ -134,7 +135,7 @@ export function AddContactButton({ clientId }: { clientId: string }) {
         setForm({ name: "", title: "", phone: "", email: "", isPrimary: false });
         router.refresh();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "添加失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "添加失败");
       }
     });
   }

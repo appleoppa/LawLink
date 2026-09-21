@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { saveArchivePolicy, type getArchivePolicySettings } from "@/server/archive/policy";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Data = Awaited<ReturnType<typeof getArchivePolicySettings>>;
 
@@ -34,7 +35,7 @@ export function ArchivePolicyForm({ data }: { data: Data }) {
         toast.success("归档制度已保存", { description: "后续申请将固定当前制度版本与原文。" });
         router.refresh();
       } catch (error) {
-        toast.error("保存失败", { description: error instanceof Error ? error.message : "请稍后重试" });
+        toast.error("保存失败", { description: error instanceof Error ? actionErrorMessage(error) : "请稍后重试" });
       }
     });
   }

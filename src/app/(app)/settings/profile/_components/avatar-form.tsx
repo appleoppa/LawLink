@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ImageUp, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { saveMyAvatar } from "@/server/users/actions";
+import { actionErrorMessage } from "@/lib/action-error";
 
 const AVATAR_MAX_BYTES = 180 * 1024;
 
@@ -42,7 +43,7 @@ export function AvatarForm({ name, role, initialAvatar }: { name: string; role?:
         toast.success(value ? "头像已更新" : "头像已清除");
         router.refresh();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "保存失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "保存失败");
       }
     });
   };

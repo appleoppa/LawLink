@@ -14,6 +14,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { aiVision } from "@/lib/ai/client";
+import { ActionError } from "@/lib/action-error";
 
 const OCR_SETTINGS_KEY = "ocrSettings";
 
@@ -79,7 +80,7 @@ async function aiVisionOcr(input: { data: Buffer; mimeType: string; hint?: strin
     logAction: "sms-ocr-vision",
     userId: input.userId // 第八轮体检：扫描件外发也记发起人
   });
-  if (!result.content.trim()) throw new Error("OCR 未返回文本");
+  if (!result.content.trim()) throw new ActionError("OCR 未返回文本");
   return { text: result.content.trim(), engine: "ai-vision" };
 }
 
@@ -98,14 +99,14 @@ async function httpOcr(settings: StoredOcrSettings, input: { data: Buffer; mimeT
       body: JSON.stringify({ contentBase64: input.data.toString("base64"), mimeType: input.mimeType }),
       signal: ctrl.signal
     });
-    if (!res.ok) throw new Error(`OCR 服务返回 HTTP ${res.status}`);
+    if (!res.ok) throw new ActionError(`OCR 服务返回 HTTP ${res.status}`);
     const body = (await res.json()) as { text?: string; data?: { text?: string }[] };
     const text = body.text ?? body.data?.[0]?.text ?? "";
-    if (!text.trim()) throw new Error("OCR 服务未返回文本");
+    if (!text.trim()) throw new ActionError("OCR 服务未返回文本");
     // 2026-09-20 P3 修复：拒答文本（网关无法识别时返回的说明文字）不当有效 OCR 结果送 AI
     const trimmed = text.trim();
     if (/^(无法识别|识别失败|识别不到|请提供(更清晰|清晰)|图片(模糊|无法)|no text|unable to (recognize|read))/i.test(trimmed) && trimmed.length < 60) {
-      throw new Error("OCR 服务未能识别该文件（拒答），请人工核对或更换 OCR 配置");
+      throw new ActionError("OCR 服务未能识别该文件（拒答），请人工核对或更换 OCR 配置");
     }
     return { text: trimmed, engine: "http" };
   } finally {

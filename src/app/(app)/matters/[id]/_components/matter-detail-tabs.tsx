@@ -42,6 +42,7 @@ import type { FolderPayload, FolderDocument, TemplateSummary } from "./folder-ty
 import type { UserOption as PresUserOption } from "@/app/(app)/preservation/_components/preservation-types";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
 import { shDayKey, shDaysFromToday, shMonthDay, shTime } from "@/lib/ui/sh-time";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type MatterPayloadBase = Prisma.MatterGetPayload<{
   include: {
@@ -265,7 +266,7 @@ export function MatterDetailTabs({
         toast.success("程序已删除");
         router.refresh();
       } catch (err) {
-        toast.error("删除失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("删除失败", { description: actionErrorMessage(err) });
       }
     });
   }

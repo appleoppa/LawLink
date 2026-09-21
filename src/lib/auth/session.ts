@@ -5,6 +5,7 @@ import { resolveRoleUser } from "@/lib/roles/service";
 import { hasCustomPermission, type PermissionKey } from "@/lib/roles/catalog";
 import { prisma } from "@/lib/prisma";
 import { isSystemAdmin } from "./system-role";
+import { ActionError } from "@/lib/action-error";
 
 /**
  * Server Component / Server Action 中读取当前 session。
@@ -38,7 +39,7 @@ export async function requireSession(permission?: PermissionKey | "personal" | "
     redirect("/login");
   }
   if (session.user.role === "CUSTOM" && (permission === undefined || (permission !== "personal" && permission !== "approval" && !hasCustomPermission(session.user, permission)))) {
-    throw new Error("当前角色无权访问此功能，请联系管理员调整角色权限");
+    throw new ActionError("当前角色无权访问此功能，请联系管理员调整角色权限");
   }
   return session;
 }
@@ -46,7 +47,7 @@ export async function requireSession(permission?: PermissionKey | "personal" | "
 export async function requireSystemAdmin() {
   const session = await requireSession("personal");
   if (!isSystemAdmin(session.user)) {
-    throw new Error("仅系统超级管理员可执行");
+    throw new ActionError("仅系统超级管理员可执行");
   }
   return session;
 }

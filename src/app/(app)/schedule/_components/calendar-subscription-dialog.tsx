@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { getCalendarToken, regenerateCalendarToken } from "@/server/calendar/actions";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { actionErrorMessage } from "@/lib/action-error";
 
 export function CalendarSubscriptionDialog() {
   return (
@@ -80,7 +81,7 @@ function CalendarSubscriptionContent() {
         setToken(res.token);
         toast.success("已重置订阅链接");
       } catch (err) {
-        toast.error("重置失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("重置失败", { description: actionErrorMessage(err) });
       }
     });
   }

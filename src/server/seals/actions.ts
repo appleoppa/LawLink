@@ -30,6 +30,7 @@ import {
   sealListFilterSchema
 } from "./schemas";
 import { revalidateMatter } from "@/server/matters/route";
+import { ActionError } from "@/lib/action-error";
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
 
@@ -38,7 +39,7 @@ function assertPdfDocument(file: { name?: string | null; type?: string | null; m
   const type = file.type ?? file.mimeType ?? "";
   const name = file.name ?? "";
   if (type !== "application/pdf" && !name.toLowerCase().endsWith(".pdf")) {
-    throw new Error("需上传 pdf 格式文件");
+    throw new ActionError("需上传 pdf 格式文件");
   }
 }
 
@@ -145,7 +146,7 @@ export async function getSealStats() {
 export async function createSealRequest(formData: FormData) {
   const session = await requireSession("seals.request");
   if (session.user.role !== "CUSTOM" && !isManager(session.user) && session.user.role !== "INDEPENDENT_LAWYER" && session.user.role !== "LAWYER") {
-    throw new Error("仅律师、合伙人或获授权岗位可申请用章");
+    throw new ActionError("仅律师、合伙人或获授权岗位可申请用章");
   }
 
   const raw = {
@@ -170,7 +171,7 @@ export async function createSealRequest(formData: FormData) {
 
   const category = data.matterId ? (await prisma.matter.findUniqueOrThrow({ where: { id: data.matterId }, select: { category: true } })).category : null;
   const purposeConfig = data.purposeConfigId ? await prisma.sealPurposeConfig.findUnique({ where: { id: data.purposeConfigId } }) : null;
-  if (!purposeConfig) throw new Error("请选择管理员配置的用章事项");
+  if (!purposeConfig) throw new ActionError("请选择管理员配置的用章事项");
   // v1.x 4.3：主章命中自确认清单时跳过审批路由（法人章硬排除，永不自确认）；
   // 附带的法定代表人子请求仍走完整审批。
   const mainSealSelfConfirm = !alsoLegalRep && (await selfConfirmEligible(
@@ -179,8 +180,8 @@ export async function createSealRequest(formData: FormData) {
   ));
   for (const type of [data.sealType, ...(alsoLegalRep ? ["LEGAL_REP_SEAL" as const] : [])]) {
     const cfg = await prisma.sealTypeConfig.findUnique({ where: { type } });
-    if (!cfg?.enabled) throw new Error("该印章已停用");
-    if (purposeConfig && (!purposeConfig.active || !purposeConfig.allowedSealTypes.includes(type))) throw new Error("所选事项不允许使用此印章");
+    if (!cfg?.enabled) throw new ActionError("该印章已停用");
+    if (purposeConfig && (!purposeConfig.active || !purposeConfig.allowedSealTypes.includes(type))) throw new ActionError("所选事项不允许使用此印章");
     const typeSelfConfirm = mainSealSelfConfirm && type === data.sealType;
     if (!typeSelfConfirm) {
       await requireApprovalRoute({ action: "SEAL_APPROVE", category, requesterId: session.user.id, sealType: type, purposeId: purposeConfig?.id });
@@ -188,7 +189,7 @@ export async function createSealRequest(formData: FormData) {
   }
   if (data.parentSealRequestId) {
     const parent = await prisma.sealRequest.findUnique({ where: { id: data.parentSealRequestId }, select: { requestedById: true, status: true } });
-    if (!parent || parent.requestedById !== session.user.id || parent.status !== "REJECTED") throw new Error("仅能重新提交自己被驳回的申请");
+    if (!parent || parent.requestedById !== session.user.id || parent.status !== "REJECTED") throw new ActionError("仅能重新提交自己被驳回的申请");
   }
 
   const existingDraftDocId = formData.get("existingDraftDocId");
@@ -202,7 +203,7 @@ export async function createSealRequest(formData: FormData) {
       where: { id: data.matterId },
       select: { id: true }
     });
-    if (!m) throw new Error("关联案件不存在");
+    if (!m) throw new ActionError("关联案件不存在");
   }
 
   // 准备 draftDocId：要么复制现有文档（卷宗联动），要么上传新文件
@@ -224,7 +225,7 @@ export async function createSealRequest(formData: FormData) {
     const src = await prisma.document.findUnique({
       where: { id: existingDraftDocId }
     });
-    if (!src || src.deletedAt || !await canReadDocument(session.user.id, src)) throw new Error("待盖章文档不存在或无权访问");
+    if (!src || src.deletedAt || !await canReadDocument(session.user.id, src)) throw new ActionError("待盖章文档不存在或无权访问");
     assertPdfDocument(src);
     const srcCt = await storage.readFile(src.path);
     plainBuf =
@@ -266,7 +267,7 @@ export async function createSealRequest(formData: FormData) {
       authTag: enc.authTag.toString("base64")
     };
   } else {
-    throw new Error("请上传待盖章稿");
+    throw new ActionError("请上传待盖章稿");
   }
 
   const code = await generateSealCode();
@@ -470,8 +471,8 @@ export async function approveSealRequest(input: z.infer<typeof sealApproveSchema
     where: { id: data.id },
     select: { id: true, status: true, sealType: true, matterId: true, requestedById: true, updatedAt: true }
   });
-  if (!seal) throw new Error("申请不存在");
-  if (seal.status !== "PENDING") throw new Error("此申请已处理");
+  if (!seal) throw new ActionError("申请不存在");
+  if (seal.status !== "PENDING") throw new ActionError("此申请已处理");
 
 
 
@@ -517,8 +518,8 @@ export async function rejectSealRequest(input: z.infer<typeof sealRejectSchema>)
     where: { id: data.id },
     select: { id: true, status: true, sealType: true, matterId: true, requestedById: true, updatedAt: true }
   });
-  if (!seal) throw new Error("申请不存在");
-  if (seal.status !== "PENDING") throw new Error("此申请已处理");
+  if (!seal) throw new ActionError("申请不存在");
+  if (seal.status !== "PENDING") throw new ActionError("此申请已处理");
 
 
 
@@ -561,21 +562,21 @@ export async function stampSealRequest(formData: FormData) {
   const session = await requireSession("approval");
 
   const id = formData.get("id");
-  if (typeof id !== "string" || !id) throw new Error("id 缺失");
+  if (typeof id !== "string" || !id) throw new ActionError("id 缺失");
 
   const seal = await prisma.sealRequest.findUnique({
     where: { id },
     select: { id: true, status: true, sealType: true, matterId: true, requestedById: true }
   });
-  if (!seal) throw new Error("申请不存在");
-  if (seal.status !== "APPROVED") throw new Error("仅已批准的申请可回填盖章件");
+  if (!seal) throw new ActionError("申请不存在");
+  if (seal.status !== "APPROVED") throw new ActionError("仅已批准的申请可回填盖章件");
 
   await assertExecutionOpen(prisma,"SEAL",id);
   await assertApprovalItem(session.user.id, "SEAL_STAMP", id);
 
   const stampedFile = formData.get("stampedDoc");
   if (!(stampedFile instanceof File) || stampedFile.size === 0) {
-    throw new Error("请上传盖章后扫描件");
+    throw new ActionError("请上传盖章后扫描件");
   }
   assertPdfDocument(stampedFile);
   const validatedStamped = validateUploadedFile(stampedFile, { purpose: "stamp", maxBytes: MAX_FILE_SIZE });
@@ -645,12 +646,12 @@ export async function cancelSealRequest(input: z.infer<typeof sealCancelSchema>)
     where: { id: data.id },
     select: { id: true, status: true, requestedById: true, matterId: true }
   });
-  if (!seal) throw new Error("申请不存在");
-  if (seal.status !== "PENDING") throw new Error("仅未审批的申请可撤销");
+  if (!seal) throw new ActionError("申请不存在");
+  if (seal.status !== "PENDING") throw new ActionError("仅未审批的申请可撤销");
 
   const isOwner = seal.requestedById === session.user.id;
   const canCancelOthers = isManager(session.user);
-  if (!isOwner && !canCancelOthers) throw new Error("仅申请人或主任律师可撤销");
+  if (!isOwner && !canCancelOthers) throw new ActionError("仅申请人或主任律师可撤销");
 
   await prisma.sealRequest.update({
     where: { id: data.id, status: "PENDING" },

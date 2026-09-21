@@ -17,6 +17,7 @@ import {
   assertCanHandleMatter
 } from "@/lib/permissions";
 import { revalidateMatter } from "@/server/matters/route";
+import { ActionError } from "@/lib/action-error";
 
 export type EnterpriseSearchItem = {
   id: string;
@@ -99,8 +100,8 @@ async function loadPartyWithMatter(partyId: string) {
       enterpriseBoundAt: true
     }
   });
-  if (!party) throw new Error("当事人不存在");
-  if (!party.matterId) throw new Error("当事人未关联案件");
+  if (!party) throw new ActionError("当事人不存在");
+  if (!party.matterId) throw new ActionError("当事人未关联案件");
   return party;
 }
 
@@ -200,7 +201,7 @@ export async function getEnterpriseSummaryByParty(
   , session.user.rolePermissions);
 
   if (!party.enterpriseId && !party.enterpriseSocialCode) {
-    throw new Error("此当事人尚未绑定元典企业");
+    throw new ActionError("此当事人尚未绑定元典企业");
   }
 
   const settings = await getYuandianSettings();

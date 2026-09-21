@@ -6,6 +6,7 @@
  */
 import { getYuandianSettings, type ResolvedYuandianSettings } from "./settings";
 import { YuandianNotConfiguredError, YuandianApiError } from "./client";
+import { ActionError } from "@/lib/action-error";
 
 // 元典企业搜索候选
 export type EnterpriseCandidate = {
@@ -286,7 +287,7 @@ export async function getEnterpriseSummary(
   resolved?: ResolvedYuandianSettings
 ): Promise<EnterpriseSummary | null> {
   if (!identifier.id && !identifier.socialCode) {
-    throw new Error("企业 ID 与统一社会信用代码至少传一个");
+    throw new ActionError("企业 ID 与统一社会信用代码至少传一个");
   }
   const s = resolved ?? (await getYuandianSettings());
   if (!s.configured) throw new YuandianNotConfiguredError();

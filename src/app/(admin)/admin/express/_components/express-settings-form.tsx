@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { saveExpressSettingsAction } from "@/server/express/actions";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Initial = {
   kdniao: { ebusinessId: string; configured: boolean; appKeyMasked: string };
@@ -34,7 +35,7 @@ export function ExpressSettingsForm({ initial }: { initial: Initial }) {
         setKdAppKey("");
         setK100Key("");
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "失败");
       }
     });
   };
@@ -46,7 +47,7 @@ export function ExpressSettingsForm({ initial }: { initial: Initial }) {
         await saveExpressSettingsAction({ kdniaoClearKey: true });
         toast.success("已清除");
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "失败");
       }
     });
   };
@@ -58,7 +59,7 @@ export function ExpressSettingsForm({ initial }: { initial: Initial }) {
         await saveExpressSettingsAction({ kuaidi100ClearKey: true });
         toast.success("已清除");
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "失败");
       }
     });
   };

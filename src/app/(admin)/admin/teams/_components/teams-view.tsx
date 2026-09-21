@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
 import { AdminPageHeader } from "@/components/layout/admin-page-header";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Team = Awaited<ReturnType<typeof listTeams>>[number];
 type User = { id: string; name: string; role: string; active: boolean };
@@ -65,7 +66,7 @@ function TeamEditor({ team, users, onClose }: { team: Team | null; users: User[]
         }
         router.refresh();
         onClose();
-      } catch (err) { setError(err instanceof Error ? err.message : "保存失败，请稍后重试"); }
+      } catch (err) { setError(err instanceof Error ? actionErrorMessage(err) : "保存失败，请稍后重试"); }
     });
   }
   return <Sheet open onOpenChange={(open) => { if (!open && !pending) onClose(); }}>

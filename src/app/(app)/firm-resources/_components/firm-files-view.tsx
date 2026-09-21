@@ -14,6 +14,7 @@ import { PreviewDialog } from "./preview-dialog";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
 import { useTopbarAction } from "@/components/layout/topbar-action";
 import { Segmented } from "@/components/patterns/moan";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type FileEntry = {
   id: string;
@@ -128,7 +129,7 @@ export function FirmFilesView({
         toast.success("已删除");
         router.refresh();
       } catch (err) {
-        toast.error("删除失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("删除失败", { description: actionErrorMessage(err) });
       } finally {
         setPendingId(null);
       }

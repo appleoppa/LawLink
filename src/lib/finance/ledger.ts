@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
 import type { MoneyKind } from "./ledger-labels";
+import { ActionError } from "@/lib/action-error";
 export { moneyKinds, moneyKindLabels, dueLabels } from "./ledger-labels";
 export type { MoneyKind } from "./ledger-labels";
 export const moneyInput = z.union([z.string(), z.number()]).transform(String).refine(
@@ -36,7 +37,7 @@ export function dueBucket(row: Pick<LedgerReceivable, "dueState" | "dueDate" | "
 
 /** 仅使用正式应收及已确认实收，不维护历史待核或并行统计口径。 */
 export function summarizeLedger(receivables: LedgerReceivable[], payments: LedgerPayment[]) {
-  if (payments.some(p => !p.sourceValid)) throw new Error("实收来源不一致，不能生成财务汇总");
+  if (payments.some(p => !p.sourceValid)) throw new ActionError("实收来源不一致，不能生成财务汇总");
   const active = receivables.filter(r => r.status !== "CANCELLED");
   return {
     receivable: sum(active.map(r => r.amount.plus(r.adjustmentAmount))).toFixed(2),

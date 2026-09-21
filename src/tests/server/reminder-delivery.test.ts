@@ -10,6 +10,7 @@
  * - 发送失败：attempts+1 保持 PENDING 重试，超限置 FAILED。
  */
 import { it, expect, vi, beforeEach } from "vitest";
+import { shDayStart } from "@/server/reminders/schedule";
 
 const { db, notify, auditMock, escalate } = vi.hoisted(() => {
   const db: Record<string, any> = {
@@ -334,9 +335,12 @@ it("期限 ESCALATION 行：逾期档复核通过 → 调用团队负责人升�
 
 it("开庭 OFFSET 行：文案含开庭信息，正常送达", async () => {
   db.reminderDelivery.findMany.mockResolvedValue([schedulePendingRow({ objectType: "HEARING", objectId: "chear0000000000000000002", userId: LEAD })]);
+  // 锚定上海今日 23:00（恒为 offset=0 的「今天」）：用 Date.now()+3h 在上海 21 点后跨日
+  // 变「明天」，档位漂移成 -1 使本用例按钟摆 flaky（2026-09-21 PDT 时段实测复现）。
+  const startsAt = new Date(shDayStart(new Date()).getTime() + 23 * 3_600_000);
   db.hearing.findUnique.mockResolvedValue({
     id: "chear0000000000000000002", updatedAt: new Date(), title: "庭审",
-    startsAt: new Date(Date.now() + 3 * 3_600_000), room: "第三法庭", judge: null,
+    startsAt, room: "第三法庭", judge: null,
     procedure: deadlineRow().procedure
   });
 

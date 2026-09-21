@@ -13,6 +13,7 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { auditTx } from "@/server/audit";
 import { assertCanHandleMatter } from "@/lib/permissions";
+import { ActionError } from "@/lib/action-error";
 
 const createSchema = z.object({
   clientId: z.string().cuid(),
@@ -28,7 +29,7 @@ export async function createEngagement(input: z.input<typeof createSchema>) {
   const data = createSchema.parse(input);
 
   const client = await prisma.client.findUnique({ where: { id: data.clientId }, select: { id: true, name: true, deletedAt: true } });
-  if (!client || client.deletedAt) throw new Error("客户不存在或已停用");
+  if (!client || client.deletedAt) throw new ActionError("客户不存在或已停用");
 
   // 关联事项属结构性写入（挂链展示在案件档案）：逐案经办断言
   // （主办/成员 + 合伙人例外）。2026-09-20 第五轮审计 P2 修复：此前用读可见性
@@ -74,8 +75,8 @@ export async function linkEngagementMatter(input: z.infer<typeof linkSchema>) {
   const data = linkSchema.parse(input);
 
   const eng = await prisma.engagement.findUnique({ where: { id: data.engagementId }, select: { id: true, endedAt: true } });
-  if (!eng) throw new Error("委托不存在");
-  if (eng.endedAt) throw new Error("委托已终止，不可再关联事项");
+  if (!eng) throw new ActionError("委托不存在");
+  if (eng.endedAt) throw new ActionError("委托已终止，不可再关联事项");
   // 2026-09-20 第五轮审计 P2 修复：挂链是结构性写入，读可见性不当写守卫（见 createEngagement）
   await assertCanHandleMatter(session.user, data.matterId);
 
@@ -113,8 +114,8 @@ export async function terminateEngagement(input: z.infer<typeof terminateSchema>
     where: { id: data.engagementId },
     select: { endedAt: true, matters: { select: { matterId: true } } }
   });
-  if (!eng) throw new Error("委托不存在");
-  if (eng.endedAt) throw new Error("委托已终止");
+  if (!eng) throw new ActionError("委托不存在");
+  if (eng.endedAt) throw new ActionError("委托已终止");
 
   // 2026-09-20 第五轮审计 P2 修复：终止此前完全没有对象级校验——任何持
   // matters.write 的账号（含律师助理）可终止任意客户的任意委托。口径：
@@ -130,9 +131,9 @@ export async function terminateEngagement(input: z.infer<typeof terminateSchema>
         // 该案件无经办权，试下一件
       }
     }
-    if (!allowed) throw new Error("仅该委托关联案件的经办律师或合伙人可终止委托");
+    if (!allowed) throw new ActionError("仅该委托关联案件的经办律师或合伙人可终止委托");
   } else if (session.user.role !== "PRINCIPAL_LAWYER") {
-    throw new Error("未关联案件的委托仅合伙人可终止");
+    throw new ActionError("未关联案件的委托仅合伙人可终止");
   }
 
   await prisma.$transaction(async tx => {

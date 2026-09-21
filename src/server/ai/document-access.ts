@@ -18,6 +18,7 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { isManager } from "@/lib/permissions";
 import { resolveRoleUser } from "@/lib/roles/service";
+import { ActionError } from "@/lib/action-error";
 
 type AppSession = Awaited<ReturnType<typeof requireSession>>;
 
@@ -52,9 +53,9 @@ export async function assertCanReviewDocument(
     where: { id: docRef.id },
     select: { id: true, uploadedById: true, matterId: true, intakeId: true, deletedAt: true }
   });
-  if (!doc || doc.deletedAt) throw new Error("材料不存在");
+  if (!doc || doc.deletedAt) throw new ActionError("材料不存在");
   if (doc.matterId !== (docRef.matterId ?? null) || doc.intakeId !== (docRef.intakeId ?? null)) {
-    throw new Error("材料归属已变化，请刷新后重试");
+    throw new ActionError("材料归属已变化，请刷新后重试");
   }
-  if (!(await canReviewDocument(session.user.id, doc))) throw new Error("无权审查该材料");
+  if (!(await canReviewDocument(session.user.id, doc))) throw new ActionError("无权审查该材料");
 }

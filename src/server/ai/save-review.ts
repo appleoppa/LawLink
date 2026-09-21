@@ -17,6 +17,7 @@ import type {
   ReviewSeverity
 } from "@/lib/ai/review-parser";
 import { revalidateMatter } from "@/server/matters/route";
+import { ActionError } from "@/lib/action-error";
 
 const TYPE_CN: Record<ReviewType, string> = {
   MISSING: "缺失要素",
@@ -82,9 +83,9 @@ export async function saveReviewToMatter(input: {
     where: { id: input.matterId, deletedAt: null },
     select: { id: true, status: true }
   });
-  if (!matter) throw new Error("案件不存在");
+  if (!matter) throw new ActionError("案件不存在");
   if (matter.status === "ARCHIVED") {
-    throw new Error("案件已归档（只读），不能再保存审查结果");
+    throw new ActionError("案件已归档（只读），不能再保存审查结果");
   }
 
   const md = buildMarkdown(input.reviewedDocName, input.items);

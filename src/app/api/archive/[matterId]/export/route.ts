@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/server/audit";
 import { buildArchiveZip } from "@/server/archive/export";
 import { storage } from "@/lib/storage";
+import { actionErrorMessage } from "@/lib/action-error";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -60,7 +61,7 @@ export async function GET(
   } catch (err) {
     console.error("[archive export] 构建失败：", err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "导出失败" },
+      { error: err instanceof Error ? actionErrorMessage(err) : "导出失败" },
       { status: 500 }
     );
   }

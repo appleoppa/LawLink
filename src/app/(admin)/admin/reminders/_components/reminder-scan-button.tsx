@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { triggerDueReminderScan } from "@/server/reminders/actions";
+import { actionErrorMessage } from "@/lib/action-error";
 
 export function ReminderScanButton() {
   const [isPending, startTransition] = useTransition();
@@ -20,7 +21,7 @@ export function ReminderScanButton() {
           description: `期限 ${r.deadlineNotified}·开庭 ${r.hearingNotified}（去重跳过 ${r.suppressed}）`
         });
       } catch (err) {
-        toast.error("扫描失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("扫描失败", { description: actionErrorMessage(err) });
       }
     });
   }

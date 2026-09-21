@@ -103,6 +103,7 @@ import { useDocActions } from "./doc-actions-context";
 import { EvidencePoints } from "./evidence-panel";
 import { evidenceKindLabel } from "@/lib/enums";
 import { shMonthDay, shMonthDayTime, shTime } from "@/lib/ui/sh-time";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type WorkflowTask = {
   id: string;
@@ -828,7 +829,7 @@ export function ProcedureWorkflowPanel({
         setSelectedKey(null);
         router.refresh();
       } catch (err) {
-        toast.error("移除失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("移除失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -1344,7 +1345,12 @@ function buildActionItems(procedure: WorkflowProcedure | null, stages: WorkflowS
       });
     }
   }
-  const stageForDeadline = (category: DeadlineCategory) => stages.find((s) => stageGuideFor(s.name).deadlineCategories.includes(category)) ?? null;
+  const stageForDeadline = (category: DeadlineCategory) => stages.find((s) => stageGuideFor(s.name).deadlineCategories.includes(category))
+    // 无映射类目（如「其他」）此前归 null，环节视图下待办区永不显示、确认/调整入口不可达
+    // （2026-09-21 全流程验收发现）——回退到当前推进环节，保证任何期限都可被看见与处置。
+    ?? stages.find((s) => s.status === "active")
+    ?? stages[0]
+    ?? null;
   for (const deadline of procedure.deadlines) {
     if (deadline.completed) continue;
     const stage = stageForDeadline(deadline.category);
@@ -1455,7 +1461,7 @@ function NextActions({
         toast.success(ok);
         router.refresh();
       } catch (err) {
-        toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("操作失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -1875,7 +1881,7 @@ function LogRow({ item, canManage }: { item: LogItem; canManage?: boolean }) {
         toast.success(ok);
         router.refresh();
       } catch (err) {
-        toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("操作失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -2390,7 +2396,7 @@ function PreservationWorkflowContent({
         toast.success("已解除保全");
         router.refresh();
       } catch (err) {
-        toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("操作失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -2698,7 +2704,7 @@ function StageMaterialsPanel({
         setOpen(false);
         router.refresh();
       } catch (err) {
-        toast.error("上传失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("上传失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -2950,7 +2956,7 @@ function TaskQuickDialog({
         onOpenChange(false);
         router.refresh();
       } catch (err) {
-        toast.error("添加失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("添加失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -3103,7 +3109,7 @@ function StageCreateDialog({
         onOpenChange(false);
         router.refresh();
       } catch (err) {
-        toast.error("添加失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("添加失败", { description: actionErrorMessage(err) });
       }
     });
   }

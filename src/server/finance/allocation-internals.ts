@@ -4,15 +4,16 @@
 import { Prisma } from "@prisma/client";
 import {randomBytes} from 'node:crypto';
 import {financeLedgerReady} from './ledger-storage';
+import { ActionError } from "@/lib/action-error";
 
 /** 切换前既有入口的基线写入。新账本启用后一律拒绝，不作为旧账转换入口。 */
 export async function insertFinanceRowTx<T extends Record<string,unknown>>(tx:Prisma.TransactionClient,model:'Billing'|'Receivable'|'Payment'|'FeeEntry'|'FinanceCorrection',data:T):Promise<T&{id:string}>{
-  if(await financeLedgerReady(tx))throw new Error('请通过新财务登记与更正流程处理');
+  if(await financeLedgerReady(tx))throw new ActionError('请通过新财务登记与更正流程处理');
   const metadata=Prisma.dmmf.datamodel.models.find(m=>m.name===model)!;
   const id=`c${randomBytes(12).toString('hex')}`;
   const values={...data,id,...(metadata.fields.some(f=>f.name==='updatedAt')?{updatedAt:new Date()}:{})};
   const entries=Object.entries(values).filter(([,value])=>value!==undefined);
-  for(const [key] of entries)if(!metadata.fields.some(f=>f.name===key&&f.kind!=='object'))throw new Error('财务字段无效');
+  for(const [key] of entries)if(!metadata.fields.some(f=>f.name===key&&f.kind!=='object'))throw new ActionError('财务字段无效');
   await tx.$executeRaw(Prisma.sql`INSERT INTO ${Prisma.raw(`"${model}"`)} (${Prisma.join(entries.map(([key])=>Prisma.raw(`"${key}"`)))}) VALUES (${Prisma.join(entries.map(([key,value])=>{const field=metadata.fields.find(f=>f.name===key)!;return field.kind==='enum'?Prisma.sql`${value}::${Prisma.raw(`"${field.type}"`)}`:Prisma.sql`${value}`;}))})`);
   return {...data,id};
 }

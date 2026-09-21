@@ -21,6 +21,7 @@ import {
 import { selectReviewPrompt, reviewPromptLabel } from "@/lib/ai/review-prompts";
 import { extractText, getDocumentProxy } from "unpdf";
 import mammoth from "mammoth";
+import { ActionError } from "@/lib/action-error";
 
 export type ReviewResult = {
   documentName: string;
@@ -53,12 +54,12 @@ async function extractDocumentText(
     return value;
   }
   if (mt === "application/msword") {
-    throw new Error("不支持老 .doc 格式，请另存为 .docx 后重新上传");
+    throw new ActionError("不支持老 .doc 格式，请另存为 .docx 后重新上传");
   }
   if (mt.startsWith("text/")) {
     return buf.toString("utf8");
   }
-  throw new Error(
+  throw new ActionError(
     `不支持的文档类型 (${mimeType ?? "未知"})，目前仅支持 PDF / DOCX / 纯文本`
   );
 }
@@ -71,7 +72,7 @@ export async function reviewDocument(input: {
   const doc = await prisma.document.findFirst({
     where: { id: input.documentId, deletedAt: null }
   });
-  if (!doc) throw new Error("材料不存在");
+  if (!doc) throw new ActionError("材料不存在");
 
   // 对象级归属断言：案件材料走案件可见性，收案材料走收案归属（与上传路径同口径）。
   // 此前 intake 分支缺校验，任何持 documents.write 的账号可对他人收案材料
@@ -82,7 +83,7 @@ export async function reviewDocument(input: {
   const stored = await storage.readFile(doc.path);
   let buf: Buffer;
   if (doc.encrypted) {
-    if (!doc.iv || !doc.authTag) throw new Error("加密元数据损坏");
+    if (!doc.iv || !doc.authTag) throw new ActionError("加密元数据损坏");
     buf = decryptBuffer(stored, doc.iv, doc.authTag);
   } else {
     buf = stored;
@@ -90,7 +91,7 @@ export async function reviewDocument(input: {
 
   const raw = (await extractDocumentText(buf, doc.mimeType)).trim();
   if (raw.length < 20) {
-    throw new Error("无可分析文本（可能是扫描件 PDF / 空文档），请用文本层 PDF 或 DOCX");
+    throw new ActionError("无可分析文本（可能是扫描件 PDF / 空文档），请用文本层 PDF 或 DOCX");
   }
 
   // v1.x P1: 长文分段审查——每段独立调 AI 后合并审查项，突破单次 6000 字符上限。

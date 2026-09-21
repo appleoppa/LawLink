@@ -10,6 +10,7 @@ import { authOptions } from "@/lib/auth/options";
 import { audit } from "@/server/audit";
 import { assertCanReadMatter } from "@/lib/permissions";
 import { buildMatterBundle } from "@/server/matters/export-bundle";
+import { actionErrorMessage } from "@/lib/action-error";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,6 +43,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       }
     });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : "生成失败" }, { status: 400 });
+    return NextResponse.json({ error: err instanceof Error ? actionErrorMessage(err) : "生成失败" }, { status: 400 });
   }
 }

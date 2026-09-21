@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, ShieldCheck, ShieldOff } from "lucide-react";
 import { toast } from "sonner";
 import { enrollStartTotp, enrollConfirmTotp, disableTotp } from "@/server/auth/totp-actions";
+import { actionErrorMessage } from "@/lib/action-error";
 
 export function TotpCard({ enabled }: { enabled: boolean }) {
   const router = useRouter();
@@ -29,7 +30,7 @@ export function TotpCard({ enabled }: { enabled: boolean }) {
         setCode("");
         setRecoveryCodes(null);
       } catch (e) {
-        toast.error("生成密钥失败", { description: e instanceof Error ? e.message : "" });
+        toast.error("生成密钥失败", { description: actionErrorMessage(e) });
       }
     });
   }
@@ -53,7 +54,7 @@ export function TotpCard({ enabled }: { enabled: boolean }) {
         toast.success("双步验证已开启");
         router.refresh();
       } catch (e) {
-        toast.error("确认失败", { description: e instanceof Error ? e.message : "" });
+        toast.error("确认失败", { description: actionErrorMessage(e) });
       }
     });
   }
@@ -71,7 +72,7 @@ export function TotpCard({ enabled }: { enabled: boolean }) {
         toast.success("双步验证已关闭");
         router.refresh();
       } catch (e) {
-        toast.error("关闭失败", { description: e instanceof Error ? e.message : "" });
+        toast.error("关闭失败", { description: actionErrorMessage(e) });
       }
     });
   }

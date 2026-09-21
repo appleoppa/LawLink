@@ -8,6 +8,7 @@ import { audit } from "@/server/audit";
 import { assertMatterWritable } from "@/lib/archive/guard";
 import { assertCanReadMatter, assertCanModifyMatter } from "@/lib/permissions";
 import { revalidateMatter } from "@/server/matters/route";
+import { ActionError } from "@/lib/action-error";
 
 const noteChannelSchema = z.enum(["PHONE", "WECHAT", "EMAIL", "MEETING", "COURT", "OTHER"]);
 
@@ -62,9 +63,9 @@ export async function updateNote(input: NoteUpdateInput) {
   const data = noteUpdateSchema.parse(input);
 
   const existing = await prisma.note.findUnique({ where: { id: data.id } });
-  if (!existing) throw new Error("沟通记录不存在");
+  if (!existing) throw new ActionError("沟通记录不存在");
   if (existing.authorId !== session.user.id) {
-    throw new Error("只能编辑自己的沟通记录");
+    throw new ActionError("只能编辑自己的沟通记录");
   }
   await assertCanModifyMatter(session.user.id, session.user.role, existing.matterId);
   await assertMatterWritable(existing.matterId);
@@ -96,7 +97,7 @@ export async function deleteNote(id: string) {
   const existing = await prisma.note.findUnique({ where: { id } });
   if (!existing) return { ok: false };
   if (existing.authorId !== session.user.id) {
-    throw new Error("只能删除自己的沟通记录");
+    throw new ActionError("只能删除自己的沟通记录");
   }
   await assertCanModifyMatter(session.user.id, session.user.role, existing.matterId);
   await assertMatterWritable(existing.matterId);

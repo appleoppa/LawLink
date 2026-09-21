@@ -27,6 +27,7 @@ import { matterHref } from "@/lib/matters/route";
 import { cn } from "@/lib/utils";
 import { shMonthDay, shParts } from "@/lib/ui/sh-time";
 import { moneyKindLabels, type MoneyKind } from "@/lib/finance/ledger-labels";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Entry = {
   moneyKind?: MoneyKind;
@@ -121,7 +122,7 @@ export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests,
       toast.success("已确认到账");
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "确认失败");
+      toast.error(e instanceof Error ? actionErrorMessage(e) : "确认失败");
     } finally {
       setBusyId(null);
     }
@@ -136,7 +137,7 @@ export function FinanceViewV4({ entries, monthly, aging, stats, invoiceRequests,
       toast.success("已退回");
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "退回失败");
+      toast.error(e instanceof Error ? actionErrorMessage(e) : "退回失败");
     } finally {
       setBusyId(null);
     }

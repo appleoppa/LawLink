@@ -31,6 +31,7 @@ import { uploadDocumentTemplate, toggleTemplate } from "@/server/document-templa
 import { VARIABLE_LABEL_CN } from "@/app/(app)/matters/[id]/_components/folder-types";
 import { AdminPageHeader } from "@/components/layout/admin-page-header";
 import { formatDate } from "@/lib/utils";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Category = "INTAKE" | "RETAINER" | "LITIGATION" | "HEARING" | "WORK_PRODUCT" | "ARCHIVE" | "CLOSING" | "BLANK";
 type MatterCat = "CIVIL_COMMERCIAL" | "LABOR_ARBITRATION" | "COMMERCIAL_ARBITRATION" | "CRIMINAL" | "ADMINISTRATIVE" | "NON_LITIGATION" | "LEGAL_COUNSEL" | "SPECIAL_PROJECT";
@@ -144,7 +145,7 @@ function ToggleEnabled({ template }: { template: AdminTemplateRow }) {
             toast.success(e.target.checked ? "模板已启用" : "模板已停用");
             router.refresh();
           } catch (err) {
-            toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
+            toast.error("操作失败", { description: actionErrorMessage(err) });
           }
         })}
       />
@@ -187,7 +188,7 @@ function UploadSheet({ open, onOpenChange, onDone }: { open: boolean; onOpenChan
         reset();
         onDone();
       } catch (err) {
-        toast.error("上传失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("上传失败", { description: actionErrorMessage(err) });
       }
     });
   }

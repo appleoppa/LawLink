@@ -15,6 +15,7 @@ import { suggestFolderByTemplateCategory } from "@/lib/default-folders";
 import { CLOSED_REASON_CN } from "./schemas";
 import { shParts, shDayKey } from "@/lib/ui/sh-time";
 import type { ArchiveClosedReason } from "@prisma/client";
+import { ActionError } from "@/lib/action-error";
 
 const CATEGORY_CN_DOC: Record<string, string> = {
   EVIDENCE: "证据",
@@ -58,7 +59,7 @@ async function loadBuiltinTemplate(prisma: PrismaClient, key: "archive_cover" | 
     include: { docxBlob: true }
   });
   if (!tmpl || !tmpl.docxBlob) {
-    throw new Error(`内置模板 ${nameMap[key]} 缺失，请运行 npx prisma db seed`);
+    throw new ActionError(`内置模板 ${nameMap[key]} 缺失，请运行 npx prisma db seed`);
   }
   const raw = await storage.readFile(tmpl.docxBlob.path);
   const buffer = tmpl.docxBlob.encrypted
@@ -102,7 +103,7 @@ export async function renderArchiveCover(
     where: { id: opts.matterId },
     select: { internalCode: true, category: true }
   });
-  if (!matter) throw new Error("案件不存在");
+  if (!matter) throw new ActionError("案件不存在");
 
   const ctx: RenderContext = {
     ...baseCtx,
@@ -177,7 +178,7 @@ export async function renderArchiveCatalog(
     where: { id: opts.matterId },
     select: { internalCode: true, category: true }
   });
-  if (!matter) throw new Error("案件不存在");
+  if (!matter) throw new ActionError("案件不存在");
 
   const docsUnordered = await prisma.document.findMany({
     where: {

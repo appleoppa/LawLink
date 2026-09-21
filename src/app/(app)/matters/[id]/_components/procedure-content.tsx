@@ -65,6 +65,7 @@ import { parseSummons } from "@/server/ai/parse-summons";
 import type { ExpressItem } from "./info-extras";
 import { confirmDialog } from "@/components/patterns/confirm-dialog";
 import { shDayKey, shMonthDayTime, shTime } from "@/lib/ui/sh-time";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type ProcedureWithChildren = MatterProcedure & {
   deadlines: Deadline[];
@@ -212,7 +213,7 @@ function ImportantItemsCard({
         await confirmDeadline({ id });
         toast.success("期限已确认");
       } catch (err) {
-        toast.error("确认失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("确认失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -427,7 +428,7 @@ export function AdjustDeadlineDialog({ deadline, onClose }: { deadline: { id: st
         toast.success("期限已调整");
         onClose();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "调整失败");
+        setError(err instanceof Error ? actionErrorMessage(err) : "调整失败");
       }
     });
   }
@@ -1025,7 +1026,7 @@ export function ImportantItemDialog({
         toast.success("传票识别完成，请核对信息");
       } catch (err) {
         toast.error("传票识别失败", {
-          description: err instanceof Error ? err.message : "请手动填写"
+          description: err instanceof Error ? actionErrorMessage(err) : "请手动填写"
         });
       } finally {
         if (summonsRef.current) summonsRef.current.value = "";
@@ -1048,7 +1049,7 @@ export function ImportantItemDialog({
         if (result.companyCode) setCompanyCode(result.companyCode);
       } catch (err) {
         toast.error("识别失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       } finally {
         if (expressRef.current) expressRef.current.value = "";
@@ -1088,7 +1089,7 @@ export function ImportantItemDialog({
         router.refresh();
       } catch (err) {
         toast.error("添加失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });
@@ -1123,7 +1124,7 @@ export function ImportantItemDialog({
         router.refresh();
       } catch (err) {
         toast.error("添加失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });
@@ -1154,7 +1155,7 @@ export function ImportantItemDialog({
         router.refresh();
       } catch (err) {
         toast.error("添加失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });
@@ -1180,7 +1181,7 @@ export function ImportantItemDialog({
         router.refresh();
       } catch (err) {
         toast.error("添加失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });

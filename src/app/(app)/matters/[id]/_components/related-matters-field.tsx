@@ -14,6 +14,7 @@ import {
   removeMatterLink
 } from "@/server/matters/actions";
 import { matterHref } from "@/lib/matters/route";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type MatterRef = { id: string; internalCode: string | null; firmCaseNo?: string | null; title: string; relation?: string | null };
 
@@ -72,7 +73,7 @@ export function RelatedMattersField({
         setQuery("");
         router.refresh();
       } catch (err) {
-        toast.error("关联失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("关联失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -84,7 +85,7 @@ export function RelatedMattersField({
         await removeMatterLink(matterId, id);
         router.refresh();
       } catch (err) {
-        toast.error("解除失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("解除失败", { description: actionErrorMessage(err) });
       }
     });
   }

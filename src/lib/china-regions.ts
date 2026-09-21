@@ -2,6 +2,7 @@
 // 数据来自 china-division（全国省/市/区县），法院/仲裁机构名称按命名规则生成。
 import type { ProcedureType } from "@prisma/client";
 import pca from "china-division/dist/pca.json";
+import { ActionError } from "@/lib/action-error";
 
 type Pca = Record<string, Record<string, string[]>>;
 const DATA = pca as Pca;
@@ -60,7 +61,7 @@ export function assertAgencyAllowedForProcedure(
   procedureType?: ProcedureType | null
 ) {
   if (!isAgencyAllowedForProcedure(agency, procedureType)) {
-    throw new Error("商事仲裁程序的管辖机构应为仲裁机构，不能选择法院；撤裁、执行等后续程序可选择法院。");
+    throw new ActionError("商事仲裁程序的管辖机构应为仲裁机构，不能选择法院；撤裁、执行等后续程序可选择法院。");
   }
 }
 

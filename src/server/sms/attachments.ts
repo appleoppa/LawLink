@@ -16,6 +16,7 @@ import type {
   SmsAttachmentResult,
   SmsDocumentLink
 } from "@/lib/sms-parser";
+import { ActionError } from "@/lib/action-error";
 
 const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 const MAX_HTML_BYTES = 2 * 1024 * 1024;
@@ -392,7 +393,7 @@ async function fetchWithRedirects(url: string): Promise<{ response: Response; fi
       clearTimeout(timer);
     }
   }
-  throw new Error("链接重定向次数过多");
+  throw new ActionError("链接重定向次数过多");
 }
 
 function extractFileLinksFromHtml(html: string, baseUrl: string): string[] {
@@ -484,7 +485,7 @@ async function saveAttachmentDocument({
   hash: string;
 }) {
   // 转正路径：未匹配案件的文件走 savePrivateInboundFile，到这里的必有案件归属
-  if (!ctx.matterId) throw new Error("内部错误：转正路径要求案件归属");
+  if (!ctx.matterId) throw new ActionError("内部错误：转正路径要求案件归属");
   const encrypted = Boolean(process.env.STORAGE_ENCRYPTION_KEY);
   let stored = buffer;
   let iv: string | null = null;

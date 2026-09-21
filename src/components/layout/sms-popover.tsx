@@ -15,6 +15,7 @@ import { listSmsMessages, markSmsProcessed } from "@/server/sms/actions";
 import { SmsPasteDialog } from "@/app/(app)/inbox/_components/sms-paste-dialog";
 import { shMonthDayTime } from "@/lib/ui/sh-time";
 import { cn } from "@/lib/utils";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Sms = Awaited<ReturnType<typeof listSmsMessages>>[number];
 
@@ -73,7 +74,7 @@ export function SmsPopover() {
       router.refresh();
     } catch (e) {
       // 无 catch 时失败是未处理的 rejection，用户看不到任何提示（对比 inbox 页的完整 toast 处理）
-      toast.error(e instanceof Error ? e.message : "标记失败，请稍后重试");
+      toast.error(e instanceof Error ? actionErrorMessage(e) : "标记失败，请稍后重试");
     } finally {
       setBusyId(null);
     }

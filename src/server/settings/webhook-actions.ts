@@ -11,6 +11,7 @@ import {
   saveWebhookSettings,
   sendWebhookText
 } from "./webhook";
+import { ActionError } from "@/lib/action-error";
 
 const saveSchema = z.object({
   enabled: z.boolean(),
@@ -24,7 +25,7 @@ const saveSchema = z.object({
 async function requireManager() {
   const session = await requireSession();
   if (!isSystemAdmin(session.user) && !isManager(session.user)) {
-    throw new Error("仅系统超级管理员 / 主任律师可配置提醒推送");
+    throw new ActionError("仅系统超级管理员 / 主任律师可配置提醒推送");
   }
   return session;
 }
@@ -37,7 +38,7 @@ export async function getWebhookSettingsAction() {
 export async function saveWebhookSettingsAction(input: z.infer<typeof saveSchema>) {
   const session = await requireManager();
   const data = saveSchema.parse(input);
-  if (data.enabled && !data.url) throw new Error("启用推送需要填写机器人地址");
+  if (data.enabled && !data.url) throw new ActionError("启用推送需要填写机器人地址");
 
   await saveWebhookSettings({ enabled: data.enabled, url: data.url });
   await audit({
@@ -57,7 +58,7 @@ export async function sendTestWebhookAction() {
   const result = await sendWebhookText(
     `LawLink 测试消息：提醒推送配置成功（发起人：${session.user.name ?? session.user.email}）`
   );
-  if (result.skipped) throw new Error("推送未启用或未配置机器人地址");
-  if (!result.ok) throw new Error(`发送失败：${result.error ?? "未知错误"}`);
+  if (result.skipped) throw new ActionError("推送未启用或未配置机器人地址");
+  if (!result.ok) throw new ActionError(`发送失败：${result.error ?? "未知错误"}`);
   return { ok: true };
 }

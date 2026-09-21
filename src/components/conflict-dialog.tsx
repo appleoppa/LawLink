@@ -43,6 +43,7 @@ import { runCheckAndSave } from "@/server/conflicts/actions";
 import { litigationStandingLabel, matterCategoryLabel, matterStatusLabel } from "@/lib/enums";
 import { matterHref } from "@/lib/matters/route";
 import { formatDate as fmtDate } from "@/lib/utils";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type QueryRole = "CLIENT_PARTY" | "OPPOSING_PARTY" | "THIRD_PARTY";
 type QueryRow = { role: QueryRole; name: string; idNumber: string };
@@ -153,7 +154,7 @@ export function ConflictDialog({
         }
       } catch (err) {
         toast.error("检索失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });

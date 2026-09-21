@@ -19,6 +19,7 @@ import { audit } from "@/server/audit";
 import { revalidatePath } from "next/cache";
 import type { FirmFileCategory, Prisma } from "@prisma/client";
 import { assertFirmFileNotUsedByArchivePolicy } from "@/server/archive/verification";
+import { ActionError } from "@/lib/action-error";
 
 const FIRM_FILE_MAX_BYTES = 50 * 1024 * 1024;
 
@@ -39,7 +40,7 @@ export type FirmFileEntry = {
 async function requireUploader() {
   const session = await requireSession("firm-files.manage");
   if (!customOrLegacy(session.user, "firm-files.manage", isManager(session.user))) {
-    throw new Error("仅主任律师或获授权岗位可管理律所资料");
+    throw new ActionError("仅主任律师或获授权岗位可管理律所资料");
   }
   return session;
 }
@@ -47,9 +48,9 @@ async function requireUploader() {
 const CATEGORY_VALUES: FirmFileCategory[] = ["POLICY", "GUIDE", "TEMPLATE", "REFERENCE"];
 
 function parseCategory(raw: unknown): FirmFileCategory {
-  if (typeof raw !== "string") throw new Error("分类必填");
+  if (typeof raw !== "string") throw new ActionError("分类必填");
   if ((CATEGORY_VALUES as string[]).includes(raw)) return raw as FirmFileCategory;
-  throw new Error(`无效分类：${raw}`);
+  throw new ActionError(`无效分类：${raw}`);
 }
 
 function parseTags(raw: unknown): string[] {
@@ -169,11 +170,11 @@ export async function uploadFirmFile(formData: FormData): Promise<{
   const tags = parseTags(formData.get("tags"));
   const supersedesRaw = formData.get("supersedesId");
 
-  if (!(file instanceof File)) throw new Error("缺少文件");
+  if (!(file instanceof File)) throw new ActionError("缺少文件");
   // 2026-09-19 审计修复：此前律所资料上传完全没有类型校验，MIME 取客户端声明，
   // 配合下载 inline 构成全所面 XSS；现与案件材料同口径校验并按扩展名推导落库 MIME。
   const validated = validateUploadedFile(file, { purpose: "firmfile", maxBytes: FIRM_FILE_MAX_BYTES });
-  if (typeof name !== "string" || !name.trim()) throw new Error("名称必填");
+  if (typeof name !== "string" || !name.trim()) throw new ActionError("名称必填");
 
   const supersedesId =
     typeof supersedesRaw === "string" && supersedesRaw ? supersedesRaw : null;
@@ -184,9 +185,9 @@ export async function uploadFirmFile(formData: FormData): Promise<{
       where: { id: supersedesId },
       select: { id: true, supersededById: true, archivedAt: true }
     });
-    if (!old) throw new Error("被替代的旧版不存在");
-    if (old.supersededById) throw new Error("该旧版已被其他新版替代");
-    if (old.archivedAt) throw new Error("该旧版已删除，无法被替代");
+    if (!old) throw new ActionError("被替代的旧版不存在");
+    if (old.supersededById) throw new ActionError("该旧版已被其他新版替代");
+    if (old.archivedAt) throw new ActionError("该旧版已删除，无法被替代");
   }
 
   const buf = Buffer.from(await file.arrayBuffer());
@@ -250,8 +251,8 @@ export async function updateFirmFile(input: {
     where: { id: input.id },
     select: { id: true, archivedAt: true }
   });
-  if (!existing) throw new Error("资料不存在");
-  if (existing.archivedAt) throw new Error("已删除的资料不可编辑");
+  if (!existing) throw new ActionError("资料不存在");
+  if (existing.archivedAt) throw new ActionError("已删除的资料不可编辑");
 
   const data: Prisma.FirmFileUpdateInput = {};
   if (input.name !== undefined) data.name = input.name.trim().slice(0, 200);

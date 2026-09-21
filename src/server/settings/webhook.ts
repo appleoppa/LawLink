@@ -8,6 +8,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { assertSafeHttpUrl, safeFetch } from "@/lib/net/safe-url";
+import { ActionError } from "@/lib/action-error";
 
 const WEBHOOK_KEY = "notifyWebhook";
 
@@ -54,7 +55,7 @@ export async function sendWebhookText(
   try {
     // 私网校验（2026-09-19 审计）：管理端可配的出站地址不得指向本机/内网
     url = await assertSafeHttpUrl(settings.url);
-    if (url.protocol !== "https:") throw new Error("仅支持 HTTPS");
+    if (url.protocol !== "https:") throw new ActionError("仅支持 HTTPS");
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "webhook URL 无效" };
   }
