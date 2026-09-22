@@ -263,6 +263,12 @@ v1 报告两条头牌 P1 经独立核对证伪/收窄后出 v2 修订版，本�
 4. **不为了让代码跑起来**注释掉校验、绕过权限判断、`@ts-ignore` 整段。找根因。
 5. **密钥、token、密码**不进代码、不进 commit、不进日志、不进截图。`.env` 永远在 `.gitignore`。
 6. **Prisma 迁移**先用 `prisma migrate dev --create-only` 生成 SQL 给叶森看，再执行。生产迁移走 `prisma migrate deploy`。
+6.1 **Prisma schema 不表达数据库对象——重建迁移基线必须单独补守卫**（2026-09-21 v2.0.0 发布前实测暴露）。`prisma migrate diff --from-empty` 生成的基线只含表、列、外键、普通索引与枚举；**触发器、函数、CHECK 约束、部分（条件）唯一索引一律不在其中**。2026-09-21 重建 `0_init` 后，全新安装的库缺 10 个触发器、5 个函数、25 个 CHECK 约束、8 个部分唯一索引——**其中包括 §八 明令的 AuditLog 防删触发器**，即"审计日志不可由业务代码删除"在新装库里当时是失效的；已由 `20260921000005_restore_db_guards` 幂等恢复。
+   - 今后任何基线重建 / squash，验收标准不是"能建表、能跑通"，而是**新库与主库的数据库对象集逐类比对为空差**：`pg_trigger`（排除系统触发器）、`pg_proc`（用户函数）、`pg_constraint` 的 CHECK、`pg_index` 中带 `indpred` 的部分索引。
+   - 同理，**升级路径的验证库必须由真实旧版本全链重放得到**，不能用新基线建库冒充。2026-09-21 曾用 `0_init` 建的探针库验证 v1.3.x 升级步骤并写入文档，实测发现该步骤对真实 v1.3.x 必然失败（`20260921000004` 报 42704 枚举不存在，且失败记录阻断后续迁移）——形似而神不似的验证环境比不验证更危险，因为它会产出一份看起来已验证的错误文档。
+6.2 **容器镜像必须显式安装 `openssl`——Prisma 靠它选引擎二进制**（2026-09-21 v2.0.0 发布后 Docker 部署验证暴露）。`node:22-alpine` 只带 `libssl3`，不带 `openssl` 命令行。Prisma 在 `npm ci` / `prisma generate` 时用它探测 OpenSSL 版本，探测失败会**静默回退**选择 `openssl-1.1.x` 的引擎（`schema-engine-linux-musl-arm64-openssl-1.1.x`、`libquery_engine-…-openssl-1.1.x.so.node`），而运行环境只有 libssl3 —— 引擎加载失败，报 `Could not parse schema engine response: … "Error load"…`。后果是**容器内 `prisma migrate deploy` / `db seed` 与应用自身的数据库查询全部不可用，Docker 部署路径整条断掉**；deps / builder / runner 三个阶段都要装。
+   - 该故障**不会被任何本机验证发现**：宿主机有 openssl，`npm run build`、全部单测、生产构建与浏览器走查都正常；只有真正构建镜像并在容器内执行 Prisma 命令才会暴露。**容器部署路径必须实机验证，不能从本机通过推断。**
+6.3 **runner 镜像必须带 `next.config.mjs`**（2026-09-21 同批暴露）。本项目的 `distDir` 读 `NEXT_DIST_DIR`（构建产物在 `.next-build`，非默认 `.next`），配置文件不进镜像则 `next start` 去找 `.next` 并报 `Could not find a production build`，容器无限重启。该文件还承载 `serverExternalPackages`（缺则 `@napi-rs/canvas`/`unpdf` 依赖链上的路由 500）、`serverActions.bodySizeLimit`（材料上传 25MB）与全站安全响应头——**即便容器能起来，缺配置也是错的部署**。非 standalone 模式下 `next start` 的运行时最小集为：`next.config.mjs` + `.next-build` + `public` + `node_modules` + `package.json`；`instrumentation.ts` 已编译进 `.next-build/server/`，无需单独 COPY。
 7. **删除文件、`.env` / CI 修改、`git reset/rebase/push`、生产部署**必须先征得叶森确认（红线）。
 8. **附件**默认私有存储在 `storage/`，下载经鉴权 API，不暴露公开直链。
 
