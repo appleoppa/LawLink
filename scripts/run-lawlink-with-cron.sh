@@ -44,7 +44,10 @@ trap cleanup INT TERM EXIT
 
 "$RELEASE_ROOT/node_modules/.bin/tsx" "$RELEASE_ROOT/src/server/cron/standalone.ts" &
 cron_pid=$!
-"$HOME/.local/bin/npm" run start -- -p 3100 -H 0.0.0.0 &
+# Web 进程必须关掉自己的 cron：v2.0.1 起 instrumentation 也会注册同一套作业，
+# 而本脚本已经用独立进程跑调度。两边同时注册会让每个作业每次触发两遍
+# （周报重复推送、备份双份、提醒重复扫描）。standalone.ts 不读这个开关。
+DISABLE_CRON=1 "$HOME/.local/bin/npm" run start -- -p 3100 -H 0.0.0.0 &
 app_pid=$!
 
 print "[lawlink-supervisor] http_pid=$app_pid cron_pid=$cron_pid"
