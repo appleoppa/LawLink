@@ -146,6 +146,19 @@ export async function runDatabaseBackup(): Promise<BackupResult> {
     return { ok: false, skipped: true };
   }
 
+  return runDatabaseBackupNow();
+}
+
+/**
+ * 无视应用内定时器开关，立即执行一次备份。
+ *
+ * 供 launchd 驱动的 CLI 入口（scripts/run-database-backup.ts）使用：
+ * BACKUP_CRON_ENABLED=false 的含义是「不要在长驻进程里注册备份定时器」，
+ * 不等于「不要备份」。长驻进程内的定时器在机器睡眠时会被跳过（实测凌晨
+ * 2:30 的槽位连续被越过，审计里一条备份记录都没有），所以改由 launchd
+ * 按 StartCalendarInterval 唤起本函数——launchd 会在唤醒后补跑错过的时点。
+ */
+export async function runDatabaseBackupNow(): Promise<BackupResult> {
   const baseDir = backupBaseDir();
   try {
     await preflightBackup(BACKUP_SCRIPT, baseDir);
@@ -169,7 +182,7 @@ export async function runDatabaseBackup(): Promise<BackupResult> {
       "数据库自动备份失败",
       `${message.slice(0, 300)}｜请检查 pg_dump 是否可用、BACKUP_DIR 是否可写；修复前系统没有新备份。`
     );
-    // 抛出让 scheduler 统一写 *_FAILED_CRON audit
+    // 抛出让调用方（scheduler 或 CLI）统一写 *_FAILED_CRON audit
     throw err;
   }
 }
