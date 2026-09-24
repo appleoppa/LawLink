@@ -3,7 +3,8 @@
 set -u
 
 ENV_FILE="$HOME/Library/Application Support/PGG/LawLink/runtime/lawlink.env"
-RELEASE_ROOT="$HOME/PGG-WIKI/lawlink/runtime/releases/lawlink-nine-closure-20260723-100000"
+# 目录自定位：脚本放在哪个 release 里就运行哪个 release，切换版本只改宿主入口指向。
+RELEASE_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 STORAGE_ROOT="$HOME/PGG-WIKI/lawlink/storage"
 
 if [[ ! -r "$ENV_FILE" ]]; then
