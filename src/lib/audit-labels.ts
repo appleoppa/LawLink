@@ -60,7 +60,10 @@ const words: Record<string, string> = {
   NOTIFY: "通知", PHONE: "电话", PHOTO: "照片", POLICY: "制度", POST: "事后",
   REBIND: "重新绑定", RECEIVABLE: "应收", RECIPIENT: "接收人", RENDER: "渲染", RESET: "重置",
   RETURN: "归还", REVEAL: "查看明文", RULE: "规则", SAVED: "已保存", SCHEDULE: "日程",
-  SIGN: "签署", TEXT: "正文", TOTP: "二次验证", VERSION: "版本"
+  SIGN: "签署", TEXT: "正文", TOTP: "二次验证", VERSION: "版本",
+  // 本地二开新增动作的词条（本地裁判文书检索 / 元典法规检索 / 独立 cron 启动）。
+  CNCASES: "本地裁判文书", LOCAL: "本地", JUDGMENT: "裁判文书", REGULATION: "法规",
+  SCHEDULER: "调度", STARTED: "已启动"
 };
 export function auditActionLabel(code: string): string {
   const parts = code.split("_");

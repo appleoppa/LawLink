@@ -30,6 +30,17 @@ export async function runWeeklyReportPush(
   let succeeded = 0;
   for (const u of recipients) {
     try {
+      // 本地二开：同一人同一周只推一次。上游核心只有 createNotification 没有前置去重，
+      // 手动触发与 cron 启动补偿会在同一周重复投递（用户收到两份周报）。
+      const existing = await prisma.notification.findFirst({
+        where: { userId: u.id, refType: "WeeklyReport", refId: period.label },
+        select: { id: true }
+      });
+      if (existing) {
+        succeeded++;
+        continue;
+      }
+
       const digest = await getLawyerWeeklyDigest({
         userId: u.id,
         userName: u.name,

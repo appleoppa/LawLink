@@ -2,9 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { motion } from "framer-motion";
-import { Shield, Plus, Pencil, RotateCw, Unlock, Trash2, UserPlus, Landmark, AlertTriangle } from "lucide-react";
+import { Shield, Plus, Pencil, Trash2, UserPlus, Landmark } from "lucide-react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn, formatCurrency } from "@/lib/utils";
 import { deletePreservationCase, liftProperty } from "@/server/preservations/actions-v2";
@@ -84,7 +83,7 @@ export function MatterPreservationPanel({
 
 function CaseCard({ cs, matters, users }: { cs: PreservationCaseRow; matters: MatterOption[]; users: UserOption[] }) {
   const [expanded, setExpanded] = useState(true);
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
   const [editOpen, setEditOpen] = useState(false);
   const [addTargetOpen, setAddTargetOpen] = useState(false);
   const [addPropOpen, setAddPropOpen] = useState<string | null>(null);

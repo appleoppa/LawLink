@@ -22,7 +22,7 @@ vi.mock("./weekly", () => ({
   formatWeeklyDigestContent: mocks.formatWeeklyDigestContent
 }));
 
-import { runWeeklyReportPush } from "./push-weekly";
+import { runWeeklyReportPush } from "./weekly-push-core";
 
 describe("weekly report push idempotency", () => {
   beforeEach(() => {

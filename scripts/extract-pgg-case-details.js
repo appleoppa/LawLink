@@ -66,7 +66,6 @@ function clientType(name) {
   return /(公司|有限公司|财险|热力|银行|集团|中心|局|厂|店|合作社)/.test(name) ? 'COMPANY' : 'INDIVIDUAL';
 }
 function documentCategory(rel) {
-  const s = rel.toLowerCase();
   if (/判决|裁定|调解书|judg/.test(rel)) return 'JUDGMENT';
   if (/合同|协议/.test(rel)) return 'CONTRACT';
   if (/起诉状|答辩|申请书|法律意见|代理词|文书|plead/.test(rel)) return 'PLEADING';

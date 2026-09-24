@@ -31,8 +31,7 @@ import {
   hearingCreateSchema,
   type ProcedureCreateInput,
   type DeadlineCategory,
-  type DeadlineCreateInput,
-  type HearingCreateInput
+  type DeadlineCreateInput
 } from "@/server/procedures/schemas";
 import {
   addProcedure,
