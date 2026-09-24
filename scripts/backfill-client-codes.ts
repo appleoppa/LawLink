@@ -6,6 +6,7 @@
  * 运行：npx tsx scripts/backfill-client-codes.ts
  */
 import { prisma } from "../src/lib/prisma";
+import { shParts } from "../src/lib/ui/sh-time";
 
 async function main() {
   const clients = await prisma.client.findMany({
@@ -23,7 +24,7 @@ async function main() {
   let updated = 0;
 
   for (const c of clients) {
-    const year = c.createdAt.getFullYear();
+    const year = shParts(c.createdAt).y;
     const seq = (perYear.get(year) ?? 0) + 1;
     perYear.set(year, seq);
     const code = `KH-${year}-${String(seq).padStart(4, "0")}`;

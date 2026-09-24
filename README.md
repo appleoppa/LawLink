@@ -1,126 +1,138 @@
 # LawLink
 
-LawLink 是一个开源、自部署的律师案件 / 项目管理系统，主要面向中小律所，也适用于独立律师和小团队自部署使用。
+**事有经纬，案有始终。**
 
-第一版围绕律师日常办案主线：
+LawLink 是面向独立律师、小团队和中小律所的开源、自部署案件 / 项目管理系统。一家律所或团队部署一套实例，使用自己的数据库和文件存储。
 
 `收案登记 → 冲突检索 → 转正式案件 → 持续跟进 → 财务记录 → 结案归档 → 数据导出`
 
-> 项目状态：早期版本。适合本地试用、二次开发和自部署评估；正式用于真实案件前，请先完成服务器安全、备份、权限和密钥管理配置。
+> 当前正式版：**[v2.0.1](https://github.com/lawflow-boop/LawLink/releases/tag/v2.0.1)**（修补容器镜像缺少 `openssl` 导致 Docker 部署不可用；业务逻辑与数据库结构同 v2.0.0，源码方式部署的实例不受影响）。v2.0.0，以 `597404b` 为基线并补充提醒测试时钟修复，包含升级路径、数据库守卫及完整业务主流程验收修复。旧文档及升级脚本中的 1.4.0 为内部名称，对外版本为 2.0.0。见[正式发布说明](./docs/RELEASE-NOTES-v2.0.0.md)。
 
-## 技术栈
+> **依赖安全维护（最近核对 2026-09-21）**：2026-09-21 复审时 `nodemailer` 出现 2 项 high 级公告（≤9.1.0），已升级至 10.x 并加 `overrides` 固定，复审后全量与生产依赖审计均为 0 个已知漏洞。审计结果按核对日期计，**不随时间自动成立**——部署与升级前请自行重跑 `npm audit`。该结果不等于系统安全认证，正式部署仍须完成权限与备份恢复验收。详见[安全状态](./SECURITY.md#依赖审计状态)。
 
-- **框架**：Next.js 16 App Router + TypeScript
-- **UI**：shadcn/ui + Tailwind CSS + Framer Motion（深色科技感）
-- **数据库**：PostgreSQL 16 + Prisma 5
-- **鉴权**：NextAuth.js（Credentials Provider）
-- **图表**：Recharts
-- **表格**：TanStack Table
-- **部署**：Docker Compose 一键起
+> **验证范围**：已补齐升级路径和数据库守卫，仍未覆盖多用户并发、OCR 可信度、全部短信平台兼容性及借阅到期真实时间验证。详见[验证记录](./docs/RELEASE-VALIDATION-v2.0.0.md)。
 
-## 文档
+## 本版提供什么
 
-| 文件 | 内容 |
+| 能力 | 说明 |
 |---|---|
-| [`AGENTS.md`](./AGENTS.md) | 工作区规则（所有协作者必读）|
-| [`docs/PRD.md`](./docs/PRD.md) | 产品需求与功能范围 |
-| [`docs/DATA-MODEL.md`](./docs/DATA-MODEL.md) | 数据模型详细设计 |
-| [`docs/UI-DESIGN.md`](./docs/UI-DESIGN.md) | 设计语言 + 关键页面 wireframe |
-| [`docs/PUBLIC_RELEASE_CHECKLIST.md`](./docs/PUBLIC_RELEASE_CHECKLIST.md) | GitHub 公开发布前的敏感数据与打包检查 |
-| [`docs/GITHUB_PUBLISHING_GUIDE.md`](./docs/GITHUB_PUBLISHING_GUIDE.md) | 第一次发布到 GitHub 的操作手册 |
-| [`docs/PUBLISH_READINESS_REPORT.md`](./docs/PUBLISH_READINESS_REPORT.md) | 当前发布准备度体检报告 |
-| [`CONTRIBUTING.md`](./CONTRIBUTING.md) | 贡献说明 |
-| [`SECURITY.md`](./SECURITY.md) | 安全问题报告方式 |
-| [`CHANGELOG.md`](./CHANGELOG.md) | 版本变更记录 |
+| 墨案与案卷工作台 | 全新界面；案件档案、办案进程、委托与财务、审批用印按程序和环节组织 |
+| 法院来件 | 短信保存、附件提取、可选 OCR/AI 阅读、整理建议与律师确认；失败可人工接续 |
+| 财务与对账 | 实收登记后确认、应收核销、发票关联、补充协议及财务更正 |
+| 期限与提醒 | 送达台账、保全补扫、邮件通道状态及放假安排核对提示 |
+| 独立管理后台 | `/admin` 集中管理律所、人员、岗位角色、律师团队、审批权限、归档制度和外部接入 |
+| 岗位与团队 | 内置及自定义岗位；常设律师团队与案件承办人员分开管理 |
+| 统一审批 | `/approvals` 集中处理收案、文书、归档、开票及用章，保留处理记录并区分批准与后续执行 |
+| 归档与借阅 | 本所制度、送审快照、归档收尾、补充归档及限时只读借阅 |
+| 个人资料 | 本人资料及登录安全；人员证件资料、照片加密存储与访问审计 |
+| 可选接入 | AI、元典、日历订阅、群机器人提醒等；外部服务须另行配置并自行承担服务费用 |
 
-## 本地开发
+**配置前须理解的边界：**
 
-### 1. 准备环境
+- 系统管理员、业务岗位、事项审批是三种不同资格。超级管理员不会自动取得全所案件、财务或审批权限。
+- 团队只读权限不等于案件编辑、财务查看、附件下载或导出权限；审批权只开放对应申请所需资料。
+- 默认禁止审批本人申请。单人执业须显式设置本人审批例外，仍须匹配事项授权及印章规则。
+- 未配置本所归档制度时不能提交正式归档；电子文件存在、申请人勾选、审批人确认不能混为一谈。
+- 证件识别只作录入辅助，不是实名认证或真伪鉴定。期限计算、冲突命中和 AI 输出都需要人工核对。
 
-- Node.js 20.9+
-- PostgreSQL 16（本地建议用 Docker Compose 启动）
+## 安装与升级
+
+- **云服务器安装**：按[安装指南](./docs/CLOUD-SERVER-INSTALLATION-GUIDE.md)配置端口、HTTPS、初始化和备份。基础 Compose 文件是开发起点，不是完成生产配置的一键部署。
+- **已有 1.3.x 部署**：按[升级指南](./docs/RELEASE-GUIDE-v1.3.md)执行增量 SQL → 标记 `0_init` → 标记 `20260921000004_archive_borrow` → `migrate deploy`。先备份、停止写入、在副本演练；不要沿用 RC1 前的两步说明。
+- **首次登录**：先设置独立账号、岗位、团队、审批权限和归档制度。完整步骤见[首次配置清单](./docs/RELEASE-GUIDE-v2.md#首次登录后的配置顺序)。
+- **版本选择**：部署固定版本标签。`main` 可能继续演进，不能以今天的分支内容推断旧标签包含的功能。
+
+## 本地开发与试用
+
+准备 Node.js 22（与仓库 CI 和容器版本一致）及 PostgreSQL 16。下列命令用于全新的本地试用环境；已有数据库先阅读升级说明。
 
 ```bash
+git clone --branch v2.0.0 --depth 1 https://github.com/lawflow-boop/LawLink.git
+cd LawLink
 cp .env.example .env
-
-# 生成 NEXTAUTH_SECRET 和 STORAGE_ENCRYPTION_KEY
-openssl rand -base64 32   # 复制到 .env 的 NEXTAUTH_SECRET
-openssl rand -base64 32   # 复制到 .env 的 STORAGE_ENCRYPTION_KEY
 ```
 
-### 2. 启动数据库（Docker Compose）
+编辑 `.env`，使数据库连接与 Compose 数据库账号一致，设置 `SEED_ADMIN_EMAIL` 和强密码，并分别生成 `NEXTAUTH_SECRET`、`STORAGE_ENCRYPTION_KEY`：
+
+```bash
+openssl rand -base64 32
+openssl rand -base64 32
+```
+
+保管好这两个独立值，然后执行：
 
 ```bash
 docker compose up -d db
-```
-
-只起 Postgres 容器；应用本地用 `npm run dev` 起。
-
-### 3. 初始化 schema 与 seed
-
-```bash
-npm install                       # 首次
-npx prisma migrate dev
-npx prisma db seed                # 创建 admin 账号 + 案由库样本
-```
-
-### 4. 启动 dev
-
-```bash
+npm ci
+npm run prisma:generate
+npx prisma migrate deploy
+npx prisma db seed
 npm run dev
 ```
 
-打开 http://localhost:3000，用初始管理员账号登录：
+打开 [本地登录页](http://localhost:3000/login)，用首次 seed 时设置的账号登录。模板中的 `admin@lawlink.local` / `ChangeMe!2026` 仅供本地试用；公开部署前须更换。已有账号不会因修改 `.env` 或重跑 seed 而改密码；不要用清空数据库的方式处理忘记密码。
 
-- 邮箱：`admin@lawlink.local`
-- 密码：`ChangeMe!2026`
+个人资料与登录安全位于 `/settings/profile`。开发使用 `.next-dev`，生产构建使用 `.next-build`。
 
-以上值来自 `.env.example`。如果你已经修改过 `.env` 里的 `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`，以 `.env` 中的实际值为准。公开部署或正式试用前，请先把 `SEED_ADMIN_PASSWORD` 改成强密码，再执行 seed；首次登录后也应在系统设置中修改密码。
-
-旧版本用户说明：如果你此前已经从 GitHub 下载过 LawLink，并且已经执行过 `npx prisma db seed`，更新 README 或 `.env.example` 不会自动修改数据库里已有管理员的密码。请优先使用当时 `.env` 中的 `SEED_ADMIN_PASSWORD` 登录；如果当时沿用了旧版占位值，密码可能是 `REPLACE_BEFORE_FIRST_LOGIN`。忘记密码时，可以重新初始化本地测试数据库，或在数据库中重置管理员密码哈希。
-
-本地开发使用 `.next-dev`，生产构建使用 `.next-build`，避免 `npm run build` 后覆盖正在运行的开发缓存导致页面不渲染。
+> **备份（容器部署必读）**：`docker compose --profile full up` 的 app 容器每天 02:30 自动备份数据库与文件存储到 `/app/backups`（部署方可通过容器环境设置 `BACKUP_DIR` 或 `BACKUP_CRON_ENABLED=false`；仅在宿主机 `.env` 填写但未传入容器不会生效）。compose 已挂载 `backups` 命名卷，但命名卷仍在 Docker 管理区——**生产部署应把该卷改为绑定宿主机目录或异地路径**，否则备份与数据同生共死。备份含凭据哈希与加密材料，建议设置 `BACKUP_PASSPHRASE` 自动加密后再外传（见 `scripts/backup.sh` 头部说明）。
 
 ## 验证
 
 ```bash
-npm run lint              # ESLint CLI
-npm run typecheck         # tsc --noEmit
-npm run prisma:validate   # Prisma schema 校验
-npm run build             # 生产构建（最严的检查）
+npm run lint
+npm run typecheck
+npm run prisma:validate
+npm run test:run
+npm run build
 ```
 
-## 全栈 Docker 部署
+CI 另用独立影子数据库检查迁移与模型一致性，并在另一个空数据库验证完整迁移、初始化和基础查询。测试通过不等于本所生产部署或安全审计已经完成。
 
-应用容器默认不启动。要起完整环境（db + app）：
+## 技术栈
 
-```bash
-docker compose --profile full up -d
-```
+Next.js 16 / React 19 / TypeScript；shadcn/ui、Tailwind CSS、Framer Motion；PostgreSQL 16 / Prisma 5；NextAuth.js；TanStack Table、Recharts。界面采用高密度浅色工作台。
 
 ## 与上游的差异
 
-本仓库基于 [lawflow-boop/LawLink](https://github.com/lawflow-boop/LawLink) 派生，在其上增加了面向律师日常办案的若干增强（均为可选能力，不影响核心收案-结案流程）：
+本仓库基于 [lawflow-boop/LawLink](https://github.com/lawflow-boop/LawLink) 派生，跟踪上游主线并在其上保留少量本地增强（均可选，不影响核心收案-结案流程）。以 v2.0.1 为基线核对后，仍在线的差异如下：
 
-- **办案工作流门禁**：案件详情页内置多角色复核任务（承办/证据/律法/审计等角色分派与回执），适合小团队协作办案。
-- **法律数据检索**：案件详情页集成元典开放平台检索（案例 / 法规 / 企业），API key 在设置页自行配置；法规检索支持按效力级别与时效性过滤。
-- **本地裁判文书检索**：可选对接本地部署的 [cncases](https://github.com/cncases/cases) 服务（约 8500 万份公开裁判文书），数据不出内网。
-- **程序文书显示**：案件程序性文书（送达、开庭、保全等）结构化展示与快速操作。
-- **工具与运营**：诉讼费用计算器、传票本地解析、审计日志、周报推送。
+- **法律数据检索**：案件详情检索面板在元典案例/企业检索之外，增加法规检索入口，支持按效力级别与时效性过滤。
+- **本地裁判文书检索**：可选对接本地部署的 [cncases](https://github.com/cncases/cases) 服务，数据不出内网。
+- **传票本地解析**：传票识别在调用模型前先走本地解析，减少外发与积分消耗。
+- **执行文书模板**：内置模板含强制执行申请书等执行类文书，并新增 `TemplateCategory.EXECUTION` 类别。
 - **外部案卷同步工具（`scripts/*pgg*.js`）**：把外部案卷库的结构化摘要增量同步进 OA 台账，并回写同步清单。全部参数走环境变量，未配置即拒绝运行：
   - `PGG_CASE_ROOT`（必填）：要扫描的案卷库根目录绝对路径
   - `PGG_IMPORT_USER`（必填）：用作导入人/归属人的 LawLink 账号邮箱
   - `PGG_EXTRACT_OUT` / `PGG_EXTRACT_PREVIEW`（可选）：抽取结果与导入预览的落盘路径，默认 `tmp/`
   - `PGG_IMPORT_DRY_RUN=1`（可选）：只预览不写库；`LAWLINK_BASE_URL`（可选）：回写清单里的站点地址
+- **独立调度进程**：`scripts/run-lawlink-with-cron.sh` 以独立进程运行 `src/server/cron/standalone.ts`，与 Web 进程分离，便于单独重启与观测。
 
-> 日志与预览文件含真实案卷路径，`tmp/` 已在 `.gitignore` 中；工具脚本本身不含任何案件数据或个人信息。
+> 未接线说明：`src/lib/pgg-casework-gate.ts`（多角色办案复核门禁）目前只有纯函数与单元测试，尚未接入任何界面或服务端动作；上游 v2 重建案件详情页后，原先的程序文书展示与仪表盘问候语两个改动点已被覆盖移除。
+
+> 日志与预览文件含真实案卷路径，`tmp/` 已在 `.gitignore` 中；上述工具脚本本身不含任何案件数据或个人信息。
 
 > 注：元典检索需自行申请开放平台 API key；本地裁判文书检索需自行部署 cncases 并挂载数据盘。二者均未配置时系统核心功能不受影响。
 
-## 协议
+## 文档索引
 
-[MIT](./LICENSE) — 自由使用、修改、商用。
+| 文档 | 用途 |
+|---|---|
+| [本版使用与升级说明](./docs/RELEASE-GUIDE-v2.md) | 当前功能边界、首次配置、旧版迁移注意事项 |
+| [云服务器安装指南](./docs/CLOUD-SERVER-INSTALLATION-GUIDE.md) | 固定版本、HTTPS、初始化、备份与更新 |
+| [2.0 发布说明](./docs/RELEASE-NOTES-v2.0.0.md) | 相对 1.0 的累计变化与已知限制 |
+| [本次发布验证](./docs/RELEASE-VALIDATION-v2.0.0.md) | 独立发布副本的检查结果与未覆盖范围 |
+| [变更记录](./CHANGELOG.md) | 各版本变更与验证范围 |
+| [路线图](./docs/ROADMAP.md) | 已实现能力与后续方向，非排期承诺 |
+| [安全说明](./SECURITY.md) | 部署方职责及私密漏洞报告方式 |
+| [工作区规则](./AGENTS.md) / [贡献说明](./CONTRIBUTING.md) | 协作规范 |
+| [PRD](./docs/PRD.md) / [数据模型](./docs/DATA-MODEL.md) / [UI 规范](./docs/UI-DESIGN.md) | 当前设计入口与历史演进记录；旧章节不作为当前授权依据 |
+| [公开发布检查清单](./docs/PUBLIC_RELEASE_CHECKLIST.md) | 敏感资料与交付检查 |
+| [早期发布体检记录](./docs/PUBLISH_READINESS_REPORT.md) | 历史检查结果，不代表当前安全状态 |
 
-## 免责声明
+## 协议与使用边界
 
-LawLink 是通用案件管理软件，不提供法律意见，也不替代律师的专业判断。自行部署和使用时，请遵守所在地关于律师执业、个人信息保护、数据安全、档案管理和保密义务的规则。
+[MIT](./LICENSE) — 可使用、修改和商用。LawLink 是通用案件管理软件，不提供法律意见，不替代律师的专业判断。部署方应结合自己的数据与使用场景评估保密、个人信息保护及档案管理要求。
+
+### 公开版的数据范围
+
+公开发行不包含开发者本地的模拟测试案件、客户、财务记录、附件或数据库备份。全新安装只初始化管理员账号及案由、模板、期限规则等系统基础配置，业务列表为空。源码测试中的虚构样例用于自动验证，不会导入业务数据库；界面设计稿中的示例也不是安装数据。升级保留业务数据，必须按支持的起始版本和升级指南执行；不得以清库重装代替升级。

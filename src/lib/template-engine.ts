@@ -10,7 +10,9 @@
  */
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
+import { shParts, shDayKey } from "@/lib/ui/sh-time";
 import { prisma } from "./prisma";
+import { ActionError } from "@/lib/action-error";
 
 const FIRM_NAME_KEY = "firmName";
 const FIRM_ADDRESS_KEY = "firmAddress";
@@ -95,9 +97,9 @@ const CATEGORY_CN: Record<string, string> = {
 
 function toCNDate(d: Date): string {
   const cnDigits = "〇一二三四五六七八九";
-  const y = String(d.getFullYear()).split("").map((c) => cnDigits[+c]).join("");
-  const m = d.getMonth() + 1;
-  const day = d.getDate();
+  // 入参为瞬间（当前时刻），年月日按上海日历日取（容器为 UTC 时本地取日会差一天）
+  const { y: yNum, m, d: day } = shParts(d);
+  const y = String(yNum).split("").map((c) => cnDigits[+c]).join("");
   const cnNum = (n: number) => {
     if (n <= 10) return ["〇", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"][n];
     if (n < 20) return "十" + cnDigits[n - 10];
@@ -198,7 +200,7 @@ export async function buildContext(opts: {
   if (!opts.matterId) {
     return {
       firm,
-      today: today.toISOString().slice(0, 10),
+      today: shDayKey(today),
       todayCN: toCNDate(today),
       lawyer: { name: user?.name ?? "", phone: user?.phone ?? "" },
       matter: {
@@ -230,7 +232,7 @@ export async function buildContext(opts: {
       procedures: { orderBy: { order: "asc" }, where: { engagement: "ENGAGED" }, take: 1 }
     }
   });
-  if (!matter) throw new Error("案件不存在");
+  if (!matter) throw new ActionError("案件不存在");
 
   const causeText = matter.cause?.name ?? matter.causeFreeText ?? "";
   const clientParty = matter.primaryClient
@@ -261,7 +263,7 @@ export async function buildContext(opts: {
 
   return {
     firm,
-    today: today.toISOString().slice(0, 10),
+    today: shDayKey(today),
     todayCN: toCNDate(today),
     lawyer: { name: user?.name ?? "", phone: user?.phone ?? "" },
     matter: {
@@ -269,7 +271,7 @@ export async function buildContext(opts: {
       title: matter.title,
       category: CATEGORY_CN[matter.category] ?? matter.category,
       causeText,
-      intakeDate: matter.intakeDate ? matter.intakeDate.toISOString().slice(0, 10) : "",
+      intakeDate: matter.intakeDate ? shDayKey(matter.intakeDate) : "",
       claimAmount: matter.claimAmount ? `${matter.claimAmount} 元` : "—",
       ourStanding: matter.ourStanding ? STANDING_CN[matter.ourStanding] ?? matter.ourStanding : ""
     },
@@ -342,7 +344,7 @@ export function renderDocxBuffer(
   try {
     zip = new PizZip(templateBuffer);
   } catch (err) {
-    throw new Error(`模板文件损坏，无法解压：${err instanceof Error ? err.message : String(err)}`);
+    throw new ActionError(`模板文件损坏，无法解压：${err instanceof Error ? err.message : String(err)}`);
   }
 
   const doc = new Docxtemplater(zip, {
@@ -354,7 +356,7 @@ export function renderDocxBuffer(
   try {
     doc.render(context as unknown as Record<string, unknown>);
   } catch (err) {
-    throw new Error(`模板渲染失败：\n${formatDocxError(err)}`);
+    throw new ActionError(`模板渲染失败：\n${formatDocxError(err)}`);
   }
 
   return doc.getZip().generate({ type: "nodebuffer" }) as Buffer;
@@ -386,4 +388,26 @@ function readPath(obj: unknown, path: string): unknown {
     }
   }
   return cur;
+}
+
+/**
+ * 从 docx 模板提取 {{变量}} 清单（含页眉页脚；#开头的循环段标签计入）。
+ * 先剥除 XML 标签再匹配，规避 Word 把占位符拆进多个 run 导致的漏检；
+ * 极端拆分仍可能漏，上传表单允许手工补充变量兜底。
+ */
+export function extractDocxVariables(buffer: Buffer): string[] {
+  const zip = new PizZip(buffer);
+  const found = new Set<string>();
+  const re = /\{\{\s*[#^]\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*\}\}|\{\{\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*\}\}/g;
+  for (const name of Object.keys(zip.files)) {
+    if (!/^word\/(document|header\d*|footer\d*)\.xml$/.test(name)) continue;
+    const entry = zip.file(name);
+    if (!entry) continue;
+    const text = entry.asText().replace(/<[^>]+>/g, "");
+    for (const m of text.matchAll(re)) {
+      const tag = m[1] ?? m[2];
+      if (tag) found.add(tag);
+    }
+  }
+  return [...found].sort();
 }

@@ -34,7 +34,8 @@ import type {
   ReviewType,
   ReviewSeverity
 } from "@/lib/ai/review-parser";
-import { cn } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Props = {
   open: boolean;
@@ -44,16 +45,16 @@ type Props = {
 };
 
 const typeMeta: Record<ReviewType, { label: string; Icon: typeof AlertTriangle; color: string }> = {
-  MISSING: { label: "缺失要素", Icon: FileWarning, color: "text-amber-600" },
-  RISK: { label: "法律风险", Icon: AlertTriangle, color: "text-rose-600" },
-  ISSUE: { label: "条款问题", Icon: AlertCircle, color: "text-orange-600" },
-  SUGGESTION: { label: "优化建议", Icon: Lightbulb, color: "text-sky-600" }
+  MISSING: { label: "缺失要素", Icon: FileWarning, color: "text-[var(--amber)]" },
+  RISK: { label: "法律风险", Icon: AlertTriangle, color: "text-[var(--red)]" },
+  ISSUE: { label: "条款问题", Icon: AlertCircle, color: "text-[var(--amber)]" },
+  SUGGESTION: { label: "优化建议", Icon: Lightbulb, color: "text-[var(--blue)]" }
 };
 
 const sevStyle: Record<ReviewSeverity, { label: string; cls: string }> = {
-  HIGH: { label: "高", cls: "bg-rose-50 text-rose-700 border-rose-200" },
-  MEDIUM: { label: "中", cls: "bg-amber-50 text-amber-700 border-amber-200" },
-  LOW: { label: "低", cls: "bg-slate-50 text-slate-600 border-slate-200" }
+  HIGH: { label: "高", cls: "bg-[var(--red-bg)] text-[var(--red)] border-[var(--red-line)]" },
+  MEDIUM: { label: "中", cls: "bg-[var(--amber-bg)] text-[var(--amber)] border-[var(--amber-line)]" },
+  LOW: { label: "低", cls: "bg-[var(--bg-hover)] text-[var(--t-muted)] border-[var(--bd-subtle)]" }
 };
 
 const TYPE_ORDER: ReviewType[] = ["MISSING", "RISK", "ISSUE", "SUGGESTION"];
@@ -112,7 +113,7 @@ export function DocumentReviewDialog({
       // 重新拉历史（新审查已落库）
       listReviewHistory({ documentId }).then(setHistory).catch(() => {});
     } catch (err) {
-      setError(err instanceof Error ? err.message : "AI 审查失败");
+      setError(err instanceof Error ? actionErrorMessage(err) : "AI 审查失败");
     } finally {
       setReviewing(false);
     }
@@ -134,7 +135,7 @@ export function DocumentReviewDialog({
       setSaved(false);
     } catch (err) {
       toast.error("加载历史详情失败", {
-        description: err instanceof Error ? err.message : ""
+        description: actionErrorMessage(err)
       });
     }
   }
@@ -153,7 +154,7 @@ export function DocumentReviewDialog({
       toast.success("已保存审查结果到本案", { description: res.documentName });
     } catch (err) {
       toast.error("保存失败", {
-        description: err instanceof Error ? err.message : ""
+        description: actionErrorMessage(err)
       });
     } finally {
       setSaving(false);
@@ -193,7 +194,7 @@ export function DocumentReviewDialog({
                 <ChevronLeft className="h-4 w-4" />
               </button>
             )}
-            <Sparkles className="h-4 w-4 text-violet-500" />
+            <Sparkles className="h-4 w-4 text-[var(--violet)]" />
             AI 文书审查
           </DialogTitle>
           <DialogDescription className="text-xs">
@@ -201,7 +202,7 @@ export function DocumentReviewDialog({
             {view.kind === "result" &&
               `${view.result.documentName}${view.result.truncated ? "（已截断前 6000 字）" : ""}`}
             {view.kind === "history-detail" &&
-              `${currentDocName} · 历史 ${view.entry.reviewedAt.toLocaleString("zh-CN")}`}
+              `${currentDocName} · 历史 ${formatDateTime(view.entry.reviewedAt)}`}
           </DialogDescription>
         </DialogHeader>
 
@@ -224,7 +225,7 @@ export function DocumentReviewDialog({
               </Button>
 
               {error && (
-                <div className="rounded border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+                <div className="rounded border border-[var(--red-line)] bg-[var(--red-bg)] p-3 text-xs text-[var(--red)]">
                   {error}
                 </div>
               )}
@@ -254,7 +255,7 @@ export function DocumentReviewDialog({
                         >
                           <div className="flex flex-col">
                             <span className="font-mono text-foreground">
-                              {h.reviewedAt.toLocaleString("zh-CN")}
+                              {formatDateTime(h.reviewedAt)}
                             </span>
                             <span className="text-[10px] text-muted-foreground">
                               {h.reviewedBy.name} · {h.itemCount} 条
@@ -331,7 +332,7 @@ export function DocumentReviewDialog({
           <div className="flex items-center gap-2">
             {view.kind === "result" && view.result.items.length > 0 && (
               saved ? (
-                <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-700">
+                <span className="inline-flex items-center gap-1 rounded-md border border-[var(--green-line)] bg-[var(--green-bg)] px-2 py-1 text-[11px] text-[var(--green)]">
                   <Check className="h-3 w-3" />
                   已存到本案
                 </span>

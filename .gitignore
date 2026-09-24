@@ -50,6 +50,11 @@ tsconfig.tsbuildinfo
 
 # Working scratch (outside of project scope)
 outputs/
+outputs/
+
+# Local test and browser artifacts are not release content
+output/
+
 tmp/
 tmp_case_import_preview.json
 

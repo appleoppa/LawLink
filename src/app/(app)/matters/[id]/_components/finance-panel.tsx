@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Wallet, Receipt } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { InvoiceRequestSheet } from "./invoice-request-sheet";
 import type { FinancePayload, UserOption } from "./matter-detail-tabs";
 
@@ -17,13 +17,16 @@ export function FinancePanel({
   matterId,
   finance,
   canRequestInvoice,
-  compact = false
+  compact = false,
+  hideStats = false
 }: {
   matterId: string;
   finance: FinancePayload;
   userOptions: UserOption[];
   canRequestInvoice: boolean;
   compact?: boolean;
+  /** 上方已有收费概览时隐藏指标网格 */
+  hideStats?: boolean;
 }) {
   const [invoiceOpen, setInvoiceOpen] = useState(false);
 
@@ -32,10 +35,11 @@ export function FinancePanel({
     .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime());
 
   const { stats } = finance;
-  const outstanding = Math.max(stats.receivable - stats.received, 0);
+  const outstanding = stats.outstanding;
 
   const cards: { label: string; value: number; tone: StatTone; className?: string }[] = [
-    { label: "合同约定律师费", value: stats.contractAmount, tone: "neutral", className: "col-span-3" },
+    // 非紧凑 6 列：有分成卡时合同额占 2 列、无分成时占 3 列，保证整行填满不留空格
+    { label: "合同约定律师费", value: stats.contractAmount, tone: "neutral", className: compact || stats.commission <= 0 ? "col-span-3" : "col-span-3 sm:col-span-2" },
     { label: "已收", value: stats.received, tone: "emerald" },
     { label: "待收", value: outstanding, tone: "amber" },
     { label: "支出", value: stats.cost, tone: "red" },
@@ -46,10 +50,10 @@ export function FinancePanel({
   ];
 
   return (
-    <section className="rounded-lg border border-border bg-card">
-      <header className={compact ? "border-b border-border px-3 py-2" : "border-b border-border px-4 py-2"}>
+    <section className="card">
+      <header className={compact ? "border-b border-border px-3 py-2" : "border-b border-[var(--bd-hair)] px-4 py-3"}>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="flex items-center gap-1.5 text-[13px] font-medium">
+          <span className="panel-title">
             <Wallet className="h-3.5 w-3.5 text-primary" />
             财务费用
           </span>
@@ -67,6 +71,7 @@ export function FinancePanel({
       </header>
 
       {/* 紧凑指标卡（对照案件云"财务概览"指标看板） */}
+      {!hideStats ? (
       <div
         className={
           compact
@@ -85,10 +90,11 @@ export function FinancePanel({
           />
         ))}
       </div>
+      ) : null}
 
       {received.length === 0 ? (
         <p className="py-6 text-center text-xs text-muted-foreground">
-          暂无到账记录（由财务管理人员后台录入）
+          暂无到账记录
         </p>
       ) : (
         <ul className="divide-y divide-border">
@@ -101,9 +107,12 @@ export function FinancePanel({
                   : "flex items-center gap-3 px-4 py-2 text-[12.5px]"
               }
             >
-              <span className="shrink-0 font-mono tabular text-[14px] font-medium text-emerald-600">
+              <span className={cn("shrink-0 font-mono tabular text-[14px] font-medium", e.confirmState === "PENDING" ? "text-[var(--amber)]" : "text-[var(--green)]")}>
                 {formatCurrency(Number(e.amount))}
               </span>
+              {e.confirmState === "PENDING" ? (
+                <span className="badge b-amber shrink-0" title="已登记，等待财务管理人员确认到账后才计入已收">待确认</span>
+              ) : null}
               <span className="min-w-0 flex-1 truncate text-muted-foreground">
                 {e.payerOrPayee && <span>{e.payerOrPayee}</span>}
                 {e.method && (
@@ -117,7 +126,7 @@ export function FinancePanel({
                 {e.note && <span className="ml-2 text-[10.5px]">· {e.note}</span>}
               </span>
               <span className="shrink-0 font-mono text-[11px] tabular text-muted-foreground">
-                {new Date(e.occurredAt).toLocaleDateString("zh-CN")}
+                {formatDate(new Date(e.occurredAt))}
               </span>
             </li>
           ))}
@@ -152,11 +161,11 @@ function StatCard({
 }) {
   const cls =
     tone === "emerald"
-      ? "text-emerald-600"
+      ? "text-[var(--green)]"
       : tone === "amber"
-        ? "text-amber-600"
+        ? "text-[var(--amber)]"
         : tone === "red"
-          ? "text-red-600"
+          ? "text-[var(--red)]"
           : "text-foreground";
   return (
     <div className={`bg-card px-3 text-center ${compact ? "py-2" : "py-2.5"} ${className ?? ""}`}>

@@ -82,7 +82,7 @@ export function CourtFeeCalc() {
         <>
           <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
             <ResultCard label="普通程序" value={result.fee} accent="#4F46E5" />
-            <ResultCard label="简易程序（减半）" value={result.feeSimplified} accent="#16a34a" />
+            <ResultCard label="简易程序（减半）" value={result.feeSimplified} accent="#1A7F45" />
           </div>
           <p className="mt-3 text-[11px] text-muted-foreground">{result.note}</p>
         </>

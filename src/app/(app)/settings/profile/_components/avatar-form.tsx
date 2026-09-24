@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import { ImageUp, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { saveMyAvatar } from "@/server/users/actions";
+import { actionErrorMessage } from "@/lib/action-error";
 
 const AVATAR_MAX_BYTES = 180 * 1024;
 
-export function AvatarForm({ name, initialAvatar }: { name: string; initialAvatar: string | null }) {
+export function AvatarForm({ name, role, initialAvatar }: { name: string; role?: string; initialAvatar: string | null }) {
   const router = useRouter();
   const [avatar, setAvatar] = useState<string | null>(initialAvatar);
   const [pending, startTransition] = useTransition();
@@ -42,59 +43,66 @@ export function AvatarForm({ name, initialAvatar }: { name: string; initialAvata
         toast.success(value ? "头像已更新" : "头像已清除");
         router.refresh();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "保存失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "保存失败");
       }
     });
   };
 
   return (
-    <div className="flex items-center gap-4">
-      <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-border bg-primary/10">
+    <div className="flex flex-col items-center gap-3 text-center">
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/svg+xml"
+        className="hidden"
+        onChange={(e) => onPick(e.target.files?.[0])}
+      />
+      <button
+        type="button"
+        onClick={() => fileRef.current?.click()}
+        disabled={pending}
+        title="点击更换头像"
+        className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border border-border bg-primary/10 transition-shadow hover:shadow-md disabled:opacity-50"
+      >
         {avatar ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={avatar} alt={name} className="h-full w-full object-cover" />
         ) : (
-          <span className="text-2xl font-semibold text-primary">{initial}</span>
+          <span className="text-3xl font-semibold text-primary">{initial}</span>
         )}
-      </div>
-      <div className="space-y-1.5">
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/png,image/jpeg,image/webp,image/svg+xml"
-          className="hidden"
-          onChange={(e) => onPick(e.target.files?.[0])}
-        />
-        <div className="flex gap-2">
+      </button>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={pending}
+          className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-muted/60 disabled:opacity-50"
+        >
+          {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImageUp className="h-3 w-3" />}
+          上传头像
+        </button>
+        {avatar && (
           <button
             type="button"
-            onClick={() => fileRef.current?.click()}
+            onClick={() => {
+              setAvatar(null);
+              if (fileRef.current) fileRef.current.value = "";
+              save(null);
+            }}
             disabled={pending}
-            className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-muted/60 disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded-[6px] px-2 py-1 text-[12px] text-destructive hover:underline disabled:opacity-50"
           >
-            {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImageUp className="h-3 w-3" />}
-            上传头像
+            <Trash2 className="h-3 w-3" />
+            清除
           </button>
-          {avatar && (
-            <button
-              type="button"
-              onClick={() => {
-                setAvatar(null);
-                if (fileRef.current) fileRef.current.value = "";
-                save(null);
-              }}
-              disabled={pending}
-              className="inline-flex items-center gap-1 text-[12px] text-destructive hover:underline disabled:opacity-50"
-            >
-              <Trash2 className="h-3 w-3" />
-              清除
-            </button>
-          )}
-        </div>
-        <p className="text-[11px] text-muted-foreground">
-          未上传时显示姓名首字「{initial}」。建议方形图片，≤ 180KB。
-        </p>
+        )}
       </div>
+      {role && <span className="badge b-teal">{role}</span>}
+      <p className="text-[11px] leading-relaxed text-muted-foreground">
+        未上传时显示姓名首字「{initial}」
+        <br />
+        建议方形图片，≤ 180KB
+      </p>
     </div>
   );
 }

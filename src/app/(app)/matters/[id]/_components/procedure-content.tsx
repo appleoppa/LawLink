@@ -45,7 +45,9 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { cn, daysUntil } from "@/lib/utils";
+import { deadlineCategoryLabel } from "@/lib/enums";
+import { confirmDeadline, adjustDeadline } from "@/server/deadlines/confirm";
+import { cn, daysUntil, formatDate } from "@/lib/utils";
 import { procedureTypeLabel } from "@/lib/enums";
 import {
   addDeadline,
@@ -61,6 +63,9 @@ import { createExpress, deleteExpress } from "@/server/express/actions";
 import { parseExpressLabel } from "@/server/ai/parse-express";
 import { parseSummons } from "@/server/ai/parse-summons";
 import type { ExpressItem } from "./info-extras";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { shDayKey, shMonthDayTime, shTime } from "@/lib/ui/sh-time";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type ProcedureWithChildren = MatterProcedure & {
   deadlines: Deadline[];
@@ -72,8 +77,12 @@ type ProcedureWithChildren = MatterProcedure & {
 // 聚合后带程序标签的行类型
 type HearingRowItem = Hearing & { procLabel: string };
 type DeadlineRowItem = Deadline & { procLabel: string };
+
+function formatIsoDate(d: Date | string) {
+  return shDayKey(d);
+}
 type MemoRowItem = ProcedureMemo & { procLabel: string };
-type ImportantCategory = "hearing" | "deadline" | "express" | "memo";
+export type ImportantCategory = "hearing" | "deadline" | "express" | "memo";
 type ImportantFilter = "all" | ImportantCategory;
 type AllImportantItem =
   | { id: string; type: "hearing"; sortAt: Date; item: HearingRowItem }
@@ -92,24 +101,28 @@ export function ProcedureRemindersAndMemos({
   procedures,
   currentProcedureId,
   expresses,
-  canManage
+  canManage,
+  kinds
 }: {
   matterId: string;
   procedures: ProcedureWithChildren[];
   currentProcedureId: string;
   expresses: ExpressItem[];
   canManage: boolean;
+  /** 只展示部分类别（案卷工作台「办案进程」只放快递与备忘，期限与开庭在待办 / 经办记录） */
+  kinds?: ImportantCategory[];
 }) {
+  const allow = (k: ImportantCategory) => !kinds || kinds.includes(k);
   const multiProc = procedures.length > 1;
   const procOptions = procedures.map((p) => ({ id: p.id, label: procLabelOf(p) }));
 
-  const hearings: HearingRowItem[] = procedures.flatMap((p) =>
+  const hearings: HearingRowItem[] = !allow("hearing") ? [] : procedures.flatMap((p) =>
     p.hearings.map((h) => ({ ...h, procLabel: procLabelOf(p) }))
   );
-  const deadlines: DeadlineRowItem[] = procedures.flatMap((p) =>
+  const deadlines: DeadlineRowItem[] = !allow("deadline") ? [] : procedures.flatMap((p) =>
     p.deadlines.map((d) => ({ ...d, procLabel: procLabelOf(p) }))
   );
-  const memos: MemoRowItem[] = procedures
+  const memos: MemoRowItem[] = !allow("memo") ? [] : procedures
     .flatMap((p) => p.memos.map((m) => ({ ...m, procLabel: procLabelOf(p) })))
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
@@ -118,8 +131,9 @@ export function ProcedureRemindersAndMemos({
       matterId={matterId}
       deadlines={deadlines}
       hearings={hearings}
-      expresses={expresses}
+      expresses={allow("express") ? expresses : []}
       memos={memos}
+      kinds={kinds}
       procedures={procOptions}
       defaultProcedureId={currentProcedureId}
       hearingCounts={Object.fromEntries(procedures.map((p) => [p.id, p.hearings.length]))}
@@ -148,8 +162,10 @@ function ImportantItemsCard({
   hearingCounts,
   proceduresDetail,
   multiProc,
-  canManage
+  canManage,
+  kinds
 }: {
+  kinds?: ImportantCategory[];
   matterId: string;
   deadlines: DeadlineRowItem[];
   hearings: HearingRowItem[];
@@ -166,6 +182,7 @@ function ImportantItemsCard({
   const [filter, setFilter] = useState<ImportantFilter>("all");
   const [addOpen, setAddOpen] = useState(false);
   const [addType, setAddType] = useState<ImportantCategory>("hearing");
+  const [adjusting, setAdjusting] = useState<DeadlineRowItem | null>(null);
 
   function handleToggle(id: string) {
     startTransition(async () => {
@@ -177,8 +194,8 @@ function ImportantItemsCard({
     });
   }
 
-  function handleDeleteDeadline(id: string) {
-    if (!confirm("删除这条期限？")) return;
+  async function handleDeleteDeadline(id: string) {
+    if (!(await confirmDialog({ title: "删除这条期限？", description: "删除后不再提醒，操作记入审计。", confirmText: "删除", danger: true }))) return;
     startTransition(async () => {
       try {
         await deleteDeadline(id);
@@ -189,8 +206,25 @@ function ImportantItemsCard({
     });
   }
 
-  function handleDeleteHearing(id: string) {
-    if (!confirm("删除这条开庭记录？")) return;
+  // v1.x P0-8: 待确认期限的确认（起算事实与规则结果就此固定）
+  function handleConfirmDeadline(id: string) {
+    startTransition(async () => {
+      try {
+        await confirmDeadline({ id });
+        toast.success("期限已确认");
+      } catch (err) {
+        toast.error("确认失败", { description: actionErrorMessage(err) });
+      }
+    });
+  }
+
+  // v1.x P0-8: 人工调整到期日（写已调整 + 留痕；规则重算不再覆盖）
+  function handleAdjustDeadline(d: DeadlineRowItem) {
+    setAdjusting(d);
+  }
+
+  async function handleDeleteHearing(id: string) {
+    if (!(await confirmDialog({ title: "删除这条开庭记录？", confirmText: "删除", danger: true }))) return;
     startTransition(async () => {
       try {
         await deleteHearing(id);
@@ -201,8 +235,8 @@ function ImportantItemsCard({
     });
   }
 
-  function handleDeleteExpress(id: string) {
-    if (!confirm("删除这条快递记录？")) return;
+  async function handleDeleteExpress(id: string) {
+    if (!(await confirmDialog({ title: "删除这条快递记录？", confirmText: "删除", danger: true }))) return;
     startTransition(async () => {
       try {
         await deleteExpress({ id });
@@ -225,64 +259,53 @@ function ImportantItemsCard({
 
   const total = hearings.length + deadlines.length + expresses.length + memos.length;
   const allItems = buildAllImportantItems({ hearings, deadlines, expresses, memos });
-  const filters: { value: ImportantFilter; label: string; count: number }[] = [
-    { value: "all", label: "ALL", count: total },
+  const filters: { value: ImportantFilter; label: string; count: number }[] = ([
+    { value: "all", label: "全部", count: total },
     { value: "hearing", label: "开庭", count: hearings.length },
-    { value: "deadline", label: "时限", count: deadlines.length },
+    { value: "deadline", label: "期限", count: deadlines.length },
     { value: "express", label: "快递", count: expresses.length },
     { value: "memo", label: "备忘", count: memos.length }
-  ];
+  ] as { value: ImportantFilter; label: string; count: number }[]).filter((f) => f.value === "all" || !kinds || kinds.includes(f.value as ImportantCategory));
 
   const currentCount = filters.find((f) => f.value === filter)?.count ?? 0;
   const currentLabel = filters.find((f) => f.value === filter)?.label ?? "重要事项";
 
   function openAddDialog() {
-    setAddType(filter === "all" ? "hearing" : filter);
+    setAddType(filter === "all" ? (kinds?.[0] ?? "hearing") : filter);
     setAddOpen(true);
   }
 
   return (
-    <section className="flex max-h-[420px] min-h-[180px] flex-col rounded-lg border border-border bg-card">
-      <header className="flex shrink-0 flex-col gap-2 border-b border-border px-3 py-2">
-        <div className="flex items-center justify-between gap-2">
-          <span className="flex items-center gap-1.5 text-[13px] font-medium">
-            <AlertTriangle className="h-3.5 w-3.5 text-[#FBBF24]" />
-            重要事项
-            <span className="ml-1 font-mono text-[11px] text-muted-foreground tabular">
-              {total}
-            </span>
-          </span>
+    <section className="flex max-h-[460px] min-h-[160px] flex-col card">
+      <header className="panel-head shrink-0 flex-wrap">
+        <span className="panel-title">
+          <AlertTriangle className="ic" />
+          {kinds ? kinds.map((k) => ({ hearing: "开庭", deadline: "期限", express: "快递", memo: "备忘" })[k]).join("与") : "期限、开庭与备忘"}
+          <span className="mo-count">{total}</span>
+        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* 分类分段 */}
+          <div className="segmented" role="tablist">
+            {filters.map((f) => (
+              <button
+                key={f.value}
+                type="button"
+                role="tab"
+                aria-selected={filter === f.value}
+                onClick={() => setFilter(f.value)}
+                className={cn("seg", filter === f.value && "active")}
+              >
+                {f.label}
+                <span className="count">{f.count}</span>
+              </button>
+            ))}
+          </div>
           {canManage && (
-            <Button
-              size="sm"
-              onClick={openAddDialog}
-              className="h-6 gap-0.5 px-2 text-[11px]"
-            >
-              <Plus className="h-2.5 w-2.5" />
+            <button type="button" onClick={openAddDialog} className="btn btn-secondary btn-sm">
+              <Plus />
               添加
-            </Button>
-          )}
-        </div>
-        {/* 分类按钮组 */}
-        <div className="flex flex-wrap items-center gap-0.5 rounded-md border border-border bg-background p-0.5">
-          {filters.map((f) => (
-            <button
-              key={f.value}
-              type="button"
-              onClick={() => setFilter(f.value)}
-              className={cn(
-                "flex-1 rounded px-1.5 py-0.5 text-[11px] transition-colors",
-                filter === f.value
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {f.label}
-              <span className="ml-1 font-mono text-[10px] tabular opacity-75">
-                {f.count}
-              </span>
             </button>
-          ))}
+          )}
         </div>
       </header>
 
@@ -313,6 +336,16 @@ function ImportantItemsCard({
                     ? () => handleToggle(entry.item.id)
                     : undefined
                 }
+                onConfirm={
+                  entry.type === "deadline"
+                    ? () => handleConfirmDeadline(entry.item.id)
+                    : undefined
+                }
+                onAdjust={
+                  entry.type === "deadline"
+                    ? () => handleAdjustDeadline(entry.item)
+                    : undefined
+                }
                 onDelete={() => {
                   if (entry.type === "hearing") handleDeleteHearing(entry.item.id);
                   if (entry.type === "deadline") handleDeleteDeadline(entry.item.id);
@@ -331,6 +364,8 @@ function ImportantItemsCard({
                 multiProc={multiProc}
                 onToggle={() => handleToggle(d.id)}
                 onDelete={() => handleDeleteDeadline(d.id)}
+                onConfirm={() => handleConfirmDeadline(d.id)}
+                onAdjust={() => handleAdjustDeadline(d)}
                 pending={isPending}
                 canManage={canManage}
               />
@@ -369,7 +404,59 @@ function ImportantItemsCard({
           proceduresDetail={proceduresDetail}
         />
       )}
+      {adjusting ? <AdjustDeadlineDialog deadline={adjusting} onClose={() => setAdjusting(null)} /> : null}
     </section>
+  );
+}
+
+/** v1.x P0-8: 人工调整到期日（写已调整 + 留痕；规则重算不再覆盖）——日期控件 + 必填原因 */
+export function AdjustDeadlineDialog({ deadline, onClose }: { deadline: { id: string; title: string; dueAt: Date }; onClose: () => void }) {
+  const [date, setDate] = useState(formatIsoDate(deadline.dueAt));
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function submit() {
+    // 落库瞬间统一上海午夜（P1-6）：不再用浏览器本地午夜，UTC 容器/异时区浏览器下口径一致
+    const dueAt = new Date(`${date}T00:00:00+08:00`);
+    if (!date || Number.isNaN(dueAt.getTime())) return setError("请选择调整后的到期日");
+    if (!reason.trim()) return setError("请填写调整原因（将记入审计）");
+    setError(null);
+    startTransition(async () => {
+      try {
+        await adjustDeadline({ id: deadline.id, dueAt, reason: reason.trim() });
+        toast.success("期限已调整");
+        onClose();
+      } catch (err) {
+        setError(err instanceof Error ? actionErrorMessage(err) : "调整失败");
+      }
+    });
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o && !pending) onClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>调整到期日</DialogTitle>
+          <DialogDescription>「{deadline.title}」原到期日 {formatIsoDate(deadline.dueAt)}。人工调整后标记为「已调整」，规则重算不再覆盖。</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label>调整后的到期日 *</Label>
+            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="font-mono" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>调整原因 *</Label>
+            <Textarea rows={3} value={reason} maxLength={300} onChange={(e) => setReason(e.target.value)} placeholder="如：法院通知书载明举证期限延长至…" />
+          </div>
+          {error ? <div className="text-[12px] text-[var(--red)]">{error}</div> : null}
+        </div>
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose} disabled={pending}>取消</Button>
+          <Button onClick={submit} disabled={pending}>保存调整</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -433,6 +520,8 @@ function AllImportantRow({
   multiProc,
   onToggle,
   onDelete,
+  onConfirm,
+  onAdjust,
   pending,
   canManage
 }: {
@@ -440,6 +529,8 @@ function AllImportantRow({
   multiProc: boolean;
   onToggle?: () => void;
   onDelete: () => void;
+  onConfirm?: () => void;
+  onAdjust?: () => void;
   pending: boolean;
   canManage: boolean;
 }) {
@@ -460,6 +551,8 @@ function AllImportantRow({
         multiProc={multiProc}
         onToggle={onToggle ?? (() => {})}
         onDelete={onDelete}
+        onConfirm={onConfirm ?? (() => {})}
+        onAdjust={onAdjust ?? (() => {})}
         pending={pending}
         canManage={canManage}
       />
@@ -501,6 +594,8 @@ function DeadlineRow({
   multiProc,
   onToggle,
   onDelete,
+  onConfirm,
+  onAdjust,
   pending,
   canManage
 }: {
@@ -508,6 +603,8 @@ function DeadlineRow({
   multiProc: boolean;
   onToggle: () => void;
   onDelete: () => void;
+  onConfirm: () => void;
+  onAdjust: () => void;
   pending: boolean;
   canManage: boolean;
 }) {
@@ -549,8 +646,21 @@ function DeadlineRow({
           <Badge variant="outline" className="h-5 shrink-0 px-1.5 text-[9px]">
             {deadlineCategoryLabel[d.category]}
           </Badge>
+          {d.confirmStatus === "PENDING" && (
+            <Badge className="h-5 shrink-0 bg-[var(--amber-bg)] px-1.5 text-[9px] text-[var(--amber)] hover:bg-[var(--amber-bg)]">
+              待确认
+            </Badge>
+          )}
+          {d.confirmStatus === "ADJUSTED" && (
+            <Badge variant="outline" className="h-5 shrink-0 border-[var(--blue-line)] px-1.5 text-[9px] text-[var(--blue)]">
+              已调整
+            </Badge>
+          )}
           {multiProc && <ProcTag label={d.procLabel} />}
         </div>
+        {d.startFact && (
+          <div className="mt-0.5 text-[11px] text-muted-foreground">起算：{d.startFact}</div>
+        )}
         {d.basis && (
           <div className="mt-0.5 text-[11px] text-muted-foreground">{d.basis}</div>
         )}
@@ -563,17 +673,42 @@ function DeadlineRow({
           ) : isOverdue ? (
             <span className="text-destructive">逾期 {-days}d</span>
           ) : days === 0 ? (
-            <span className="text-[#FBBF24]">今天</span>
+            <span className="text-[var(--amber)]">今天</span>
           ) : isWarn ? (
-            <span className="text-[#FBBF24]">{days}d</span>
+            <span className="text-[var(--amber)]">{days}d</span>
           ) : (
             <span>{days}d</span>
           )}
         </div>
         <div className="font-mono text-[10px] text-muted-foreground tabular">
-          {new Date(d.dueAt).toLocaleDateString("zh-CN")}
+          {formatDate(new Date(d.dueAt))}
         </div>
       </div>
+
+      {canManage && !d.completed && (
+        <div className="flex shrink-0 items-center gap-1">
+          {d.confirmStatus === "PENDING" && (
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={pending}
+              className="rounded border border-[var(--amber-line)] px-1.5 py-0.5 text-[10px] text-[var(--amber)] hover:bg-[var(--amber-bg)]"
+              title="核对起算事实后确认该期限"
+            >
+              确认
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onAdjust}
+            disabled={pending}
+            className="rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:bg-accent"
+            title="调整到期日（记录原因，规则重算不再覆盖）"
+          >
+            调整
+          </button>
+        </div>
+      )}
 
       {canManage && (
         <button
@@ -622,12 +757,7 @@ function HearingRow({
           {upcoming ? "未召开" : "已召开"}
         </Badge>
         <span className="font-mono text-[10px] tabular text-muted-foreground">
-          {new Date(h.startsAt).toLocaleString("zh-CN", {
-            month: "2-digit",
-            day: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit"
-          })}
+          {shMonthDayTime(h.startsAt)}
         </span>
       </div>
       {canManage && (
@@ -659,8 +789,8 @@ function ExpressRow({
         className={cn(
           "flex h-6 w-6 shrink-0 items-center justify-center rounded-md",
           isOutbound
-            ? "bg-orange-500/10 text-orange-600"
-            : "bg-emerald-500/10 text-emerald-600"
+            ? "bg-[var(--amber-bg)] text-[var(--amber)]"
+            : "bg-[var(--green-bg)] text-[var(--green)]"
         )}
       >
         {isOutbound ? (
@@ -686,8 +816,8 @@ function ExpressRow({
         </div>
         <div className="font-mono text-[10px] tabular text-muted-foreground">
           {item.lastUpdateAt
-            ? new Date(item.lastUpdateAt).toLocaleDateString("zh-CN")
-            : new Date(item.createdAt).toLocaleDateString("zh-CN")}
+            ? formatDate(new Date(item.lastUpdateAt))
+            : formatDate(new Date(item.createdAt))}
         </div>
       </div>
       {canManage && (
@@ -727,7 +857,7 @@ function MemoRow({
         <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
           {multiProc && <ProcTag label={memo.procLabel} />}
           <span className="font-mono tabular">
-            {new Date(memo.createdAt).toLocaleDateString("zh-CN")}
+            {formatDate(new Date(memo.createdAt))}
           </span>
         </div>
       </div>
@@ -747,21 +877,9 @@ function MemoRow({
 
 // ============ 统一添加重要事项 ============
 
-const deadlineCategoryLabel: Record<DeadlineCreateInput["category"], string> = {
-  LIMITATION: "诉讼时效",
-  EVIDENCE: "举证期限",
-  APPEAL: "上诉期",
-  PERFORMANCE: "履行期",
-  RESPONSE: "答辩期",
-  ENFORCEMENT: "执行申请",
-  ARBITRATION_SET_ASIDE: "撤销仲裁期",
-  PRESERVATION: "保全期限",
-  CUSTOM: "其他"
-};
-
 const importantTypeMeta: Record<ImportantCategory, { label: string; icon: React.ElementType }> = {
   hearing: { label: "开庭", icon: Gavel },
-  deadline: { label: "时限", icon: AlertTriangle },
+  deadline: { label: "期限", icon: AlertTriangle },
   express: { label: "快递", icon: Package },
   memo: { label: "备忘", icon: StickyNote }
 };
@@ -779,17 +897,16 @@ const CN_NUM: Record<number, string> = {
   10: "十"
 };
 
+/** 输入框值是上海墙钟；默认「现在的上海日期/时刻」，解析统一按 +08:00 固定偏移 */
 function toDateInput(date = new Date()) {
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 10);
+  return shDayKey(date);
 }
 
 function toDateTimeInput(date = new Date()) {
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 16);
+  return `${shDayKey(date)}T${shTime(date)}`;
 }
 
-function ImportantItemDialog({
+export function ImportantItemDialog({
   open,
   onOpenChange,
   matterId,
@@ -797,12 +914,15 @@ function ImportantItemDialog({
   procedures,
   defaultProcedureId,
   hearingCounts,
-  proceduresDetail
+  proceduresDetail,
+  types = ["hearing", "deadline", "express"]
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   matterId: string;
   defaultType: ImportantCategory;
+  /** 可选分类；默认不含「备忘」（2026-09-15 起备忘不再新增，等同无截止日的任务） */
+  types?: ImportantCategory[];
   procedures: { id: string; label: string }[];
   defaultProcedureId: string;
   hearingCounts: Record<string, number>;
@@ -906,7 +1026,7 @@ function ImportantItemDialog({
         toast.success("传票识别完成，请核对信息");
       } catch (err) {
         toast.error("传票识别失败", {
-          description: err instanceof Error ? err.message : "请手动填写"
+          description: err instanceof Error ? actionErrorMessage(err) : "请手动填写"
         });
       } finally {
         if (summonsRef.current) summonsRef.current.value = "";
@@ -929,7 +1049,7 @@ function ImportantItemDialog({
         if (result.companyCode) setCompanyCode(result.companyCode);
       } catch (err) {
         toast.error("识别失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       } finally {
         if (expressRef.current) expressRef.current.value = "";
@@ -946,7 +1066,7 @@ function ImportantItemDialog({
       toast.error("请填写开庭主题");
       return;
     }
-    const startsAt = new Date(hearingStartsAt);
+    const startsAt = new Date(`${hearingStartsAt}:00+08:00`);
     if (Number.isNaN(startsAt.getTime())) {
       toast.error("请填写有效开庭时间");
       return;
@@ -969,7 +1089,7 @@ function ImportantItemDialog({
         router.refresh();
       } catch (err) {
         toast.error("添加失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });
@@ -981,10 +1101,10 @@ function ImportantItemDialog({
       return;
     }
     if (!deadlineTitle.trim()) {
-      toast.error("请填写时限名称");
+      toast.error("请填写期限名称");
       return;
     }
-    const dueAt = new Date(`${deadlineDueAt}T00:00:00`);
+    const dueAt = new Date(`${deadlineDueAt}T00:00+08:00`);
     if (Number.isNaN(dueAt.getTime())) {
       toast.error("请填写有效到期日");
       return;
@@ -999,12 +1119,12 @@ function ImportantItemDialog({
           basis: deadlineBasis.trim(),
           remindDays: deadlineRemindDays
         });
-        toast.success("重要时限已添加");
+        toast.success("期限已添加");
         onOpenChange(false);
         router.refresh();
       } catch (err) {
         toast.error("添加失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });
@@ -1035,7 +1155,7 @@ function ImportantItemDialog({
         router.refresh();
       } catch (err) {
         toast.error("添加失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });
@@ -1061,7 +1181,7 @@ function ImportantItemDialog({
         router.refresh();
       } catch (err) {
         toast.error("添加失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });
@@ -1083,16 +1203,16 @@ function ImportantItemDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[88vh] max-w-2xl flex-col gap-0 p-0">
         <DialogHeader className="border-b border-border px-6 py-4">
-          <DialogTitle>添加重要事项</DialogTitle>
+          <DialogTitle>{types.includes("express") && types.length === 1 ? "添加记录 · 快递" : "添加事项"}</DialogTitle>
           <DialogDescription className="text-xs">
-            在一个窗口内选择事项分类并填写信息
+            {types.includes("express") && types.length === 1 ? "填写快递单号与用途，物流状态由接口更新" : "选择分类后填写信息；开庭与期限同时进入日程与提醒"}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-hidden">
           <div className="border-b border-border px-6 py-3">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {(Object.keys(importantTypeMeta) as ImportantCategory[]).map((key) => {
+            <div className={cn("grid gap-2", types.length > 2 ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2")}>
+              {types.map((key) => {
                 const Icon = importantTypeMeta[key].icon;
                 return (
                   <button
@@ -1116,7 +1236,7 @@ function ImportantItemDialog({
 
           <div className="flex-1 space-y-3 overflow-y-auto px-6 py-5">
             {procedureMissing && (
-              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700">
+              <div className="rounded-md border border-[var(--amber-line)] bg-[var(--amber-bg)] px-3 py-2 text-xs text-[var(--amber)]">
                 请先添加案件程序后，再录入开庭安排、重要时限或其他备忘。
               </div>
             )}
@@ -1241,7 +1361,7 @@ function ImportantItemDialog({
                     onChange={setDeadlineProcedureId}
                   />
                 </ImportantField>
-                <ImportantField label="时限名称" required>
+                <ImportantField label="期限名称" required>
                   <Input
                     value={deadlineTitle}
                     onChange={(e) => setDeadlineTitle(e.target.value)}
@@ -1250,7 +1370,7 @@ function ImportantItemDialog({
                   />
                 </ImportantField>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <ImportantField label="时限类型">
+                  <ImportantField label="期限类型">
                     <Select
                       value={deadlineCategory}
                       onValueChange={(value) =>

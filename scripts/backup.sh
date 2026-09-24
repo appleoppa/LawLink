@@ -15,7 +15,9 @@ if [ -f .env ]; then
 fi
 
 DB_URL="${DATABASE_URL:-}"
-STORAGE_DIR="${STORAGE_PATH:-./storage}"
+# 2026-09-20 第六轮体检 P1-1：改读 APP_STORAGE_DIR（与应用和 compose 一致）。
+# 此前读 STORAGE_PATH——该变量在应用侧不存在，自定义存储目录时会静默打包空目录。
+STORAGE_DIR="${APP_STORAGE_DIR:-./storage}"
 
 if [ -z "$DB_URL" ]; then
   echo "错误: DATABASE_URL 未设置"
@@ -36,7 +38,7 @@ echo "数据库: ${DB_NAME}@${DB_HOST}:${DB_PORT}"
 echo "存储目录: ${STORAGE_DIR}"
 echo ""
 
-# 1. pg_dump
+# 1. pg_dump（设置了 BACKUP_PASSPHRASE 时产物整体加密，见第 4 步）
 echo "[1/3] 导出数据库..."
 PGPASSWORD="$DB_PASS" pg_dump \
   -h "$DB_HOST" \
@@ -59,18 +61,45 @@ fi
 
 # 3. 元信息
 echo "[3/3] 写入元信息..."
+ENCRYPTED="false"
+if [ -n "${BACKUP_PASSPHRASE:-}" ]; then
+  ENCRYPTED="true"
+fi
 cat > "${BACKUP_PATH}/manifest.json" << EOF
 {
   "timestamp": "${TIMESTAMP}",
   "date": "$(date -Iseconds)",
   "database": "${DB_NAME}",
   "storage_path": "${STORAGE_DIR}",
+  "encrypted": "${ENCRYPTED}",
   "files": [
     {"name": "database.dump", "type": "pg_dump custom compressed"},
     {"name": "storage.tar.gz", "type": "tar gzip"}
   ]
 }
 EOF
+
+# 4. 整包加密（可选但强烈建议）
+# 备份含密码哈希、AES-GCM 密文与恢复码哈希；与主密钥同机的明文备份等于
+# 全量解密。设置 BACKUP_PASSPHRASE（环境变量或 .env）即用 openssl 加密；
+# 恢复命令：openssl enc -d -aes-256-cbc -pbkdf2 -in <file>.enc -out <file>
+if [ -n "${BACKUP_PASSPHRASE:-}" ]; then
+  echo "[4/4] 加密备份产物..."
+  for f in database.dump storage.tar.gz; do
+    if [ -f "${BACKUP_PATH}/${f}" ]; then
+      openssl enc -aes-256-cbc -pbkdf2 -salt \
+        -in "${BACKUP_PATH}/${f}" \
+        -out "${BACKUP_PATH}/${f}.enc" \
+        -pass env:BACKUP_PASSPHRASE
+      rm "${BACKUP_PATH}/${f}"
+      echo "  已加密: ${f}.enc"
+    fi
+  done
+elif [ "${BACKUP_ALLOW_PLAINTEXT:-}" != "true" ]; then
+  echo ""
+  echo "警告: 未设置 BACKUP_PASSPHRASE，备份以明文保存（含凭据哈希与密文数据）。"
+  echo "警告: 设置 BACKUP_PASSPHRASE 可自动加密；确认接受明文请设 BACKUP_ALLOW_PLAINTEXT=true。"
+fi
 
 echo ""
 echo "=== 备份完成 ==="

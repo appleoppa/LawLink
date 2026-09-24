@@ -35,9 +35,25 @@ services:
       - "3000:3000"
     volumes:
       - app_storage:/app/storage
+      # 每日 02:30 自动备份的输出目录。命名卷默认在 Docker 管理区，
+      # 生产部署应改为绑定宿主机/异地路径（见 README「备份」），避免备份与数据同生共死。
+      - backups:/app/backups
     profiles:
       - full
+
+  # 本地开发用邮件收件箱（--profile dev 才启动，不影响默认部署）
+  # 2026-09-20 第六轮体检 P1-1：此前误写在顶级 volumes: 下，导致整个
+  # compose 文件无法解析、正式部署同样起不来；现归位为服务定义。
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: lawlink-mailpit
+    profiles: ["dev"]
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web 收件箱
+    restart: unless-stopped
 
 volumes:
   postgres_data:
   app_storage:
+  backups:

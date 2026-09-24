@@ -13,7 +13,9 @@ import { decryptBuffer, encryptBuffer, sha256 } from "@/lib/storage/crypto";
 import { buildContext, renderDocxBuffer, type RenderContext } from "@/lib/template-engine";
 import { suggestFolderByTemplateCategory } from "@/lib/default-folders";
 import { CLOSED_REASON_CN } from "./schemas";
+import { shParts, shDayKey } from "@/lib/ui/sh-time";
 import type { ArchiveClosedReason } from "@prisma/client";
+import { ActionError } from "@/lib/action-error";
 
 const CATEGORY_CN_DOC: Record<string, string> = {
   EVIDENCE: "证据",
@@ -26,9 +28,9 @@ const CATEGORY_CN_DOC: Record<string, string> = {
 
 function toCNDate(d: Date): string {
   const cnDigits = "〇一二三四五六七八九";
-  const y = String(d.getFullYear()).split("").map((c) => cnDigits[+c]).join("");
-  const m = d.getMonth() + 1;
-  const day = d.getDate();
+  // 入参为数据库瞬间，年月日按上海日历日取（容器为 UTC 时本地取日会差一天）
+  const { y: yNum, m, d: day } = shParts(d);
+  const y = String(yNum).split("").map((c) => cnDigits[+c]).join("");
   const cnNum = (n: number) => {
     if (n <= 10) return ["〇", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"][n];
     if (n < 20) return "十" + cnDigits[n - 10];
@@ -57,7 +59,7 @@ async function loadBuiltinTemplate(prisma: PrismaClient, key: "archive_cover" | 
     include: { docxBlob: true }
   });
   if (!tmpl || !tmpl.docxBlob) {
-    throw new Error(`内置模板 ${nameMap[key]} 缺失，请运行 npx prisma db seed`);
+    throw new ActionError(`内置模板 ${nameMap[key]} 缺失，请运行 npx prisma db seed`);
   }
   const raw = await storage.readFile(tmpl.docxBlob.path);
   const buffer = tmpl.docxBlob.encrypted
@@ -101,7 +103,7 @@ export async function renderArchiveCover(
     where: { id: opts.matterId },
     select: { internalCode: true, category: true }
   });
-  if (!matter) throw new Error("案件不存在");
+  if (!matter) throw new ActionError("案件不存在");
 
   const ctx: RenderContext = {
     ...baseCtx,
@@ -166,6 +168,7 @@ export async function renderArchiveCatalog(
     userId: string;
     extras: ArchiveExtras;
     excludeDocIds?: string[]; // 通常传入封皮 doc id
+    documentIds: string[];
   }
 ): Promise<string> {
   const { tmpl, templateBuffer } = await loadBuiltinTemplate(prisma, "archive_catalog");
@@ -175,25 +178,30 @@ export async function renderArchiveCatalog(
     where: { id: opts.matterId },
     select: { internalCode: true, category: true }
   });
-  if (!matter) throw new Error("案件不存在");
+  if (!matter) throw new ActionError("案件不存在");
 
-  const docs = await prisma.document.findMany({
+  const docsUnordered = await prisma.document.findMany({
     where: {
       matterId: opts.matterId,
       deletedAt: null,
+      id: { in: opts.documentIds },
       ...(opts.excludeDocIds && opts.excludeDocIds.length > 0
-        ? { id: { notIn: opts.excludeDocIds } }
+        ? { NOT: { id: { in: opts.excludeDocIds } } }
         : {})
     },
     select: { id: true, name: true, category: true, createdAt: true },
-    orderBy: { createdAt: "asc" }
+  });
+  const byId = new Map(docsUnordered.map((doc) => [doc.id, doc]));
+  const docs = opts.documentIds.flatMap((id) => {
+    const doc = byId.get(id);
+    return doc ? [doc] : [];
   });
 
   const entries: CatalogDocEntry[] = docs.map((d, i) => ({
     seq: i + 1,
     name: d.name,
     categoryCN: CATEGORY_CN_DOC[d.category] ?? d.category,
-    uploadDate: d.createdAt.toISOString().slice(0, 10),
+    uploadDate: shDayKey(d.createdAt),
     pages: "",
     remark: ""
   }));

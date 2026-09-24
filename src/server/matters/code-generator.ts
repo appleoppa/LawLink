@@ -1,27 +1,15 @@
-import { Prisma } from "@prisma/client";
 import type { MatterCategory } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
+import { nextSystemCounter } from "@/lib/system-counter";
 import { matterCategoryCode } from "@/lib/procedures-by-category";
 import { getFirmProfile, CATEGORY_ABBR } from "@/server/settings/firm-profile";
 import { renderCaseNoTemplate } from "@/lib/matters/firm-caseno";
+import { shParts } from "@/lib/ui/sh-time";
 
-/** SystemSetting 原子计数器：key 自增并返回新值（serializable 防并发冲突） */
-async function nextCounter(key: string): Promise<number> {
-  return prisma.$transaction(
-    async (tx) => {
-      const existing = await tx.systemSetting.findUnique({ where: { key } });
-      const current = (existing?.value as { value?: number })?.value ?? 0;
-      const incremented = current + 1;
-      await tx.systemSetting.upsert({
-        where: { key },
-        update: { value: { value: incremented } },
-        create: { key, value: { value: incremented } }
-      });
-      return incremented;
-    },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
-  );
+/** 2026-09-20 第五轮审计时区修复：编号年份按上海（元旦 0-8 点不再生成去年编号、落去年计数器） */
+function shYearNow(): number {
+  return shParts(new Date()).y;
 }
+
 
 /**
  * 原子生成 internalCode：{前缀}-{YYYY}-{CODE}-{4位流水}
@@ -29,11 +17,11 @@ async function nextCounter(key: string): Promise<number> {
  * 前缀可在「设置 → 律所信息」配置（默认 LL）。计数器 key 形如 `code-counter-2026-CC`。
  */
 export async function generateInternalCode(category: MatterCategory): Promise<string> {
-  const year = new Date().getFullYear();
+  const year = shYearNow();
   const code = matterCategoryCode[category];
   const { matterCodePrefix } = await getFirmProfile();
 
-  const next = await nextCounter(`code-counter-${year}-${code}`);
+  const next = await nextSystemCounter(`code-counter-${year}-${code}`);
   return `${matterCodePrefix}-${year}-${code}-${String(next).padStart(4, "0")}`;
 }
 
@@ -43,11 +31,11 @@ export async function generateInternalCode(category: MatterCategory): Promise<st
  * 模板为空时回退默认；与 internalCode 计数器互不干扰。
  */
 export async function generateFirmCaseNo(category: MatterCategory): Promise<string> {
-  const year = new Date().getFullYear();
+  const year = shYearNow();
   const code = matterCategoryCode[category];
   const profile = await getFirmProfile();
 
-  const seq = await nextCounter(`firm-caseno-${year}-${code}`);
+  const seq = await nextSystemCounter(`firm-caseno-${year}-${code}`);
   return renderCaseNoTemplate(profile.caseNoTemplate, {
     year,
     firmShortName: profile.firmShortName,

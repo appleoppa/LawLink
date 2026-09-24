@@ -9,6 +9,7 @@
 import { prisma } from "../src/lib/prisma";
 import { getFirmProfile, CATEGORY_ABBR } from "../src/server/settings/firm-profile";
 import { matterCategoryCode } from "../src/lib/procedures-by-category";
+import { shParts } from "../src/lib/ui/sh-time";
 import { renderCaseNoTemplate } from "../src/lib/matters/firm-caseno";
 
 async function main() {
@@ -28,7 +29,7 @@ async function main() {
   let updated = 0;
 
   for (const m of matters) {
-    const year = (m.intakeDate ?? m.createdAt).getFullYear();
+    const year = shParts(m.intakeDate ?? m.createdAt).y;
     const code = matterCategoryCode[m.category];
     const ckey = `${year}-${code}`;
     const seq = (counters.get(ckey) ?? 0) + 1;

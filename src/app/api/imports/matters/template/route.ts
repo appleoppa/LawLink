@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { isManager } from "@/lib/permissions";
 import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/lib/auth/options";
+import { isSystemAdmin } from "@/lib/auth/system-role";
 import { buildMatterImportTemplate } from "@/server/imports/template";
 
 export const runtime = "nodejs";
@@ -12,8 +14,7 @@ export async function GET() {
   if (!session?.user) {
     return NextResponse.json({ error: "未登录" }, { status: 401 });
   }
-  const role = session.user.role;
-  if (role !== "ADMIN" && role !== "PRINCIPAL_LAWYER") {
+  if (!isSystemAdmin(session.user) && !isManager(session.user)) {
     return NextResponse.json({ error: "无权访问" }, { status: 403 });
   }
 

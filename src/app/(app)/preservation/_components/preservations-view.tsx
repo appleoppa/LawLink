@@ -1,14 +1,10 @@
 "use client";
 
 import { useState, useMemo, useTransition } from "react";
-import {
-  Shield, Plus, Search, ChevronDown, ChevronRight,
-  Pencil, Trash2, UserPlus, Landmark
-} from "lucide-react";
+import { Shield, Search, ChevronDown, ChevronRight, Pencil, Trash2, UserPlus, Landmark } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { RadioChips } from "@/components/ui/radio-chips";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils";
 import { deletePreservationCase } from "@/server/preservations/actions-v2";
@@ -28,6 +24,9 @@ import {
   type MatterOption,
   type UserOption
 } from "./preservation-types";
+import { PageHeader, Segmented } from "@/components/patterns/moan";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { useTopbarAction } from "@/components/layout/topbar-action";
 
 const STATUS_FILTERS = [
   { value: "ALL", label: "全部" },
@@ -89,17 +88,11 @@ export function PreservationsView({
     return list;
   }, [items, statusFilter, search]);
 
+  useTopbarAction({ label: "新建保全", onClick: () => setCreateOpen(true) }, []);
+
   return (
     <div className="space-y-5">
-      <header>
-        <h1 className="flex items-center gap-2 text-xl">
-          <Shield className="h-5 w-5 text-primary" strokeWidth={1.8} />
-          财产保全
-        </h1>
-        <p className="mt-0.5 text-[12px] text-muted-foreground">
-          按被保全人及财产跟踪保全期限，到期前持续提醒
-        </p>
-      </header>
+      <PageHeader className="!mb-0" title="财产保全" sub="按被保全人及财产跟踪保全期限，到期前持续提醒" />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <KpiCard label="生效保全" value={activeCount} />
@@ -113,10 +106,7 @@ export function PreservationsView({
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="搜索被保全人 / 案件 / 法院" className="pl-8 text-xs" />
         </div>
-        <RadioChips items={STATUS_FILTERS} value={statusFilter} onChange={setStatusFilter} />
-        <Button size="sm" onClick={() => setCreateOpen(true)} className="ml-auto gap-1.5">
-          <Plus className="h-3.5 w-3.5" /> 新建保全
-        </Button>
+        <Segmented items={STATUS_FILTERS.map((f) => ({ key: f.value, label: f.label }))} value={statusFilter} onChange={setStatusFilter} />
       </div>
 
       {filtered.length === 0 ? (
@@ -139,9 +129,9 @@ export function PreservationsView({
 
 function KpiCard({ label, value, tone }: { label: string; value: string | number; tone?: "warn" | "danger" }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-3">
+    <div className="ll-surface p-3">
       <div className="text-[11px] text-muted-foreground">{label}</div>
-      <div className={cn("mt-1 text-lg font-semibold tabular", tone === "danger" && "text-destructive", tone === "warn" && "text-amber-500")}>{value}</div>
+      <div className={cn("mt-1 text-lg font-semibold tabular", tone === "danger" && "text-destructive", tone === "warn" && "text-[var(--amber)]")}>{value}</div>
     </div>
   );
 }
@@ -158,7 +148,7 @@ function CaseCard({ caseData: cs, expanded, onToggle, matters, users }: { caseDa
   const expiryInfo = worstExpiry !== null ? classifyExpiry(worstExpiry) : null;
 
   return (
-    <div className="rounded-xl border border-border bg-card">
+    <div className="ll-surface">
       <div className="flex items-center gap-3 px-4 py-3">
         <button type="button" onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-3 text-left">
           {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
@@ -167,7 +157,7 @@ function CaseCard({ caseData: cs, expanded, onToggle, matters, users }: { caseDa
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium truncate">{cs.matter ? cs.matter.title : "未关联案件"}</span>
               <span className="shrink-0 rounded border px-1.5 py-0.5 text-[10px] text-primary border-primary/30 bg-primary/5">{PRES_TYPE_CN[cs.type]}</span>
-              {expiryInfo && <span className={cn("shrink-0 text-[10px] font-medium", expiryInfo.tone === "danger" ? "text-destructive" : expiryInfo.tone === "warn" ? "text-amber-500" : "text-muted-foreground")}>{expiryInfo.label}</span>}
+              {expiryInfo && <span className={cn("shrink-0 text-[10px] font-medium", expiryInfo.tone === "danger" ? "text-destructive" : expiryInfo.tone === "warn" ? "text-[var(--amber)]" : "text-muted-foreground")}>{expiryInfo.label}</span>}
             </div>
             <div className="mt-0.5 text-[11px] text-muted-foreground">
               {cs.court && <span>{cs.court}</span>}{cs.rulingNumber && <span> · {cs.rulingNumber}</span>}{" · "}{cs.targets.length} 个被保全人 · {allProps.length} 项财产
@@ -176,7 +166,7 @@ function CaseCard({ caseData: cs, expanded, onToggle, matters, users }: { caseDa
         </button>
         <div className="flex shrink-0 items-center gap-1">
           <button type="button" onClick={() => setEditOpen(true)} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button>
-          <button type="button" onClick={() => { if (confirm("确认删除此保全案件及所有记录？")) { startTransition(async () => { try { await deletePreservationCase({ id: cs.id }); toast.success("已删除"); } catch { toast.error("删除失败"); } }); } }} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
+          <button type="button" onClick={async () => { if (await confirmDialog({ title: "删除此保全案件？", description: "将同时删除其下的被保全人、财产与续保记录。", confirmText: "删除", danger: true })) { startTransition(async () => { try { await deletePreservationCase({ id: cs.id }); toast.success("已删除"); } catch { toast.error("删除失败"); } }); } }} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
         </div>
       </div>
 
@@ -205,7 +195,7 @@ function CaseCard({ caseData: cs, expanded, onToggle, matters, users }: { caseDa
                         <span className="text-xs font-medium">{PROPERTY_TYPE_CN[prop.propertyType]}</span>
                         {prop.amount && <span className="text-[11px] text-muted-foreground">{formatCurrency(Number(prop.amount))}</span>}
                         {prop.propertyDetail && <span className="truncate text-[10px] text-muted-foreground">({prop.propertyDetail})</span>}
-                        <span className={cn("ml-auto shrink-0 text-[10px] font-medium", exp.tone === "danger" ? "text-destructive" : exp.tone === "warn" ? "text-amber-500" : "text-muted-foreground")}>{exp.label}</span>
+                        <span className={cn("ml-auto shrink-0 text-[10px] font-medium", exp.tone === "danger" ? "text-destructive" : exp.tone === "warn" ? "text-[var(--amber)]" : "text-muted-foreground")}>{exp.label}</span>
                         <span className="shrink-0 rounded border px-1.5 py-0 text-[9px]" style={{ borderColor: sc.border, color: sc.text, backgroundColor: sc.bg }}>{PRES_STATUS_CN[prop.status]}</span>
                         {(prop.status === "ACTIVE" || prop.status === "RENEWED") && (
                           <>

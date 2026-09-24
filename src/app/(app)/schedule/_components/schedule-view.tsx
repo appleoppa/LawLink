@@ -2,18 +2,10 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import {
-  Calendar,
-  ChevronLeft,
-  ChevronRight,
-  ClipboardList,
-  Clock,
-  Gavel,
-  AlertTriangle,
-  List,
-  Plus,
-  Grid3X3
-} from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { AlertTriangle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, Clock3, Gavel, Plus } from "lucide-react";
+import { PageHeader, RiskLadder, Segmented } from "@/components/patterns/moan";
+import { useTopbarAction } from "@/components/layout/topbar-action";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -23,20 +15,32 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
-import { cn, daysUntil } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import type { ScheduleItem } from "@/server/schedule/query";
-import { procedureTypeLabel } from "@/lib/enums";
+import { deadlineCategoryLabel, procedureTypeLabel } from "@/lib/enums";
+import { CalendarSubscriptionDialog } from "./calendar-subscription-dialog";
 import { AddTaskDialog } from "./add-task-dialog";
 import { matterHref } from "@/lib/matters/route";
+import { SH_TZ, civilFromKey, civilKey, shDayKey, shDaysFromToday, shParts, shTime, shTodayCivil } from "@/lib/ui/sh-time";
 
-const typeMeta = {
-  hearing: { icon: Gavel, label: "开庭", color: "#5B8DEF" },
-  deadline: { icon: AlertTriangle, label: "期限", color: "#FBBF24" },
-  task: { icon: ClipboardList, label: "事项", color: "#4FD1C5" }
+/* 墨案 09：事件配色——开庭蓝、法定期限红、所内提醒琥珀、任务 teal */
+const TYPE_META = {
+  hearing: { icon: Gavel, label: "开庭", color: "#1E56C8" },
+  deadline: { icon: AlertTriangle, label: "期限", color: "#B42318" },
+  task: { icon: ClipboardList, label: "任务", color: "#007B7F" }
 } as const;
+const typeMeta = TYPE_META;
 
-const WEEKDAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"];
-const VISIBLE_ITEMS_PER_DAY = 4;
+/** 法定期限（红）与所内提醒（琥珀，自定义期限）分开着色 */
+function evClass(item: ScheduleItem) {
+  if (item.type === "hearing") return "ev-court";
+  if (item.type === "task") return "ev-task";
+  return item.category && item.category !== "CUSTOM" ? "ev-dead-red" : "ev-dead-amber";
+}
+
+const WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+const VISIBLE_ITEMS_PER_DAY = 2;
+type View = "week" | "calendar" | "list";
 
 export function ScheduleView({
   items,
@@ -45,523 +49,389 @@ export function ScheduleView({
   items: ScheduleItem[];
   matters: { id: string; internalCode: string; title: string }[];
 }) {
-  const [view, setView] = useState<"list" | "calendar">("calendar");
+  const params = useSearchParams();
+  const [view, setView] = useState<View>(params.get("view") === "list" ? "list" : params.get("view") === "week" ? "week" : "calendar");
   const [monthOffset, setMonthOffset] = useState(0);
-
+  const [weekOffset, setWeekOffset] = useState(0);
   const [detailItem, setDetailItem] = useState<ScheduleItem | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [addDate, setAddDate] = useState<Date | null>(null);
 
-  const itemsWithDate = useMemo(
-    () =>
-      items.map((it) => ({
-        ...it,
-        dateKey: dateKey(new Date(it.occurredAt))
-      })),
-    [items]
-  );
+  const itemsWithDate = useMemo(() => items.map((it) => ({ ...it, dateKey: shDayKey(it.occurredAt) })), [items]);
+  const itemsByKey = useMemo(() => {
+    const map = new Map<string, (ScheduleItem & { dateKey: string })[]>();
+    for (const it of itemsWithDate) {
+      if (!map.has(it.dateKey)) map.set(it.dateKey, []);
+      map.get(it.dateKey)!.push(it);
+    }
+    for (const list of map.values()) list.sort((x, y) => new Date(x.occurredAt).getTime() - new Date(y.occurredAt).getTime());
+    return map;
+  }, [itemsWithDate]);
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const weekEnd = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const today = shTodayCivil();
 
   function openAddDialog(date?: Date | null) {
     setAddDate(date ?? today);
     setAddOpen(true);
   }
 
-  const stats = useMemo(() => {
-    const todayCount = itemsWithDate.filter(
-      (it) => it.dateKey === dateKey(today)
-    ).length;
-    const weekCount = itemsWithDate.filter((it) => {
-      const d = new Date(it.occurredAt);
-      return d >= today && d < weekEnd;
-    }).length;
-    const hearingCount = items.filter((it) => it.type === "hearing").length;
-    const deadlineCount = items.filter((it) => it.type === "deadline").length;
-    return { todayCount, weekCount, hearingCount, deadlineCount };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemsWithDate]);
+  // 点击时现取「今天」：useTopbarAction 只在挂载时注册一次，闭包里的 today 跨天后是旧值
+  useTopbarAction({ label: "新建任务", onClick: () => openAddDialog(shTodayCivil()) }, []);
 
   return (
-    <div className="space-y-4">
-      <header className="ll-page-head">
-        <div>
-          <h1 className="ll-page-title">日程</h1>
-          <p className="ll-page-sub">未来 90 天的开庭、期限与待办事项</p>
+    <div className="mo-schedule">
+      <PageHeader
+        title="日程"
+        sub="开庭、法定期限、所内提醒与任务统一呈现 · 红色只用于逾期与法定期限"
+        actions={
+          <>
+            <CalendarSubscriptionDialog />
+            <Segmented
+              items={[
+                { key: "week", label: "周" },
+                { key: "calendar", label: "月历" },
+                { key: "list", label: "列表" }
+              ]}
+              value={view}
+              onChange={setView}
+            />
+          </>
+        }
+      />
+
+      <div className="cal-grid">
+        <div className="min-w-0">
+          {view === "calendar" ? (
+            <CalendarView itemsByKey={itemsByKey} monthOffset={monthOffset} onOffsetChange={setMonthOffset} onSelectItem={setDetailItem} onAddDay={openAddDialog} />
+          ) : view === "week" ? (
+            <WeekView itemsByKey={itemsByKey} weekOffset={weekOffset} onOffsetChange={setWeekOffset} onSelectItem={setDetailItem} onAddDay={openAddDialog} />
+          ) : (
+            <ListView items={itemsWithDate} today={today} onSelectItem={setDetailItem} />
+          )}
         </div>
-
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button size="sm" onClick={() => openAddDialog()} className="h-8 gap-1.5">
-              <Plus className="h-3.5 w-3.5" strokeWidth={1.8} />
-              添加日程
-            </Button>
-            <div
-              className="ll-segmented"
-            >
-              <button
-                type="button"
-                onClick={() => setView("list")}
-                className={cn("ll-seg", view === "list" && "ll-seg-active text-primary")}
-              >
-                <List className="h-3.5 w-3.5" strokeWidth={1.8} />
-                列表
-              </button>
-              <button
-                type="button"
-                onClick={() => setView("calendar")}
-                className={cn("ll-seg", view === "calendar" && "ll-seg-active text-primary")}
-              >
-                <Grid3X3 className="h-3.5 w-3.5" strokeWidth={1.8} />
-                月历
-              </button>
-            </div>
-          </div>
-      </header>
-
-      {/* KPI */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="今日" value={stats.todayCount} color="hsl(var(--primary))" icon={<Clock className="h-3.5 w-3.5" />} />
-        <Stat label="本周" value={stats.weekCount} color="#4FD1C5" icon={<Calendar className="h-3.5 w-3.5" />} />
-        <Stat label="开庭" value={stats.hearingCount} color="hsl(var(--primary))" icon={<Gavel className="h-3.5 w-3.5" />} />
-        <Stat label="期限" value={stats.deadlineCount} color="#EA580C" icon={<AlertTriangle className="h-3.5 w-3.5" />} />
+        <ScheduleSideRail items={itemsWithDate} itemsByKey={itemsByKey} onSelectItem={setDetailItem} onSwitchToList={() => setView("list")} />
       </div>
 
-      {view === "list" ? (
-        <ListView items={itemsWithDate} today={today} />
-      ) : (
-        <CalendarView
-          items={itemsWithDate}
-          monthOffset={monthOffset}
-          onOffsetChange={setMonthOffset}
-          onSelectItem={setDetailItem}
-          onAddDay={openAddDialog}
-        />
-      )}
       <ScheduleItemDialog item={detailItem} onOpenChange={(open) => !open && setDetailItem(null)} />
-      <AddTaskDialog
-        open={addOpen}
-        onOpenChange={setAddOpen}
-        date={addDate}
-        matters={matters}
-      />
+      <AddTaskDialog open={addOpen} onOpenChange={setAddOpen} date={addDate} matters={matters} />
     </div>
   );
 }
 
-function ListView({
-  items,
-  today
+function Legend() {
+  const dot = (bg: string, label: string) => (
+    <span className="t-xs t-mute" style={{ display: "flex", alignItems: "center", gap: 5 }}>
+      <span className="dot" style={{ width: 8, height: 8, background: bg }} />
+      {label}
+    </span>
+  );
+  return (
+    <div className="hidden flex-wrap gap-3 md:flex">
+      {dot("var(--blue)", "开庭")}
+      {dot("var(--red)", "法定期限")}
+      {dot("var(--amber)", "所内提醒")}
+      {dot("var(--teal)", "任务")}
+    </div>
+  );
+}
+
+function EventChip({ item, onSelect }: { item: ScheduleItem; onSelect: (item: ScheduleItem) => void }) {
+  const hasTime = shTime(item.occurredAt) !== "00:00";
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect(item);
+      }}
+      title={`${typeMeta[item.type].label}：${hasTime ? `${formatTime(item.occurredAt)} ` : ""}${item.title} · ${displaySubject(item)}`}
+      className={cn("ev w-full border-0 text-left font-[inherit]", evClass(item), item.completed && "line-through opacity-50")}
+    >
+      <span className="t">{hasTime ? formatTime(item.occurredAt) : "—"}</span>
+      <span className="min-w-0 truncate">{item.type === "hearing" && !/^(开庭|庭审|询问)/.test(item.title) ? `开庭·${item.title}` : item.title}</span>
+    </button>
+  );
+}
+
+function CalendarView({
+  itemsByKey,
+  monthOffset,
+  onOffsetChange,
+  onSelectItem,
+  onAddDay
 }: {
-  items: (ScheduleItem & { dateKey: string })[];
-  today: Date;
+  itemsByKey: Map<string, (ScheduleItem & { dateKey: string })[]>;
+  monthOffset: number;
+  onOffsetChange: (n: number) => void;
+  onSelectItem: (item: ScheduleItem) => void;
+  onAddDay: (date: Date) => void;
 }) {
-  // 按日分组
+  const now = shTodayCivil();
+  const cursor = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1, 12);
+  const year = cursor.getFullYear();
+  const month = cursor.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7;
+  const cells: { date: Date; key: string; out: boolean }[] = [];
+  const prevMonthDays = new Date(year, month, 0).getDate();
+  for (let i = firstWeekday - 1; i >= 0; i--) {
+    const d = new Date(year, month - 1, prevMonthDays - i, 12);
+    cells.push({ date: d, key: civilKey(d), out: true });
+  }
+  for (let day = 1; day <= daysInMonth; day++) {
+    const d = new Date(year, month, day, 12);
+    cells.push({ date: d, key: civilKey(d), out: false });
+  }
+  let nextDay = 1;
+  while (cells.length % 7 !== 0) {
+    const d = new Date(year, month + 1, nextDay++, 12);
+    cells.push({ date: d, key: civilKey(d), out: true });
+  }
+  const todayKey = shDayKey(new Date());
+
+  return (
+    <div className="card" style={{ overflow: "hidden" }}>
+      <div className="panel-head">
+        <div className="cal-head">
+          <span className="cal-month">{year} 年 {month + 1} 月</span>
+          <div className="cal-nav">
+            <button type="button" onClick={() => onOffsetChange(monthOffset - 1)} aria-label="上一月"><ChevronLeft className="h-3.5 w-3.5" /></button>
+            <button type="button" onClick={() => onOffsetChange(0)} style={{ width: "auto", padding: "0 10px", fontSize: 12 }}>今天</button>
+            <button type="button" onClick={() => onOffsetChange(monthOffset + 1)} aria-label="下一月"><ChevronRight className="h-3.5 w-3.5" /></button>
+          </div>
+        </div>
+        <Legend />
+      </div>
+      <div className="dow">{WEEKDAYS.map((w) => <div key={w}>{w}</div>)}</div>
+      <div className="cells">
+        {cells.map((cell) => {
+          const dayItems = itemsByKey.get(cell.key) ?? [];
+          const isToday = cell.key === todayKey;
+          return (
+            <div key={cell.key} className={cn("cell group relative", cell.out && "out", isToday && "today")}>
+              <div className="flex items-center justify-between">
+                <span className="d">{cell.out ? `${cell.date.getMonth() + 1}-${cell.date.getDate()}` : cell.date.getDate()}</span>
+                <button
+                  type="button"
+                  onClick={() => onAddDay(cell.date)}
+                  className="flex h-[18px] w-[18px] items-center justify-center rounded text-[var(--t-faint)] opacity-0 transition-opacity hover:bg-[var(--bg-sunken)] hover:text-[var(--teal-deep)] focus:opacity-100 group-hover:opacity-100"
+                  aria-label={`添加 ${cell.date.getMonth() + 1} 月 ${cell.date.getDate()} 日的任务`}
+                >
+                  <Plus className="h-3 w-3" />
+                </button>
+              </div>
+              {dayItems.slice(0, VISIBLE_ITEMS_PER_DAY).map((it) => <EventChip key={it.id} item={it} onSelect={onSelectItem} />)}
+              {dayItems.length > VISIBLE_ITEMS_PER_DAY ? (
+                <button type="button" className="more border-0 bg-transparent p-0 font-[inherit]" onClick={() => onSelectItem(dayItems[VISIBLE_ITEMS_PER_DAY])}>+{dayItems.length - VISIBLE_ITEMS_PER_DAY} 隐藏</button>
+              ) : null}
+              {isToday && dayItems.length === 0 ? <div className="more">今天 · 无日程</div> : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function WeekView({
+  itemsByKey,
+  weekOffset,
+  onOffsetChange,
+  onSelectItem,
+  onAddDay
+}: {
+  itemsByKey: Map<string, (ScheduleItem & { dateKey: string })[]>;
+  weekOffset: number;
+  onOffsetChange: (n: number) => void;
+  onSelectItem: (item: ScheduleItem) => void;
+  onAddDay: (date: Date) => void;
+}) {
+  const base = shTodayCivil();
+  const monday = new Date(base);
+  monday.setDate(base.getDate() - ((base.getDay() + 6) % 7) + weekOffset * 7);
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return d;
+  });
+  const todayKey = shDayKey(new Date());
+  const sunday = days[6];
+  return (
+    <div className="card" style={{ overflow: "hidden" }}>
+      <div className="panel-head">
+        <div className="cal-head">
+          <span className="cal-month">{monday.getMonth() + 1} 月 {monday.getDate()} 日 – {sunday.getMonth() + 1} 月 {sunday.getDate()} 日</span>
+          <div className="cal-nav">
+            <button type="button" onClick={() => onOffsetChange(weekOffset - 1)} aria-label="上一周"><ChevronLeft className="h-3.5 w-3.5" /></button>
+            <button type="button" onClick={() => onOffsetChange(0)} style={{ width: "auto", padding: "0 10px", fontSize: 12 }}>本周</button>
+            <button type="button" onClick={() => onOffsetChange(weekOffset + 1)} aria-label="下一周"><ChevronRight className="h-3.5 w-3.5" /></button>
+          </div>
+        </div>
+        <Legend />
+      </div>
+      <div className="dow">
+        {days.map((d, i) => (
+          <div key={i} style={civilKey(d) === todayKey ? { color: "var(--teal-deep)" } : undefined}>
+            {WEEKDAYS[i]} <span className="font-mono">{d.getDate()}</span>
+          </div>
+        ))}
+      </div>
+      <div className="cells">
+        {days.map((d) => {
+          const key = civilKey(d);
+          const dayItems = itemsByKey.get(key) ?? [];
+          return (
+            <div key={key} className={cn("cell group", key === todayKey && "today")} style={{ minHeight: 420 }}>
+              <button type="button" onClick={() => onAddDay(d)} className="more w-full border-0 bg-transparent p-0 text-left font-[inherit] opacity-0 group-hover:opacity-100">+ 添加任务</button>
+              {dayItems.length === 0 ? <div className="more">无日程</div> : dayItems.map((it) => <EventChip key={it.id} item={it} onSelect={onSelectItem} />)}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ListView({ items, today, onSelectItem }: { items: (ScheduleItem & { dateKey: string })[]; today: Date; onSelectItem: (item: ScheduleItem) => void }) {
   const groups = useMemo(() => {
     const map = new Map<string, (ScheduleItem & { dateKey: string })[]>();
-    for (const it of items) {
+    for (const it of items.filter((x) => civilFromKey(x.dateKey).getTime() >= today.getTime() - 7 * 86_400_000)) {
       if (!map.has(it.dateKey)) map.set(it.dateKey, []);
       map.get(it.dateKey)!.push(it);
     }
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
-  }, [items]);
+  }, [items, today]);
 
-  if (items.length === 0) {
-    return (
-      <div className="ll-surface border-dashed py-16 text-center">
-        <p className="text-sm text-muted-foreground">未来 90 天没有日程</p>
-      </div>
-    );
+  if (groups.length === 0) {
+    return <div className="card"><div className="empty"><div className="mo-empty-title">近期没有日程</div><div className="mo-empty-desc">开庭、期限与任务登记后会按日期出现在这里。</div></div></div>;
   }
-
   return (
-    <div className="space-y-4">
+    <div className="card" style={{ overflow: "hidden" }}>
       {groups.map(([key, group]) => {
-        const d = new Date(key);
-        const isToday = key === dateKey(today);
-        const days = daysUntil(d);
+        const d = civilFromKey(key);
+        const days = Math.round((d.getTime() - today.getTime()) / 86_400_000);
         return (
-          <section
-            key={key}
-            className="ll-surface overflow-hidden"
-          >
-            <header
-              className={cn(
-                "ll-panel-head",
-                isToday && "bg-accent"
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <span className={cn("text-base font-semibold", isToday && "text-primary")}>
-                  {d.toLocaleDateString("zh-CN", { month: "long", day: "numeric" })}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {d.toLocaleDateString("zh-CN", { weekday: "long" })}
-                </span>
-                {isToday ? (
-                  <Badge className="bg-primary text-primary-foreground text-[10px]">今天</Badge>
-                ) : (
-                  <span className="text-xs text-muted-foreground">
-                    {days === 1 ? "明天" : days > 0 ? `${days} 天后` : `${-days} 天前`}
-                  </span>
-                )}
-              </div>
-              <span className="font-mono text-xs tabular text-muted-foreground">
-                {group.length} 项
-              </span>
-            </header>
-            <ul className="divide-y divide-border">
-              {group.map((it) => (
-                <Row key={it.id} item={it} />
-              ))}
-            </ul>
-          </section>
+          <div key={key}>
+            <div className="flex items-center gap-2 border-b border-[var(--bd-hair)] bg-[#FAFBFA] px-3.5 py-2">
+              <span className={cn("text-[12.5px] font-[650]", days === 0 && "text-[var(--teal-deep)]")}>{d.getMonth() + 1}月{d.getDate()}日</span>
+              <span className="t-xs t-mute">{WEEKDAYS[(d.getDay() + 6) % 7]}</span>
+              <span className={cn("t-xs ml-auto", days < 0 ? "t-red" : "t-mute")}>{days === 0 ? "今天" : days === 1 ? "明天" : days > 0 ? `${days} 天后` : `${-days} 天前`}</span>
+            </div>
+            {group.map((it) => <SideItem key={it.id} item={it} onSelectItem={onSelectItem} lead={formatTime(it.occurredAt)} />)}
+          </div>
         );
       })}
     </div>
   );
 }
 
-function Row({ item }: { item: ScheduleItem }) {
-  const meta = typeMeta[item.type];
-  const Icon = meta.icon;
-  const time = formatTime(item.occurredAt);
-  const subject = displaySubject(item);
-
+function SideItem({ item, onSelectItem, lead }: { item: ScheduleItem; onSelectItem: (item: ScheduleItem) => void; lead: string }) {
+  const overdue = item.type === "deadline" && !item.completed && new Date(item.occurredAt).getTime() < Date.now();
   return (
-    <li className="px-5 py-3 transition-colors hover:bg-popover">
-      <Link href={matterHref(item.matter)} className="flex items-start gap-3">
-        <span className="w-12 shrink-0 font-mono text-sm tabular text-muted-foreground">
-          {time}
+    <button type="button" onClick={() => onSelectItem(item)} className="today-item w-full border-0 bg-transparent text-left font-[inherit]">
+      <span className={cn("w-12 shrink-0 font-mono text-[12px]", overdue ? "t-red" : "t-mute")}>{lead}</span>
+      <span className="min-w-0 flex-1">
+        <span className={cn("tt block truncate", item.completed && "line-through opacity-60")}>
+          {item.type === "hearing" && !/^(开庭|庭审|询问)/.test(item.title) ? `开庭 · ${item.title}` : item.title}
+          {item.type === "deadline" && item.category && item.category !== "CUSTOM" ? "（法定）" : ""}
         </span>
-        <Icon className="mt-0.5 h-4 w-4 shrink-0" style={{ color: meta.color }} />
-        <div className="flex-1 overflow-hidden">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium">{item.title}</span>
-            <Badge variant="outline" className="text-[9px]" style={{ borderColor: `${meta.color}50`, color: meta.color }}>
-              {meta.label}
-            </Badge>
-          </div>
-          <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
-            <span className={cn(item.clientName ? "" : "font-mono")}>{subject}</span>
-            {item.procedureLabel && (
-              <>
-                <span>·</span>
-                <span>
-                  {procedureTypeLabel[item.procedureLabel as keyof typeof procedureTypeLabel] ??
-                    item.procedureLabel}
-                </span>
-              </>
-            )}
-          </div>
-        </div>
-      </Link>
-    </li>
-  );
-}
-
-function CalendarCellItem({
-  item,
-  onSelect
-}: {
-  item: ScheduleItem;
-  onSelect: (item: ScheduleItem) => void;
-}) {
-  const meta = typeMeta[item.type];
-  const color = meta.color;
-  const subject = displaySubject(item);
-
-  return (
-    <button
-      type="button"
-      onClick={(event) => {
-        event.stopPropagation();
-        onSelect(item);
-      }}
-      title={`${meta.label}：${formatTime(item.occurredAt)} ${item.title} · ${subject}`}
-      className={cn(
-        "flex min-w-0 items-center gap-1 rounded-sm border px-1 py-0.5 text-left text-[10px] leading-4 transition-colors hover:border-current",
-        item.completed && "line-through opacity-50"
-      )}
-      style={{ backgroundColor: `${color}16`, borderColor: `${color}45` }}
-    >
-      <span
-        className="shrink-0 rounded-[3px] px-1 text-[9px] font-medium"
-        style={{ backgroundColor: `${color}22`, color }}
-      >
-        {meta.label}
-      </span>
-      <span className="shrink-0 font-mono text-[9.5px] tabular" style={{ color }}>
-        {formatTime(item.occurredAt)}
-      </span>
-      <span className="min-w-0 flex-1 truncate text-foreground/85">
-        {item.title}
-        {subject ? <span className="text-muted-foreground"> · {subject}</span> : null}
+        <span className="tm block truncate">
+          {[lead === formatTime(item.occurredAt) ? null : formatTime(item.occurredAt), displaySubject(item), item.procedureLabel ? formatProcedureLabel(item.procedureLabel) : null].filter(Boolean).join(" · ")}
+        </span>
       </span>
     </button>
   );
 }
 
-function CalendarView({
+function ScheduleSideRail({
   items,
-  monthOffset,
-  onOffsetChange,
+  itemsByKey,
   onSelectItem,
-  onAddDay
+  onSwitchToList
 }: {
   items: (ScheduleItem & { dateKey: string })[];
-  monthOffset: number;
-  onOffsetChange: (n: number) => void;
+  itemsByKey: Map<string, (ScheduleItem & { dateKey: string })[]>;
   onSelectItem: (item: ScheduleItem) => void;
-  onAddDay: (date: Date) => void;
+  onSwitchToList: () => void;
 }) {
-  const now = new Date();
-  const cursor = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
-  const year = cursor.getFullYear();
-  const month = cursor.getMonth();
-
-  // 一个月有多少天
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  // 当月第一天是周几（周一=1 ... 周日=7，转化为 0-6 让"周一在最左"）
-  const firstWeekday = ((new Date(year, month, 1).getDay() + 6) % 7); // 0=周一
-
-  const cells: { date: Date | null; key: string | null }[] = [];
-  for (let i = 0; i < firstWeekday; i++) cells.push({ date: null, key: null });
-  for (let day = 1; day <= daysInMonth; day++) {
-    const d = new Date(year, month, day);
-    cells.push({ date: d, key: dateKey(d) });
-  }
-  // 补齐到 6 行 = 42 格
-  while (cells.length < 42) cells.push({ date: null, key: null });
-
-  // 按 key 聚合 items
-  const itemsByKey = useMemo(() => {
-    const map = new Map<string, (ScheduleItem & { dateKey: string })[]>();
-    for (const it of items) {
-      if (!map.has(it.dateKey)) map.set(it.dateKey, []);
-      map.get(it.dateKey)!.push(it);
-    }
-    return map;
-  }, [items]);
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayKey = dateKey(today);
-
-  const todayItems = [...(itemsByKey.get(todayKey) ?? [])].sort(
-    (a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime()
-  );
-  const upcomingDeadlines = items
-    .filter((item) => item.type === "deadline" && new Date(item.occurredAt) >= today)
-    .sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime())
-    .slice(0, 6);
+  const nowMs = Date.now();
+  const dayMs = 86_400_000;
+  const dayDiff = (d: Date) => shDaysFromToday(d);
+  const open = items.filter((it) => (it.type === "deadline" || it.type === "task") && !it.completed);
+  const buckets = [
+    { label: "已逾期", test: (t: number) => t < 0, tone: "red" as const, level: 4 },
+    { label: "3 日内到期", test: (t: number) => t >= 0 && t <= 3, tone: "red" as const, level: 3 },
+    { label: "7 日内到期", test: (t: number) => t > 3 && t <= 7, tone: "amber" as const, level: 3 },
+    { label: "30 日内到期", test: (t: number) => t > 7 && t <= 30, tone: "blue" as const, level: 2 }
+  ].map((b) => ({ ...b, list: open.filter((it) => b.test(dayDiff(it.occurredAt))) }));
+  const todayKey = shDayKey(new Date());
+  const todayItems = itemsByKey.get(todayKey) ?? [];
+  const tomorrowFirst = itemsByKey.get(shDayKey(nowMs + dayMs))?.[0];
+  const upcoming = items.filter((it) => shDaysFromToday(it.occurredAt) >= 1 && !it.completed).sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime()).slice(0, 5);
+  const todayTitle = new Date().toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "short", timeZone: SH_TZ });
 
   return (
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
-      <section className="ll-surface p-4">
-        <header className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onOffsetChange(monthOffset - 1)}
-              className="h-7 w-7 p-0"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="text-base font-semibold tabular">
-              {year} 年 {month + 1} 月
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onOffsetChange(monthOffset + 1)}
-              className="h-7 w-7 p-0"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+    <aside style={{ display: "flex", flexDirection: "column", gap: 14 }} className="min-w-0 xl:sticky xl:top-[68px]">
+      <div className="card">
+        <div className="panel-head">
+          <div className="panel-title" style={{ fontSize: 13 }}>
+            <Clock3 className="ic" strokeWidth={1.8} />
+            今日 · {todayTitle}
           </div>
-          {monthOffset !== 0 && (
-            <Button variant="outline" size="sm" onClick={() => onOffsetChange(0)} className="h-7 text-xs">
-              回到本月
-            </Button>
-          )}
-        </header>
-
-      <div className="grid grid-cols-7 gap-1.5">
-        {WEEKDAY_LABELS.map((w) => (
-          <div
-            key={w}
-            className="py-1.5 text-center text-[10px] uppercase tracking-wider text-muted-foreground"
-          >
-            {w}
-          </div>
-        ))}
-        {cells.map((cell, idx) => {
-          if (!cell.date || !cell.key) {
-            return (
-              <div
-                key={idx}
-                className="min-h-[8rem] rounded-md border border-transparent sm:min-h-[9rem]"
-              />
-            );
-          }
-          const dayItems = itemsByKey.get(cell.key) ?? [];
-          const visibleItems = dayItems.slice(0, VISIBLE_ITEMS_PER_DAY);
-          const isToday = cell.key === todayKey;
-
-          return (
-            <div
-              key={idx}
-              className={cn(
-                "group flex min-h-[8rem] flex-col rounded-md border p-1.5 text-left transition-colors sm:min-h-[9rem]",
-                "border-border bg-card hover:border-input hover:bg-muted/35",
-                isToday && "border-primary/40"
-              )}
-            >
-              <div className="flex items-center justify-between gap-1">
-                <span
-                  className={cn(
-                    "font-mono text-xs tabular",
-                    isToday ? "font-semibold text-primary" : "text-foreground/80"
-                  )}
-                >
-                  {cell.date.getDate()}
-                </span>
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onAddDay(cell.date!);
-                  }}
-                  className="h-5 w-5 rounded-sm p-0 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-primary group-hover:opacity-100 group-focus-within:opacity-100"
-                  aria-label={`添加 ${month + 1} 月 ${cell.date.getDate()} 日的日程`}
-                  title="添加日程"
-                >
-                  <Plus className="mx-auto h-3 w-3" />
-                </button>
-              </div>
-              <div className="mt-1 flex min-h-0 flex-1 flex-col gap-1 overflow-hidden">
-                {visibleItems.map((it) => (
-                  <CalendarCellItem key={it.id} item={it} onSelect={onSelectItem} />
-                ))}
-                {dayItems.length > VISIBLE_ITEMS_PER_DAY && (
-                  <span className="px-1 text-[10px] font-medium text-muted-foreground">
-                    +{dayItems.length - VISIBLE_ITEMS_PER_DAY}
-                  </span>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      </section>
-      <ScheduleSideRail
-        todayItems={todayItems}
-        upcomingDeadlines={upcomingDeadlines}
-        onSelectItem={onSelectItem}
-      />
-    </div>
-  );
-}
-
-function ScheduleSideRail({
-  todayItems,
-  upcomingDeadlines,
-  onSelectItem
-}: {
-  todayItems: (ScheduleItem & { dateKey: string })[];
-  upcomingDeadlines: (ScheduleItem & { dateKey: string })[];
-  onSelectItem: (item: ScheduleItem) => void;
-}) {
-  return (
-    <aside className="space-y-4 xl:sticky xl:top-16">
-      <section className="ll-surface overflow-hidden">
-        <header className="ll-panel-head">
-          <h3 className="ll-panel-title">
-            <span className="h-2 w-2 rounded-full bg-primary" />
-            今天
-          </h3>
-          <span className="font-mono text-xs text-muted-foreground tabular">
-            {todayItems.length} 项
-          </span>
-        </header>
+          {todayItems.length ? <span className="mo-count">{todayItems.length}</span> : null}
+        </div>
         {todayItems.length === 0 ? (
-          <p className="px-4 py-8 text-center text-xs text-muted-foreground">今天没有日程</p>
+          <div style={{ padding: "8px 14px 12px" }}>
+            <div className="empty" style={{ padding: "16px 10px" }}>
+              <div className="empty-ic"><CheckCircle2 /></div>
+              <div style={{ fontSize: 12.5, color: "var(--t-muted)" }}>今天没有安排</div>
+              {tomorrowFirst ? <div className="t-xs t-faint" style={{ marginTop: 3 }}>明天 {formatTime(tomorrowFirst.occurredAt)} {tomorrowFirst.title}</div> : null}
+            </div>
+          </div>
         ) : (
-          <ul className="divide-y divide-border px-4">
-            {todayItems.map((item) => (
-              <ScheduleSideItem key={item.id} item={item} onSelectItem={onSelectItem} showDate={false} />
-            ))}
-          </ul>
+          todayItems.map((it) => <SideItem key={it.id} item={it} onSelectItem={onSelectItem} lead={formatTime(it.occurredAt)} />)
         )}
-      </section>
+      </div>
 
-      <section className="ll-surface overflow-hidden">
-        <header className="ll-panel-head">
-          <h3 className="ll-panel-title">
-            <span className="h-2 w-2 rounded-full bg-red-500" />
-            即将到期
-          </h3>
-          <span className="font-mono text-xs text-muted-foreground tabular">
-            {upcomingDeadlines.length} 项
-          </span>
-        </header>
-        {upcomingDeadlines.length === 0 ? (
-          <p className="px-4 py-8 text-center text-xs text-muted-foreground">暂无近期到期事项</p>
+      <div className="card">
+        <div className="panel-head">
+          <div className="panel-title" style={{ fontSize: 13 }}>
+            <AlertTriangle className="ic" strokeWidth={1.8} />
+            期限预警阶梯
+          </div>
+          <span className="t-xs t-mute">未来 30 天</span>
+        </div>
+        {buckets.map((b) => (
+          <button key={b.label} type="button" disabled={!b.list.length} onClick={() => b.list[0] && onSelectItem(b.list[0])} className="warn-row w-full border-0 bg-transparent text-left font-[inherit] disabled:cursor-default">
+            <span className="warn-count" style={{ color: b.list.length ? (b.tone === "red" ? "var(--red)" : b.tone === "amber" ? "var(--amber)" : "var(--t-secondary)") : "var(--t-faint)" }}>{b.list.length}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="warn-label">{b.label}</div>
+              <div className="t-xs t-mute truncate">{b.list.length ? b.list.slice(0, 2).map((it) => `${it.title} · ${displaySubject(it)}`).join("；") : "—"}</div>
+            </div>
+            <RiskLadder level={b.level} tone={b.tone} />
+          </button>
+        ))}
+        <div className="panel-foot t-xs t-mute">提醒档位：T-3 / T-1 / T-0 / T+1，另加各规则建议提前档（管理后台 · 期限规则库）</div>
+      </div>
+
+      <div className="card">
+        <div className="panel-head">
+          <div className="panel-title" style={{ fontSize: 13 }}>
+            <CalendarDays className="ic" strokeWidth={1.8} />
+            即将到来
+          </div>
+          <button type="button" onClick={onSwitchToList} className="t-xs t-mute hover:text-[var(--t-primary)]">列表视图 →</button>
+        </div>
+        {upcoming.length === 0 ? (
+          <div className="empty mo-empty-compact"><div className="mo-empty-title">暂无即将到来的日程</div></div>
         ) : (
-          <ul className="divide-y divide-border px-4">
-            {upcomingDeadlines.map((item) => (
-              <ScheduleSideItem key={item.id} item={item} onSelectItem={onSelectItem} showDate />
-            ))}
-          </ul>
+          upcoming.map((it) => {
+            const d = dayDiff(it.occurredAt);
+            return <SideItem key={it.id} item={it} onSelectItem={onSelectItem} lead={d === 1 ? "明天" : formatMonthDay(it.occurredAt)} />;
+          })
         )}
-      </section>
+      </div>
     </aside>
-  );
-}
-
-function ScheduleSideItem({
-  item,
-  onSelectItem,
-  showDate
-}: {
-  item: ScheduleItem;
-  onSelectItem: (item: ScheduleItem) => void;
-  showDate: boolean;
-}) {
-  const meta = typeMeta[item.type];
-  const Icon = meta.icon;
-  const subject = displaySubject(item);
-
-  return (
-    <li className="py-3">
-      <button
-        type="button"
-        onClick={() => onSelectItem(item)}
-        className="flex w-full min-w-0 gap-3 rounded-sm text-left transition-colors hover:text-primary"
-      >
-        <span
-          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-sm"
-          style={{ backgroundColor: `${meta.color}18`, color: meta.color }}
-        >
-          <Icon className="h-3.5 w-3.5" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2">
-            <span className="font-mono text-[11px] tabular text-muted-foreground">
-              {showDate ? formatMonthDay(item.occurredAt) : formatTime(item.occurredAt)}
-            </span>
-            <span className="truncate text-[13px] font-medium">{item.title}</span>
-          </span>
-          <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
-            {subject}
-            {item.procedureLabel ? ` · ${formatProcedureLabel(item.procedureLabel)}` : ""}
-          </span>
-        </span>
-      </button>
-    </li>
   );
 }
 
@@ -612,7 +482,7 @@ function ScheduleItemDialog({
                 label="关联案件"
                 value={
                   <Link
-                    href={matterHref(item.matter)}
+                    href={item.href??matterHref(item.matter)}
                     className="font-medium text-primary underline-offset-4 hover:underline"
                   >
                     {item.matter.title}
@@ -623,7 +493,7 @@ function ScheduleItemDialog({
                 <DetailLine label="程序" value={formatProcedureLabel(item.procedureLabel)} />
               )}
               {item.type === "deadline" && item.category && (
-                <DetailLine label="期限类型" value={item.category} />
+                <DetailLine label="期限类型" value={deadlineCategoryLabel[item.category as keyof typeof deadlineCategoryLabel] ?? "类型待核实"} />
               )}
               {item.type === "deadline" && item.remindDays !== undefined && (
                 <DetailLine label="提醒" value={`提前 ${item.remindDays} 天`} />
@@ -644,7 +514,7 @@ function ScheduleItemDialog({
                 关闭
               </Button>
               <Button asChild>
-                <Link href={matterHref(item.matter)}>查看案件</Link>
+                <Link href={item.href??matterHref(item.matter)}>查看案件</Link>
               </Button>
             </DialogFooter>
           </>
@@ -663,43 +533,8 @@ function DetailLine({ label, value }: { label: string; value: React.ReactNode })
   );
 }
 
-function Stat({
-  label,
-  value,
-  color,
-  icon
-}: {
-  label: string;
-  value: number;
-  color: string;
-  icon: React.ReactNode;
-}) {
-  return (
-    <div className="ll-surface px-4 py-3.5">
-      <div className="flex items-center gap-1.5">
-        <span style={{ color }}>{icon}</span>
-        <span className="text-[11px] text-muted-foreground">{label}</span>
-      </div>
-      <div className="ll-stat mt-3 text-[24px] leading-none text-foreground">
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function dateKey(d: Date) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
 function formatTime(value: Date) {
-  return new Date(value).toLocaleTimeString("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false
-  });
+  return shTime(value);
 }
 
 function formatFullDate(value: Date) {
@@ -707,15 +542,14 @@ function formatFullDate(value: Date) {
     year: "numeric",
     month: "long",
     day: "numeric",
-    weekday: "long"
+    weekday: "long",
+    timeZone: SH_TZ
   });
 }
 
 function formatMonthDay(value: Date) {
-  return new Date(value).toLocaleDateString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit"
-  });
+  const p = shParts(value);
+  return `${p.m}-${String(p.d).padStart(2, "0")}`;
 }
 
 function formatProcedureLabel(value: string) {

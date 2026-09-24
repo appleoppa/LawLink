@@ -43,13 +43,23 @@ export async function GET(
   });
 
   const filename = ensureExt(f.name, f.mimeType);
+  // inline 仅放行浏览器可安全渲染的类型；历史行可能存客户端声明的 text/html /
+  // svg（2026-09-19 前上传无校验）——强制 attachment 并降级 octet-stream
+  const lower = (f.mimeType ?? "").toLowerCase();
+  const inlineSafe =
+    lower === "application/pdf" ||
+    (lower.startsWith("image/") && lower !== "image/svg+xml") ||
+    lower === "text/plain" ||
+    lower === "text/markdown" ||
+    lower === "text/csv";
+  const dangerous = /html|svg|xml|javascript/.test(lower);
   const arr = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
   return new NextResponse(arr, {
     status: 200,
     headers: {
-      "Content-Type": f.mimeType ?? "application/octet-stream",
+      "Content-Type": dangerous ? "application/octet-stream" : (f.mimeType ?? "application/octet-stream"),
       "Content-Length": String(buf.byteLength),
-      "Content-Disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      "Content-Disposition": `${inline && inlineSafe ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(filename)}`,
       // 允许在 iframe 内预览
       "X-Content-Type-Options": "nosniff",
       "Cache-Control": "private, max-age=60"

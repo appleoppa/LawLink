@@ -5,18 +5,7 @@ import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import type { LucideIcon } from "lucide-react";
-import {
-  Wallet,
-  Briefcase,
-  Archive,
-  CheckCircle2,
-  Download,
-  BarChart3,
-  CircleAlert,
-  Send,
-  Loader2,
-  Printer
-} from "lucide-react";
+import { Wallet, Briefcase, Archive, CheckCircle2, Download, CircleAlert, Send, Loader2, Printer } from "lucide-react";
 import { matterCategoryLabel, matterCategoryColor } from "@/lib/enums";
 import type { ReportData } from "@/server/reports/queries";
 import type {
@@ -28,6 +17,8 @@ import { triggerArchiveOverdueScanNow } from "@/server/cron/manual-triggers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type PeriodKey = "month" | "quarter" | "year" | "lastYear" | "custom";
 
@@ -67,8 +58,8 @@ export function ReportsView({
   const [pushing, startPushing] = useTransition();
   const [scanning, startScanning] = useTransition();
 
-  function handleScanOverdue() {
-    if (!confirm("立刻扫描已结案超过 30 天未归档的案件，给主办律师发预警通知？")) return;
+  async function handleScanOverdue() {
+    if (!(await confirmDialog({ title: "立即扫描归档逾期？", description: "扫描已结案超过 30 天未归档的案件，并给主办律师发送预警通知。", confirmText: "开始扫描" }))) return;
     startScanning(async () => {
       try {
         const r = await triggerArchiveOverdueScanNow();
@@ -76,13 +67,13 @@ export function ReportsView({
           `归档逾期扫描完成：${r.scanned} 候选 / ${r.notified} 通知 / ${r.suppressed} 抑制`
         );
       } catch (err) {
-        toast.error("扫描失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("扫描失败", { description: actionErrorMessage(err) });
       }
     });
   }
 
-  function handlePushWeekly() {
-    if (!confirm("立刻给所有 ADMIN / 主任律师 / 律师推送本周报告？每人收到一条通知。")) return;
+  async function handlePushWeekly() {
+    if (!(await confirmDialog({ title: "推送本周报告？", description: "立即给所有主任律师和律师推送本周报告，每人收到一条通知。", confirmText: "推送" }))) return;
     startPushing(async () => {
       try {
         const res = await pushWeeklyReportToAll();
@@ -95,7 +86,7 @@ export function ReportsView({
           );
         }
       } catch (err) {
-        toast.error("推送失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("推送失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -132,28 +123,23 @@ export function ReportsView({
 
   return (
     <div className="space-y-5">
-      <header className="flex flex-wrap items-end justify-between gap-3">
+      <header className="ll-page-head">
         <div>
-          <h1 className="flex items-center gap-2 text-xl">
-            <BarChart3 className="h-5 w-5 text-primary" strokeWidth={1.8} />
-            律所报表
-          </h1>
-          <p className="mt-0.5 text-[12px] text-muted-foreground">
+          <h1 className="mo-ph-title">律所报表</h1>
+          <p className="ll-page-sub">
             统计期：<span className="text-foreground">{periodLabel}</span>
           </p>
         </div>
         <div className="flex items-center gap-2 ll-no-print">
-          <div className="flex rounded-md border border-border bg-card p-0.5">
+          <div className="ll-segmented">
             {(["month", "quarter", "year", "lastYear"] as const).map((k) => (
               <button
                 key={k}
                 type="button"
                 onClick={() => switchPreset(k)}
                 className={cn(
-                  "rounded px-2.5 py-1 text-[11px] transition-colors",
-                  periodKey === k
-                    ? "bg-primary/15 text-primary"
-                    : "text-muted-foreground hover:text-foreground"
+                  "ll-seg shrink-0",
+                  periodKey === k ? "ll-seg-active text-primary" : "text-muted-foreground hover:text-foreground"
                 )}
                 title={presetLabels[k]}
               >
@@ -164,10 +150,8 @@ export function ReportsView({
               type="button"
               onClick={() => setCustomOpen((v) => !v)}
               className={cn(
-                "rounded px-2.5 py-1 text-[11px] transition-colors",
-                periodKey === "custom"
-                  ? "bg-primary/15 text-primary"
-                  : "text-muted-foreground hover:text-foreground"
+                "ll-seg shrink-0",
+                periodKey === "custom" ? "ll-seg-active text-primary" : "text-muted-foreground hover:text-foreground"
               )}
             >
               自定义
@@ -223,7 +207,7 @@ export function ReportsView({
       </header>
 
       {customOpen && (
-        <div className="ll-no-print flex flex-wrap items-end gap-2 rounded-md border border-border bg-card p-3 text-xs">
+        <div className="ll-no-print ll-surface flex flex-wrap items-end gap-2 p-3 text-xs">
           <div>
             <label className="text-muted-foreground">起始（含）</label>
             <Input
@@ -251,7 +235,7 @@ export function ReportsView({
       )}
 
       {resolveError && (
-        <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700">
+        <div className="flex items-start gap-2 rounded-md border border-[var(--amber-line)] bg-[var(--amber-bg)] p-3 text-xs text-[var(--amber)]">
           <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>{resolveError}</span>
         </div>
@@ -259,20 +243,20 @@ export function ReportsView({
 
       {/* KPI */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Kpi icon={Briefcase} label="本期新收" value={data.kpis.newIntake} color="#5B8DEF" />
-        <Kpi icon={Wallet} label="在办中" value={data.kpis.inProgress} color="#F5A742" />
-        <Kpi icon={CheckCircle2} label="本期已结" value={data.kpis.closed} color="#48BB78" />
+        <Kpi icon={Briefcase} label="本期新收" value={data.kpis.newIntake} color="#1E56C8" />
+        <Kpi icon={Wallet} label="在办中" value={data.kpis.inProgress} color="#96650B" />
+        <Kpi icon={CheckCircle2} label="本期已结" value={data.kpis.closed} color="#1A7F45" />
         <Kpi
           icon={Archive}
           label="本期已归档"
           value={data.kpis.archived}
-          color="#9B7BF7"
+          color="#6C3FC5"
           hint={data.kpis.closed > 0 ? `归档率 ${Math.round(data.kpis.archiveRate * 100)}%` : ""}
         />
       </div>
 
       {/* 类别分布 */}
-      <section className="rounded-lg border border-border bg-card p-5">
+      <section className="ll-surface p-5">
         <h3 className="mb-3 text-sm font-medium">本期新收 · 类别分布</h3>
         {data.byCategory.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">本期暂无新收案件</p>
@@ -307,8 +291,37 @@ export function ReportsView({
       </section>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        {/* 客户来源渠道分布（P0-1 第三步） */}
+        <section className="ll-surface p-4">
+          <h3 className="mb-3 text-sm font-medium">客户来源渠道 · 存量</h3>
+          {data.byClientSource.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">暂无客户数据</p>
+          ) : (
+            <ul className="space-y-2">
+              {data.byClientSource.slice(0, 8).map((s) => {
+                const max = data.byClientSource[0].count || 1;
+                const pct = (s.count / max) * 100;
+                return (
+                  <li key={s.source} className="flex items-center gap-3 text-xs">
+                    <span className="w-20 shrink-0 truncate text-foreground/80" title={s.source}>
+                      {s.source}
+                    </span>
+                    <div className="flex-1">
+                      <div className="h-4 rounded" style={{ width: `${pct}%`, minWidth: 8, backgroundColor: "#007B7F99" }} />
+                    </div>
+                    <span className="w-16 shrink-0 font-mono text-right text-foreground" title={`${s.count} 位客户 · 关联 ${s.intakeCount} 件案件`}>
+                      {s.count} / {s.intakeCount}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <p className="mt-2 text-[11px] text-muted-foreground">客户数 / 关联案件数 · 未记录来源的客户可在客户档案中补录</p>
+        </section>
+
         {/* 律师产出 */}
-        <section className="rounded-lg border border-border bg-card p-4">
+        <section className="ll-surface p-4">
           <h3 className="mb-3 text-sm font-medium">律师产出 · 本期</h3>
           {data.byLawyer.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">本期无产出数据</p>
@@ -344,10 +357,10 @@ export function ReportsView({
         </section>
 
         {/* 客户应收 */}
-        <section className="rounded-lg border border-border bg-card p-4">
-          <h3 className="mb-3 text-sm font-medium">客户应收 · 本期</h3>
+        <section className="ll-surface p-4">
+          <h3 className="mb-3 text-sm font-medium">{data.financeReady?"客户应收 · 当前余额":"客户应收 · 本期"}</h3>
           {data.byClientReceivable.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">本期无应收数据</p>
+            <p className="py-6 text-center text-sm text-muted-foreground">暂无应收数据</p>
           ) : (
             <div className="overflow-hidden rounded border border-border">
               <table className="w-full text-xs">
@@ -355,7 +368,7 @@ export function ReportsView({
                   <tr>
                     <th className="px-2 py-1.5 text-left font-normal">客户</th>
                     <th className="px-2 py-1.5 text-right font-normal">应收</th>
-                    <th className="px-2 py-1.5 text-right font-normal">已收</th>
+                    <th className="px-2 py-1.5 text-right font-normal">{data.financeReady?"已核销":"已收"}</th>
                     <th className="px-2 py-1.5 text-right font-normal">余额</th>
                   </tr>
                 </thead>
@@ -366,13 +379,13 @@ export function ReportsView({
                       <td className="px-2 py-1.5 text-right font-mono">
                         {r.receivable.toLocaleString("zh-CN", { minimumFractionDigits: 2 })}
                       </td>
-                      <td className="px-2 py-1.5 text-right font-mono text-emerald-600">
+                      <td className="px-2 py-1.5 text-right font-mono text-[var(--green)]">
                         {r.received.toLocaleString("zh-CN", { minimumFractionDigits: 2 })}
                       </td>
                       <td
                         className={cn(
                           "px-2 py-1.5 text-right font-mono",
-                          r.balance > 0 ? "text-rose-600" : "text-muted-foreground"
+                          r.balance > 0 ? "text-[var(--red)]" : "text-muted-foreground"
                         )}
                       >
                         {r.balance.toLocaleString("zh-CN", { minimumFractionDigits: 2 })}
@@ -387,7 +400,7 @@ export function ReportsView({
       </div>
 
       {/* 办案周期分析 */}
-      <section className="rounded-lg border border-border bg-card p-5">
+      <section className="ll-surface p-5">
         <h3 className="mb-3 text-sm font-medium">办案周期 · 本期已结案件（收案 → 结案）</h3>
         {cycle.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">本期无已结案件</p>
@@ -411,8 +424,8 @@ export function ReportsView({
                     <td className="px-2 py-1.5 text-right font-mono">{r.count}</td>
                     <td className="px-2 py-1.5 text-right font-mono">{r.avgDays}</td>
                     <td className="px-2 py-1.5 text-right font-mono">{r.medianDays}</td>
-                    <td className="px-2 py-1.5 text-right font-mono text-emerald-600">{r.minDays}</td>
-                    <td className="px-2 py-1.5 text-right font-mono text-rose-600">{r.maxDays}</td>
+                    <td className="px-2 py-1.5 text-right font-mono text-[var(--green)]">{r.minDays}</td>
+                    <td className="px-2 py-1.5 text-right font-mono text-[var(--red)]">{r.maxDays}</td>
                   </tr>
                 ))}
               </tbody>
@@ -422,7 +435,7 @@ export function ReportsView({
       </section>
 
       {/* AI 审查 top issues */}
-      <section className="rounded-lg border border-border bg-card p-5">
+      <section className="ll-surface p-5">
         <h3 className="mb-3 flex items-center gap-2 text-sm font-medium">
           AI 审查 · 本期高频问题
           <span className="text-[10px] font-normal text-muted-foreground">
@@ -456,11 +469,11 @@ export function ReportsView({
                       <td className="px-2 py-1.5 text-muted-foreground">{TYPE_CN[iss.type]}</td>
                       <td className="px-2 py-1.5 text-right font-mono">{iss.occurrences}</td>
                       <td className="px-2 py-1.5 text-right font-mono text-[10px]">
-                        <span className="text-rose-600">{iss.severityCounts.HIGH}</span>
+                        <span className="text-[var(--red)]">{iss.severityCounts.HIGH}</span>
                         <span className="mx-0.5 text-muted-foreground">/</span>
-                        <span className="text-amber-600">{iss.severityCounts.MEDIUM}</span>
+                        <span className="text-[var(--amber)]">{iss.severityCounts.MEDIUM}</span>
                         <span className="mx-0.5 text-muted-foreground">/</span>
-                        <span className="text-slate-500">{iss.severityCounts.LOW}</span>
+                        <span className="text-[var(--t-muted)]">{iss.severityCounts.LOW}</span>
                       </td>
                     </tr>
                   ))}
@@ -483,9 +496,9 @@ const TYPE_CN = {
 
 function SevTotalChip({ sev, n }: { sev: "HIGH" | "MEDIUM" | "LOW"; n: number }) {
   const meta = {
-    HIGH: { label: "高严重", cls: "border-rose-200 bg-rose-50 text-rose-700" },
-    MEDIUM: { label: "中严重", cls: "border-amber-200 bg-amber-50 text-amber-700" },
-    LOW: { label: "低严重", cls: "border-slate-200 bg-slate-50 text-slate-600" }
+    HIGH: { label: "高严重", cls: "border-[var(--red-line)] bg-[var(--red-bg)] text-[var(--red)]" },
+    MEDIUM: { label: "中严重", cls: "border-[var(--amber-line)] bg-[var(--amber-bg)] text-[var(--amber)]" },
+    LOW: { label: "低严重", cls: "border-[var(--bd-subtle)] bg-[var(--bg-hover)] text-[var(--t-muted)]" }
   }[sev];
   return (
     <div className={cn("rounded border px-3 py-2 text-xs", meta.cls)}>
@@ -509,7 +522,7 @@ function Kpi({
   hint?: string;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-3">
+    <div className="card p-3">
       <div className="flex items-center justify-between">
         <span className="text-[11px] text-muted-foreground">{label}</span>
         <span

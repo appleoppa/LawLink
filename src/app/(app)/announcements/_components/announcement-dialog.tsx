@@ -1,5 +1,7 @@
 "use client";
 
+import { FormDialogContent as DialogContent, FormDialogBody } from "@/components/patterns/form-dialog";
+
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -11,7 +13,6 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
-  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -21,6 +22,8 @@ import {
   createAnnouncement,
   updateAnnouncement
 } from "@/server/announcements/actions";
+import { shDayKey } from "@/lib/ui/sh-time";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Editing = {
   id: string;
@@ -31,12 +34,7 @@ type Editing = {
 } | null;
 
 function toDateInput(d: Date | null): string {
-  if (!d) return "";
-  const dt = new Date(d);
-  const y = dt.getFullYear();
-  const m = String(dt.getMonth() + 1).padStart(2, "0");
-  const day = String(dt.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return d ? shDayKey(d) : "";
 }
 
 export function AnnouncementDialog({
@@ -82,7 +80,7 @@ export function AnnouncementDialog({
           title,
           content,
           pinned,
-          expiresAt: expiresAt ? new Date(expiresAt) : null
+          expiresAt: expiresAt ? new Date(`${expiresAt}T00:00+08:00`) : null
         };
         if (editing) {
           await updateAnnouncement({ ...payload, id: editing.id });
@@ -95,7 +93,7 @@ export function AnnouncementDialog({
         router.refresh();
       } catch (err) {
         toast.error("保存失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });
@@ -107,9 +105,10 @@ export function AnnouncementDialog({
         <DialogHeader>
           <DialogTitle>{editing ? "编辑公告" : "发布公告"}</DialogTitle>
           <DialogDescription className="text-xs">
-            置顶公告会显示在全站顶部 banner，设置过期日期后 banner 自动消失（列表仍保留）。
+            置顶公告会显示在全站顶部 公告栏，设置过期日期后 公告栏 自动消失（列表仍保留）。
           </DialogDescription>
         </DialogHeader>
+        <FormDialogBody>
 
         <div className="space-y-3 py-2">
           <div className="space-y-1.5">
@@ -133,7 +132,7 @@ export function AnnouncementDialog({
                 checked={pinned}
                 onCheckedChange={(c) => setPinned(c === true)}
               />
-              置顶（顶部 banner）
+              置顶（顶部 公告栏）
             </label>
             <div className="space-y-1.5">
               <Label className="text-xs">过期日期（可选）</Label>
@@ -146,6 +145,7 @@ export function AnnouncementDialog({
           </div>
         </div>
 
+        </FormDialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
             取消

@@ -14,7 +14,7 @@ import {
   ScanLine
 } from "lucide-react";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/select";
 import { createExpress } from "@/server/express/actions";
 import { parseExpressLabel } from "@/server/ai/parse-express";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type DocLite = { id: string; name: string; size: number | null; createdAt: Date };
 
@@ -113,9 +114,9 @@ export function ContractsCard({
                 className={cn(
                   "inline-flex h-7 items-center rounded-sm px-2 text-[10px] font-medium",
                   r.kind === "intake"
-                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                    ? "bg-[var(--green-bg)] text-[var(--green)] dark:text-[var(--green)]"
                     : r.kind === "draft"
-                      ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                      ? "bg-[var(--amber-bg)] text-[var(--amber)] dark:text-[var(--amber)]"
                       : "bg-primary/10 text-primary"
                 )}
               >
@@ -126,7 +127,7 @@ export function ContractsCard({
                 <div className="font-mono text-[10px] tabular text-muted-foreground">
                   {r.sealCode ? `${r.sealCode} · ` : ""}
                   {r.doc.size ? `${(r.doc.size / 1024).toFixed(0)} KB · ` : ""}
-                  {new Date(r.doc.createdAt).toLocaleDateString("zh-CN")}
+                  {formatDate(new Date(r.doc.createdAt))}
                 </div>
               </div>
               <a
@@ -167,8 +168,8 @@ export function ExpressMiniCard({
   const [addOpen, setAddOpen] = useState(false);
   return (
     <section className="ll-surface h-full rounded-lg border border-border">
-      <header className="flex items-center justify-between border-b border-border px-4 py-2">
-        <span className="flex items-center gap-1.5 text-[13px] font-medium">
+      <header className="flex items-center justify-between border-b border-[var(--bd-hair)] px-4 py-3">
+        <span className="panel-title">
           <Package className="h-3.5 w-3.5 text-primary" strokeWidth={1.8} />
           快递记录
           <span className="ml-1 font-mono text-[11px] text-muted-foreground tabular">
@@ -200,9 +201,9 @@ export function ExpressMiniCard({
               className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2"
             >
               {e.direction === "OUTBOUND" ? (
-                <ArrowUpFromLine className="h-3.5 w-3.5 shrink-0 text-orange-600" strokeWidth={1.8} />
+                <ArrowUpFromLine className="h-3.5 w-3.5 shrink-0 text-[var(--amber)]" strokeWidth={1.8} />
               ) : (
-                <ArrowDownToLine className="h-3.5 w-3.5 shrink-0 text-emerald-600" strokeWidth={1.8} />
+                <ArrowDownToLine className="h-3.5 w-3.5 shrink-0 text-[var(--green)]" strokeWidth={1.8} />
               )}
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[0.82rem]">{e.purpose}</div>
@@ -214,8 +215,8 @@ export function ExpressMiniCard({
                 <div className="text-[11px] text-foreground/80">{e.lastState ?? "—"}</div>
                 <div className="font-mono text-[10px] tabular text-muted-foreground">
                   {e.lastUpdateAt
-                    ? new Date(e.lastUpdateAt).toLocaleDateString("zh-CN")
-                    : new Date(e.createdAt).toLocaleDateString("zh-CN")}
+                    ? formatDate(new Date(e.lastUpdateAt))
+                    : formatDate(new Date(e.createdAt))}
                 </div>
               </div>
             </li>
@@ -282,7 +283,7 @@ function AddExpressDialog({
         if (r.companyCode) setCompanyCode(r.companyCode);
       } catch (err) {
         toast.error("识别失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });
@@ -314,7 +315,7 @@ function AddExpressDialog({
         router.refresh();
       } catch (err) {
         toast.error("创建失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });

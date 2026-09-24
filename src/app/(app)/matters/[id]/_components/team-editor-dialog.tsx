@@ -1,5 +1,7 @@
 "use client";
 
+import { ColleaguePicker } from "@/components/matters/colleague-picker";
+
 /**
  * v0.27: 由"编辑团队"扩展为"编辑案件"。
  *
@@ -54,16 +56,20 @@ import {
   updateMatterBasicInfo,
   updateProcedureInfo
 } from "@/server/matters/actions";
+import { EnterpriseNameInput } from "@/components/matters/enterprise-name-input";
+import { PERSON_ID_TYPES, clientIdTypeLabel, personIdError, sanitizePersonIdInput } from "@/lib/clients/person-id";
 import { CauseCombobox } from "@/app/(app)/matters/_components/cause-combobox";
 import { cn, formatDate } from "@/lib/utils";
+import { matterCategoryKind } from "@/lib/enums";
 import { JurisdictionSelect } from "@/app/(app)/intakes/_components/jurisdiction-select";
 import {
   agencyOptionsForProcedure,
   isAgencyAllowedForProcedure,
   isNationalAgency
 } from "@/lib/china-regions";
+import { actionErrorMessage } from "@/lib/action-error";
 
-type UserOption = { id: string; name: string; role: string };
+type UserOption = { id: string; name: string; role: string; roleName?: string; isTeammate?: boolean; active?: boolean };
 
 type MatterMeta = {
   intakeDate: Date | null;
@@ -73,6 +79,7 @@ type MatterMeta = {
   causeFreeText: string | null;
   claimAmount: number | null;
   ourStanding: LitigationStanding | null;
+  teamAccessRestricted?: boolean;
 };
 
 type ProcedureMeta = {
@@ -99,6 +106,7 @@ type PartyLite = {
   ordinal: number;
   name: string;
   partyType: PartyType;
+  idType?: string | null;
   idNumber: string | null;
   phone: string | null;
   address: string | null;
@@ -120,6 +128,7 @@ type PartyEditDraft = {
   name: string;
   role: PartyRole;
   partyType: PartyType;
+  idType: string;
   idNumber: string;
   enterpriseSocialCode: string;
   legalRep: string;
@@ -134,6 +143,7 @@ type NewProcedurePartyDraft = {
   name: string;
   role: PartyRole;
   partyType: PartyType;
+  idType: string;
   idNumber: string;
   enterpriseSocialCode: string;
   standings: LitigationStanding[];
@@ -155,11 +165,11 @@ type Props = {
 };
 
 const formControlClass =
-  "ll-form-control h-9 border-[#D3DAE6] bg-white text-[13px]";
+  "ll-form-control h-9 border-[#CFD7D3] bg-white text-[13px]";
 
 const formSectionClass =
-  "space-y-3 rounded-md border border-[#D9E0EA] bg-[#F4F7FB] p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
-const nestedPanelClass = "rounded-md border border-[#D9E0EA] bg-white";
+  "space-y-3 rounded-md border border-[#DDE3E0] bg-[#F4F6F5] p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
+const nestedPanelClass = "rounded-md border border-[#DDE3E0] bg-white";
 const formLabelClass = "text-[12px] font-medium text-muted-foreground";
 
 const PARTY_ROLE_LABEL: Record<PartyRole, string> = {
@@ -318,6 +328,7 @@ function partyToEditDraft(party: PartyLite): PartyEditDraft {
     name: party.name ?? "",
     role: normalizePartyRoleForForm(party.role),
     partyType: normalizePartyTypeForForm(party.partyType),
+    idType: party.idType || "ID_CARD",
     idNumber: party.idNumber ?? "",
     enterpriseSocialCode: party.enterpriseSocialCode ?? "",
     legalRep: party.legalRep ?? "",
@@ -333,6 +344,7 @@ function initialNewPartyForm(partyStandingOptions: LitigationStanding[]) {
     name: "",
     role: "OPPOSING_PARTY" as PartyRole,
     partyType: "NATURAL_PERSON" as PartyType,
+    idType: "ID_CARD",
     idNumber: "",
     enterpriseSocialCode: "",
     standings: partyStandingOptions.slice(0, 1)
@@ -382,6 +394,7 @@ export function TeamEditorDialog({
   const [claimAmount, setClaimAmount] = useState<string>(
     matterMeta.claimAmount === null ? "" : String(matterMeta.claimAmount)
   );
+  const [teamAccessRestricted, setTeamAccessRestricted] = useState(!!matterMeta.teamAccessRestricted);
   const [ourStanding, setOurStanding] = useState<LitigationStanding | "">(
     matterMeta.ourStanding ?? ""
   );
@@ -444,6 +457,12 @@ export function TeamEditorDialog({
     ? currentProcedure.customLabel ?? procedureTypeLabel[currentProcedure.type]
     : "";
   const judgeLabel = currentProcedure ? procedureJudgeLabel(currentProcedure.type) : "主审法官";
+  // 字段联动：非诉 / 专项 / 顾问没有案由、诉讼地位、管辖、案号、法官等诉讼字段
+  const categoryKind = matterCategoryKind(matterMeta.category);
+  const isLitigationMatter = categoryKind === "litigation";
+  const isArbitrationProc = Boolean(currentProcedure && ["COMMERCIAL_ARBITRATION", "LABOR_ARBITRATION"].includes(currentProcedure.type));
+  const isCriminalProc = Boolean(currentProcedure && ["INVESTIGATION", "PROSECUTION_REVIEW"].includes(currentProcedure.type));
+  const assistantLabel = isArbitrationProc ? "仲裁秘书" : isCriminalProc ? "检察官助理" : "书记员";
   const procedureAgencyOptions = useMemo(
     () => agencyOptionsForProcedure(procedureForm.jurisdiction, currentProcedure?.type),
     [procedureForm.jurisdiction, currentProcedure?.type]
@@ -542,6 +561,7 @@ export function TeamEditorDialog({
         name,
         role: normalizePartyRoleForForm(matchedParty.role),
         partyType: normalizePartyTypeForForm(matchedParty.partyType),
+        idType: matchedParty.idType || "ID_CARD",
         idNumber: matchedParty.idNumber ?? "",
         enterpriseSocialCode: matchedParty.enterpriseSocialCode ?? ""
       };
@@ -562,6 +582,14 @@ export function TeamEditorDialog({
       toast.error("请填写证件号");
       return;
     }
+    const newIdError =
+      newPartyForm.partyType === "NATURAL_PERSON"
+        ? personIdError(newPartyForm.idType, newPartyForm.idNumber)
+        : personIdError("USCC", newPartyForm.enterpriseSocialCode);
+    if (newIdError) {
+      toast.error(newIdError);
+      return;
+    }
     if (newPartyForm.partyType !== "NATURAL_PERSON" && !newPartyForm.enterpriseSocialCode.trim()) {
       toast.error("请填写统一社会信用代码");
       return;
@@ -574,6 +602,7 @@ export function TeamEditorDialog({
         name,
         role: newPartyForm.role,
         partyType: newPartyForm.partyType,
+        idType: newPartyForm.partyType === "NATURAL_PERSON" ? newPartyForm.idType : "",
         idNumber: newPartyForm.idNumber.trim(),
         enterpriseSocialCode: newPartyForm.enterpriseSocialCode.trim(),
         standings: newPartyForm.standings
@@ -609,7 +638,8 @@ export function TeamEditorDialog({
             causeId: causeId || "",
             causeFreeText: causeFreeText || "",
             claimAmount: parsedAmount,
-            ourStanding: ourStanding || null
+            ourStanding: ourStanding || null,
+            teamAccessRestricted
           });
         }
 
@@ -623,6 +653,14 @@ export function TeamEditorDialog({
         }
 
         if (currentProcedure && canManageProcedure) {
+          for (const party of Object.values(partyEdits)) {
+            if (party.partyId.startsWith("client:") || party.partyType !== "NATURAL_PERSON") continue;
+            const idError = personIdError(party.idType, party.idNumber);
+            if (idError) {
+              toast.error(`当事人「${party.name || "未命名"}」：${idError}`);
+              return;
+            }
+          }
           if (newProcedureParties.some((party) => party.standings.length === 0)) {
             toast.error("新增当事人需至少选择一个程序地位");
             return;
@@ -653,6 +691,7 @@ export function TeamEditorDialog({
                 name: party.name,
                 role: party.role,
                 partyType: party.partyType,
+                idType: party.partyType === "NATURAL_PERSON" ? party.idType : null,
                 idNumber: party.idNumber,
                 enterpriseSocialCode: party.enterpriseSocialCode,
                 legalRep: party.legalRep,
@@ -661,11 +700,12 @@ export function TeamEditorDialog({
                 address: party.address
               })),
             newProcedureParties: newProcedureParties.map(
-              ({ existingPartyId, name, role, partyType, idNumber, enterpriseSocialCode, standings }) => ({
+              ({ existingPartyId, name, role, partyType, idType, idNumber, enterpriseSocialCode, standings }) => ({
                 existingPartyId,
                 name,
                 role,
                 partyType,
+                idType,
                 idNumber,
                 enterpriseSocialCode,
                 standings
@@ -679,7 +719,7 @@ export function TeamEditorDialog({
         router.refresh();
       } catch (err) {
         toast.error("更新失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });
@@ -687,7 +727,7 @@ export function TeamEditorDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[86vh] w-[92vw] max-w-[720px] flex-col gap-0 overflow-hidden bg-[#EEF2F6] p-0">
+      <DialogContent className="flex max-h-[86vh] w-[92vw] max-w-[720px] flex-col gap-0 overflow-hidden bg-[#EEF1F0] p-0">
         <DialogHeader className="border-b border-border bg-card px-5 py-4">
           <DialogTitle>编辑案件信息</DialogTitle>
           <DialogDescription className="text-xs">
@@ -695,9 +735,9 @@ export function TeamEditorDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[calc(86vh-128px)] space-y-4 overflow-y-auto bg-[#EEF2F6] px-5 py-4">
+        <div className="max-h-[calc(86vh-128px)] space-y-4 overflow-y-auto bg-[#EEF1F0] px-5 py-4">
           {/* readonly 行 */}
-          <section className="grid grid-cols-2 gap-2 rounded-md border border-border bg-[#F4F7FB] px-3 py-2 text-xs shadow-[inset_0_1px_1px_rgba(15,23,42,0.03)]">
+          <section className="grid grid-cols-2 gap-2 rounded-md border border-border bg-[#F4F6F5] px-3 py-2 text-xs shadow-[inset_0_1px_1px_rgba(15,23,42,0.03)]">
             <div>
               <div className="text-[10px] text-muted-foreground">收案日</div>
               <div>{matterMeta.intakeDate ? formatDate(matterMeta.intakeDate) : "—"}</div>
@@ -722,9 +762,10 @@ export function TeamEditorDialog({
                 />
               </div>
 
+              {isLitigationMatter ? (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label className={formLabelClass}>案由</Label>
+                  <Label className={formLabelClass}>{matterMeta.category === "CRIMINAL" ? "涉嫌罪名" : "案由"}</Label>
                   <CauseCombobox
                     category={matterMeta.category}
                     procedureType={currentProcedure?.type}
@@ -742,10 +783,12 @@ export function TeamEditorDialog({
                   />
                 </div>
               </div>
+              ) : null}
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {matterMeta.category !== "CRIMINAL" && categoryKind !== "counsel" ? (
                 <div className="space-y-1.5">
-                  <Label className={formLabelClass}>标的额（元）</Label>
+                  <Label className={formLabelClass}>{isLitigationMatter ? "标的额（元）" : "项目金额（元）"}</Label>
                   <Input
                     type="number"
                     inputMode="decimal"
@@ -756,6 +799,8 @@ export function TeamEditorDialog({
                     className={cn(formControlClass, "font-mono")}
                   />
                 </div>
+                ) : null}
+                {isLitigationMatter ? (
                 <div className="space-y-1.5">
                   <Label className={formLabelClass}>我方诉讼地位</Label>
                   <Select
@@ -774,7 +819,23 @@ export function TeamEditorDialog({
                     </SelectContent>
                   </Select>
                 </div>
+                ) : null}
               </div>
+
+              <label className="flex cursor-pointer items-start gap-2 rounded-md border border-border bg-background px-3 py-2 text-xs">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={teamAccessRestricted}
+                  onChange={(e) => setTeamAccessRestricted(e.target.checked)}
+                />
+                <span>
+                  <span className="font-medium">受限事项</span>
+                  <span className="ml-1 text-muted-foreground">
+                    勾选后本案不进入律师团队汇总视图（团队负责人与额外查看人不再自动可见）；个人直接授权不受影响。
+                  </span>
+                </span>
+              </label>
             </section>
           )}
 
@@ -788,6 +849,7 @@ export function TeamEditorDialog({
               </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {isLitigationMatter ? (<>
                 <div className="space-y-1.5">
                   <Label className={formLabelClass}>管辖地（省/市/区县）</Label>
                   <JurisdictionSelect
@@ -797,7 +859,7 @@ export function TeamEditorDialog({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className={formLabelClass}>管辖机构</Label>
+                  <Label className={formLabelClass}>{isArbitrationProc ? "仲裁机构" : isCriminalProc ? "办案机关" : "管辖机构"}</Label>
                   <Input
                     list={`matter-info-agency-${currentProcedure.id}`}
                     value={procedureForm.handlingAgency}
@@ -854,7 +916,7 @@ export function TeamEditorDialog({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className={formLabelClass}>书记员</Label>
+                  <Label className={formLabelClass}>{assistantLabel}</Label>
                   <Input
                     value={procedureForm.judgeAssistant}
                     onChange={(e) => setProcedureField("judgeAssistant", e.target.value)}
@@ -862,15 +924,16 @@ export function TeamEditorDialog({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className={formLabelClass}>书记员联系方式</Label>
+                  <Label className={formLabelClass}>{assistantLabel}联系方式</Label>
                   <Input
                     value={procedureForm.judgeAssistantContact}
                     onChange={(e) => setProcedureField("judgeAssistantContact", e.target.value)}
                     className={cn(formControlClass, "font-mono")}
                   />
                 </div>
+                </>) : null}
                 <div className="space-y-1.5">
-                  <Label className={formLabelClass}>立案时间</Label>
+                  <Label className={formLabelClass}>{isLitigationMatter ? (isArbitrationProc ? "受理时间" : "立案时间") : "开始时间"}</Label>
                   <Input
                     type="date"
                     value={procedureForm.acceptedAt}
@@ -879,7 +942,7 @@ export function TeamEditorDialog({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className={formLabelClass}>裁决 / 结案时间</Label>
+                  <Label className={formLabelClass}>{isLitigationMatter ? "裁决 / 结案时间" : "完成时间"}</Label>
                   <Input
                     type="date"
                     value={procedureForm.concludedAt}
@@ -921,7 +984,7 @@ export function TeamEditorDialog({
                     const draft = partyEdits[party.id] ?? partyToEditDraft(party);
                     const isOrg = draft.partyType !== "NATURAL_PERSON";
                     return (
-                      <div key={party.id} className="space-y-2 border-t border-[#E2E7EF] p-2.5 first:border-t-0">
+                      <div key={party.id} className="space-y-2 border-t border-[#DDE3E0] p-2.5 first:border-t-0">
                         <div className="flex min-w-0 items-center gap-2">
                           <span className="min-w-0 truncate text-xs font-medium" title={draft.name}>
                             {draft.name || "—"}
@@ -953,18 +1016,32 @@ export function TeamEditorDialog({
                             </label>
                           ))}
                         </div>
-                        <div className="rounded-md border border-[#E2E7EF] bg-[#F6F8FB] p-2">
+                        <div className="rounded-md border border-[#DDE3E0] bg-[#F7F9F8] p-2">
                           <div className="mb-2 text-[11px] font-medium text-muted-foreground">
                             主体基础信息
                           </div>
                           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                             <div className="space-y-1.5">
-                              <Label className={formLabelClass}>名称</Label>
-                              <Input
-                                value={draft.name}
-                                onChange={(e) => setPartyEditValue(party.id, "name", e.target.value)}
-                                className={formControlClass}
-                              />
+                              <Label className={formLabelClass}>{isOrg ? "单位 / 组织名称" : "姓名"}</Label>
+                              {isOrg ? (
+                                <EnterpriseNameInput
+                                  value={draft.name}
+                                  onChange={(name) => setPartyEditValue(party.id, "name", name)}
+                                  onPick={(pick) => {
+                                    setPartyEditValue(party.id, "name", pick.name);
+                                    setPartyEditValue(party.id, "enterpriseSocialCode", pick.creditCode);
+                                    if (pick.legalRep) setPartyEditValue(party.id, "legalRep", pick.legalRep);
+                                    if (pick.address) setPartyEditValue(party.id, "address", pick.address);
+                                  }}
+                                  className={formControlClass}
+                                />
+                              ) : (
+                                <Input
+                                  value={draft.name}
+                                  onChange={(e) => setPartyEditValue(party.id, "name", e.target.value)}
+                                  className={formControlClass}
+                                />
+                              )}
                             </div>
                             <div className="space-y-1.5">
                               <Label className={formLabelClass}>当事人角色</Label>
@@ -1002,25 +1079,55 @@ export function TeamEditorDialog({
                                 </SelectContent>
                               </Select>
                             </div>
+                            {!isOrg && (
+                              <div className="space-y-1.5">
+                                <Label className={formLabelClass}>证件类型</Label>
+                                <Select
+                                  value={draft.idType || "ID_CARD"}
+                                  onValueChange={(v) => {
+                                    setPartyEditValue(party.id, "idType", v);
+                                    setPartyEditValue(party.id, "idNumber", sanitizePersonIdInput(v, draft.idNumber));
+                                  }}
+                                >
+                                  <SelectTrigger className={formControlClass}>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {PERSON_ID_TYPES.map((t) => (
+                                      <SelectItem key={t} value={t}>
+                                        {clientIdTypeLabel[t]}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            )}
                             <div className="space-y-1.5">
                               <Label className={formLabelClass}>
                                 {isOrg ? "统一社会信用代码" : "证件号码"}
+                                {!isOrg && (draft.idType || "ID_CARD") === "ID_CARD" ? (
+                                  <span className="ml-1 font-normal text-muted-foreground">（{draft.idNumber.length}/18）</span>
+                                ) : null}
                               </Label>
                               <Input
                                 className={cn(formControlClass, "font-mono")}
+                                inputMode={!isOrg && (draft.idType || "ID_CARD") === "ID_CARD" ? "numeric" : undefined}
+                                placeholder={isOrg ? "18 位信用代码" : (draft.idType || "ID_CARD") === "ID_CARD" ? "18 位，仅数字或 X" : "证件号码"}
                                 value={isOrg ? draft.enterpriseSocialCode : draft.idNumber}
                                 onChange={(e) =>
-                                  setPartyEditValue(
-                                    party.id,
-                                    isOrg ? "enterpriseSocialCode" : "idNumber",
-                                    e.target.value
-                                  )
+                                  isOrg
+                                    ? setPartyEditValue(party.id, "enterpriseSocialCode", e.target.value.toUpperCase().replace(/\s+/g, "").slice(0, 18))
+                                    : setPartyEditValue(party.id, "idNumber", sanitizePersonIdInput(draft.idType, e.target.value))
                                 }
                               />
+                              {(() => {
+                                const err = isOrg ? personIdError("USCC", draft.enterpriseSocialCode) : personIdError(draft.idType, draft.idNumber);
+                                return err ? <p className="text-[11px] text-[var(--amber,#b7791f)]">{err}</p> : null;
+                              })()}
                             </div>
                             {isOrg && (
                               <div className="space-y-1.5">
-                                <Label className={formLabelClass}>法定代表人</Label>
+                                <Label className={formLabelClass}>{draft.partyType === "COMPANY" ? "法定代表人" : "法定代表人 / 负责人"}</Label>
                                 <Input
                                   value={draft.legalRep}
                                   onChange={(e) => setPartyEditValue(party.id, "legalRep", e.target.value)}
@@ -1029,7 +1136,7 @@ export function TeamEditorDialog({
                               </div>
                             )}
                             <div className="space-y-1.5">
-                              <Label className={formLabelClass}>联系人</Label>
+                              <Label className={formLabelClass}>{isOrg ? "经办联系人" : "联系人"}</Label>
                               <Input
                                 value={draft.contactName}
                                 onChange={(e) => setPartyEditValue(party.id, "contactName", e.target.value)}
@@ -1063,7 +1170,7 @@ export function TeamEditorDialog({
               {newProcedureParties.length > 0 && (
                 <div className={nestedPanelClass}>
                   {newProcedureParties.map((party) => (
-                    <div key={party.tempId} className="border-t border-[#E2E7EF] p-2 first:border-t-0">
+                    <div key={party.tempId} className="border-t border-[#DDE3E0] p-2 first:border-t-0">
                       <div className="mb-2 flex min-w-0 items-center gap-2">
                         <span className="min-w-0 truncate text-xs font-medium" title={party.name}>
                           {party.name}
@@ -1111,8 +1218,8 @@ export function TeamEditorDialog({
               )}
 
               {showNewPartyForm && (
-                <div className="rounded-md border border-dashed border-[#B8C5D6] bg-[#F6F8FB] p-2">
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1.2fr)_120px_120px_minmax(0,1fr)_auto]">
+                <div className="rounded-md border border-dashed border-[#B4BFB9] bg-[#F7F9F8] p-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1.2fr)_110px_110px_130px_minmax(0,1fr)_auto]">
                     <Input
                       list={`matter-editor-new-party-${currentProcedure.id}`}
                       value={newPartyForm.name}
@@ -1155,6 +1262,27 @@ export function TeamEditorDialog({
                         ))}
                       </SelectContent>
                     </Select>
+                    {newPartyForm.partyType === "NATURAL_PERSON" ? (
+                      <Select
+                        value={newPartyForm.idType}
+                        onValueChange={(v) =>
+                          setNewPartyForm((cur) => ({ ...cur, idType: v, idNumber: sanitizePersonIdInput(v, cur.idNumber) }))
+                        }
+                      >
+                        <SelectTrigger className={cn(formControlClass, "h-8 text-xs")} aria-label="证件类型">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {PERSON_ID_TYPES.map((t) => (
+                            <SelectItem key={t} value={t}>
+                              {clientIdTypeLabel[t]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="hidden sm:block" />
+                    )}
                     <Input
                       value={
                         newPartyForm.partyType === "NATURAL_PERSON"
@@ -1163,12 +1291,12 @@ export function TeamEditorDialog({
                       }
                       onChange={(e) =>
                         newPartyForm.partyType === "NATURAL_PERSON"
-                          ? setNewPartyFormValue("idNumber", e.target.value)
-                          : setNewPartyFormValue("enterpriseSocialCode", e.target.value)
+                          ? setNewPartyFormValue("idNumber", sanitizePersonIdInput(newPartyForm.idType, e.target.value))
+                          : setNewPartyFormValue("enterpriseSocialCode", e.target.value.toUpperCase().replace(/\s+/g, "").slice(0, 18))
                       }
                       placeholder={
                         newPartyForm.partyType === "NATURAL_PERSON"
-                          ? "证件号"
+                          ? newPartyForm.idType === "ID_CARD" ? "18 位，仅数字或 X" : "证件号码"
                           : "统一社会信用代码"
                       }
                       className={cn(formControlClass, "h-8 text-xs")}
@@ -1215,9 +1343,9 @@ export function TeamEditorDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {userOptions.map((u) => (
+                    {userOptions.filter((u) => u.active !== false || u.id === ownerId).map((u) => (
                       <SelectItem key={u.id} value={u.id}>
-                        {u.name} · {userRoleLabel[u.role as keyof typeof userRoleLabel] ?? u.role}
+                        {u.name} · {u.roleName ?? userRoleLabel[u.role as keyof typeof userRoleLabel] ?? u.role}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1226,29 +1354,14 @@ export function TeamEditorDialog({
 
               <div className="space-y-1.5">
                 <Label className={formLabelClass}>协办律师（可多选）</Label>
-                <div className="grid grid-cols-1 gap-2 rounded-md border border-[#D9E0EA] bg-white p-2.5 sm:grid-cols-2">
-                  {userOptions
-                    .filter((u) => u.id !== ownerId)
-                    .map((u) => (
-                      <label
-                        key={u.id}
-                        className="flex min-h-8 cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] transition-colors hover:bg-muted hover:text-foreground"
-                      >
-                        <Checkbox
-                          checked={coLeads.includes(u.id)}
-                          onCheckedChange={() => toggle(coLeads, setCoLeads, u.id)}
-                        />
-                        <span>{u.name}</span>
-                      </label>
-                    ))}
-                </div>
+                <ColleaguePicker people={userOptions.filter((u) => u.id !== ownerId)} selected={coLeads} onChange={(ids) => { setCoLeads(ids); setAssistants((current) => current.filter((id) => !ids.includes(id))); }} />
               </div>
 
               <div className="space-y-1.5">
                 <Label className={formLabelClass}>助理（可多选）</Label>
-                <div className="grid grid-cols-1 gap-2 rounded-md border border-[#D9E0EA] bg-white p-2.5 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-2 rounded-md border border-[#DDE3E0] bg-white p-2.5 sm:grid-cols-2">
                   {userOptions
-                    .filter((u) => u.id !== ownerId && !coLeads.includes(u.id))
+                    .filter((u) => u.id !== ownerId && !coLeads.includes(u.id) && (u.active !== false || assistants.includes(u.id)))
                     .map((u) => (
                       <label
                         key={u.id}

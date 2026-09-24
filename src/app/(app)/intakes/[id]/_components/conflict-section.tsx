@@ -26,9 +26,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { runCheckAndSave, setConflictConclusion } from "@/server/conflicts/actions";
-import { litigationStandingLabel, matterCategoryLabel, matterStatusLabel } from "@/lib/enums";
-import { cn } from "@/lib/utils";
+import { conflictConclusionLabel, litigationStandingLabel, matterCategoryLabel, matterStatusLabel } from "@/lib/enums";
+import type { buildIntakeConflictQueries } from "@/lib/approvals/intake-detail";
+import { cn, formatDate as fmtDate, formatDateTime } from "@/lib/utils";
 import { matterHref } from "@/lib/matters/route";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Hit = {
   id: string;
@@ -73,26 +75,17 @@ type LatestCheck = {
 
 type Props = {
   intakeId: string;
-  intakeClientName?: string;
-  intakeClientIdNumber?: string;
-  opposingParties: { name: string; idNumber?: string }[];
-  thirdParties: { name: string; idNumber?: string }[];
+  queries: ReturnType<typeof buildIntakeConflictQueries>;
   latestCheck: LatestCheck | null;
   canEditConclusion: boolean;
+  canRunCheck?: boolean;
 };
 
 const severityStyle: Record<ConflictSeverity, { color: string; bg: string; label: string }> = {
-  BLOCKING: { color: "#DC2626", bg: "rgba(220,38,38,0.10)", label: "阻塞" },
-  HIGH: { color: "#EA580C", bg: "rgba(234,88,12,0.10)", label: "高" },
-  MEDIUM: { color: "#D97706", bg: "rgba(217,119,6,0.10)", label: "中" },
-  LOW: { color: "#65A30D", bg: "rgba(101,163,13,0.10)", label: "低" }
-};
-
-const conclusionLabel: Record<ConflictConclusion, string> = {
-  PENDING: "待结论",
-  SAME_SUBJECT: "有冲突",
-  DIFFERENT: "可承接",
-  NEED_INFO: "信息不足"
+  BLOCKING: { color: "#B42318", bg: "rgba(220,38,38,0.10)", label: "阻塞" },
+  HIGH: { color: "var(--amber)", bg: "var(--amber-bg)", label: "高" },
+  MEDIUM: { color: "#96650B", bg: "rgba(217,119,6,0.10)", label: "中" },
+  LOW: { color: "#1A7F45", bg: "rgba(101,163,13,0.10)", label: "低" }
 };
 
 const partyRoleLabel: Record<PartyRole, string> = {
@@ -107,12 +100,10 @@ const partyRoleLabel: Record<PartyRole, string> = {
 
 export function ConflictSection({
   intakeId,
-  intakeClientName,
-  intakeClientIdNumber,
-  opposingParties,
-  thirdParties,
+  queries,
   latestCheck,
-  canEditConclusion
+  canEditConclusion,
+  canRunCheck=true
 }: Props) {
   const [isPending, startTransition] = useTransition();
   const [conclusionNote, setConclusionNote] = useState(latestCheck?.note ?? "");
@@ -120,24 +111,6 @@ export function ConflictSection({
     latestCheck?.hits.some((h) => h.severity === "HIGH" || h.severity === "BLOCKING") ?? false;
 
   function handleRunCheck() {
-    const queries: {
-      role: "CLIENT_PARTY" | "OPPOSING_PARTY" | "THIRD_PARTY";
-      name: string;
-      idNumber?: string;
-    }[] = [];
-    if (intakeClientName) {
-      queries.push({
-        role: "CLIENT_PARTY",
-        name: intakeClientName,
-        idNumber: intakeClientIdNumber
-      });
-    }
-    for (const p of opposingParties) {
-      queries.push({ role: "OPPOSING_PARTY", name: p.name, idNumber: p.idNumber });
-    }
-    for (const p of thirdParties) {
-      queries.push({ role: "THIRD_PARTY", name: p.name, idNumber: p.idNumber });
-    }
     if (queries.length === 0) {
       toast.warning("没有可检索的当事人", { description: "请先在收案中添加委托方或对方" });
       return;
@@ -147,11 +120,11 @@ export function ConflictSection({
       try {
         const res = await runCheckAndSave({ intakeId, queries });
         toast.success("冲突检索完成", {
-          description: `命中 ${res.hits.length} 条 · 客户库同名 ${res.sameNameClients.length} 个`
+          description: `命中 ${res.hits.length} 条，请逐条核查`
         });
       } catch (err) {
         toast.error("检索失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });
@@ -175,41 +148,36 @@ export function ConflictSection({
         toast.success("结论已保存");
       } catch (err) {
         toast.error("保存失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });
   }
 
   return (
-    <section className="ll-surface rounded-lg border border-border p-5">
-      <header className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2 className="flex items-center gap-2 text-lg">
-            <ShieldCheck className="h-4 w-4 text-primary" />
+    <section className="card">
+      <div className="panel-head flex-wrap gap-2">
+        <div className="min-w-0">
+          <div className="panel-title">
+            <ShieldCheck className="ic" />
             利益冲突检索
-          </h2>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
+          </div>
+          <p className="t-xs t-mute" style={{ marginTop: 2 }}>
             匹配历史案件当事人；客户库同名仅作提示，不计为冲突
           </p>
         </div>
 
         <Button
-          onClick={handleRunCheck}
+          onClick={handleRunCheck} hidden={!canRunCheck}
           disabled={isPending}
           size="sm"
-          className="gap-1.5"
-          variant={latestCheck ? "outline" : "default"}
+          variant={latestCheck ? "secondary" : "default"}
         >
-          {isPending ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Search className="h-3.5 w-3.5" />
-          )}
+          {isPending ? <Loader2 className="animate-spin" /> : <Search />}
           {latestCheck ? "重新检索" : "运行冲突检索"}
         </Button>
-      </header>
-
+      </div>
+      <div className="panel-body">
       {!latestCheck ? (
         <div className="rounded-md border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
           还未运行冲突检索
@@ -219,7 +187,7 @@ export function ConflictSection({
           {/* 概览 */}
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/20 p-2.5 text-[12px]">
             <span className="font-mono text-[11px] text-muted-foreground">
-              {new Date(latestCheck.checkedAt).toLocaleString("zh-CN")}
+              {formatDateTime(new Date(latestCheck.checkedAt))}
             </span>
             <span className="text-muted-foreground">·</span>
             <span>
@@ -231,17 +199,17 @@ export function ConflictSection({
               className={cn(
                 "ml-1 text-[10px]",
                 latestCheck.conclusion === "SAME_SUBJECT" && "border-destructive/40 text-destructive",
-                latestCheck.conclusion === "DIFFERENT" && "border-[#65A30D]/40 text-[#65A30D]",
-                latestCheck.conclusion === "NEED_INFO" && "border-amber-500/40 text-amber-600"
+                latestCheck.conclusion === "DIFFERENT" && "border-[#1A7F45]/40 text-[#1A7F45]",
+                latestCheck.conclusion === "NEED_INFO" && "border-[var(--amber-line)] text-[var(--amber)]"
               )}
             >
-              {conclusionLabel[latestCheck.conclusion]}
+              {latestCheck.note?.startsWith("系统自动标记：")?"未命中（系统自动提示）":conflictConclusionLabel[latestCheck.conclusion]}
             </Badge>
-            {latestCheck.decidedBy && (
+            {latestCheck.decidedBy && !latestCheck.note?.startsWith("系统自动标记：") && (
               <span className="ml-auto text-[11px] text-muted-foreground">
                 {latestCheck.decidedBy.name} ·{" "}
                 {latestCheck.decidedAt
-                  ? new Date(latestCheck.decidedAt).toLocaleDateString("zh-CN")
+                  ? formatDate(new Date(latestCheck.decidedAt))
                   : ""}
               </span>
             )}
@@ -281,7 +249,7 @@ export function ConflictSection({
                   <Link
                     key={c.clientId}
                     href={`/clients/${c.clientId}`}
-                    className="inline-flex items-center gap-1 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-700 hover:bg-amber-500/15"
+                    className="inline-flex items-center gap-1 rounded border border-[var(--amber-line)] bg-[var(--amber-bg)] px-2 py-0.5 text-[11px] text-[var(--amber)] hover:bg-[var(--amber-bg)]"
                   >
                     {c.name} <span className="font-mono opacity-60">{c.idNumber}</span>
                     <ExternalLink className="h-2.5 w-2.5" />
@@ -293,10 +261,10 @@ export function ConflictSection({
 
           {/* 冲突命中列表 */}
           {latestCheck.hits.length === 0 ? (
-            <div className="rounded-md border border-[#65A30D]/30 bg-[#65A30D]/10 p-3 text-sm">
+            <div className="rounded-md border border-[#1A7F45]/30 bg-[#1A7F45]/10 p-3 text-sm">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-[#65A30D]" />
-                <span className="text-foreground">未命中历史案件，系统已标记为可承接</span>
+                <CheckCircle2 className="h-4 w-4 text-[#1A7F45]" />
+                <span className="text-foreground">本次检索未命中，仍须结合实际主体关系核查</span>
               </div>
             </div>
           ) : (
@@ -336,7 +304,7 @@ export function ConflictSection({
                   size="sm"
                   onClick={() => handleSetConclusion("DIFFERENT")}
                   disabled={isPending}
-                  className="border-[#65A30D]/40 text-[#65A30D] hover:bg-[#65A30D]/10"
+                  className="border-[#1A7F45]/40 text-[#1A7F45] hover:bg-[#1A7F45]/10"
                 >
                   可承接
                 </Button>
@@ -353,6 +321,7 @@ export function ConflictSection({
           )}
         </div>
       )}
+      </div>
     </section>
   );
 }
@@ -370,8 +339,8 @@ function InfoBar({
 }) {
   const colors =
     tone === "warn"
-      ? { border: "border-amber-500/30", bg: "bg-amber-500/10", text: "text-amber-700" }
-      : { border: "border-sky-500/25", bg: "bg-sky-500/10", text: "text-sky-700" };
+      ? { border: "border-[var(--amber-line)]", bg: "bg-[var(--amber-bg)]", text: "text-[var(--amber)]" }
+      : { border: "border-[var(--blue-line)]", bg: "bg-[var(--blue-bg)]", text: "text-[var(--blue)]" };
   return (
     <div className={cn("rounded-md border p-2.5 text-[12px]", colors.border, colors.bg)}>
       <div className={cn("flex items-center gap-1.5 font-medium", colors.text)}>
@@ -471,7 +440,7 @@ function formatDate(value: Date | string | null) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString("zh-CN");
+  return fmtDate(date);
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -482,3 +451,4 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     </div>
   );
 }
+

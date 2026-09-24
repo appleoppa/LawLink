@@ -1,8 +1,12 @@
+import { approvalContextFor, approvalRecipients } from "@/lib/approvals/service";
+import type { ApprovalAction } from "@prisma/client";
+import { approvalHref } from "@/lib/approvals/workspace";
 // 内部 helper：仅供 server action / cron 调用，不做鉴权。
 // 不能标 "use server"，否则任何客户端可直接调用给审批角色伪造通知。
 import type { NotificationPriority, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { createNotification } from "@/server/notifications/create";
+import { ActionError } from "@/lib/action-error";
 
 type ApprovalNotificationInput = {
   roles: UserRole[];
@@ -42,10 +46,19 @@ async function notifyUsers(input: DirectApprovalNotificationInput) {
 }
 
 export async function notifyRoleApprovers(input: ApprovalNotificationInput) {
+  const action: ApprovalAction | undefined = ({ Intake: "INTAKE_APPROVE", Document: "DOCUMENT_APPROVE", ArchiveRecord: "ARCHIVE_APPROVE", InvoiceRequest: "INVOICE_APPROVE" } as Record<string, ApprovalAction>)[input.refType];
+  if (action) {
+    await notifyUsers({ ...input, href: approvalHref(action, input.refId), userIds: await approvalRecipients(await approvalContextFor(action, input.refId)) });
+    return;
+  }
+  if (input.refType !== "ExternalContact") throw new ActionError("审批事项未配置，无法确定审批人员");
   const users = await prisma.user.findMany({
     where: {
       active: true,
-      role: { in: Array.from(new Set(input.roles)) }
+      OR: [
+        { managerAuthorized: true },
+        { role: { in: Array.from(new Set(input.roles)) } }
+      ]
     },
     select: { id: true }
   });

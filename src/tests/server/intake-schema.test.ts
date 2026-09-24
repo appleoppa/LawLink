@@ -62,6 +62,18 @@ describe("intakeCreateSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("表单内委托方占 parties[0] 时，只要选了我方诉讼地位就不再要求委托方单独填写 standing", () => {
+    const result = intakeCreateSchema.safeParse({
+      ...baseLitigationIntake,
+      ourStanding: "PLAINTIFF",
+      parties: [
+        { ...baseLitigationIntake.parties[0], role: "CLIENT_PARTY", name: "甲", idNumber: "330100199001010000" },
+        { ...baseLitigationIntake.parties[0], standing: "DEFENDANT" }
+      ]
+    });
+    expect(result.success).toBe(true);
+  });
+
   it("非诉/顾问/专项不强制诉讼地位", () => {
     const result = intakeCreateSchema.safeParse({
       ...baseLitigationIntake,

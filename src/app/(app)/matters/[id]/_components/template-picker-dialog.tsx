@@ -28,6 +28,7 @@ import {
   TEMPLATE_CATEGORY_CN,
   VARIABLE_LABEL_CN
 } from "./folder-types";
+import { actionErrorMessage } from "@/lib/action-error";
 
 function describeMissing(paths: string[]): string {
   if (paths.length === 0) return "";
@@ -119,7 +120,7 @@ export function TemplatePickerDialog({
         reset();
         onOpenChange(false);
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "生成失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "生成失败");
       }
     });
   };

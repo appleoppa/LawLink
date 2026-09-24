@@ -1,69 +1,99 @@
 import { Metadata } from "next";
 import { Suspense } from "react";
+import { Loader2 } from "lucide-react";
+import { getFirmProfile } from "@/server/settings/firm-profile";
 import { LoginForm } from "./login-form";
-import { Scale, ShieldCheck, Sparkles, Loader2 } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "登录 — LawLink"
 };
 
-export default function LoginPage() {
+/** 墨案 01 效果图：左侧深墨品牌面板 + 右侧表单面板，全屏分栏 */
+export default async function LoginPage() {
+  const profile = await getFirmProfile().catch(() => null);
+  const firmName = profile?.firmName && profile.firmName !== "LawLink" ? profile.firmName : null;
+
   return (
-    <div className="grid w-full max-w-5xl grid-cols-1 gap-0 lg:grid-cols-2">
-      {/* 左侧：品牌区 */}
-      <div className="hidden flex-col justify-between rounded-l-lg border border-r-0 border-border bg-muted/30 p-10 lg:flex">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <Scale className="h-4 w-4" strokeWidth={1.8} />
+    <div className="mo-login">
+      <div className="login">
+        <div className="brand-panel">
+          <div className="bp-brand">
+            <div className="bp-mark">
+              <svg width="19" height="19" viewBox="0 0 16 16" fill="none" aria-hidden>
+                <rect x="3" y="2.6" width="2.7" height="10.8" rx="1.1" fill="#fff" />
+                <rect x="8.4" y="2.6" width="2.7" height="10.8" rx="1.1" fill="#fff" />
+                <rect x="3" y="6.8" width="8.1" height="2.4" rx="1.1" fill="#00A6A6" />
+              </svg>
+            </div>
+            <div>
+              <div className="bp-name">LawLink</div>
+              <div className="bp-sub">律所案件管理系统 · 自部署</div>
+            </div>
           </div>
-          <div>
-            <div className="text-lg font-semibold tracking-tight">LawLink</div>
-            <div className="mt-0.5 text-[11px] text-muted-foreground">律师工作台</div>
-          </div>
-        </div>
 
-        <div className="space-y-8">
-          <div className="space-y-4">
-            <div className="text-xs text-primary">{new Date().getFullYear()}</div>
-            <h2 className="text-2xl font-semibold leading-snug tracking-tight">
-              把精力放在案件本身，
+          <div className="bp-hero">
+            <div className="bp-eyebrow">LAWLINK · 案卷工作台</div>
+            <h1 className="bp-title">
+              让每一件案件，
               <br />
-              而不是表格里。
-            </h2>
-            <div className="h-[2px] w-8 bg-primary rounded-full" />
+              都<span className="hl">有迹可循</span>。
+            </h1>
+            <p className="bp-desc">从收案登记、冲突检索到程序推进、结案归档——案件、材料、期限与财务在同一卷宗里各就其位，来源可溯，责任可查。</p>
+            <div className="bp-points">
+              <div className="bp-point">
+                <div className="ic">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                    <path d="M9 12l2 2 4-5" />
+                    <circle cx="12" cy="12" r="9" />
+                  </svg>
+                </div>
+                收案即冲突检索，主体身份自动携带
+              </div>
+              <div className="bp-point">
+                <div className="ic">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                    <path d="M12 3l7 4v5c0 4.4-3 8-7 9-4-1-7-4.6-7-9V7z" />
+                  </svg>
+                </div>
+                法定期限规则推算，阶梯预警不漏项
+              </div>
+              <div className="bp-point">
+                <div className="ic">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                    <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+                    <path d="M14 3v6h6" />
+                  </svg>
+                </div>
+                材料来源可溯，审阅与用印全程留痕
+              </div>
+            </div>
           </div>
 
-          <ul className="space-y-3.5 text-sm text-muted-foreground">
-            <Feature icon={<ShieldCheck className="h-3.5 w-3.5" />}>
-              数据自托管，附件可选加密，不依赖第三方 SaaS
-            </Feature>
-            <Feature icon={<Sparkles className="h-3.5 w-3.5" />}>
-              覆盖收案、冲突检索、多程序串接、财务分成、归档全流程
-            </Feature>
-            <Feature icon={<Scale className="h-3.5 w-3.5" />}>
-              规范案由库（民商事 / 刑事 / 行政）从源头消除字符串歧义
-            </Feature>
-          </ul>
+          <div className="bp-foot">
+            <span>{firmName ? `${firmName} · 专属实例` : "自部署 · 单所实例 · 数据自托管"}</span>
+            <span>MIT License</span>
+          </div>
         </div>
 
-        <div className="text-[11px] text-muted-foreground/70">
-          MIT 协议 · 自主部署
+        <div className="form-panel">
+          <div className="fp-body">
+            <h2 className="fp-title">登录 LawLink</h2>
+            <p className="fp-sub">使用你的工作账号进入本所工作台</p>
+            <Suspense fallback={<LoginFallback />}>
+              <LoginForm />
+            </Suspense>
+            <div className="fp-protect">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+                <path d="M12 3l7 4v5c0 4.4-3 8-7 9-4-1-7-4.6-7-9V7z" />
+                <path d="M12 11v4M12 8h.01" />
+              </svg>
+              <span>登录保护已开启：连续 5 次失败将临时锁定 15 分钟；管理员可要求两步验证。</span>
+            </div>
+          </div>
+          <div className="fp-foot">
+            遇到登录问题请联系所内管理员<span className="sep">·</span>登录行为将被记录审计
+          </div>
         </div>
-      </div>
-
-      {/* 右侧：登录卡 */}
-      <div className="flex flex-col justify-center rounded-lg border border-border bg-card p-10 lg:rounded-l-none">
-        <div className="mb-8">
-          <div className="text-xs text-muted-foreground">登录</div>
-          <h1 className="mt-2 text-xl font-semibold tracking-tight">欢迎回来</h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">
-            用您的工作邮箱登录
-          </p>
-        </div>
-
-        <Suspense fallback={<LoginFallback />}>
-          <LoginForm />
-        </Suspense>
       </div>
     </div>
   );
@@ -71,19 +101,8 @@ export default function LoginPage() {
 
 function LoginFallback() {
   return (
-    <div className="flex h-40 items-center justify-center text-muted-foreground">
+    <div className="flex h-56 items-center justify-center text-[var(--t-muted)]">
       <Loader2 className="h-4 w-4 animate-spin" />
     </div>
-  );
-}
-
-function Feature({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <li className="flex items-start gap-3">
-      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-        {icon}
-      </span>
-      <span>{children}</span>
-    </li>
   );
 }

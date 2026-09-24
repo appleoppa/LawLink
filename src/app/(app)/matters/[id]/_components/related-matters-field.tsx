@@ -14,8 +14,20 @@ import {
   removeMatterLink
 } from "@/server/matters/actions";
 import { matterHref } from "@/lib/matters/route";
+import { actionErrorMessage } from "@/lib/action-error";
 
-type MatterRef = { id: string; internalCode: string | null; firmCaseNo?: string | null; title: string };
+type MatterRef = { id: string; internalCode: string | null; firmCaseNo?: string | null; title: string; relation?: string | null };
+
+const RELATION_OPTIONS = [
+  { value: "RELATED_CASE", label: "一般关联" },
+  { value: "REMAND", label: "发回重审" },
+  { value: "DERIVED_ENFORCEMENT", label: "衍生执行" },
+  { value: "RELATED_CONTRACT", label: "关联合同" },
+  { value: "REFERENCE_ONLY", label: "仅供参考" }
+] as const;
+const RELATION_LABEL: Record<string, string> = Object.fromEntries(
+  RELATION_OPTIONS.map(o => [o.value, o.label])
+);
 
 export function RelatedMattersField({
   matterId,
@@ -32,6 +44,7 @@ export function RelatedMattersField({
   const [results, setResults] = useState<MatterRef[]>([]);
   const [searching, startSearch] = useTransition();
   const [pending, startMutate] = useTransition();
+  const [relation, setRelation] = useState<string>("RELATED_CASE");
 
   function runSearch(q: string) {
     setQuery(q);
@@ -54,13 +67,13 @@ export function RelatedMattersField({
     if (!canManage) return;
     startMutate(async () => {
       try {
-        await addMatterLink(matterId, id);
+        await addMatterLink(matterId, id, relation as "RELATED_CASE");
         toast.success("已关联");
         setOpen(false);
         setQuery("");
         router.refresh();
       } catch (err) {
-        toast.error("关联失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("关联失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -72,7 +85,7 @@ export function RelatedMattersField({
         await removeMatterLink(matterId, id);
         router.refresh();
       } catch (err) {
-        toast.error("解除失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("解除失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -101,6 +114,20 @@ export function RelatedMattersField({
             placeholder="搜索案件名称 / 所内案号"
             className="h-8 pl-7 text-xs"
           />
+        </div>
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {RELATION_OPTIONS.map(o => (
+            <button
+              key={o.value}
+              type="button"
+              onClick={() => setRelation(o.value)}
+              className={`rounded-full border px-2 py-0.5 text-[10.5px] transition-colors ${
+                relation === o.value ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
         </div>
         <div className="max-h-64 space-y-1 overflow-y-auto">
           {searching ? (
@@ -148,6 +175,11 @@ export function RelatedMattersField({
           >
             <span className="max-w-[260px] truncate">{m.title}</span>
           </Link>
+          {m.relation && m.relation !== "RELATED_CASE" && (
+            <span className="shrink-0 rounded bg-muted px-1 py-px text-[9.5px] text-muted-foreground">
+              {RELATION_LABEL[m.relation] ?? m.relation}
+            </span>
+          )}
           {canManage && (
             <button
               type="button"

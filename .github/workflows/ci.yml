@@ -32,6 +32,7 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://lawlink:lawlink@localhost:5432/lawlink?schema=public
+      SHADOW_DATABASE_URL: postgresql://lawlink:lawlink@localhost:5432/lawlink_shadow?schema=public
       NEXTAUTH_URL: http://localhost:3000
       NEXTAUTH_SECRET: ci-only-nextauth-secret-change-in-deployments
       # seed 会加密内置模板，必须是 base64 编码的 32 字节；仅供 CI 使用
@@ -51,6 +52,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Audit dependencies
+        run: npm audit
 
       - name: Generate Prisma client
         run: npm run prisma:generate
@@ -72,12 +76,15 @@ jobs:
       # 不检查执行结果是否等于 schema，所以会报 "up to date"。必须用 migrate diff。
       #
       # 本检查由 @liuzl 在 PR #3 中提出并给出具体方案，见该 PR 的 Suggested follow-up。
+      - name: Create isolated shadow database
+        run: psql "${DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE lawlink_shadow;'
+
       - name: Check for schema drift
         run: |
           npx prisma migrate diff \
             --from-migrations prisma/migrations \
             --to-schema-datamodel prisma/schema.prisma \
-            --shadow-database-url "$DATABASE_URL" \
+            --shadow-database-url "$SHADOW_DATABASE_URL" \
             --exit-code \
           && echo "无漂移：迁移历史与 schema.prisma 一致" \
           || (echo "::error::schema.prisma 与迁移历史不一致。请用 prisma migrate dev 生成迁移，不要用 db push 改库。" && exit 1)
@@ -105,6 +112,20 @@ jobs:
             if (!(await bcrypt.compare(password, admin.passwordHash))) {
               throw new Error('README 所载初始密码无法登录，seed 与文档已不一致');
             }
+            const businessTables = ['matter', 'client', 'intake', 'party', 'feeEntry', 'billing', 'invoiceRequest', 'deadline'];
+            for (const table of businessTables) {
+              const count = await prisma[table].count();
+              if (count !== 0) throw new Error('公开版初始化不应包含业务数据：' + table + ' / ' + count);
+            }
+            // 内置空白模板的文件也存储在 Document；仅允许这些基础文件，不允许业务材料。
+            const builtIns = await prisma.documentTemplate.findMany({
+              where: { isBuiltIn: true }, select: { docxBlobId: true }
+            });
+            const businessDocuments = await prisma.document.count({ where: { OR: [
+              { id: { notIn: builtIns.map((t) => t.docxBlobId) } },
+              { matterId: { not: null } }, { intakeId: { not: null } }
+            ] } });
+            if (businessDocuments !== 0) throw new Error('公开版初始化不应包含案件材料');
             const causes = await prisma.causeOfAction.count();
             const templates = await prisma.documentTemplate.count();
             const rules = await prisma.deadlineRule.count();

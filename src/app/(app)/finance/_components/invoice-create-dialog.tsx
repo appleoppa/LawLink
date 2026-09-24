@@ -1,5 +1,7 @@
 "use client";
 
+import { FormDialogContent as DialogContent } from "@/components/patterns/form-dialog";
+
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -10,7 +12,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
-  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -31,6 +32,7 @@ import {
 } from "@/server/finance/actions";
 import { uploadDocument } from "@/server/documents/actions";
 import { cn } from "@/lib/utils";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type InvoiceType = "PLAIN" | "SPECIAL";
 type InvoiceItem = "LAWYER_FEE" | "CONSULTING_FEE" | "AGENCY_FEE" | "OTHER";
@@ -47,11 +49,13 @@ const INVOICE_ITEM_OPTIONS: { value: InvoiceItem; label: string }[] = [
 export function InvoiceCreateDialog({
   open,
   onOpenChange,
-  canCreateUnlinkedInvoice = false
+  canCreateUnlinkedInvoice = false,
+  onSubmitted
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   canCreateUnlinkedInvoice?: boolean;
+  onSubmitted?: (id: string) => void;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -201,7 +205,7 @@ export function InvoiceCreateDialog({
             docIds.push(doc.id);
           }
         }
-        await createInvoiceRequest({
+        const created = await createInvoiceRequest({
           matterId: noMatter ? null : selectedMatter!.id,
           noMatterReason: noMatter ? noMatterReason : null,
           amount: amt,
@@ -218,16 +222,16 @@ export function InvoiceCreateDialog({
         });
         toast.success("开票申请已提交");
         onOpenChange(false);
-        router.refresh();
+        if (onSubmitted) onSubmitted(created.id); else router.refresh();
       } catch (err) {
-        toast.error("提交失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("提交失败", { description: actionErrorMessage(err) });
       }
     });
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[88vh] w-[92vw] max-w-xl flex-col gap-0 p-0">
+      <DialogContent className="max-w-xl">
         <DialogHeader className="border-b border-border px-5 py-3">
           <DialogTitle className="flex items-center gap-2">
             <Receipt className="h-4 w-4 text-primary" />

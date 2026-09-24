@@ -7,6 +7,8 @@
  * 沿用 firm-profile 的「单 key + 类型化读写」范式。
  */
 import { prisma } from "@/lib/prisma";
+import { assertSafeHttpUrl, safeFetch } from "@/lib/net/safe-url";
+import { ActionError } from "@/lib/action-error";
 
 const WEBHOOK_KEY = "notifyWebhook";
 
@@ -51,8 +53,9 @@ export async function sendWebhookText(
 
   let url: URL;
   try {
-    url = new URL(settings.url);
-    if (url.protocol !== "https:") throw new Error("仅支持 HTTPS");
+    // 私网校验（2026-09-19 审计）：管理端可配的出站地址不得指向本机/内网
+    url = await assertSafeHttpUrl(settings.url);
+    if (url.protocol !== "https:") throw new ActionError("仅支持 HTTPS");
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "webhook URL 无效" };
   }
@@ -60,8 +63,10 @@ export async function sendWebhookText(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
   try {
-    const response = await fetch(url.toString(), {
+    const response = await safeFetch(url.toString(), {
       method: "POST",
+      // 不跟随重定向：已校验的地址被 30x 引到内网即构成 SSRF，直接报错
+      redirect: "error",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ msgtype: "text", text: { content } }),
       signal: controller.signal

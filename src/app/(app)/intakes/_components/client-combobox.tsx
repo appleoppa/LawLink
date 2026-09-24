@@ -16,7 +16,8 @@ import {
   CommandList
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
-import type { ClientOption } from "@/app/(app)/matters/_components/matters-view";
+import type { ClientType } from "@prisma/client";
+export type ClientOption = { id: string; name: string; type: ClientType };
 import { searchEnterpriseCandidates, type EnterpriseSearchItem } from "@/server/yuandian/enterprise";
 
 type YuandianCandidate = EnterpriseSearchItem;
@@ -204,7 +205,7 @@ export function ClientCombobox({
                     }}
                     className="gap-2"
                   >
-                    <Building2 className="h-3.5 w-3.5 shrink-0 text-blue-600" />
+                    <Building2 className="h-3.5 w-3.5 shrink-0 text-[var(--blue)]" />
                     <span className="truncate">{c.name}</span>
                     {c.creditCode && (
                       <span className="ml-auto shrink-0 text-[10px] font-mono text-muted-foreground">

@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 520" role="img" aria-labelledby="title desc">
+  <title id="title">LawLink wheel logo preview</title>
+  <desc id="desc">Preview sheet for a steering wheel shaped LawLink mark.</desc>
+  <rect width="900" height="520" fill="#edf0f4"/>
+  <rect x="42" y="40" width="816" height="440" rx="28" fill="#ffffff" stroke="#d8e1ea"/>
+  <defs>
+    <linearGradient id="wheel-bg" x1="14" y1="8" x2="82" y2="88" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#eef3f7"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(104 106) scale(2.7)">
+    <rect x="7" y="7" width="82" height="82" rx="24" fill="url(#wheel-bg)"/>
+    <rect x="7.5" y="7.5" width="81" height="81" rx="23.5" fill="none" stroke="#d8e1ea"/>
+    <circle cx="48" cy="48" r="28" fill="none" stroke="#0f1b2d" stroke-width="9"/>
+    <path d="M48 55v20" fill="none" stroke="#0f1b2d" stroke-width="9" stroke-linecap="round"/>
+    <path d="M42 52 28 64" fill="none" stroke="#0f1b2d" stroke-width="9" stroke-linecap="round"/>
+    <path d="M54 52 68 64" fill="none" stroke="#0f1b2d" stroke-width="9" stroke-linecap="round"/>
+    <circle cx="48" cy="48" r="11" fill="#007b7f"/>
+    <circle cx="48" cy="48" r="4.2" fill="#f7fbfb"/>
+  </g>
+  <text
+    x="406"
+    y="221"
+    fill="#0f1b2d"
+    font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', Inter, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif"
+    font-size="78"
+    font-weight="740"
+  >LawLink</text>
+  <text
+    x="411"
+    y="274"
+    fill="#5f6d7e"
+    font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif"
+    font-size="24"
+    font-weight="520"
+  >Matter cockpit for legal teams</text>
+  <g transform="translate(410 338)">
+    <rect width="34" height="34" rx="9" fill="#0f1b2d"/>
+    <rect x="52" width="34" height="34" rx="9" fill="#007b7f"/>
+    <rect x="104" width="34" height="34" rx="9" fill="#edf0f4" stroke="#d8e1ea"/>
+    <rect x="156" width="34" height="34" rx="9" fill="#ffffff" stroke="#d8e1ea"/>
+  </g>
+</svg>

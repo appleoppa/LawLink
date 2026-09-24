@@ -75,11 +75,47 @@ const CRIMINAL_INVESTIGATION_PRESETS: ProcedureStagePreset[] = [
   { name: "案件归档", kind: "required", description: "阶段性报告、材料归档和后续程序衔接。" }
 ];
 
+const NON_LITIGATION_PRESETS: ProcedureStagePreset[] = [
+  { name: "委托确认", kind: "required", description: "委托合同、服务范围、交付标准和费用安排。" },
+  { name: "需求梳理", kind: "required", description: "客户目标、交易背景、资料清单和关键时间节点。" },
+  { name: "资料收集", kind: "required", description: "客户提供材料、公开检索、调档和资料缺口跟进。" },
+  { name: "法律审查", kind: "required", description: "尽职调查、合同审查、法律检索和风险分析。" },
+  { name: "沟通谈判", kind: "optional", description: "交易对方沟通、谈判要点、会议纪要和让步记录。" },
+  { name: "文书起草", kind: "required", description: "法律意见书、报告、合同文本和修改说明。" },
+  { name: "成果交付", kind: "required", description: "交付成果、客户确认、反馈意见和后续事项。" },
+  { name: "服务总结", kind: "optional", description: "年度/阶段服务总结、工作量统计和续约建议。" },
+  { name: "案件归档", kind: "required", description: "服务成果、往来文件和委托材料归档。" }
+];
+
+const PROSECUTION_REVIEW_PRESETS: ProcedureStagePreset[] = [
+  { name: "代理授权", kind: "required", description: "审查起诉阶段委托手续、授权材料和会见手续。" },
+  { name: "会见", kind: "required", description: "会见预约、会见笔录、家属沟通和权利告知。" },
+  { name: "阅卷", kind: "required", description: "申请阅卷、卷宗摘录、证据审查和事实梳理。" },
+  { name: "羁押必要性审查", kind: "optional", description: "羁押必要性审查申请、取保候审和变更强制措施。" },
+  { name: "退回补充侦查", kind: "optional", description: "退补提纲、补充证据审查和期限重新计算。" },
+  { name: "辩护意见", kind: "required", description: "不起诉/从轻意见、认罪认罚沟通和意见提交。" },
+  { name: "审查结论", kind: "required", description: "起诉、不起诉决定签收和后续程序衔接。" },
+  { name: "案件归档", kind: "required", description: "阶段辩护报告、材料归档和后续程序提示。" }
+];
+
+const ADMIN_RECONSIDERATION_PRESETS: ProcedureStagePreset[] = [
+  { name: "代理授权", kind: "required", description: "复议委托手续、授权文件和材料交接。" },
+  { name: "案情研判", kind: "required", description: "行政行为梳理、复议期限、法律依据和复议方案。" },
+  { name: "复议申请", kind: "required", description: "复议申请书、主体材料、证据目录和提交回执。" },
+  { name: "补正/答复", kind: "optional", description: "补正通知、被申请人答复和证据交换。" },
+  { name: "听证", kind: "optional", description: "听证通知、陈述意见和听证笔录。" },
+  { name: "复议决定", kind: "required", description: "复议决定签收、起诉期限和后续救济评估。" },
+  { name: "案件归档", kind: "required", description: "复议结案报告、材料归档和原件退还。" }
+];
+
 export function procedureStagePresetsForProcedure(type: ProcedureType): ProcedureStagePreset[] {
   if (type === "SECOND_INSTANCE" || type === "REMAND_SECOND") return SECOND_INSTANCE_PRESETS;
   if (type === "ENFORCEMENT" || type === "ENFORCEMENT_OBJECTION") return ENFORCEMENT_PRESETS;
   if (type === "COMMERCIAL_ARBITRATION" || type === "LABOR_ARBITRATION") return ARBITRATION_PRESETS;
   if (type === "INVESTIGATION") return CRIMINAL_INVESTIGATION_PRESETS;
+  if (type === "PROSECUTION_REVIEW") return PROSECUTION_REVIEW_PRESETS;
+  if (type === "ADMIN_RECONSIDERATION") return ADMIN_RECONSIDERATION_PRESETS;
+  if (type === "NON_LITIGATION_PHASE") return NON_LITIGATION_PRESETS;
   return CIVIL_TRIAL_PRESETS;
 }
 

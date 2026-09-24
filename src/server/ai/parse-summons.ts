@@ -8,6 +8,7 @@
  */
 import { requireSession } from "@/lib/auth/session";
 import { aiVision, extractJson, AiNotConfiguredError } from "@/lib/ai/client";
+import { ActionError } from "@/lib/action-error";
 import { parseSummonsWithLocalOcr } from "./parse-summons-local";
 
 export type ParsedSummons = {
@@ -38,19 +39,20 @@ const PROMPT = `下方图片是一张中国法院传票（开庭传票）。请�
 - 仅 JSON，不要解释`;
 
 export async function parseSummons(form: FormData): Promise<ParsedSummons> {
-  await requireSession();
+  const session = await requireSession("documents.write");
   const file = form.get("file");
-  if (!(file instanceof File)) throw new Error("缺少文件");
+  if (!(file instanceof File)) throw new ActionError("缺少文件");
   if (!SUPPORTED.has(file.type)) {
-    throw new Error(`仅支持图片（JPG/PNG/WebP/HEIC）或 PDF 格式，当前 ${file.type || "未知"}`);
+    throw new ActionError(`仅支持图片（JPG/PNG/WebP/HEIC）或 PDF 格式，当前 ${file.type || "未知"}`);
   }
-  if (file.size > 10 * 1024 * 1024) throw new Error("文件超过 10MB");
+  if (file.size > 10 * 1024 * 1024) throw new ActionError("文件超过 10MB");
 
   const buf = Buffer.from(await file.arrayBuffer());
   const dataUrl = `data:${file.type};base64,${buf.toString("base64")}`;
 
   try {
     const { content } = await aiVision({
+      userId: session.user.id,
       image: { dataUrl },
       prompt: PROMPT,
       maxTokens: 500

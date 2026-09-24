@@ -1,4 +1,5 @@
 "use server";
+import { roleMutation } from "@/lib/roles/service";
 
 import { requireSession } from "@/lib/auth/session";
 import { getYuandianSettings } from "@/lib/yuandian/settings";
@@ -13,9 +14,10 @@ import { audit } from "@/server/audit";
 import { prisma } from "@/lib/prisma";
 import {
   assertCanAccessMatter,
-  assertCanModifyMatter
+  assertCanHandleMatter
 } from "@/lib/permissions";
 import { revalidateMatter } from "@/server/matters/route";
+import { ActionError } from "@/lib/action-error";
 
 export type EnterpriseSearchItem = {
   id: string;
@@ -29,7 +31,7 @@ export type EnterpriseSearchItem = {
 export async function searchEnterpriseCandidates(
   name: string
 ): Promise<{ items: EnterpriseSearchItem[]; configured: boolean }> {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const settings = await getYuandianSettings();
   if (!settings.configured) return { items: [], configured: false };
 
@@ -63,7 +65,7 @@ export async function searchEnterpriseCandidates(
 export async function getEnterpriseDetail(
   id: string
 ): Promise<{ info: MappedEnterpriseInfo | null; configured: boolean }> {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const settings = await getYuandianSettings();
   if (!settings.configured) return { info: null, configured: false };
 
@@ -98,8 +100,8 @@ async function loadPartyWithMatter(partyId: string) {
       enterpriseBoundAt: true
     }
   });
-  if (!party) throw new Error("当事人不存在");
-  if (!party.matterId) throw new Error("当事人未关联案件");
+  if (!party) throw new ActionError("当事人不存在");
+  if (!party.matterId) throw new ActionError("当事人未关联案件");
   return party;
 }
 
@@ -114,15 +116,12 @@ export async function bindPartyToEnterprise(input: {
   socialCode: string;
   enterpriseName: string;
 }): Promise<{ ok: true }> {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const party = await loadPartyWithMatter(input.partyId);
-  await assertCanModifyMatter(
-    session.user.id,
-    session.user.role,
-    party.matterId!
-  );
+  // 2026-09-20 口径统一：当事人结构性数据写入走 handle 断言（主办/成员 + 合伙人例外）
+  await assertCanHandleMatter(session.user, party.matterId!);
 
-  await prisma.party.update({
+  await roleMutation(session.user, "matters.write", async roleDb => roleDb.party.update({
     where: { id: party.id },
     data: {
       enterpriseId: input.enterpriseId,
@@ -130,7 +129,7 @@ export async function bindPartyToEnterprise(input: {
       enterpriseName: input.enterpriseName,
       enterpriseBoundAt: new Date()
     }
-  });
+  }));
 
   await audit({
     userId: session.user.id,
@@ -158,15 +157,12 @@ export async function bindPartyToEnterprise(input: {
 export async function unbindPartyEnterprise(
   partyId: string
 ): Promise<{ ok: true }> {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const party = await loadPartyWithMatter(partyId);
-  await assertCanModifyMatter(
-    session.user.id,
-    session.user.role,
-    party.matterId!
-  );
+  // 2026-09-20 口径统一：当事人结构性数据写入走 handle 断言（主办/成员 + 合伙人例外）
+  await assertCanHandleMatter(session.user, party.matterId!);
 
-  await prisma.party.update({
+  await roleMutation(session.user, "matters.write", async roleDb => roleDb.party.update({
     where: { id: partyId },
     data: {
       enterpriseId: null,
@@ -174,7 +170,7 @@ export async function unbindPartyEnterprise(
       enterpriseName: null,
       enterpriseBoundAt: null
     }
-  });
+  }));
 
   await audit({
     userId: session.user.id,
@@ -196,16 +192,16 @@ export async function unbindPartyEnterprise(
 export async function getEnterpriseSummaryByParty(
   partyId: string
 ): Promise<{ summary: EnterpriseSummary | null; configured: boolean }> {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const party = await loadPartyWithMatter(partyId);
   await assertCanAccessMatter(
     session.user.id,
     session.user.role,
     party.matterId!
-  );
+  , session.user.rolePermissions);
 
   if (!party.enterpriseId && !party.enterpriseSocialCode) {
-    throw new Error("此当事人尚未绑定元典企业");
+    throw new ActionError("此当事人尚未绑定元典企业");
   }
 
   const settings = await getYuandianSettings();

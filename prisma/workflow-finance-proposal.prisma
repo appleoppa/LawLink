@@ -1,0 +1,2745 @@
+// LawLink 数据 schema
+// 对应 docs/DATA-MODEL.md v0.3
+// 修改前先改文档，再改 schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// 枚举
+// ============================================================
+
+enum UserRole {
+  CUSTOM
+  PRINCIPAL_LAWYER
+  INDEPENDENT_LAWYER
+  LAWYER
+  ASSISTANT
+  FINANCE
+}
+
+enum SystemRole {
+  NONE
+  SUPER_ADMIN
+}
+
+enum IdentityDocumentType {
+  PRC_RESIDENT_ID
+  HK_MACAO_TAIWAN_RESIDENCE_PERMIT
+  PRC_HK_MACAO_TRAVEL_PERMIT
+  HK_MACAO_MAINLAND_TRAVEL_PERMIT
+  TAIWAN_MAINLAND_TRAVEL_PERMIT
+  PASSPORT
+  FOREIGN_PERMANENT_RESIDENT_ID
+  OTHER
+}
+
+enum IdentityDocumentPageKind {
+  PORTRAIT_SIDE
+  EMBLEM_SIDE
+  DATA_PAGE
+  SUPPLEMENTARY_PAGE
+  OTHER
+}
+
+enum MatterCategory {
+  CIVIL_COMMERCIAL // 民商诉讼
+  LABOR_ARBITRATION // v0.34 劳动仲裁
+  COMMERCIAL_ARBITRATION // v0.34 商事仲裁
+  CRIMINAL // 刑事诉讼
+  ADMINISTRATIVE // 行政诉讼
+  NON_LITIGATION // 非诉项目
+  LEGAL_COUNSEL // 常年顾问
+  SPECIAL_PROJECT // 法律专项
+}
+
+// v1.x P0-1: 客户主体证件类型（个人=身份证/护照，机构=统一社会信用代码）
+enum ClientIdType {
+  ID_CARD
+  USCC
+  PASSPORT
+  OTHER
+  // 2026-09-14: 自然人其他常用证件（客户与当事人共用）
+  HK_MACAO_MAINLAND_PERMIT // 港澳居民来往内地通行证
+  TAIWAN_MAINLAND_PERMIT // 台湾居民来往大陆通行证
+  FOREIGN_PERMANENT_ID // 外国人永久居留身份证
+}
+
+enum MatterStatus {
+  PENDING_ACCEPTANCE
+  IN_PROGRESS
+  ON_HOLD
+  CLOSED
+  ARCHIVED
+}
+
+// v1.x P2 状态轴分离（报告 §6.4 最小版）：服务轴与程序轴（Matter.status）分开。
+// 样例 6：一审程序结束（程序轴 CLOSED）≠ 律师服务完成——服务完成是显式动作。
+enum MatterServiceStatus {
+  SERVICE_ACTIVE
+  SERVICE_COMPLETED
+}
+
+enum MatterMemberRole {
+  LEAD
+  CO_LEAD
+  ASSISTANT
+}
+
+enum IntakeStatus {
+  INTAKE
+  PENDING_CONFIRMATION
+  CONVERTED
+  DECLINED // 最终拒绝（无法补正）
+  NEEDS_REVISION // 待补正（可由律师补充材料后重新提交审批）
+}
+
+enum LitigationStanding {
+  PLAINTIFF
+  JOINT_PLAINTIFF
+  DEFENDANT
+  JOINT_DEFENDANT
+  THIRD_PARTY
+  COUNTERCLAIM_PLAINTIFF
+  COUNTERCLAIM_DEFENDANT
+  // v0.5: 二审 / 再审 / 执行
+  APPELLANT
+  APPELLEE
+  RETRIAL_APPLICANT
+  RETRIAL_RESPONDENT
+  ENFORCEMENT_APPLICANT
+  EXECUTED_PERSON
+  // 刑事
+  CRIMINAL_DEFENDANT
+  CRIMINAL_VICTIM
+  PRIVATE_PROSECUTOR
+  CRIMINAL_INCIDENTAL_PLAINTIFF
+  // 仲裁
+  ARBITRATION_CLAIMANT
+  ARBITRATION_RESPONDENT
+  // 行政
+  ADMIN_PLAINTIFF
+  ADMIN_DEFENDANT
+  ADMIN_RECONSIDERATION_APPLICANT
+  ADMIN_RECONSIDERATION_RESPONDENT
+  // 非诉
+  NON_LITIGATION_PARTY
+}
+
+enum FeeType {
+  FIXED // 固定收费
+  CONTINGENCY // 风险代理
+  TIMED // 计时收费
+}
+
+enum InvoiceType {
+  PLAIN // 普通发票
+  SPECIAL // 增值税专用发票
+}
+
+enum InvoiceItem {
+  LAWYER_FEE // 律师服务费
+  CONSULTING_FEE // 法律咨询费
+  AGENCY_FEE // 代理费
+  OTHER // 其他法律服务
+}
+
+enum InvoiceRequestStatus {
+  PENDING // 律师已申请、待财务处理
+  APPROVED // 财务已批准、待开票
+  ISSUED // 已开具（含电子发票）
+  REJECTED // 被拒
+}
+
+// v0.10: 文书审批状态
+// v1.x P1 批次③: 材料来源分类（区别于 sourceParty 的具体当事人名）
+enum DocumentSourceOrigin {
+  CLIENT_PROVIDED // 当事人提供
+  COURT_SERVED // 法院送达
+  AI_EXTRACTED // AI 识别生成
+  SELF_COLLECTED // 自行调取
+  TEAM_PRODUCED // 团队产出
+}
+
+// v1.x P0-2: 抽取文本的来源
+enum DocumentTextSource {
+  DOCX // Word 文档服务端抽取
+  PDF_TEXT // PDF 文本层
+  OCR // 识别服务结果（P1 评估通用卷宗 OCR 复用）
+  MANUAL // 人工录入
+}
+
+// v1.x P0-2: 文本层处理状态（失败页不可隐去）
+enum DocumentOcrStatus {
+  PENDING // 尚未抽取（存量数据默认值，懒抽取升级）
+  READY // 已有可用文本
+  FAILED // 抽取失败（原因可查，可重试）
+  SKIP // 明确跳过（如暂不支持的类型）
+}
+
+enum DocumentStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  FILED
+}
+
+enum ProcedureType {
+  // 审判通用
+  FIRST_INSTANCE
+  SECOND_INSTANCE
+  RETRIAL_REVIEW
+  RETRIAL
+  REMAND_FIRST
+  REMAND_SECOND
+  PROSECUTORIAL_SUPERVISION
+  // 仲裁
+  COMMERCIAL_ARBITRATION
+  LABOR_ARBITRATION
+  ARBITRATION_SET_ASIDE
+  ARBITRATION_ENFORCEMENT_REVIEW
+  // 执行
+  ENFORCEMENT
+  ENFORCEMENT_OBJECTION
+  // 刑事
+  INVESTIGATION
+  PROSECUTION_REVIEW
+  DEATH_PENALTY_REVIEW
+  CRIMINAL_ENFORCEMENT
+  COMMUTATION_PAROLE_REVIEW
+  // 行政
+  ADMIN_RECONSIDERATION
+  ADMIN_NON_LITIGATION_ENFORCEMENT
+  // 非诉
+  NON_LITIGATION_PHASE
+  // 兜底
+  CUSTOM
+}
+
+enum ProcedureStatus {
+  PENDING
+  IN_PROGRESS
+  CONCLUDED
+}
+
+enum ProcedureEngagement {
+  ENGAGED
+  INFORMATIONAL
+}
+
+enum ProcedureOutcome {
+  WON
+  PARTIAL_WON
+  LOST
+  MEDIATED
+  WITHDRAWN
+  DISMISSED
+  COMPLETED
+  TRANSFERRED
+  OTHER
+}
+
+enum PartyRole {
+  CLIENT_PARTY
+  OPPOSING_PARTY
+  THIRD_PARTY
+  CO_LITIGANT
+  AGENT
+  WITNESS
+  OTHER
+}
+
+// v0.27: 当事人主体类型（自然人需身份证号；其余主体需统一社会信用代码）
+// v0.30: 细分主体类型（公司/合伙企业/个体工商户/事业单位/社会组织/政府机关/其他组织）
+enum PartyType {
+  NATURAL_PERSON
+  ORGANIZATION // 旧数据兼容（= 其他组织）
+  COMPANY
+  PARTNERSHIP
+  INDIVIDUAL_BUSINESS
+  INSTITUTION
+  SOCIAL_ORG
+  GOVERNMENT
+  OTHER_ORG
+}
+
+// v0.30: 需向律协备案与否
+enum BarFilingType {
+  NONE // 否
+  COLLECTIVE // 涉集体案件
+  SENSITIVE // 涉敏感案件
+  MAJOR // 涉重大案件
+  OTHER // 其他特殊案件
+}
+
+enum ClientType {
+  INDIVIDUAL
+  COMPANY
+  ORGANIZATION
+}
+
+// v0.39: 客户合作状态（生命周期）
+enum ClientCooperationStatus {
+  POTENTIAL // 潜在
+  NEGOTIATING // 洽谈中
+  SIGNED // 已签约
+  TERMINATED // 已终止
+}
+
+// v0.39: 客户性别（个人客户）
+enum ClientGender {
+  MALE
+  FEMALE
+}
+
+enum ConflictSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  BLOCKING
+}
+
+enum ConflictConclusion {
+  PENDING
+  SAME_SUBJECT
+  DIFFERENT
+  NEED_INFO
+}
+
+enum DeadlinePeriodUnit {
+  DAYS
+  MONTHS
+  YEARS
+}
+
+enum DeadlineCategory {
+  LIMITATION
+  EVIDENCE
+  APPEAL
+  PERFORMANCE
+  RESPONSE
+  ENFORCEMENT
+  ARBITRATION_SET_ASIDE
+  // v0.42: 保全期限（含续期）
+  PRESERVATION
+  CUSTOM
+}
+
+enum NoteChannel {
+  PHONE
+  WECHAT
+  EMAIL
+  MEETING
+  COURT
+  OTHER
+}
+
+enum DocumentCategory {
+  EVIDENCE
+  PLEADING
+  PROCEDURE
+  JUDGMENT
+  CONTRACT
+  OTHER
+}
+
+enum BillingStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+}
+
+enum FeeEntryType {
+  RECEIVABLE
+  RECEIVED
+  REFUND
+  COST
+  COMMISSION
+}
+
+/// 实收确认状态（2026-09-18 用户确认）：律师登记的实收先记 PENDING，
+/// 不生成实收 Payment、不派生分成、不计入已实收；财务确认后才转 CONFIRMED 生效。
+/// 财务/主任/管理员自行登记时直接 CONFIRMED。非 RECEIVED 类型恒为 CONFIRMED。
+enum FeeConfirmState {
+  PENDING
+  CONFIRMED
+}
+
+// v0.8: 文档模板分类
+enum TemplateCategory {
+  INTAKE // 收案文书：收案登记表 / 风险告知书 / 质量反馈卡
+  RETAINER // 委托文书：委托代理合同 / 授权委托书
+  LITIGATION // 诉讼文书：起诉状 / 答辩状 / 上诉状 / 反诉状 / 仲裁申请书
+  HEARING // 庭审文书：谈话笔录 / 庭审笔录 / 阅卷笔录 / 询问笔录
+  WORK_PRODUCT // 工作成果：办案小结 / 法律意见书 / 代理意见 / 律师函 / 公函
+  ARCHIVE // 卷宗文书：卷宗封皮 / 卷宗目录 / 备考表 / 证据目录
+  CLOSING // 结案文书：结案登记表 / 结算单
+  BLANK // 空白文档（套律所抬头）
+}
+
+// v0.8: 用章种类
+enum SealType {
+  OFFICIAL_SEAL // 律师事务所公章
+  CONTRACT_SEAL // 合同专用章
+  FINANCE_SEAL // 财务专用章
+  LEGAL_REP_SEAL // 法定代表人章
+  CONTRACT_REVIEW_SEAL // 合同审核章
+}
+
+// v0.8: 用章申请状态
+enum SealRequestStatus {
+  PENDING // 待审批
+  APPROVED // 已批准，待盖章
+  STAMPED // 已盖章并回填扫描件（终态）
+  REJECTED // 被驳回（终态，但可新建一条引用此 ID 重新申请）
+  CANCELLED // 申请人主动撤销
+}
+
+// v0.8: 紧急程度
+enum Urgency {
+  NORMAL
+  URGENT
+}
+
+// ============================================================
+// 用户与权限
+// ============================================================
+
+model RoleDefinition {
+  id             String           @id @default(cuid())
+  name           String           @unique @db.VarChar(60)
+  normalizedName String           @unique @db.VarChar(60)
+  description    String           @default("") @db.VarChar(300)
+  active         Boolean          @default(true)
+  version        Int              @default(1)
+  permissions    RolePermission[]
+  users          User[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+}
+
+model RolePermission {
+  roleId        String
+  role          RoleDefinition @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  permissionKey String         @db.VarChar(60)
+  scope         String         @db.VarChar(20)
+
+  @@id([roleId, permissionKey])
+}
+
+model User {
+  invoiceAdjustments InvoiceAdjustment[]
+  outgoingIntakeHandovers IntakeHandover[] @relation("IntakeHandoverFrom")
+  incomingIntakeHandovers IntakeHandover[] @relation("IntakeHandoverTo")
+  initiatedIntakeHandovers IntakeHandover[] @relation("IntakeHandoverInitiator")
+  requestedTerminations ExecutionTermination[] @relation("TerminationRequester")
+  decidedTerminations ExecutionTermination[] @relation("TerminationDecider")
+  archiveFinanceResponsibilities ArchiveClosurePlan[] @relation("ArchiveFinanceOwner")
+  workResponsibilities WorkResponsibility[] @relation("WorkAssignee")
+  proposedWork WorkResponsibility[] @relation("ProposedWork")
+  urgentResponsibilities IntakeUrgentItem[] @relation("UrgentAssignee")
+  proposedUrgent IntakeUrgentItem[] @relation("ProposedUrgent")
+  handoversInitiated MatterHandover[] @relation("HandoverInitiator")
+  handoversSent MatterHandover[] @relation("HandoverSender")
+  handoversReceived MatterHandover[] @relation("HandoverReceiver")
+  intakeSubmissions IntakeRevision[]
+  confirmedFinanceCorrections FinanceCorrection[] @relation("FinanceCorrectionConfirmer")
+  invoicePaymentAllocations InvoicePaymentAllocation[] @relation("InvoiceAllocationRecorder")
+  commissionSettlements CommissionSettlement[] @relation("CommissionSettlementRecorder")
+  confirmedReceivableConditions Receivable[] @relation("ReceivableConditionConfirmer")
+  id                     String                     @id @default(cuid())
+  name                   String
+  email                  String                     @unique
+  passwordHash           String
+  role                   UserRole                   @default(LAWYER)
+  systemRole             SystemRole                 @default(NONE)
+  managerAuthorized     Boolean                    @default(false)
+  roleDefinitionId       String?
+  roleDefinition         RoleDefinition?            @relation(fields: [roleDefinitionId], references: [id], onDelete: Restrict)
+  phone                  String?
+  identityDocumentType   IdentityDocumentType?
+  identityDocumentName   String?                    @db.VarChar(60)
+  identityDocumentNumber String?                    @db.VarChar(50)
+  avatar                 String?
+  active                 Boolean                    @default(true)
+  lastLoginAt            DateTime?
+  sessionVersion         Int                        @default(0)
+  // v1.x P0-3: 登录失败锁定（连续失败计数 + 锁定截止时间；成功登录清零）
+  failedLoginAttempts    Int                        @default(0)
+  lockedUntil            DateTime?
+  // v1.x P1: TOTP 双步验证（RFC 6238；secret 加密存储，恢复码只存哈希）
+  totpEnabled            Boolean                    @default(false)
+  totpSecret             String?
+  recoveryCodeHashes     String[]                   @default([])
+  // v1.x P1 收尾 c: 管理端强制开启——enforced 且未绑定时拒绝登录（提示先绑定），
+  // 且用户不可自行关闭双步验证；由 SUPER_ADMIN 通过 forceEnforceTotp 设置。
+  totpEnforced           Boolean                    @default(false)
+  approvalMemberships    ApprovalPermissionMember[]
+  // v0.50: ICS 日历订阅 token（URL 即凭证，可重置）
+  calendarToken          String?                    @unique
+
+  ownedMatters              Matter[]                      @relation("MatterOwner")
+  registeredMatters         Matter[]                      @relation("MatterRegistrar")
+  createdIntakes            Intake[]                      @relation("IntakeCreator")
+  ledTeams                  Team[]                        @relation("TeamLeader")
+  teamMemberships           TeamMember[]
+  memberships               MatterMember[]
+  commissionPlans           CommissionPlan[]
+  feeEntriesBeneficiary     FeeEntry[]                    @relation("FeeBeneficiary")
+  feeEntriesRecorded        FeeEntry[]                    @relation("FeeRecorder")
+  feeEntriesConfirmed       FeeEntry[]                    @relation("FeeConfirmer")
+  authoredNotes             Note[]                        @relation("NoteAuthor")
+  uploadedDocuments         Document[]                    @relation("DocumentUploader")
+  reviewedDocuments         Document[]                    @relation("DocumentReviewer")
+  approvedDocuments         Document[]                    @relation("DocumentApprover")
+  auditLogs                 AuditLog[]
+  conflictDecisions         ConflictCheck[]               @relation("ConflictDecidedBy")
+  createdEvidenceItems      EvidenceItem[]                @relation("EvidenceCreator")
+  // v0.5
+  ownedIntakes              Intake[]                      @relation("IntakeOwner")
+  invoiceRequests           InvoiceRequest[]              @relation("InvoiceRequester")
+  invoiceProcessing         InvoiceRequest[]              @relation("InvoiceProcessor")
+  // v0.8: 模板创建者 + 用章申请人/审批人/盖章人
+  createdTemplates          DocumentTemplate[]            @relation("TemplateCreator")
+  sealRequests              SealRequest[]                 @relation("SealRequester")
+  sealApprovals             SealRequest[]                 @relation("SealApprover")
+  sealStamps                SealRequest[]                 @relation("SealStamper")
+  // v0.9: 短信收件人 / 快递创建人
+  receivedSmsMessages       SmsMessage[]                  @relation("SmsReceiver")
+  // v0.44: 保全三层重构（v0.48 移除旧单表模型）
+  ownedPreservationCases    PreservationCase[]            @relation("PreservationCaseOwner")
+  propertyRenewals          PreservationPropertyRenewal[] @relation("PropertyRenewalPerformer")
+  createdExpress            ExpressTracking[]             @relation("ExpressCreator")
+  // v0.10: 通知
+  notifications             Notification[]
+  // v0.21: AI 文书审查历史（发起人）
+  aiReviews                 ReviewRecord[]                @relation("ReviewAuthor")
+  // v0.22: 律所资料上传者
+  firmFilesUploaded         FirmFile[]                    @relation("FirmFileUploader")
+  // v0.27: 服务中心 - 公告发布者 / 外部联系人录入者
+  publishedAnnouncements    Announcement[]                @relation("AnnouncementAuthor")
+  createdExternalContacts   ExternalContact[]             @relation("ExternalContactCreator")
+  reviewedExternalContacts  ExternalContact[]             @relation("ExternalContactReviewer")
+  // v0.44: 程序主办律师
+  leadProcedures            MatterProcedure[]             @relation("ProcedureLeadLawyer")
+  identityDocuments         UserIdentityDocument[]        @relation("IdentityOwner")
+  uploadedIdentityDocuments UserIdentityDocument[]        @relation("IdentityUploader")
+  createdAt                 DateTime                      @default(now())
+  updatedAt                 DateTime                      @updatedAt
+
+  @@unique([identityDocumentType, identityDocumentNumber])
+  @@index([roleDefinitionId])
+}
+
+model UserIdentityDocument {
+  id           String                   @id @default(cuid())
+  userId       String
+  user         User                     @relation("IdentityOwner", fields: [userId], references: [id], onDelete: Restrict)
+  pageKind     IdentityDocumentPageKind
+  path         String
+  mimeType     String
+  size         Int
+  sha256       String
+  algorithm    String
+  iv           String
+  authTag      String
+  uploadedById String
+  uploadedBy   User                     @relation("IdentityUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  active       Boolean                  @default(true)
+  supersededAt DateTime?
+  createdAt    DateTime                 @default(now())
+
+  @@index([userId, active])
+  @@index([uploadedById, createdAt])
+}
+
+// ============================================================
+// 客户与联系人
+// ============================================================
+
+model Team {
+  id        String       @id @default(cuid())
+  name      String       @unique
+  leaderId  String
+  leader    User         @relation("TeamLeader", fields: [leaderId], references: [id], onDelete: Restrict)
+  active    Boolean      @default(true)
+  members   TeamMember[]
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@index([leaderId, active])
+}
+
+model TeamMember {
+  teamId            String
+  team              Team     @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  active            Boolean  @default(true)
+  canViewAllMatters Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@id([teamId, userId])
+  @@index([userId, active])
+}
+
+model Client {
+  id                String                  @id @default(cuid())
+  name              String
+  type              ClientType
+  // v1.x P0-1: 主体身份唯一性——证件类型 + 规范化号码。
+  // 唯一约束为部分唯一索引（仅约束已填号码且未删除的行），见迁移 SQL；
+  // 存量行未补录 idType 前不受约束，新增/编辑时由查重服务强制。
+  idType            ClientIdType?
+  idNumber          String? // v1.x P1 §三：加密密文（iv.tag.ct）；回填前可能仍是明文
+  idNumberBlind     String? // 等值盲索引（HMAC-SHA256 域分离密钥）
+  address           String?
+  phone             String?
+  email             String?
+  source            String?
+  tags              String[]
+  notes             String?
+  legalRep          String?
+  // v0.39: 案件云式补充字段
+  internalCode      String?                 @unique // 客户编号 KH-{YYYY}-{4位}
+  cooperationStatus ClientCooperationStatus @default(SIGNED) // 合作状态
+  industry          String? // 所属行业
+  gender            ClientGender? // 性别（个人客户）
+  ethnicity         String? // 民族（个人客户）
+  contacts          Contact[]
+  intakes           Intake[]
+  matterLinks       MatterClient[]
+  matters           Matter[]
+  deletedAt         DateTime?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  Engagement        Engagement[]
+
+  @@index([name])
+  @@index([idType, idNumberBlind])
+}
+
+model Contact {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name      String
+  title     String?
+  phone     String?
+  email     String?
+  wechat    String?
+  isPrimary Boolean  @default(false)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId])
+}
+
+// ============================================================
+// 案由规范库
+// ============================================================
+
+model CauseOfAction {
+  id         String          @id @default(cuid())
+  category   MatterCategory
+  code       String?
+  name       String
+  shortName  String?
+  level      Int
+  parentId   String?
+  parent     CauseOfAction?  @relation("CauseHierarchy", fields: [parentId], references: [id])
+  children   CauseOfAction[] @relation("CauseHierarchy")
+  active     Boolean         @default(true)
+  pinyin     String?
+  keywords   String[]
+  matters    Matter[]
+  intakes    Intake[]
+  sourceNote String?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  @@unique([category, code])
+  @@index([category, level])
+  @@index([category, active, level])
+  @@index([name])
+  @@index([parentId])
+}
+
+// ============================================================
+// 收案
+// ============================================================
+
+model Intake {
+  handovers IntakeHandover[]
+  urgentItems IntakeUrgentItem[]
+  workflowRevision Int @default(0)
+  revisions IntakeRevision[]
+  id             String         @id @default(cuid())
+  title          String
+  category       MatterCategory @default(CIVIL_COMMERCIAL)
+  causeId        String?
+  cause          CauseOfAction? @relation(fields: [causeId], references: [id])
+  causeFreeText  String?
+  description    String?
+  status         IntakeStatus   @default(INTAKE)
+  receivedAt     DateTime       @default(now())
+  declinedReason String?
+
+  // v0.5: 客户 + 联系人
+  clientId     String?
+  client       Client?     @relation(fields: [clientId], references: [id])
+  clientType   ClientType? // 提交时自动建档用，转化后随 Client 表
+  contactName  String?
+  contactPhone String?
+
+  // v0.5: 程序 + 诉讼地位 + 争议解决机构 + 标的
+  firstProcedureType ProcedureType?
+  firstAgency        String? // 争议解决机构：法院/仲裁机构/侦查机关 名称
+  jurisdiction       String? // v0.30 管辖地：省/市/区县 路径
+  ourStanding        LitigationStanding?
+  claimAmount        Decimal?            @db.Decimal(14, 2)
+  claimDescription   String? // 非金钱标的描述
+
+  // v0.30: 律协备案 + 是否反诉（诉讼/仲裁类）
+  barFiling    BarFilingType?
+  counterclaim Boolean        @default(false)
+
+  // v0.31: 非诉 / 顾问 / 专项（非诉讼类）专属字段
+  businessType String? // 业务类型（非诉/专项）
+  serviceScope String? // 服务范围 / 内容（非诉/专项/顾问）
+  deliverables String? // 交付成果（非诉/专项）
+  counselType  String? // 顾问类型：常年 / 专项（顾问）
+  serviceStart DateTime? // 起始 / 顾问期限起
+  serviceEnd   DateTime? // 结束 / 顾问期限止
+
+  // v0.5: 律师费
+  feeType          FeeType?
+  feeAmount        Decimal? @db.Decimal(14, 2) // FIXED: 总金额；CONTINGENCY: 基础办案费
+  contingencyTerms String? // 风险代理收费方式自由文本（仅 CONTINGENCY 用）
+  feeSchedule      String? // 付款节点
+  feeNote          String?
+
+  // v0.5: 主办律师 + 共同律师（转化时生成 MatterMember）
+  ownerUserId String?
+  ownerUser   User?    @relation("IntakeOwner", fields: [ownerUserId], references: [id])
+  coUserIds   String[] @default([])
+
+  parties        Party[]
+  conflictChecks ConflictCheck[]
+  matter         Matter?
+  documents      Document[]
+
+  createdById String
+  createdBy   User     @relation("IntakeCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status, receivedAt])
+  @@index([causeId])
+  @@index([ownerUserId])
+}
+
+// ============================================================
+// 案件 (Matter) + 团队成员 + 多客户
+// ============================================================
+
+model Matter {
+  closurePlan ArchiveClosurePlan?
+  handovers MatterHandover[]
+  urgentItems IntakeUrgentItem[]
+  conflictReviews ConflictCheck[]
+  financeCorrections FinanceCorrection[]
+  id                   String         @id @default(cuid())
+  internalCode         String         @unique
+  firmCaseNo           String?        @unique // v0.42 所内案号（按可配置模板生成）
+  title                String
+  category             MatterCategory @default(CIVIL_COMMERCIAL)
+  status               MatterStatus   @default(IN_PROGRESS)
+  // v1.x P2 状态轴分离（报告 §6.4）：服务轴独立于程序轴 status；
+  // 程序结束不自动推进服务状态，服务完成是显式动作（completeMatterService）。
+  serviceStatus        MatterServiceStatus @default(SERVICE_ACTIVE)
+  // v1.x 制度决策 4.1（选项 A）: 受限事项——不进入团队汇总视图，
+  // 限制优先于团队授权；撤权复核提示沿用既有审计。
+  teamAccessRestricted Boolean        @default(false)
+
+  causeId       String?
+  cause         CauseOfAction? @relation(fields: [causeId], references: [id])
+  causeFreeText String?
+
+  claimAmount Decimal? @db.Decimal(14, 2)
+
+  ourStanding             LitigationStanding?
+  counterclaimAsPlaintiff Boolean             @default(false)
+  counterclaimAsDefendant Boolean             @default(false)
+  barFiling               BarFilingType? // v0.35 是否需向律协备案（诉讼/仲裁类）
+
+  // v0.35: 非诉 / 顾问 / 专项 专属（从 Intake 转化带入）
+  businessType String? // 业务类型（非诉/专项）
+  serviceScope String? // 服务范围 / 内容
+  deliverables String? // 交付成果（非诉/专项）
+  counselType  String? // 顾问类型（顾问）
+  serviceStart DateTime? // 起始 / 顾问期限起
+  serviceEnd   DateTime? // 结束 / 顾问期限止
+
+  intakeDate DateTime?
+
+  primaryClientId String?
+  primaryClient   Client?        @relation(fields: [primaryClientId], references: [id])
+  clientLinks     MatterClient[]
+
+  ownerId        String
+  owner          User           @relation("MatterOwner", fields: [ownerId], references: [id])
+  registeredById String?
+  registeredBy   User?          @relation("MatterRegistrar", fields: [registeredById], references: [id], onDelete: Restrict)
+  members        MatterMember[]
+
+  intakeId String? @unique
+  intake   Intake? @relation(fields: [intakeId], references: [id])
+
+  firstAcceptedAt DateTime?
+  closedAt        DateTime?
+  archivedAt      DateTime?
+
+  procedures        MatterProcedure[]
+  parties           Party[]
+  relatedEntities   RelatedEntity[]
+  linksFrom         MatterLink[]       @relation("MatterLinkFrom") // v0.32 关联案件（本案 → 关联案）
+  linksTo           MatterLink[]       @relation("MatterLinkTo") // 反向（关联案 → 本案）
+  notes             Note[]
+  tasks             Task[]
+  documents         Document[]
+  timelineEvents    TimelineEvent[]
+  billings          Billing[]
+  feeEntries        FeeEntry[]
+  commissionPlans   CommissionPlan[]
+  archiveRecords    ArchiveRecord[]
+  invoiceRequests   InvoiceRequest[]
+  // v0.8: 卷宗 + 用章
+  folders           DocumentFolder[]
+  sealRequests      SealRequest[]
+  // v0.9: 法院短信 + 财产保全 + 快递追踪（保全 v0.48 起仅三层模型）
+  smsMessages       SmsMessage[]
+  preservationCases PreservationCase[]
+  expressTrackings  ExpressTracking[]
+  // v0.21: AI 文书审查历史
+  reviewRecords     ReviewRecord[]
+
+  // v0.28: 自定义字段值（{ [CustomFieldDef.key]: string }）
+  customValues Json @default("{}")
+
+  deletedAt        DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  Receivable       Receivable[]
+  Payment          Payment[]
+  EngagementMatter EngagementMatter[]
+  evidenceItems    EvidenceItem[]
+
+  @@index([status, updatedAt])
+  @@index([ownerId])
+  @@index([registeredById])
+  @@index([primaryClientId])
+  @@index([category, status])
+  @@index([causeId])
+}
+
+// v0.28: 自定义字段（JSON 列方案）。字段定义存表，值存于实体的 customValues JSON。
+enum CustomFieldEntity {
+  MATTER
+  CLIENT
+}
+
+enum CustomFieldType {
+  TEXT
+  NUMBER
+  DATE
+  SELECT
+}
+
+model CustomFieldDef {
+  id         String            @id @default(cuid())
+  entityType CustomFieldEntity
+  key        String // 稳定键，写入实体 customValues 的属性名
+  label      String
+  fieldType  CustomFieldType   @default(TEXT)
+  options    String[] // SELECT 类型的可选值
+  required   Boolean           @default(false)
+  order      Int               @default(0)
+  enabled    Boolean           @default(true)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  @@unique([entityType, key])
+  @@index([entityType, order])
+}
+
+model MatterMember {
+  matterId String
+  matter   Matter           @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User             @relation(fields: [userId], references: [id])
+  role     MatterMemberRole @default(ASSISTANT)
+  joinedAt DateTime         @default(now())
+
+  @@id([matterId, userId])
+  @@index([userId])
+}
+
+model MatterClient {
+  matterId  String
+  matter    Matter   @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id])
+  label     String?
+  isPrimary Boolean  @default(false)
+  addedAt   DateTime @default(now())
+
+  @@id([matterId, clientId])
+  @@index([clientId])
+}
+
+// ============================================================
+// 程序阶段
+// ============================================================
+
+model MatterProcedure {
+  billingScopes BillingProcedureScope[]
+  id       String @id @default(cuid())
+  matterId String
+  matter   Matter @relation(fields: [matterId], references: [id], onDelete: Cascade)
+
+  type        ProcedureType
+  customLabel String?
+  engagement  ProcedureEngagement @default(ENGAGED)
+  order       Int
+
+  caseNumber     String?
+  handlingAgency String? // 管辖机构（法院/仲裁委/执行法院…）
+  panel          String?
+  handler        String?
+
+  // v0.32: 程序级补充信息
+  jurisdiction          String? // 管辖地（省/市/区县）
+  presidingJudge        String? // 主审法官 / 首席仲裁员 / 执行法官
+  presidingJudgeContact String? // 主审法官联系方式
+  judgeAssistant        String? // 法官助理 / 仲裁庭助理
+  judgeAssistantContact String? // 助理联系方式
+  ourStanding           LitigationStanding? // 我方地位（按程序确定可选项）
+
+  // v0.44: 主办律师
+  leadLawyerId   String? // 主办律师（所内律师）
+  leadLawyer     User?   @relation("ProcedureLeadLawyer", fields: [leadLawyerId], references: [id], onDelete: SetNull)
+  isExternalLead Boolean @default(false) // 是否非本所代理
+
+  acceptedAt  DateTime? // 立案时间
+  concludedAt DateTime? // 裁决 / 结案时间
+
+  status      ProcedureStatus   @default(PENDING)
+  outcome     ProcedureOutcome?
+  outcomeNote String?
+
+  stages           MatterStage[]
+  hearings         Hearing[]
+  deadlines        Deadline[]
+  documents        Document[]
+  procedureParties ProcedureParty[]
+  // v0.42: 程序备忘录（待办/已办）
+  memos            ProcedureMemo[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([matterId, order])
+  @@index([matterId, order])
+  @@index([status])
+}
+
+// v0.48: 环节状态。有任务/材料/专项记录的环节移除时置 HIDDEN 而非删除，
+// 数据保留可恢复；工作台只展示 ACTIVE。
+enum MatterStageStatus {
+  ACTIVE
+  HIDDEN
+}
+
+model MatterStage {
+  id          String            @id @default(cuid())
+  procedureId String
+  procedure   MatterProcedure   @relation(fields: [procedureId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  order       Int
+  status      MatterStageStatus @default(ACTIVE)
+  startedAt   DateTime?
+  completedAt DateTime?
+  tasks       Task[]
+  // v0.48: 阶段材料改外键关联（原字符串标签"阶段:xx"仅作展示，改名不再断链）
+  documents   Document[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([procedureId, order])
+}
+
+// ============================================================
+// 任务 / 开庭 / 期限
+// ============================================================
+
+model Task {
+  responsibility WorkResponsibility?
+  id          String       @id @default(cuid())
+  matterId    String
+  matter      Matter       @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  stageId     String?
+  stage       MatterStage? @relation(fields: [stageId], references: [id])
+  title       String
+  description String?
+  assigneeId  String?
+  dueAt       DateTime?
+  completed   Boolean      @default(false)
+  completedAt DateTime?
+  priority    Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([matterId, completed, dueAt])
+  @@index([assigneeId, completed])
+}
+
+model Hearing {
+  responsibility WorkResponsibility?
+  id          String          @id @default(cuid())
+  procedureId String
+  procedure   MatterProcedure @relation(fields: [procedureId], references: [id], onDelete: Cascade)
+  title       String
+  room        String?
+  address     String?
+  judge       String?
+  contact     String?
+  startsAt    DateTime
+  endsAt      DateTime?
+  notes       String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([procedureId, startsAt])
+  @@index([startsAt])
+}
+
+model Deadline {
+  responsibility WorkResponsibility?
+  id               String                @id @default(cuid())
+  procedureId      String
+  procedure        MatterProcedure       @relation(fields: [procedureId], references: [id], onDelete: Cascade)
+  title            String
+  category         DeadlineCategory      @default(CUSTOM)
+  dueAt            DateTime
+  basis            String?
+  remindDays       Int                   @default(3)
+  completed        Boolean               @default(false)
+  completedAt      DateTime?
+  // v1.x P0-8: 期限来源与人工修正保护（纯引用字段，不建外键——
+  // 规则/文档删除后仍保留历史可读性）
+  sourceRuleId     String? // 来源规则（DeadlineRule.id）
+  startFact        String? // 起算事实（如"判决书送达之日"，规则触发时固化）
+  sourceDocumentId String? // 来源材料（触发计算的证据文书）
+  confirmStatus    DeadlineConfirmStatus @default(CONFIRMED)
+  adjustedById     String? // 最后人工调整人（User.id）
+  adjustedAt       DateTime?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  @@index([procedureId, dueAt, completed])
+  @@index([dueAt, completed])
+}
+
+// v1.x P0-8: 规则重算只生成待复核结果，不静默覆盖已确认期限
+enum DeadlineConfirmStatus {
+  PENDING // 规则计算待律师确认
+  CONFIRMED // 已确认（存量数据默认值）
+  ADJUSTED // 人工调整过（不被规则重算覆盖）
+}
+
+// v0.49: 法定期限规则库（PRD §二十）。规则须经元典核验后方可入 seed，
+// verifiedAt 为空表示未核验，UI 不展示为"法定依据"。
+model DeadlineRule {
+  id           String             @id @default(cuid())
+  code         String             @unique
+  name         String
+  description  String?
+  triggerLabel String // 触发事件文案，如"判决书送达之日"
+  periodValue  Int
+  periodUnit   DeadlinePeriodUnit @default(DAYS)
+  category     DeadlineCategory   @default(CUSTOM)
+
+  legalBasis    String // 如《中华人民共和国民事诉讼法(2023修正)》第一百七十一条
+  legalBasisUrl String?
+  verifiedAt    DateTime? // 元典核验时间
+
+  applicableProcedures ProcedureType[] // 空 = 全部程序
+  applicableCategories MatterCategory[] // 空 = 全部案件类别
+
+  remindDays Int     @default(7) // 生成 Deadline 时的建议提前提醒天数
+  enabled    Boolean @default(true)
+  isBuiltIn  Boolean @default(true)
+  sortOrder  Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([enabled, sortOrder])
+}
+
+// v0.42: 程序备忘录（与重要时限并排，待办/已办状态）
+model ProcedureMemo {
+  id          String          @id @default(cuid())
+  procedureId String
+  procedure   MatterProcedure @relation(fields: [procedureId], references: [id], onDelete: Cascade)
+  content     String
+  done        Boolean         @default(false)
+  doneAt      DateTime?
+  createdById String
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([procedureId])
+}
+
+// ============================================================
+// 当事人 / 关联实体
+// ============================================================
+
+model Party {
+  id                   String              @id @default(cuid())
+  intakeId             String?
+  intake               Intake?             @relation(fields: [intakeId], references: [id], onDelete: Cascade)
+  matterId             String?
+  matter               Matter?             @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  role                 PartyRole
+  // v0.5: 具体诉讼地位（依首程序联动），role 保留作粗粒度
+  standing             LitigationStanding?
+  ordinal              Int                 @default(1)
+  name                 String
+  // v0.27: 主体类型决定必填字段分支（自然人 → idNumber；公司 → enterpriseSocialCode + legalRep + address）
+  partyType            PartyType           @default(NATURAL_PERSON)
+  // 2026-09-14: 自然人证件类型（空 = 历史数据，按居民身份证处理）；机构仍用 enterpriseSocialCode
+  idType               ClientIdType?
+  idNumber             String?
+  phone                String?
+  address              String?
+  legalRep             String?
+  // v0.27: 经办联系人（区别于 phone 当事人本人电话，常用于公司路径）
+  contactName          String?
+  notes                String?
+  // v0.26: 对方公司风险查询 — 绑定元典企业后，可一键拉取风险总览
+  enterpriseId         String?
+  enterpriseSocialCode String?
+  enterpriseName       String?
+  enterpriseBoundAt    DateTime?
+  procedureParties     ProcedureParty[]
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@index([matterId, role, ordinal])
+  @@index([name])
+  @@index([idNumber])
+  @@index([enterpriseSocialCode])
+}
+
+model ProcedureParty {
+  id          String             @id @default(cuid())
+  procedureId String
+  procedure   MatterProcedure    @relation(fields: [procedureId], references: [id], onDelete: Cascade)
+  partyId     String
+  party       Party              @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  standing    LitigationStanding
+  ordinal     Int                @default(1)
+  note        String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@unique([procedureId, partyId, standing])
+  @@index([procedureId, standing, ordinal])
+  @@index([partyId])
+  @@map("procedure_parties")
+}
+
+model RelatedEntity {
+  id           String   @id @default(cuid())
+  matterId     String
+  matter       Matter   @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  name         String
+  relationship String
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([name])
+}
+
+// v0.32: 关联案件（案件 ↔ 案件，方向性记录，展示时双向合并）
+model MatterLink {
+  id              String             @id @default(cuid())
+  matterId        String
+  matter          Matter             @relation("MatterLinkFrom", fields: [matterId], references: [id], onDelete: Cascade)
+  relatedMatterId String
+  relatedMatter   Matter             @relation("MatterLinkTo", fields: [relatedMatterId], references: [id], onDelete: Cascade)
+  // v1.x P1-7: 关联关系类型（此前仅裸双端 ID）
+  relation        MatterLinkRelation @default(RELATED_CASE)
+  notedById       String? // 建链人（User.id）
+  createdAt       DateTime           @default(now())
+
+  @@unique([matterId, relatedMatterId])
+  @@index([matterId])
+  @@index([relatedMatterId])
+}
+
+// v1.x P1-7: 案件关联关系类型
+enum MatterLinkRelation {
+  RELATED_CASE // 一般关联
+  REMAND // 发回重审
+  DERIVED_ENFORCEMENT // 衍生执行
+  RELATED_CONTRACT // 关联合同
+  REFERENCE_ONLY // 仅供参考
+}
+
+// ============================================================
+// 冲突检索
+// ============================================================
+
+model ConflictCheck {
+  matterId String?
+  matter Matter? @relation(fields: [matterId], references: [id], onDelete: Restrict)
+  subjectFingerprint String?
+  submittedRounds IntakeRevision[]
+  id           String             @id @default(cuid())
+  intakeId     String?
+  intake       Intake?            @relation(fields: [intakeId], references: [id])
+  queryPayload Json
+  hits         ConflictHit[]
+  conclusion   ConflictConclusion @default(PENDING)
+  decidedById  String?
+  decidedBy    User?              @relation("ConflictDecidedBy", fields: [decidedById], references: [id])
+  decidedAt    DateTime?
+  note         String?
+  checkedAt    DateTime           @default(now())
+}
+
+model ConflictHit {
+  id           String           @id @default(cuid())
+  checkId      String
+  check        ConflictCheck    @relation(fields: [checkId], references: [id], onDelete: Cascade)
+  hitType      String
+  targetType   String
+  targetId     String
+  matchedName  String
+  matchedField String
+  matchedValue String
+  matchedRatio Float?
+  severity     ConflictSeverity
+  reason       String
+}
+
+// ============================================================
+// 沟通记录
+// ============================================================
+
+model Note {
+  id          String      @id @default(cuid())
+  matterId    String
+  matter      Matter      @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User        @relation("NoteAuthor", fields: [authorId], references: [id])
+  channel     NoteChannel @default(OTHER)
+  withWhom    String?
+  occurredAt  DateTime    @default(now())
+  content     String
+  tags        String[]
+  attachments String[]
+  deletedAt   DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([matterId, occurredAt])
+}
+
+// ============================================================
+// 材料（含加密支持）
+// ============================================================
+
+model Document {
+  invoiceAdjustmentEvidence InvoiceAdjustment[]
+  reviewedById String?
+  billingAttachments BillingAttachment[]
+  id           String           @id @default(cuid())
+  // v0.4: matterId 可空（收案阶段挂在 Intake 上），转 Matter 时回填
+  matterId     String?
+  matter       Matter?          @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  intakeId     String?
+  intake       Intake?          @relation(fields: [intakeId], references: [id], onDelete: Cascade)
+  procedureId  String?
+  procedure    MatterProcedure? @relation(fields: [procedureId], references: [id])
+  // v0.48: 归属环节（外键，环节改名/隐藏不断链）；环节删除时置空保留材料
+  stageId      String?
+  stage        MatterStage?     @relation(fields: [stageId], references: [id], onDelete: SetNull)
+  name         String
+  category     DocumentCategory @default(OTHER)
+  // v0.42: 材料来源方（我方/对方/第三人 等，取自本案当事人，可空）
+  sourceParty  String?
+  // v0.10: 文书审批流程
+  status       DocumentStatus   @default(DRAFT)
+  reviewedBy   User?            @relation("DocumentReviewer", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime?
+  approvedById String?
+  approvedBy   User?            @relation("DocumentApprover", fields: [approvedById], references: [id])
+  approvedAt   DateTime?
+  version      Int              @default(1)
+  isLatest     Boolean          @default(true)
+  familyId     String?
+
+  // v1.x P1 批次③: 材料来源（墨案 04 页来源 chip：谁提供的这份材料）
+  sourceOrigin DocumentSourceOrigin?
+  // v1.x P0-2: 抽取文本层（全文检索与 AI 长文处理的地基）。
+  // 上传/后台抽取时写入；正文与派生内容按对应源文档读取授权过滤。
+  textContent  String? // 抽取的纯文本（docx/pdf 文本层/OCR 结果）
+  pageCount    Int? // 物理页数（页码定位）
+  textSource   DocumentTextSource? // 文本来源
+  ocrStatus    DocumentOcrStatus     @default(PENDING) // 处理状态：失败页不可隐去
+
+  path     String
+  mimeType String?
+  size     Int?
+  sha256   String?
+
+  encrypted Boolean @default(false)
+  algorithm String?
+  iv        String?
+  authTag   String?
+
+  tags         String[]
+  uploadedById String
+  uploadedBy   User      @relation("DocumentUploader", fields: [uploadedById], references: [id])
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // v0.5: 发票工作流附件反向
+  invoiceAsContract InvoiceRequest? @relation("InvoiceContractScan")
+  invoiceAsFile     InvoiceRequest? @relation("InvoiceFile")
+
+  // v0.8: 卷宗归属 + 模板生成
+  folderId                String?
+  folder                  DocumentFolder?   @relation(fields: [folderId], references: [id])
+  templateId              String?
+  template                DocumentTemplate? @relation("TemplateGenerated", fields: [templateId], references: [id])
+  templateContextSnapshot Json?
+  // v0.8: 反向 - 作为某模板的源 docx
+  templateBlobOf          DocumentTemplate? @relation("TemplateBlob")
+  // v0.8: 反向 - 作为用章申请的待盖章稿 / 盖章后扫描件
+  sealAsDraft             SealRequest?      @relation("SealDraft")
+  sealAsStamped           SealRequest?      @relation("SealStamped")
+
+  // v0.17: 归档清单关联——上传时绑定到 ArchiveChecklistItem.id（lib/archive/checklists.ts 内的字符串 id），
+  // 用于归档向导自动勾选已上传的必交项。一个材料只能绑定一个 checklist item。
+  archiveChecklistItemId String?
+
+  // v0.21: 反向 - AI 审查历史
+  reviewRecords ReviewRecord[]
+
+  @@index([matterId, category])
+  @@index([intakeId])
+  @@index([procedureId])
+  @@index([familyId])
+  @@index([folderId])
+  @@index([templateId])
+  @@index([matterId, archiveChecklistItemId])
+  @@index([stageId])
+}
+
+// ============================================================
+// 发票申请工作流（v0.5）
+// 律师在案件详情提交申请 → 财务审核 → 上传扫描件合同 + 电子发票
+// ============================================================
+
+model InvoiceRequest {
+  invoiceAdjustments InvoiceAdjustment[] @relation("AdjustedInvoice")
+  replacementAdjustments InvoiceAdjustment[] @relation("ReplacementInvoice")
+  terminationRequests ExecutionTermination[]
+  paymentAllocations InvoicePaymentAllocation[]
+  @@unique([id, matterId])
+  id             String               @id @default(cuid())
+  // v0.43 项5：matterId 可空——支持「无关联案件」开票（须填 noMatterReason）
+  matterId       String?
+  matter         Matter?              @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  noMatterReason String? // 无关联案件时的原因说明（matterId 为空时必填）
+  amount         Decimal              @db.Decimal(14, 2)
+  title          String? // 备注 / 客户称谓（仅做兼容，新字段用 buyerName）
+  status         InvoiceRequestStatus @default(PENDING)
+  requestNote    String?
+
+  // v0.12: 开票类型 + 名目 + 抬头 + 税号 + 开票依据
+  invoiceType      InvoiceType?
+  invoiceItem      InvoiceItem?
+  buyerName        String? // 开票抬头（客户名，可编辑）
+  buyerTaxNo       String? // 客户税号（专票必填）
+  // v0.42: 增值税专用发票购方"六要素"补全（税法：开户行/账号/地址/电话必填）
+  buyerAddress     String? // 购方地址（专票必填）
+  buyerPhone       String? // 购方电话（专票必填）
+  buyerBank        String? // 购方开户银行（专票必填）
+  buyerBankAccount String? // 购方银行账号（专票必填）
+  evidenceDocIds   String[]     @default([]) // 开票依据 Document id 列表
+
+  // v0.14: 真实发票号（财务开票完成时回填）
+  invoiceNo String?
+  issuedAt  DateTime?
+
+  requestedById String
+  requestedBy   User     @relation("InvoiceRequester", fields: [requestedById], references: [id])
+  requestedAt   DateTime @default(now())
+
+  processedById String?
+  processedBy   User?     @relation("InvoiceProcessor", fields: [processedById], references: [id])
+  processedAt   DateTime?
+  processNote   String?
+
+  // 财务上传：扫描件合同 + 电子发票文件（均走 Document）
+  contractScanId String?   @unique
+  contractScan   Document? @relation("InvoiceContractScan", fields: [contractScanId], references: [id])
+  invoiceFileId  String?   @unique
+  invoiceFile    Document? @relation("InvoiceFile", fields: [invoiceFileId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([matterId, status])
+  @@index([status, requestedAt])
+  @@index([requestedById])
+}
+
+// ============================================================
+// 财务：合同 / 收付 / 分成
+// ============================================================
+
+// ============================================================
+// v1.x P1 §二: 财务核销模型（应收 / 实收 / 核销 / 冲正）
+// FeeEntry 保留为流水台账；核销口径以本组表为准。
+// ============================================================
+enum ReceivableStatus {
+  OPEN
+  SETTLED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  UNALLOCATED
+  PARTIAL
+  FULLY_ALLOCATED
+}
+
+enum FinanceCorrectionType {
+  REFUND // 退款
+  DISCOUNT // 折让
+  REVERSAL // 冲销更正
+}
+
+model Receivable {
+  sourceKey String? @unique
+  installmentNumber Int?
+  dueState ReceivableDueState @default(UNKNOWN)
+  dueCondition String?
+  conditionSatisfiedAt DateTime?
+  conditionConfirmedById String?
+  conditionConfirmedBy User? @relation("ReceivableConditionConfirmer", fields: [conditionConfirmedById], references: [id], onDelete: Restrict)
+  adjustmentAmount Decimal @default(0) @db.Decimal(14, 2)
+  billing Billing? @relation(fields: [billingId], references: [id], onDelete: Restrict)
+  corrections FinanceCorrection[] @relation("CorrectionReceivable")
+  correctionEffects FinanceCorrectionEffect[] @relation("EffectReceivable")
+  moneyKind MoneyKind
+  revision Int @default(0)
+  id            String           @id @default(cuid())
+  matterId      String
+  matter        Matter           @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  billingId     String? // 来源合同（Billing.id，纯引用）
+  title         String
+  amount        Decimal          @db.Decimal(14, 2)
+  settledAmount Decimal          @default(0) @db.Decimal(14, 2) // 已核销合计（Allocation 汇总冗余）
+  status        ReceivableStatus @default(OPEN)
+  dueDate       DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  Allocation    Allocation[]
+
+  @@index([matterId, status])
+}
+
+model Payment {
+  refundedAmount Decimal @default(0) @db.Decimal(14, 2)
+  sourceEntry FeeEntry @relation("PaymentSourceEntry", fields: [feeEntryId], references: [id], onDelete: Restrict)
+  invoiceAllocations InvoicePaymentAllocation[]
+  corrections FinanceCorrection[] @relation("CorrectionPayment")
+  correctionEffects FinanceCorrectionEffect[] @relation("EffectPayment")
+  @@unique([id, matterId])
+  moneyKind MoneyKind
+  revision Int @default(0)
+  id              String        @id @default(cuid())
+  matterId        String
+  matter          Matter        @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  feeEntryId      String @unique // 唯一的已确认 RECEIVED 来源流水
+  amount          Decimal       @db.Decimal(14, 2)
+  allocatedAmount Decimal       @default(0) @db.Decimal(14, 2)
+  status          PaymentStatus @default(UNALLOCATED)
+  occurredAt      DateTime      @default(now())
+  recordedById    String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  Allocation      Allocation[]
+
+  @@index([matterId, status])
+}
+
+model Allocation {
+  reversedAmount Decimal @default(0) @db.Decimal(14, 2)
+  correctionEffects FinanceCorrectionEffect[] @relation("EffectAllocation")
+  id            String     @id @default(cuid())
+  paymentId     String
+  payment       Payment    @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  receivableId  String
+  receivable    Receivable @relation(fields: [receivableId], references: [id], onDelete: Cascade)
+  amount        Decimal    @db.Decimal(14, 2)
+  allocatedById String
+  createdAt     DateTime   @default(now())
+
+  @@unique([paymentId, receivableId])
+  @@index([receivableId])
+}
+
+// 冲正：带原因与凭证号的关联更正记录（替代物理删除；审计同事务）
+model FinanceCorrection {
+  requestPayload Json
+  occurredAt DateTime
+  status FinanceCorrectionStatus @default(PENDING)
+  matterId String
+  matter Matter @relation(fields: [matterId], references: [id], onDelete: Restrict)
+  paymentId String?
+  payment Payment? @relation("CorrectionPayment", fields: [paymentId], references: [id], onDelete: Restrict)
+  receivableId String?
+  receivable Receivable? @relation("CorrectionReceivable", fields: [receivableId], references: [id], onDelete: Restrict)
+  feeEntryId String?
+  feeEntry FeeEntry? @relation("CorrectionFeeEntry", fields: [feeEntryId], references: [id], onDelete: Restrict)
+  sourceBillingId String? @unique
+  sourceBilling Billing? @relation("BillingSourceCorrection", fields: [sourceBillingId], references: [id], onDelete: Restrict)
+  confirmedById String?
+  confirmedBy User? @relation("FinanceCorrectionConfirmer", fields: [confirmedById], references: [id], onDelete: Restrict)
+  confirmedAt DateTime?
+  resolutionNote String?
+  revision Int @default(0)
+  effects FinanceCorrectionEffect[]
+  @@index([matterId, status])
+  id           String                @id @default(cuid())
+  targetType   String // FeeEntry / Payment / Receivable
+  targetId     String
+  type         FinanceCorrectionType
+  amount       Decimal               @db.Decimal(14, 2)
+  reason       String
+  relatedDocNo String? // 关联凭证号（退款单/折让函等）
+  createdById  String
+  createdAt    DateTime              @default(now())
+
+  @@index([targetType, targetId])
+}
+
+// ============================================================
+// v1.x P2 五对象 · 第一步（TARGET-MODEL-PLAN §二判定记录：复用路线）
+// 委托（Engagement）：为何服务、为谁、服务到何处。
+// 只加不减：现有 Matter/Billing 语义不动；第二步再把委托字段搬出。
+// ============================================================
+model Engagement {
+  id               String    @id @default(cuid())
+  clientId         String
+  client           Client    @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  title            String
+  // 服务范围（第一步文本快照；结构化条目随材料出处链批次）
+  scopeText        String?
+  feeNote          String? // 收费安排说明（结构化收费随核销 UI 批次）
+  startedAt        DateTime?
+  endedAt          DateTime? // 委托终止（款项未结不阻止终止——状态轴分离）
+  terminatedReason String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  matters  EngagementMatter[]
+  billings Billing[]
+
+  @@index([clientId])
+}
+
+// 委托-事项关联：一份委托覆盖多个事项；一事项可先后涉及多份委托（生效区间）
+model EngagementMatter {
+  engagementId String
+  engagement   Engagement @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+  matterId     String
+  matter       Matter     @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  validFrom    DateTime?
+  validTo      DateTime?
+  createdAt    DateTime   @default(now())
+
+  @@id([engagementId, matterId])
+  @@index([matterId])
+}
+
+// v1.x P2 材料出处链（报告 §6.3 第一阶段）：逐条记录事实/主张/分析并引用来源文档+页码。
+// kind 区分性质；sourceDocumentId 为纯引用（不加外键——材料删除后证据项保留，
+// 引用悬空由展示层标注），归属校验在服务端 createEvidenceItem 完成。
+enum EvidenceKind {
+  FACT // 客观事实
+  CLAIM // 当事人主张
+  ANALYSIS // 工作人员分析
+  ISSUE // 争议焦点
+  TODO_VERIFY // 待核实
+}
+
+model EvidenceItem {
+  id               String       @id @default(cuid())
+  matterId         String
+  matter           Matter       @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  title            String
+  content          String // 当事人主张 / 工作人员分析文本
+  kind             EvidenceKind
+  sourceDocumentId String? // 纯引用（Document.id；不设外键，材料删除后保留）
+  sourcePage       Int?
+  createdById      String
+  createdBy        User         @relation("EvidenceCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt        DateTime     @default(now())
+
+  @@index([matterId, kind])
+  @@index([sourceDocumentId])
+}
+
+model Billing {
+  draftTerms Json?
+  completedWork String?
+  handoverWork String?
+  amendmentType BillingAmendmentType?
+  sourceBillingId String?
+  sourceBilling Billing? @relation("BillingAmendments", fields: [sourceBillingId], references: [id], onDelete: Restrict)
+  amendments Billing[] @relation("BillingAmendments")
+  effectiveAt DateTime?
+  endsAt DateTime?
+  previousAmount Decimal? @db.Decimal(14, 2)
+  resultingAmount Decimal? @db.Decimal(14, 2)
+  terminationReason String?
+  receivables Receivable[]
+  procedureScopes BillingProcedureScope[]
+  attachments BillingAttachment[]
+  sourceCorrection FinanceCorrection? @relation("BillingSourceCorrection")
+  moneyKind MoneyKind
+  revision Int @default(0)
+  id             String        @id @default(cuid())
+  engagementId   String?
+  engagement     Engagement?   @relation(fields: [engagementId], references: [id])
+  matterId       String
+  matter         Matter        @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  title          String
+  contractAmount Decimal       @db.Decimal(14, 2)
+  schedule       String?
+  status         BillingStatus @default(DRAFT)
+  signedAt       DateTime?
+  feeEntries     FeeEntry[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([matterId, status])
+}
+
+model FeeEntry {
+  sourcePayment Payment? @relation("PaymentSourceEntry")
+  commissionRateSnapshot Decimal? @db.Decimal(5, 2)
+  commissionBaseSnapshot Decimal? @db.Decimal(14, 2)
+  commissionSettlements CommissionSettlement[]
+  corrections FinanceCorrection[] @relation("CorrectionFeeEntry")
+  commissionEffects FinanceCorrectionEffect[] @relation("EffectCommission")
+  expenseEffects FinanceCorrectionEffect[] @relation("EffectExpense")
+  moneyKind MoneyKind
+  revision Int @default(0)
+  id           String       @id @default(cuid())
+  matterId     String
+  matter       Matter       @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  billingId    String?
+  billing      Billing?     @relation(fields: [billingId], references: [id])
+  type         FeeEntryType
+  amount       Decimal      @db.Decimal(14, 2)
+  occurredAt   DateTime     @default(now())
+  invoiceNo    String?
+  invoiceFile  String?
+  payerOrPayee String?
+  method       String?
+  note         String?
+
+  parentFeeEntryId   String?
+  parentFeeEntry     FeeEntry?  @relation("CommissionParent", fields: [parentFeeEntryId], references: [id])
+  commissionChildren FeeEntry[] @relation("CommissionParent")
+
+  beneficiaryUserId String?
+  beneficiaryUser   User?   @relation("FeeBeneficiary", fields: [beneficiaryUserId], references: [id])
+
+  recordedById String
+  recordedBy   User   @relation("FeeRecorder", fields: [recordedById], references: [id])
+
+  confirmState  FeeConfirmState @default(CONFIRMED)
+  confirmedById String?
+  confirmedBy   User?           @relation("FeeConfirmer", fields: [confirmedById], references: [id])
+  confirmedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([matterId, type, occurredAt])
+  @@index([type, occurredAt])
+  @@index([beneficiaryUserId, occurredAt])
+  @@index([confirmState, occurredAt])
+}
+
+model CommissionPlan {
+  id        String   @id @default(cuid())
+  matterId  String
+  matter    Matter   @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  percent   Decimal  @db.Decimal(5, 2)
+  label     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([matterId, userId])
+  @@index([matterId])
+  @@index([userId])
+}
+
+// ============================================================
+// 时间线 / 归档 / 审计
+// ============================================================
+
+model TimelineEvent {
+  id         String   @id @default(cuid())
+  matterId   String
+  matter     Matter   @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  eventType  String
+  title      String
+  content    String?
+  occurredAt DateTime
+  refType    String?
+  refId      String?
+  createdAt  DateTime @default(now())
+
+  @@index([matterId, occurredAt])
+}
+
+enum ArchiveStatus {
+  PENDING_REVIEW // 归档申请已提交，等管理员审批
+  APPROVED // 已审批通过，正式归档
+  REJECTED // 管理员驳回
+}
+
+model ArchiveClosurePlan {
+  id String @id @default(cuid())
+  matterId String @unique
+  matter Matter @relation(fields: [matterId], references: [id], onDelete: Restrict)
+  financeOwnerId String?
+  financeOwner User? @relation("ArchiveFinanceOwner", fields: [financeOwnerId], references: [id], onDelete: Restrict)
+  serviceCompletedAt DateTime
+  reason String
+  snapshot Json
+  fingerprint String
+  revision Int @default(0)
+  updatedAt DateTime @updatedAt
+}
+
+model ArchiveRecord {
+  supplementOfId String?
+  supplementOf ArchiveRecord? @relation("ArchiveSupplement", fields: [supplementOfId], references: [id], onDelete: Restrict)
+  supplements ArchiveRecord[] @relation("ArchiveSupplement")
+  workflowSnapshot Json?
+  frozenManifest Json?
+  reviewedById String?
+  id       String @id @default(cuid())
+  matterId String
+  matter   Matter @relation(fields: [matterId], references: [id], onDelete: Cascade)
+
+  archiveNo       String               @unique
+  summary         String
+  judgmentSummary String?
+  closedReason    ArchiveClosedReason?
+  completedAt     DateTime?
+  checklistJson   Json
+  missingItems    String[]
+
+  coverDocId   String?
+  catalogDocId String?
+
+  archivedBy   String // 申请人姓名快照（兼容历史，不删）
+  archivedById String? // v0.18: 申请人 User.id，用于审批通知路由
+  archivedAt   DateTime @default(now())
+  exportPath   String?
+  checksum     String?
+
+  // v0.16: 归档审批流
+  status       ArchiveStatus @default(PENDING_REVIEW)
+  reviewedAt   DateTime?
+  reviewNote   String?
+
+  @@index([matterId])
+  @@index([archivedAt])
+  @@index([status])
+  @@index([archivedById, status])
+}
+
+enum ArchiveClosedReason {
+  JUDGMENT
+  MEDIATION
+  WITHDRAWAL
+  SETTLEMENT
+  RULING
+  OTHER
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String
+  targetType String?
+  targetId   String?
+  detail     Json?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+}
+
+// ============================================================
+// 系统配置
+// ============================================================
+
+model StageTemplate {
+  id            String        @id @default(cuid())
+  procedureType ProcedureType
+  isDefault     Boolean       @default(true)
+  name          String
+  steps         Json
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([procedureType])
+}
+
+model SystemSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================================
+// v0.8: 文档模板系统
+// ============================================================
+
+// 模板定义（系统/律所级，不属于具体 Matter）
+model DocumentTemplate {
+  id                   String           @id @default(cuid())
+  name                 String
+  category             TemplateCategory
+  description          String?
+  applicableCategories MatterCategory[] // 空数组 = 适用全部案件类别
+  docxBlobId           String           @unique
+  docxBlob             Document         @relation("TemplateBlob", fields: [docxBlobId], references: [id])
+  variables            Json // 变量清单 ["client.name", "matter.caseNumber", ...] 用于缺失提示
+  isBuiltIn            Boolean          @default(false) // 系统内置不可删
+  enabled              Boolean          @default(true)
+  createdById          String?
+  createdBy            User?            @relation("TemplateCreator", fields: [createdById], references: [id])
+  generatedDocs        Document[]       @relation("TemplateGenerated")
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  @@index([category, enabled])
+  @@index([isBuiltIn])
+}
+
+// 卷宗（每个 Matter 内的物理归档目录）
+model DocumentFolder {
+  id         String     @id @default(cuid())
+  matterId   String
+  matter     Matter     @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  name       String
+  orderIndex Int        @default(0)
+  isDefault  Boolean    @default(false) // 系统按案件类别预置（可改名不可删）
+  documents  Document[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@unique([matterId, name])
+  @@index([matterId, orderIndex])
+}
+
+// ============================================================
+// v0.8: 用章审批工作流
+// ============================================================
+
+// 章种类配置（决策 §12.9.2：approverRoles: Role[] 多角色 OR 关系）
+model SealTypeConfig {
+  type             SealType   @id
+  label            String // 中文显示名
+  description      String?
+  approverRoles    UserRole[] // 多角色 OR 关系；空数组 = 仅 requiresLegalRep 生效
+  requiresLegalRep Boolean    @default(false) // 必须法定代表人本人审批（取 SystemSetting key=firmLegalRepUserId）
+  enabled          Boolean    @default(true)
+  updatedAt        DateTime   @updatedAt
+}
+
+// 用章申请
+model SealRequest {
+  terminationRequests ExecutionTermination[]
+  id       String   @id @default(cuid())
+  code     String   @unique // SEAL-2026-0001
+  sealType SealType
+  matterId String?
+  matter   Matter?  @relation(fields: [matterId], references: [id])
+
+  purposeConfigId      String?
+  purposeConfig        SealPurposeConfig? @relation(fields: [purposeConfigId], references: [id], onDelete: Restrict)
+  purposeLabel         String? // 提交时事项名称快照
+  purpose              String // 用章事由
+  documentTitle        String // 待盖章文件标题
+  pageCount            Int                @default(1)
+  requireCrossPageSeal Boolean            @default(false)
+  copies               Int                @default(1)
+  urgency              Urgency            @default(NORMAL)
+
+  // 待盖章稿（必传） + 盖章后扫描件（盖章完成时必补）
+  draftDocId   String    @unique
+  draftDoc     Document  @relation("SealDraft", fields: [draftDocId], references: [id])
+  stampedDocId String?   @unique
+  stampedDoc   Document? @relation("SealStamped", fields: [stampedDocId], references: [id])
+
+  status      SealRequestStatus @default(PENDING)
+  requestNote String?
+  approveNote String?
+
+  requestedById String
+  requestedBy   User     @relation("SealRequester", fields: [requestedById], references: [id])
+  requestedAt   DateTime @default(now())
+
+  approvedById String?
+  approvedBy   User?     @relation("SealApprover", fields: [approvedById], references: [id])
+  approvedAt   DateTime?
+
+  stampedById   String?
+  stampedByUser User?     @relation("SealStamper", fields: [stampedById], references: [id])
+  stampedAt     DateTime?
+
+  rejectedAt DateTime?
+
+  // 被驳回后重新申请的溯源链（旧 → 新）
+  parentSealRequestId String?
+  parentSealRequest   SealRequest?  @relation("SealResubmission", fields: [parentSealRequestId], references: [id])
+  resubmissions       SealRequest[] @relation("SealResubmission")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, requestedAt])
+  @@index([requestedById, status])
+  @@index([sealType, status])
+  @@index([matterId])
+}
+
+// ============================================================
+// v0.9: 法院短信收件箱
+// ============================================================
+
+// 短信类型（与旧系统 SMS_TYPE_KEYWORDS 对齐）
+enum SmsType {
+  HEARING_NOTICE // 开庭通知
+  SERVICE_NOTICE // 送达通知
+  FEE_NOTICE // 缴费通知
+  MEDIATION // 调解通知
+  ENFORCEMENT // 执行通知
+  FILING_NOTICE // 立案通知
+  JUDGMENT_NOTICE // 判决通知
+  EVIDENCE_SUBMIT // 提交材料 / 举证
+  OTHER
+}
+
+// 与 Matter 的匹配来源
+enum SmsMatchSource {
+  AUTO_CASE_NUMBER // 按案号自动匹配
+  MANUAL // 用户手动指派
+  UNMATCHED
+}
+
+model SmsMessage {
+  id           String   @id @default(cuid())
+  rawText      String // 原始短信全文
+  receivedAt   DateTime @default(now())
+  receivedById String
+  receivedBy   User     @relation("SmsReceiver", fields: [receivedById], references: [id], onDelete: Restrict)
+
+  // 解析结果（含 caseNumbers / court / hearingDate / urls / judge / clerk / phones ...）
+  parsedJson Json
+  smsType    SmsType @default(OTHER)
+
+  // 关联匹配
+  matchedMatterId String?
+  matchedMatter   Matter?        @relation(fields: [matchedMatterId], references: [id], onDelete: SetNull)
+  matchedBy       SmsMatchSource @default(UNMATCHED)
+
+  // 一键生成动作的产物 id（追溯）
+  generatedHearingId  String?
+  generatedDeadlineId String?
+
+  processed         Boolean   @default(false)
+  processedAt       DateTime?
+  // v0.48: 电子送达附件需人工处理（需登录/验证码/未关联案件），从
+  // parsedJson.attachmentResults 冗余出来供 SQL 过滤（ROADMAP §四.2）
+  needsManualAction Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([receivedById, processed, receivedAt])
+  @@index([receivedById, needsManualAction])
+  @@index([matchedMatterId])
+  @@index([smsType, receivedAt])
+}
+
+// ============================================================
+// v0.9: 财产保全
+// ============================================================
+
+enum PreservationType {
+  PRE_LITIGATION // 诉前保全
+  LITIGATION // 诉中保全
+  ENFORCEMENT // 执行保全
+}
+
+enum PropertyType {
+  BANK_DEPOSIT // 银行存款
+  REAL_ESTATE // 房产
+  VEHICLE // 车辆
+  EQUITY // 股权
+  IP // 知识产权
+  OTHER // 其他财产
+}
+
+enum GuaranteeType {
+  CASH_DEPOSIT // 保证金
+  GUARANTEE_LETTER // 保函
+  PROPERTY // 财产担保
+  NONE // 无需担保
+}
+
+enum PreservationStatus {
+  ACTIVE // 生效中
+  RENEWED // 已续保
+  EXPIRED // 已到期
+  LIFTED // 已解除
+}
+
+// ============================================================
+// v0.44: 保全三层重构（案件 → 被保全人 → 财产）
+// v0.48: 移除旧 Preservation / PreservationRenewal 单表模型，
+//        存量数据已在 migration 中迁入三层模型
+// ============================================================
+
+model PreservationCase {
+  id       String  @id @default(cuid())
+  matterId String?
+  matter   Matter? @relation(fields: [matterId], references: [id], onDelete: SetNull)
+
+  type          PreservationType
+  status        PreservationStatus @default(ACTIVE)
+  court         String?
+  rulingNumber  String?
+  guaranteeType GuaranteeType?
+  appliedAt     DateTime?
+  note          String?
+
+  ownerId String?
+  owner   User?   @relation("PreservationCaseOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  remindDays Int[] @default([30, 15, 7, 3, 1])
+
+  targets   PreservationTarget[]
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  @@index([matterId])
+  @@index([status])
+}
+
+model PreservationTarget {
+  id     String           @id @default(cuid())
+  caseId String
+  case   PreservationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  name String // 被保全人名称
+  note String?
+
+  properties PreservationProperty[]
+  createdAt  DateTime               @default(now())
+  updatedAt  DateTime               @updatedAt
+
+  @@index([caseId])
+}
+
+model PreservationProperty {
+  id       String             @id @default(cuid())
+  targetId String
+  target   PreservationTarget @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  propertyType   PropertyType
+  propertyDetail String?
+  amount         Decimal?           @db.Decimal(18, 2)
+  startDate      DateTime
+  duration       Int
+  expiryDate     DateTime
+  status         PreservationStatus @default(ACTIVE)
+
+  renewals  PreservationPropertyRenewal[]
+  createdAt DateTime                      @default(now())
+  updatedAt DateTime                      @updatedAt
+
+  @@index([targetId])
+  @@index([status, expiryDate])
+}
+
+model PreservationPropertyRenewal {
+  id         String               @id @default(cuid())
+  propertyId String
+  property   PreservationProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  renewedAt       DateTime
+  oldExpiryDate   DateTime
+  newExpiryDate   DateTime
+  renewalDuration Int
+  note            String?
+
+  performedById String
+  performedBy   User     @relation("PropertyRenewalPerformer", fields: [performedById], references: [id], onDelete: Restrict)
+  createdAt     DateTime @default(now())
+
+  @@index([propertyId])
+}
+
+// ============================================================
+// v0.9.3: 快递追踪
+// ============================================================
+
+enum ExpressDirection {
+  OUTBOUND // 寄出（律所 → 法院 / 当事人 / 对方）
+  INBOUND // 收到（法院 / 当事人 → 律所）
+}
+
+model ExpressTracking {
+  id             String           @id @default(cuid())
+  matterId       String?
+  matter         Matter?          @relation(fields: [matterId], references: [id], onDelete: SetNull)
+  trackingNo     String
+  companyCode    String? // 中文公司名（顺丰速运 / 中通快递 等）
+  direction      ExpressDirection
+  purpose        String // 用途（如：起诉状寄朝阳法院 / 法院送达判决书）
+  recipient      String? // 收件人/单位
+  recipientPhone String?
+
+  lastState    String? // 揽件 / 在途 / 到达派件 / 已签收 / 退签 / 疑难
+  lastUpdateAt DateTime?
+  tracesJson   Json? // 完整轨迹快照（旧次刷新覆盖；不入历史）
+
+  createdById String
+  createdBy   User     @relation("ExpressCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([matterId])
+  @@index([trackingNo])
+  @@index([createdById, createdAt])
+}
+
+// ============================================================
+// v0.10: 通知系统
+// ============================================================
+
+enum NotificationType {
+  PRESERVATION_EXPIRY
+  HEARING_REMINDER
+  DEADLINE_REMINDER
+  SEAL_STATUS_CHANGE
+  SMS_ARRIVAL
+  TASK_ASSIGNED
+  SYSTEM
+  // v0.18: 归档审批通知
+  ARCHIVE_APPROVED
+  ARCHIVE_REJECTED
+}
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+// v1.x P1-1: 持久任务队列（数据库实现，无新依赖）。
+// 幂等键去重（改期=覆盖未执行任务）、租约防多实例重复、指数退避重试、
+// 超过上限进 DEAD（可见可查，绝不静默丢弃）。
+model JobQueue {
+  id          String    @id @default(cuid())
+  type        String // webhook-digest / deadline-reminder …
+  payload     Json
+  dedupeKey   String?   @unique
+  status      JobStatus @default(PENDING)
+  runAt       DateTime  @default(now())
+  leaseUntil  DateTime?
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5)
+  lastError   String?
+  deliveredAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, runAt])
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED // 暂态：等待退避重试（查询语义上与 PENDING 同类）
+  DEAD
+}
+
+// v1.x P1: 外部调用台账（只记元数据：服务/动作/成败/耗时，不落正文）
+model ExternalCallLog {
+  id         String   @id @default(cuid())
+  service    String // ai-chat / ai-vision / yuandian / sms-ai …
+  action     String?
+  ok         Boolean
+  durationMs Int
+  error      String?
+  userId     String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([service, createdAt])
+}
+
+model Notification {
+  id        String               @id @default(cuid())
+  userId    String
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  priority  NotificationPriority @default(NORMAL)
+  title     String
+  content   String?
+  href      String?
+  refType   String?
+  refId     String?
+  read      Boolean              @default(false)
+  readAt    DateTime?
+  createdAt DateTime             @default(now())
+
+  @@index([userId, read, createdAt])
+  @@index([userId, createdAt])
+}
+
+// v0.21: AI 文书审查历史
+// 每次点「AI 审查」+ 拿到结果都会写一条；按 document/matter 反查能拿全部历史
+model ReviewRecord {
+  id           String   @id @default(cuid())
+  matterId     String
+  matter       Matter   @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  documentId   String
+  document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  reviewedById String
+  reviewedBy   User     @relation("ReviewAuthor", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime @default(now())
+
+  itemCount        Int
+  itemsJson        Json // ReviewItem[]
+  textPreviewChars Int
+  truncated        Boolean @default(false)
+
+  @@index([documentId, reviewedAt])
+  @@index([matterId, reviewedAt])
+}
+
+// v0.22: 律所级资料库（与案件无关）
+// 制度 / 指引 / 参考模板（不同于 v0.8 生成型 DocumentTemplate）/ 其他文件
+enum FirmFileCategory {
+  POLICY // 制度（员工手册、保密协议、薪酬制度等）
+  GUIDE // 指引（办案指引、客户接待指引等）
+  TEMPLATE // 参考模板（律师下载手动改的样本，区别于 docxtemplater 生成型）
+  REFERENCE // 其他文件（营业执照、执业证扫描件等）
+  CONTRACT // 合同
+  LETTER // 函件
+  LICENSE // 证照
+  OTHER_FIRM // 其他
+}
+
+model FirmFile {
+  id          String           @id @default(cuid())
+  name        String
+  description String?
+  category    FirmFileCategory
+  tags        String[]
+
+  path     String
+  mimeType String?
+  size     Int
+  sha256   String?
+
+  uploadedById String
+  uploadedBy   User   @relation("FirmFileUploader", fields: [uploadedById], references: [id])
+
+  // 旧版被新版替代时，旧版指向新版 id；列表默认隐藏被替代的
+  supersededById String?
+  supersededBy   FirmFile?  @relation("FirmFileSupersedes", fields: [supersededById], references: [id])
+  supersedes     FirmFile[] @relation("FirmFileSupersedes")
+
+  archivedAt DateTime? // soft delete
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([category, archivedAt, createdAt])
+  @@index([supersededById])
+}
+
+// v0.27: 服务中心 —— 律所公告（独立 Model，pinned 公告作顶部 banner）
+model Announcement {
+  id          String    @id @default(cuid())
+  title       String
+  content     String    @db.Text
+  pinned      Boolean   @default(false)
+  publishedAt DateTime  @default(now())
+  // 到期后 banner 不再显示；列表仍保留
+  expiresAt   DateTime?
+  authorId    String
+  author      User      @relation("AnnouncementAuthor", fields: [authorId], references: [id])
+  archivedAt  DateTime? // soft delete
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([pinned, archivedAt, publishedAt])
+  @@index([authorId, createdAt])
+}
+
+// v0.27: 服务中心 —— 外部联系人（法院 / 公证 / 他所律师 等）
+enum ExternalContactCategory {
+  COURT // 法院
+  PROSECUTOR // 检察院
+  POLICE // 公安
+  NOTARY // 公证处
+  ARBITRATION // 仲裁机构
+  OTHER_FIRM // 他所律师
+  EXPERT // 鉴定 / 评估专家
+  OTHER // 其他
+}
+
+enum ExternalContactStatus {
+  PENDING_REVIEW // 待审核
+  APPROVED // 已通过
+  REJECTED // 已驳回
+}
+
+model ExternalContact {
+  reviewedById String?
+  id           String                  @id @default(cuid())
+  name         String
+  category     ExternalContactCategory
+  organization String?
+  title        String?
+  phone        String?
+  email        String?
+  wechat       String?
+  address      String?
+  notes        String?
+  tags         String[]
+
+  createdById  String
+  createdBy    User                  @relation("ExternalContactCreator", fields: [createdById], references: [id])
+  status       ExternalContactStatus @default(APPROVED)
+  reviewedBy   User?                 @relation("ExternalContactReviewer", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime?
+  reviewNote   String?
+  archivedAt   DateTime?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  @@index([category, archivedAt, name])
+  @@index([status, archivedAt, createdAt])
+  @@index([reviewedById])
+  @@index([name])
+}
+
+// 独立于岗位/团队的业务审批授权；历史授权停用留存。
+enum ApprovalAction {
+  INTAKE_APPROVE
+  DOCUMENT_APPROVE
+  ARCHIVE_APPROVE
+  INVOICE_APPROVE
+  SEAL_APPROVE
+  SEAL_STAMP
+}
+
+enum ApprovalCaseScope {
+  ALL_CASES
+  CATEGORIES
+  NON_CASE
+}
+
+model ApprovalPermissionGroup {
+  id          String                     @id @default(cuid())
+  name        String                     @unique
+  description String?
+  active      Boolean                    @default(true)
+  members     ApprovalPermissionMember[]
+  rules       ApprovalPermissionRule[]
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+}
+
+model ApprovalPermissionMember {
+  groupId   String
+  group     ApprovalPermissionGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  userId    String
+  user      User                    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  active    Boolean                 @default(true)
+  updatedAt DateTime                @updatedAt
+
+  @@id([groupId, userId])
+  @@index([userId, active])
+}
+
+model ApprovalPermissionRule {
+  id              String                  @id @default(cuid())
+  groupId         String
+  group           ApprovalPermissionGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  action          ApprovalAction
+  caseScope       ApprovalCaseScope
+  categories      MatterCategory[]
+  allSealPurposes Boolean                 @default(false)
+  purposeId       String?
+  purpose         SealPurposeConfig?      @relation(fields: [purposeId], references: [id], onDelete: Restrict)
+  sealTypes       SealType[]
+  active          Boolean                 @default(true)
+
+  @@index([groupId, active, action])
+}
+
+model SealPurposeConfig {
+  id               String                   @id @default(cuid())
+  name             String                   @unique
+  description      String?
+  allowedSealTypes SealType[]
+  active           Boolean                  @default(true)
+  rules            ApprovalPermissionRule[]
+  requests         SealRequest[]
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+}
+
+// 2026-09-19 A/B 共用增量：尚未执行，见 docs/BUSINESS-WORKFLOW-FINANCE-DESIGN-20260919.md。
+enum MoneyKind {
+  LAWYER_FEE
+  CLIENT_FUNDS
+  EXPENSE_RECOVERY
+  OTHER
+}
+enum BillingAmendmentType {
+  ORIGINAL
+  ADDITION
+  REDUCTION
+  REPLACEMENT
+  SCOPE_ONLY
+  TERMINATION
+}
+enum ReceivableDueState {
+  UNKNOWN
+  DATE_SET
+  CONDITIONAL
+}
+enum FinanceCorrectionStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+  CANCELLED
+}
+enum FinanceEffectKind {
+  EXPENSE_REVERSAL
+  PAYMENT_REFUND
+  RECEIVABLE_ADJUSTMENT
+  ALLOCATION_REVERSAL
+  INVOICE_ALLOCATION_REVERSAL
+  COMMISSION_ADJUSTMENT
+}
+enum BillingScopeState {
+  COVERED
+  SUPPLEMENT_REQUIRED
+  PENDING_REVIEW
+}
+enum CommissionSettlementKind {
+  PAID
+  RECOVERED
+}
+
+model BillingProcedureScope {
+  billingId String
+  billing Billing @relation(fields: [billingId], references: [id], onDelete: Restrict)
+  procedureId String
+  procedure MatterProcedure @relation(fields: [procedureId], references: [id], onDelete: Restrict)
+  state BillingScopeState @default(PENDING_REVIEW)
+  note String?
+  createdAt DateTime @default(now())
+  @@id([billingId, procedureId])
+  @@index([procedureId])
+}
+
+model BillingAttachment {
+  billingId String
+  billing Billing @relation(fields: [billingId], references: [id], onDelete: Restrict)
+  documentId String
+  document Document @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+  @@id([billingId, documentId])
+  @@index([documentId])
+}
+
+model InvoicePaymentAllocation {
+  id String @id @default(cuid())
+  matterId String
+  invoiceId String
+  invoice InvoiceRequest @relation(fields: [invoiceId, matterId], references: [id, matterId], onDelete: Restrict)
+  paymentId String
+  payment Payment @relation(fields: [paymentId, matterId], references: [id, matterId], onDelete: Restrict)
+  amount Decimal @db.Decimal(14, 2)
+  reversedAmount Decimal @default(0) @db.Decimal(14, 2)
+  recordedById String
+  recordedBy User @relation("InvoiceAllocationRecorder", fields: [recordedById], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  revision Int @default(0)
+  correctionEffects FinanceCorrectionEffect[] @relation("EffectInvoiceAllocation")
+  @@unique([invoiceId, paymentId])
+  @@index([paymentId])
+}
+
+model FinanceCorrectionEffect {
+  expenseEntryId String?
+  expenseEntry FeeEntry? @relation("EffectExpense", fields: [expenseEntryId], references: [id], onDelete: Restrict)
+  @@unique([correctionId, expenseEntryId])
+  id String @id @default(cuid())
+  correctionId String
+  correction FinanceCorrection @relation(fields: [correctionId], references: [id], onDelete: Restrict)
+  effectKind FinanceEffectKind
+  // 应收和分成是有符号调整；退款和撤回是正数，增加目标累计退回/撤回额。
+  delta Decimal @db.Decimal(14, 2)
+  paymentId String?
+  payment Payment? @relation("EffectPayment", fields: [paymentId], references: [id], onDelete: Restrict)
+  receivableId String?
+  receivable Receivable? @relation("EffectReceivable", fields: [receivableId], references: [id], onDelete: Restrict)
+  allocationId String?
+  allocation Allocation? @relation("EffectAllocation", fields: [allocationId], references: [id], onDelete: Restrict)
+  invoiceAllocationId String?
+  invoiceAllocation InvoicePaymentAllocation? @relation("EffectInvoiceAllocation", fields: [invoiceAllocationId], references: [id], onDelete: Restrict)
+  commissionEntryId String?
+  commissionEntry FeeEntry? @relation("EffectCommission", fields: [commissionEntryId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+  @@unique([correctionId, paymentId])
+  @@unique([correctionId, receivableId])
+  @@unique([correctionId, allocationId])
+  @@unique([correctionId, invoiceAllocationId])
+  @@unique([correctionId, commissionEntryId])
+  @@index([paymentId])
+  @@index([receivableId])
+  @@index([allocationId])
+  @@index([invoiceAllocationId])
+  @@index([commissionEntryId])
+}
+
+model CommissionSettlement {
+  id String @id @default(cuid())
+  commissionEntryId String
+  commissionEntry FeeEntry @relation(fields: [commissionEntryId], references: [id], onDelete: Restrict)
+  kind CommissionSettlementKind
+  amount Decimal @db.Decimal(14, 2)
+  occurredAt DateTime
+  recordedById String
+  recordedBy User @relation("CommissionSettlementRecorder", fields: [recordedById], references: [id], onDelete: Restrict)
+  voucherReference String
+  note String?
+  voidedAt DateTime?
+  voidReason String?
+  createdAt DateTime @default(now())
+  @@index([commissionEntryId])
+}
+
+// 已送审轮次只追加，不覆盖；snapshot 含当次字段/主体/材料清单。
+model IntakeRevision {
+  id String @id @default(cuid())
+  intakeId String
+  intake Intake @relation(fields: [intakeId], references: [id], onDelete: Restrict)
+  round Int
+  snapshot Json
+  fingerprint String
+  checkId String
+  check ConflictCheck @relation(fields: [checkId], references: [id], onDelete: Restrict)
+  submittedById String
+  submittedBy User @relation(fields: [submittedById], references: [id], onDelete: Restrict)
+  submittedAt DateTime @default(now())
+  @@unique([intakeId, round])
+}
+
+enum WorkItemState {
+  OPEN
+  DONE
+  CANCELLED
+}
+model WorkResponsibility {
+  proposedAssigneeId String?
+  proposedAssignee User? @relation("ProposedWork", fields: [proposedAssigneeId], references: [id], onDelete: Restrict)
+  id String @id @default(cuid())
+  taskId String? @unique
+  task Task? @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  deadlineId String? @unique
+  deadline Deadline? @relation(fields: [deadlineId], references: [id], onDelete: Restrict)
+  hearingId String? @unique
+  hearing Hearing? @relation(fields: [hearingId], references: [id], onDelete: Restrict)
+  assigneeId String
+  assignee User @relation("WorkAssignee", fields: [assigneeId], references: [id], onDelete: Restrict)
+  acceptedAt DateTime?
+  state WorkItemState @default(OPEN)
+  reason String?
+  closedAt DateTime?
+  revision Int @default(0)
+  createdAt DateTime @default(now())
+  @@index([assigneeId, state])
+}
+model IntakeUrgentItem {
+  proposedAssigneeId String?
+  proposedAssignee User? @relation("ProposedUrgent", fields: [proposedAssigneeId], references: [id], onDelete: Restrict)
+  id String @id @default(cuid())
+  intakeId String
+  intake Intake @relation(fields: [intakeId], references: [id], onDelete: Restrict)
+  matterId String?
+  matter Matter? @relation(fields: [matterId], references: [id], onDelete: Restrict)
+  title String
+  dueAt DateTime
+  kind String
+  assigneeId String
+  assignee User @relation("UrgentAssignee", fields: [assigneeId], references: [id], onDelete: Restrict)
+  acceptedAt DateTime?
+  state WorkItemState @default(OPEN)
+  reason String?
+  closedAt DateTime?
+  revision Int @default(0)
+  createdAt DateTime @default(now())
+  @@index([assigneeId,state,dueAt])
+  @@index([intakeId])
+  @@index([matterId])
+}
+enum HandoverState {
+  PENDING
+  ACCEPTED
+  CANCELLED
+}
+model MatterHandover {
+  id String @id @default(cuid())
+  matterId String
+  matter Matter @relation(fields: [matterId], references: [id], onDelete: Restrict)
+  fromUserId String
+  fromUser User @relation("HandoverSender", fields: [fromUserId], references: [id], onDelete: Restrict)
+  toUserId String
+  toUser User @relation("HandoverReceiver", fields: [toUserId], references: [id], onDelete: Restrict)
+  initiatedById String
+  initiatedBy User @relation("HandoverInitiator", fields: [initiatedById], references: [id], onDelete: Restrict)
+  emergency Boolean @default(false)
+  reason String
+  snapshot Json
+  fingerprint String
+  status HandoverState @default(PENDING)
+  reviewedAt DateTime?
+  revision Int @default(0)
+  createdAt DateTime @default(now())
+  @@index([matterId,status])
+  @@index([toUserId,status])
+}
+
+model ExecutionTermination {
+ id String @id @default(cuid())
+ invoiceId String?
+ invoice InvoiceRequest? @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+ sealId String?
+ seal SealRequest? @relation(fields: [sealId], references: [id], onDelete: Restrict)
+ requestedById String
+ requestedBy User @relation("TerminationRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+ decidedById String?
+ decidedBy User? @relation("TerminationDecider", fields: [decidedById], references: [id], onDelete: Restrict)
+ reason String
+ decisionNote String?
+ status FinanceCorrectionStatus @default(PENDING)
+ revision Int @default(0)
+ createdAt DateTime @default(now())
+ decidedAt DateTime?
+ @@index([invoiceId])
+ @@index([sealId])
+}
+
+model IntakeHandover {
+ id String @id @default(cuid())
+ intakeId String
+ intake Intake @relation(fields: [intakeId], references: [id], onDelete: Restrict)
+ fromUserId String
+ fromUser User @relation("IntakeHandoverFrom", fields: [fromUserId], references: [id], onDelete: Restrict)
+ toUserId String
+ toUser User @relation("IntakeHandoverTo", fields: [toUserId], references: [id], onDelete: Restrict)
+ initiatedById String
+ initiatedBy User @relation("IntakeHandoverInitiator", fields: [initiatedById], references: [id], onDelete: Restrict)
+ emergency Boolean @default(false)
+ reason String
+ snapshot Json
+ fingerprint String
+ status HandoverState @default(PENDING)
+ revision Int @default(0)
+ reviewedAt DateTime?
+ createdAt DateTime @default(now())
+ @@index([intakeId])
+}
+
+model InvoiceAdjustment {
+ id String @id @default(cuid())
+ invoiceId String
+ invoice InvoiceRequest @relation("AdjustedInvoice", fields: [invoiceId], references: [id], onDelete: Restrict)
+ replacementInvoiceId String?
+ replacementInvoice InvoiceRequest? @relation("ReplacementInvoice", fields: [replacementInvoiceId], references: [id], onDelete: Restrict)
+ kind String
+ amount Decimal @db.Decimal(14, 2)
+ occurredAt DateTime
+ reference String
+ reason String
+ documentId String
+ document Document @relation(fields: [documentId], references: [id], onDelete: Restrict)
+ recordedById String
+ recordedBy User @relation(fields: [recordedById], references: [id], onDelete: Restrict)
+ createdAt DateTime @default(now())
+ @@unique([invoiceId, reference])
+ @@index([replacementInvoiceId])
+}

@@ -1,12 +1,12 @@
 "use client";
+import { customOrLegacy, hasCustomPermission, scopeFor, type RoleGrant } from "@/lib/roles/catalog";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { BookUser, Plus, Pencil, Archive, Check, XCircle } from "lucide-react";
+import { Plus, Pencil, Archive, Check, XCircle } from "lucide-react";
 import type { ExternalContactCategory, ExternalContactStatus } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { cn } from "@/lib/utils";
 import { userRoleLabel } from "@/lib/enums";
 import { ExternalContactDialog } from "./external-contact-dialog";
 import {
@@ -15,13 +15,16 @@ import {
   rejectExternalContact
 } from "@/server/external-contacts/actions";
 import { toast } from "sonner";
+import { PageHeader, Segmented } from "@/components/patterns/moan";
+import { confirmDialog, promptDialog } from "@/components/patterns/confirm-dialog";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type ColleagueItem = {
   id: string;
   name: string;
   email: string;
   phone: string | null;
-  role: string;
+  role: string; roleName?: string;
   avatar: string | null;
 };
 
@@ -60,20 +63,24 @@ export function ContactsView({
   colleagues,
   externalContacts,
   currentUserId,
-  currentUserRole
+  currentUserRole,
+  rolePermissions,
+  managerAuthorized
 }: {
   colleagues: ColleagueItem[];
   externalContacts: ExternalContactItem[];
   currentUserId: string;
   currentUserRole: string;
+  rolePermissions?: RoleGrant[];
+  managerAuthorized?: boolean;
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ExternalContactItem | null>(null);
   const [filter, setFilter] = useState<ExternalContactCategory | "ALL">("ALL");
   const [search, setSearch] = useState("");
   const router = useRouter();
-  const canReviewContacts =
-    currentUserRole === "ADMIN" || currentUserRole === "PRINCIPAL_LAWYER";
+  const roleUser = { role: currentUserRole, rolePermissions, managerAuthorized };
+  const canReviewContacts = customOrLegacy(roleUser, "contacts.review", currentUserRole === "PRINCIPAL_LAWYER" || managerAuthorized === true);
   const pendingCount = externalContacts.filter((c) => c.status === "PENDING_REVIEW").length;
 
   const filteredExternal = externalContacts.filter((c) => {
@@ -90,48 +97,42 @@ export function ContactsView({
   });
 
   async function handleArchive(c: ExternalContactItem) {
-    if (!confirm(`归档联系人"${c.name}"？`)) return;
+    if (!(await confirmDialog({ title: `归档联系人「${c.name}」？`, description: "归档后不再在通讯录中展示，历史引用保留。", confirmText: "归档" }))) return;
     try {
       await archiveExternalContact(c.id);
       toast.success("已归档");
       router.refresh();
     } catch (err) {
-      toast.error("归档失败", { description: err instanceof Error ? err.message : "" });
+      toast.error("归档失败", { description: actionErrorMessage(err) });
     }
   }
 
   async function handleApprove(c: ExternalContactItem) {
-    if (!confirm(`通过联系人"${c.name}"？通过后将对全所展示。`)) return;
+    if (!(await confirmDialog({ title: `通过联系人「${c.name}」？`, description: "通过后将对全所展示。", confirmText: "通过" }))) return;
     try {
       await approveExternalContact({ id: c.id });
       toast.success("已通过");
       router.refresh();
     } catch (err) {
-      toast.error("审核失败", { description: err instanceof Error ? err.message : "" });
+      toast.error("审核失败", { description: actionErrorMessage(err) });
     }
   }
 
   async function handleReject(c: ExternalContactItem) {
-    const note = prompt(`驳回联系人"${c.name}"的原因（可选）`);
+    const note = await promptDialog({ title: `驳回联系人「${c.name}」`, label: "驳回原因（可选）", confirmText: "驳回", danger: true });
     if (note === null) return;
     try {
       await rejectExternalContact({ id: c.id, note });
       toast.success("已驳回");
       router.refresh();
     } catch (err) {
-      toast.error("审核失败", { description: err instanceof Error ? err.message : "" });
+      toast.error("审核失败", { description: actionErrorMessage(err) });
     }
   }
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="flex items-center gap-2 text-xl">
-          <BookUser className="h-5 w-5 text-primary" strokeWidth={1.8} />
-          通讯录
-        </h1>
-        <p className="mt-0.5 text-[12px] text-muted-foreground">本所同事与外部联系人</p>
-      </header>
+      <PageHeader className="!mb-0" title="通讯录" sub="本所同事与外部联系人（法院、仲裁机构、公证处、他所律师等）；外部联系人由行政审核后对全所展示。" />
 
       {/* 同事 */}
       <div className="space-y-3">
@@ -140,7 +141,7 @@ export function ContactsView({
         </header>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {colleagues.map((u) => (
-            <div key={u.id} className="flex items-start gap-3 rounded-md border border-border bg-card p-3">
+            <div key={u.id} className="flex items-start gap-3 ll-surface p-3">
               <Avatar className="h-10 w-10 border border-border bg-primary/10">
                 {u.avatar ? <AvatarImage src={u.avatar} alt={u.name} /> : null}
                 <AvatarFallback className="bg-primary/10 text-sm font-semibold text-primary">
@@ -150,7 +151,7 @@ export function ContactsView({
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-medium">{u.name}</div>
                 <div className="text-[11px] text-muted-foreground">
-                  {userRoleLabel[u.role as keyof typeof userRoleLabel] ?? u.role}
+                  {u.roleName ?? userRoleLabel[u.role as keyof typeof userRoleLabel] ?? u.role}
                 </div>
                 <div className="mt-1 space-y-0.5 text-[11px] text-foreground/80">
                   <div className="truncate font-mono">{u.email}</div>
@@ -168,7 +169,7 @@ export function ContactsView({
           <h2 className="flex items-center gap-2 text-sm font-medium">
             外部联系人 ({externalContacts.length})
             {canReviewContacts && pendingCount > 0 && (
-              <span className="rounded-full border border-amber-300/70 bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+              <span className="rounded-full border border-[var(--amber-line)] bg-[var(--amber-bg)] px-2 py-0.5 text-[10px] font-medium text-[var(--amber)]">
                 待审核 {pendingCount}
               </span>
             )}
@@ -187,33 +188,11 @@ export function ContactsView({
         </header>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setFilter("ALL")}
-            className={cn(
-              "rounded-full border px-3 py-0.5 text-[11px] transition-colors",
-              filter === "ALL"
-                ? "border-primary bg-primary/15 text-primary"
-                : "border-border bg-background text-muted-foreground hover:border-input hover:bg-muted hover:text-foreground"
-            )}
-          >
-            全部
-          </button>
-          {(Object.keys(EXT_CATEGORY_LABEL) as ExternalContactCategory[]).map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => setFilter(c)}
-              className={cn(
-                "rounded-full border px-3 py-0.5 text-[11px] transition-colors",
-                filter === c
-                  ? "border-primary bg-primary/15 text-primary"
-                  : "border-border bg-background text-muted-foreground hover:border-input hover:bg-muted hover:text-foreground"
-              )}
-            >
-              {EXT_CATEGORY_LABEL[c]}
-            </button>
-          ))}
+          <Segmented
+            items={[{ key: "ALL" as const, label: "全部" }, ...(Object.keys(EXT_CATEGORY_LABEL) as ExternalContactCategory[]).map((c) => ({ key: c, label: EXT_CATEGORY_LABEL[c] }))]}
+            value={filter}
+            onChange={setFilter}
+          />
           <input
             type="text"
             value={search}
@@ -231,13 +210,12 @@ export function ContactsView({
           <ul className="space-y-1.5">
             {filteredExternal.map((c) => {
               const canEdit =
-                currentUserRole === "ADMIN" ||
-                currentUserRole === "PRINCIPAL_LAWYER" ||
-                c.createdBy.id === currentUserId;
+                hasCustomPermission(roleUser, "contacts.manage") && (currentUserRole === "PRINCIPAL_LAWYER" || managerAuthorized === true ||
+                scopeFor(roleUser, "contacts.manage") === "ALL" || c.createdBy.id === currentUserId);
               return (
                 <li
                   key={c.id}
-                  className="flex items-start gap-3 rounded-md border border-border bg-card p-3"
+                  className="flex items-start gap-3 ll-surface p-3"
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
@@ -246,7 +224,7 @@ export function ContactsView({
                         {EXT_CATEGORY_LABEL[c.category]}
                       </span>
                       {c.status === "PENDING_REVIEW" && (
-                        <span className="rounded-full border border-amber-300/70 bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                        <span className="rounded-full border border-[var(--amber-line)] bg-[var(--amber-bg)] px-2 py-0.5 text-[10px] font-medium text-[var(--amber)]">
                           待审核
                         </span>
                       )}
@@ -283,7 +261,7 @@ export function ContactsView({
                             variant="ghost"
                             size="sm"
                             onClick={() => handleApprove(c)}
-                            className="h-7 gap-1 px-2 text-[11px] text-emerald-600 hover:text-emerald-700"
+                            className="h-7 gap-1 px-2 text-[11px] text-[var(--green)] hover:text-[var(--green)]"
                           >
                             <Check className="h-3 w-3" />
                             通过

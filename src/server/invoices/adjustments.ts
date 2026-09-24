@@ -1,0 +1,28 @@
+/** 记录外部已经完成的发票更正；不推导实际退款。 */
+import {randomUUID} from 'node:crypto';import {Prisma} from '@prisma/client';import {z} from 'zod';import {moneyInput} from '@/lib/finance/ledger';import {assertLedgerWrite} from '@/server/finance/ledger-access';import {resolveRoleUser} from '@/lib/roles/service';import {scopeFor} from '@/lib/roles/catalog';import {matterAssociationFilter} from '@/lib/permissions';import {auditTx} from '@/server/audit';import {requireFinanceLedger} from '@/server/finance/ledger-storage';
+import { ActionError } from "@/lib/action-error";
+export async function invoiceAdjustmentReady(db:Prisma.TransactionClient){const [r]=await db.$queryRaw<{ready:boolean}[]>`SELECT to_regclass('public."InvoiceAdjustment"') IS NOT NULL AS ready`;return r?.ready===true;}
+export const invoiceAdjustmentInput=z.object({invoiceId:z.string().min(1),kind:z.enum(['RED','VOID','REPLACE']),amount:moneyInput,occurredAt:z.coerce.date().refine(d=>d<=new Date(),'实际处理日期不能在未来'),reference:z.string().trim().min(1).max(100),reason:z.string().trim().min(1).max(1000),documentId:z.string().cuid(),replacementInvoiceId:z.string().min(1).optional(),reversals:z.array(z.object({id:z.string().min(1),amount:moneyInput})).max(100)});
+export async function adjustInvoiceTx(db:Prisma.TransactionClient,userId:string,input:z.input<typeof invoiceAdjustmentInput>){
+ const d=invoiceAdjustmentInput.parse(input);if(new Set(d.reversals.map(r=>r.id)).size!==d.reversals.length)throw new ActionError('同一票款关联不能重复解除');await requireFinanceLedger(db);if(!await invoiceAdjustmentReady(db))throw new ActionError('已开票更正尚未启用');
+ const invoice=await db.invoiceRequest.findUniqueOrThrow({where:{id:d.invoiceId}});if(invoice.status!=='ISSUED'||!invoice.matterId)throw new ActionError('仅可更正本案已开具发票');await assertLedgerWrite(db,userId,invoice.matterId,'finance.correct');
+ const user=await db.user.findUniqueOrThrow({where:{id:userId},select:{role:true}}),role=await resolveRoleUser(userId,user.role,db);if(scopeFor(role,'invoices.process')!=='ALL'&&!(scopeFor(role,'invoices.process')==='OWN'&&await db.matter.count({where:{id:invoice.matterId,...matterAssociationFilter(userId)}})))throw new ActionError('更正发票还须当前开票执行权限');
+ await db.$queryRaw`SELECT id FROM "InvoiceRequest" WHERE id=${d.invoiceId} FOR UPDATE`;
+ const shDay=(value:Date)=>new Date(value.getTime()+8*60*60*1000).toISOString().slice(0,10);
+ if(invoice.issuedAt&&shDay(d.occurredAt)<shDay(invoice.issuedAt))throw new ActionError('更正不能早于原开票日期');
+ const mayReadCase=Boolean(scopeFor(role,'documents.read')&&await db.matter.count({where:{id:invoice.matterId,...matterAssociationFilter(userId)}}));
+ if(!await db.document.count({where:{id:d.documentId,matterId:invoice.matterId,deletedAt:null,...(mayReadCase?{}:{uploadedById:userId})}}))throw new ActionError('外部处理依据须为本案有效文件');
+ const [adjusted]=await db.$queryRaw<{amount:Prisma.Decimal}[]>`SELECT COALESCE(SUM(amount),0) AS amount FROM "InvoiceAdjustment" WHERE "invoiceId"=${d.invoiceId}`;const remaining=invoice.amount.minus(adjusted.amount),amount=new Prisma.Decimal(d.amount);
+ if(amount.gt(remaining)||(['VOID','REPLACE'].includes(d.kind)&&!amount.eq(remaining)))throw new ActionError('更正超出票面余额，作废或换开须处理全部剩余票面');
+ if(d.kind==='REPLACE'){
+  if(!d.replacementInvoiceId||d.replacementInvoiceId===d.invoiceId)throw new ActionError('请选择另一张本案已开具发票');const replacement=await db.invoiceRequest.findUnique({where:{id:d.replacementInvoiceId},select:{matterId:true,status:true,amount:true}});
+  if(!replacement||replacement.matterId!==invoice.matterId||replacement.status!=='ISSUED'||!replacement.amount.eq(amount))throw new ActionError('换开发票须同案、已开具且金额相符');
+  const [used]=await db.$queryRaw<{n:bigint}[]>`SELECT COUNT(*) AS n FROM "InvoiceAdjustment" WHERE "replacementInvoiceId"=${d.replacementInvoiceId} OR "invoiceId"=${d.replacementInvoiceId}`;if(Number(used.n))throw new ActionError('新票已关联更正，不能重复作为换开目标');
+ }else if(d.replacementInvoiceId)throw new ActionError('只有换开可以关联新票');
+ const links=await db.$queryRaw<{id:string;amount:Prisma.Decimal;reversedAmount:Prisma.Decimal;paymentId:string}[]>`SELECT * FROM "InvoicePaymentAllocation" WHERE "invoiceId"=${d.invoiceId} ORDER BY id FOR UPDATE`;
+ for(const r of d.reversals){const link=links.find(l=>l.id===r.id);if(!link||new Prisma.Decimal(r.amount).gt(link.amount.minus(link.reversedAmount)))throw new ActionError('解除额超过本票有效关联');}
+ const linked=links.reduce((s,l)=>s.plus(l.amount.minus(l.reversedAmount)),new Prisma.Decimal(0)),reversed=d.reversals.reduce((s,r)=>s.plus(r.amount),new Prisma.Decimal(0));if(linked.minus(reversed).gt(remaining.minus(amount)))throw new ActionError('请先明确解除足额票款关联，不能让关联款超过更正后的票面');
+ const id=randomUUID();await db.$executeRaw`INSERT INTO "InvoiceAdjustment" (id,"invoiceId","replacementInvoiceId",kind,amount,"occurredAt",reference,reason,"documentId","recordedById") VALUES (${id},${d.invoiceId},${d.replacementInvoiceId??null},${d.kind},${amount},${d.occurredAt},${d.reference},${d.reason},${d.documentId},${userId})`;
+ for(const r of d.reversals){await db.$executeRaw`UPDATE "InvoicePaymentAllocation" SET "reversedAmount"="reversedAmount"+${new Prisma.Decimal(r.amount)},revision=revision+1 WHERE id=${r.id}`;const link=links.find(l=>l.id===r.id)!;await db.$executeRaw`UPDATE "Payment" SET revision=revision+1 WHERE id=${link.paymentId}`;}
+ await auditTx(db,{userId,action:'INVOICE_ADJUSTMENT',targetType:'InvoiceRequest',targetId:d.invoiceId,detail:{adjustmentId:id,kind:d.kind,amount:d.amount,reference:d.reference,reason:d.reason,documentId:d.documentId,replacementInvoiceId:d.replacementInvoiceId,reversals:d.reversals}});return {matterId:invoice.matterId};
+}

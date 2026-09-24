@@ -1,11 +1,12 @@
 "use client";
 
+import { FormDialogContent as DialogContent } from "@/components/patterns/form-dialog";
+
 import { useState, useMemo, useTransition } from "react";
 import { CalendarClock, FileDown, Inbox, KeyRound, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
-  DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -17,6 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { parseSms, splitSmsBatch } from "@/lib/sms-parser";
 import { parseAndSaveSms } from "@/server/sms/actions";
 import { SMS_TYPE_CN, SMS_TYPE_ACCENT } from "./sms-types";
+import { actionErrorMessage } from "@/lib/action-error";
 
 export function SmsPasteDialog({
   open,
@@ -52,7 +54,7 @@ export function SmsPasteDialog({
         setText("");
         onOpenChange(false);
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "保存失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "保存失败");
       }
     });
   };
@@ -68,7 +70,7 @@ export function SmsPasteDialog({
         onOpenChange(o);
       }}
     >
-      <DialogContent className="flex max-h-[88vh] w-[92vw] max-w-3xl flex-col gap-0 p-0">
+      <DialogContent className="max-w-3xl">
         <DialogHeader className="border-b border-border px-6 py-4">
           <DialogTitle className="flex items-center gap-2">
             <Inbox className="h-4 w-4 text-primary" />
@@ -105,7 +107,7 @@ export function SmsPasteDialog({
               <span>
                 用 AI 增强解析 <Sparkles className="inline h-3 w-3 text-primary" /> ——
                 补 <span className="text-foreground/80">摘要 / 律师动作 / 紧急程度</span>
-                （需先到 设置 → AI 接入 配置）
+                （需先到 管理后台 → AI 与元典 配置）
               </span>
             </label>
             <label className="flex items-center gap-2 text-[12px] text-muted-foreground">

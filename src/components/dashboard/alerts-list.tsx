@@ -6,7 +6,7 @@ import { matterVisibilityFilter } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { matterHref } from "@/lib/matters/route";
 
-type AlertItem = {
+export type AlertItem = {
   id: string;
   source: "preservation" | "sms" | "approval";
   title: string;
@@ -24,11 +24,11 @@ function classifyByDays(days: number): AlertItem["tone"] {
   return "ok";
 }
 
-async function loadAlerts(userId: string | null, role: string | null): Promise<AlertItem[]> {
+export async function loadAlerts(userId: string | null, role: string | null, managerAuthorized = false): Promise<AlertItem[]> {
   const now = new Date();
   const in30 = new Date();
   in30.setDate(in30.getDate() + 30);
-  const isManager = role === "ADMIN" || role === "PRINCIPAL_LAWYER";
+  const isManager = role === "PRINCIPAL_LAWYER" || managerAuthorized;
 
   const [preservationProperties, unprocessedSms, pendingSeals] = await Promise.all([
     userId && role
@@ -199,10 +199,10 @@ export async function AlertsList() {
                 <span
                   className={cn(
                     "mt-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded",
-                    a.tone === "danger" && "bg-red-500/12 text-red-600",
-                    a.tone === "warn" && "bg-amber-500/15 text-amber-600",
+                    a.tone === "danger" && "bg-[var(--red-bg)] text-[var(--red)]",
+                    a.tone === "warn" && "bg-[var(--amber-bg)] text-[var(--amber)]",
                     a.tone === "muted" && "bg-muted/60 text-muted-foreground",
-                    a.tone === "ok" && "bg-emerald-500/12 text-emerald-600"
+                    a.tone === "ok" && "bg-[var(--green-bg)] text-[var(--green)]"
                   )}
                 >
                   <Icon className="h-3 w-3" strokeWidth={2} />

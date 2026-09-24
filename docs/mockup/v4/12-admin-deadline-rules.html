@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>LawLink · 管理后台 · 期限规则库</title>
+<link rel="stylesheet" href="design-system.css" />
+<style>
+  /* 管理壳：模式横幅 */
+  .admin-strip {
+    display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 24px;
+    background: var(--bg-navy); color: rgba(255,255,255,0.92); font-size: 12px; position: sticky; top: 0; z-index: 30;
+  }
+  .admin-strip .badge { background: rgba(0,166,166,0.16); border-color: rgba(0,166,166,0.4); color: #4FC3C0; }
+  .admin-strip .back { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: rgba(255,255,255,0.85); cursor: pointer; }
+  .admin-strip .back:hover { color: #fff; }
+  .topbar.admin { background: var(--bg-card); }
+  .admin-nav-label { color: #8FA0B0; }
+  .page-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 16px; }
+  .crumbs { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--t-muted); margin-bottom: 6px; }
+  .crumbs b { color: var(--t-primary); font-weight: 600; }
+  .ph-title { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
+  .ph-sub { font-size: 12.5px; color: var(--t-muted); margin-top: 4px; max-width: 640px; line-height: 1.6; }
+
+  .flow-strip { display: grid; grid-template-columns: 1fr 28px 1fr 28px 1fr; gap: 0; align-items: stretch; margin-bottom: 16px; }
+  .flow-card { padding: 14px 16px; display: flex; gap: 12px; align-items: flex-start; }
+  .flow-ic { width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+  .flow-ic svg { width: 16px; height: 16px; }
+  .flow-t { font-size: 12.75px; font-weight: 650; }
+  .flow-d { font-size: 11.5px; color: var(--t-muted); margin-top: 3px; line-height: 1.6; }
+  .flow-arrow { display: flex; align-items: center; justify-content: center; color: var(--t-faint); }
+
+  .rtable th { background: #FAFBFA; }
+  .rule-name { font-size: 12.75px; font-weight: 600; }
+  .rule-meta { font-size: 11px; color: var(--t-muted); margin-top: 2px; }
+  .offset-chip { font-family: var(--font-mono); font-size: 10px; padding: 1.5px 7px; border-radius: var(--r-full); background: var(--bg-sunken); color: var(--t-secondary); white-space: nowrap; }
+  .sw { width: 30px; height: 17px; border-radius: var(--r-full); background: var(--teal); position: relative; display: inline-block; flex-shrink: 0; }
+  .sw::after { content: ""; position: absolute; top: 2px; right: 2px; width: 13px; height: 13px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+  .sw.off { background: var(--bd-default); }
+  .sw.off::after { right: auto; left: 2px; }
+
+  .example { position: sticky; top: 68px; }
+  .ex-day { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--bd-hair); }
+  .ex-day:last-child { border-bottom: none; }
+  .ex-date { font-family: var(--font-mono); font-size: 12px; font-weight: 600; width: 52px; }
+  .ex-role { font-size: 11.5px; color: var(--t-muted); flex: 1; }
+  .ex-tag { flex-shrink: 0; }
+  .ex-note { font-size: 11px; color: var(--t-muted); line-height: 1.7; background: var(--bg-sunken); border-radius: 9px; padding: 10px 12px; display: flex; gap: 8px; }
+  .ex-note svg { width: 13px; height: 13px; flex-shrink: 0; margin-top: 2px; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="3" y="2.6" width="2.7" height="10.8" rx="1.1" fill="#fff"/><rect x="8.4" y="2.6" width="2.7" height="10.8" rx="1.1" fill="#fff"/><rect x="3" y="6.8" width="8.1" height="2.4" rx="1.1" fill="#00A6A6"/></svg></div>
+      <div><div class="brand-name">LawLink 管理后台</div><div class="brand-sub">组织 · 规则 · 接入 · 安全</div></div>
+    </div>
+    <nav class="nav">
+      <div class="nav-section-label admin-nav-label">组织与人员</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-6 7-6s7 2.5 7 6"/><circle cx="17" cy="9" r="2.5"/></svg>用户与岗位</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg>律师团队</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 4v5c0 4.4-3 8-7 9-4-1-7-4.6-7-9V7z"/></svg>角色与审批权限</div>
+      <div class="nav-section-label admin-nav-label">业务规则</div>
+      <div class="nav-item active"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>期限规则库<span class="count">14</span></div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/></svg>归档制度</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg>文书模板</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>用章与事项</div>
+      <div class="nav-section-label admin-nav-label">系统接入</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 7h3a5 5 0 0 1 0 10h-3M9 17H6A5 5 0 0 1 6 7h3M8 12h8"/></svg>外部接入与通知</div>
+      <div class="nav-section-label admin-nav-label">安全与审计</div>
+      <div class="nav-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M9 13h6M9 17h4"/></svg>审计日志</div>
+    </nav>
+    <div class="nav-bottom">
+      <div class="user-card">
+        <div class="avatar av-navy">叶</div>
+        <div class="user-meta"><div class="user-name">叶森</div><div class="user-role">超级管理员 · 系统管理模式</div></div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="admin-strip">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 4v5c0 4.4-3 8-7 9-4-1-7-4.6-7-9V7z"/></svg>
+      <span class="badge">系统管理模式</span>
+      <span style="color:rgba(255,255,255,0.55)">当前修改影响全所规则，保存将记录审计</span>
+      <span class="back">返回业务系统<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></span>
+    </div>
+    <header class="topbar admin" style="border-bottom:1px solid var(--bd-hair)"></header>
+
+    <div class="content">
+
+      <div class="page-head">
+        <div>
+          <div class="crumbs">设置 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg> 业务规则 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg> <b>期限规则库</b></div>
+          <h1 class="ph-title">期限规则库</h1>
+          <p class="ph-sub">法定期限由规则推算生成：起算事件 + 期限 + 顺延规则，并按统一档位阶梯预警。人工修正过的期限将被锁定，规则重算不会覆盖。</p>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary btn-sm">节假日表</button>
+          <button class="btn btn-primary btn-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>新建规则</button>
+        </div>
+      </div>
+
+      <div class="flow-strip">
+        <div class="card flow-card">
+          <div class="flow-ic" style="background:var(--teal-soft);color:var(--teal-deep)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg></div>
+          <div><div class="flow-t">① 起算事件发生</div><div class="flow-d">如：判决书送达之日、立案受理之日，由程序环节自动记录</div></div>
+        </div>
+        <div class="flow-arrow"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></div>
+        <div class="card flow-card">
+          <div class="flow-ic" style="background:var(--blue-bg);color:var(--blue)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></div>
+          <div><div class="flow-t">② 规则推算期限</div><div class="flow-d">按自然日 / 工作日计算，遇法定节假日顺延，生成期限实体</div></div>
+        </div>
+        <div class="flow-arrow"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></div>
+        <div class="card flow-card">
+          <div class="flow-ic" style="background:var(--amber-bg);color:var(--amber)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.7 3h16.96a2 2 0 0 0 1.71-3L13.29 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg></div>
+          <div><div class="flow-t">③ 阶梯预警推送</div><div class="flow-d">T-7 / T-3 / T-0 / T+1 四档提醒，人工修正后锁定并标注来源</div></div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 300px;gap:16px;align-items:start">
+        <!-- 规则表 -->
+        <div class="card" style="overflow:hidden">
+          <div class="panel-head">
+            <div class="panel-title">
+              <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+              规则列表 <span class="badge b-white" style="margin-left:2px">14</span>
+            </div>
+            <div style="display:flex;gap:8px">
+              <div class="input" style="width:200px;height:30px;font-size:12px"><span class="ph">按规则名称、程序搜索</span></div>
+              <button class="btn btn-secondary btn-sm">适用程序</button>
+            </div>
+          </div>
+          <table class="table rtable">
+            <thead><tr>
+              <th style="width:24%">规则名称</th><th style="width:12%">适用程序</th><th style="width:20%">起算事件</th>
+              <th style="width:9%">期限</th><th style="width:9%">计算方式</th><th style="width:7%">节假日顺延</th><th style="width:13%">预警阶梯</th><th style="width:6%">状态</th>
+            </tr></thead>
+            <tbody>
+              <tr>
+                <td><div class="rule-name">上诉期限 · 民事判决</div><div class="rule-meta">R-001 · 依据《民事诉讼法》</div></td>
+                <td><span class="badge b-white">民事各审</span></td>
+                <td class="t-sm">判决书送达之日</td>
+                <td><span class="num-md">15 日</span></td>
+                <td><span class="offset-chip">自然日</span></td>
+                <td><span class="sw"></span></td>
+                <td><span class="offset-chip">T-7</span> <span class="offset-chip">T-3</span> <span class="offset-chip">T-0</span> <span class="offset-chip" style="background:var(--red-bg);color:var(--red)">T+1</span></td>
+                <td><span class="badge b-green"><span class="bdot"></span>启用</span></td>
+              </tr>
+              <tr>
+                <td><div class="rule-name">举证期限 · 普通程序</div><div class="rule-meta">R-002 · 法院指定可覆盖</div></td>
+                <td><span class="badge b-white">民事一审</span></td>
+                <td class="t-sm">举证通知书载明起算之日</td>
+                <td><span class="num-md">30 日</span></td>
+                <td><span class="offset-chip">自然日</span></td>
+                <td><span class="sw"></span></td>
+                <td><span class="offset-chip">T-7</span> <span class="offset-chip">T-3</span> <span class="offset-chip">T-0</span></td>
+                <td><span class="badge b-green"><span class="bdot"></span>启用</span></td>
+              </tr>
+              <tr>
+                <td><div class="rule-name">上诉期限 · 裁定</div><div class="rule-meta">R-003</div></td>
+                <td><span class="badge b-white">民事各审</span></td>
+                <td class="t-sm">裁定书送达之日</td>
+                <td><span class="num-md">10 日</span></td>
+                <td><span class="offset-chip">自然日</span></td>
+                <td><span class="sw"></span></td>
+                <td><span class="offset-chip">T-3</span> <span class="offset-chip">T-0</span> <span class="offset-chip" style="background:var(--red-bg);color:var(--red)">T+1</span></td>
+                <td><span class="badge b-green"><span class="bdot"></span>启用</span></td>
+              </tr>
+              <tr>
+                <td><div class="rule-name">申请执行期限</div><div class="rule-meta">R-006 · 起算含履行期届满</div></td>
+                <td><span class="badge b-white">执行</span></td>
+                <td class="t-sm">履行期届满之日</td>
+                <td><span class="num-md">2 年</span></td>
+                <td><span class="offset-chip">自然日</span></td>
+                <td><span class="sw"></span></td>
+                <td><span class="offset-chip">T-30</span> <span class="offset-chip">T-7</span></td>
+                <td><span class="badge b-green"><span class="bdot"></span>启用</span></td>
+              </tr>
+              <tr>
+                <td><div class="rule-name">再审申请期限</div><div class="rule-meta">R-007</div></td>
+                <td><span class="badge b-white">民事</span></td>
+                <td class="t-sm">判决生效之日</td>
+                <td><span class="num-md">6 个月</span></td>
+                <td><span class="offset-chip">自然日</span></td>
+                <td><span class="sw"></span></td>
+                <td><span class="offset-chip">T-30</span> <span class="offset-chip">T-7</span> <span class="offset-chip">T-0</span></td>
+                <td><span class="badge b-green"><span class="bdot"></span>启用</span></td>
+              </tr>
+              <tr style="background:var(--bg-sunken)">
+                <td><div class="rule-name">仲裁庭组成异议</div><div class="rule-meta">R-011 · 叶森修改于 06-02 · <span style="color:var(--amber);font-weight:600">已锁定示例</span></div></td>
+                <td><span class="badge b-white">仲裁</span></td>
+                <td class="t-sm">收到仲裁通知之日</td>
+                <td><span class="num-md">15 日</span></td>
+                <td><span class="offset-chip">工作日</span></td>
+                <td><span class="sw"></span></td>
+                <td><span class="offset-chip">T-3</span> <span class="offset-chip">T-0</span></td>
+                <td><span class="badge b-green"><span class="bdot"></span>启用</span></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="panel-foot" style="display:flex;justify-content:space-between;align-items:center">
+            <span class="t-xs t-mute">规则变更走版本化审计；停用规则不影响已生成期限</span>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-ghost btn-sm">上一页</button>
+              <button class="btn btn-ghost btn-sm">下一页</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 推算示例 -->
+        <div class="example" style="display:flex;flex-direction:column;gap:14px">
+          <div class="card">
+            <div class="panel-head">
+              <div class="panel-title" style="font-size:13px">推算示例 · 上诉期限（民事判决）</div>
+            </div>
+            <div class="panel-body" style="padding:6px 0 10px">
+              <div class="ex-day">
+                <span class="ex-date">06-01</span><span class="ex-role">判决书送达（起算事件）</span>
+                <span class="badge b-white ex-tag">起算</span>
+              </div>
+              <div class="ex-day">
+                <span class="ex-date">+15</span><span class="ex-role">自然日计算 · 期间不含送达当日</span>
+                <span class="badge b-white ex-tag">计算</span>
+              </div>
+              <div class="ex-day">
+                <span class="ex-date">06-16</span><span class="ex-role">届满日（遇节假日顺延 0 天）</span>
+                <span class="badge b-blue ex-tag">届满</span>
+              </div>
+              <div class="ex-day" style="background:#FBFDFC">
+                <span class="ex-date" style="color:var(--amber)">06-09</span><span class="ex-role">T-7 预警</span><span class="offset-chip ex-tag">通知</span>
+              </div>
+              <div class="ex-day" style="background:#FBFDFC">
+                <span class="ex-date" style="color:var(--amber)">06-13</span><span class="ex-role">T-3 预警</span><span class="offset-chip ex-tag">通知</span>
+              </div>
+              <div class="ex-day" style="background:#FBFDFC">
+                <span class="ex-date" style="color:var(--red)">06-17</span><span class="ex-role">T+1 逾期升级（通知主办 + 团队负责人）</span>
+                <span class="badge b-outline-red ex-tag">升级</span>
+              </div>
+            </div>
+            <div class="panel-foot" style="padding:10px 14px">
+              <div class="ex-note">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M12 11v5"/></svg>
+                <span>立案送达与节假日表由管理员维护；对具体案件的期限人工修改后，该期限<b>锁定</b>并标注修改人与原因，规则重算不再覆盖。</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="panel-head">
+              <div class="panel-title" style="font-size:13px">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+                提醒投递记录
+              </div>
+              <span class="t-xs t-mute">最近一次扫描</span>
+            </div>
+            <div class="panel-body" style="padding-top:8px">
+              <div style="display:flex;gap:6px;align-items:baseline;margin-bottom:10px">
+                <span class="num-md">06-13 10:02</span>
+                <span class="t-xs t-mute">期限扫描 T-3 档 · 应发 5 条</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;background:var(--green-bg);border:1px solid var(--green-line)">
+                  <span class="dot dot-green"></span>
+                  <span class="t-sm" style="flex:1">发送成功 · 4 条</span>
+                  <span class="t-xs" style="color:var(--green)">群机器人</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;background:var(--red-bg);border:1px solid var(--red-line)">
+                  <span class="dot dot-red"></span>
+                  <span class="t-sm" style="flex:1">发送失败 · 1 条</span>
+                  <button class="btn btn-danger btn-sm" style="height:22px;padding:0 8px;font-size:11px">单独补发</button>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;background:var(--slate-bg);border:1px solid var(--slate-line)">
+                  <span class="dot dot-slate"></span>
+                  <span class="t-sm" style="flex:1">结果未知 · 0 条</span>
+                  <span class="t-xs t-mute">接口成功 ≠ 已阅读</span>
+                </div>
+              </div>
+            </div>
+            <div class="panel-foot">
+              <span class="t-xs t-mute">投递结果对用户可见；失败可查可补发，不静默丢弃（持久投递与升级见 P1）</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</body>
+</html>

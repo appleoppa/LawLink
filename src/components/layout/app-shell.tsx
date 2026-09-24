@@ -4,6 +4,8 @@ import { useState } from "react";
 import { Sidebar, type FirmBrand } from "./sidebar";
 import { Topbar } from "./topbar";
 import { MobileNav } from "./mobile-nav";
+import { ToolsDialog } from "./tools-dialog";
+import { TopbarActionProvider } from "./topbar-action";
 
 export function AppShell({
   children,
@@ -20,16 +22,21 @@ export function AppShell({
   userAvatar?: string | null;
 }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-background">
-      <Sidebar firm={firm} />
-      <MobileNav open={mobileNavOpen} onOpenChange={setMobileNavOpen} firm={firm} />
-      <div className="md:pl-[208px]">
-        <Topbar onMobileMenuToggle={() => setMobileNavOpen(true)} userAvatar={userAvatar ?? null} />
-        {banner}
-        <main className="mx-auto w-full max-w-[1440px] px-4 py-4 sm:px-5">{children}</main>
+    <TopbarActionProvider>
+      <div className="min-h-screen bg-[var(--bg-canvas)]">
+        <Sidebar firm={firm} onOpenTools={() => setToolsOpen(true)} />
+        <MobileNav open={mobileNavOpen} onOpenChange={setMobileNavOpen} firm={firm} onOpenTools={() => setToolsOpen(true)} />
+        <div className="md:pl-[228px]">
+          <Topbar onMobileMenuToggle={() => setMobileNavOpen(true)} userAvatar={userAvatar ?? null} />
+          {banner}
+          {/* 墨案 .content：20px 24px 48px，最宽 1440 */}
+          <main className="mx-auto w-full max-w-[1440px] px-4 pb-12 pt-5 sm:px-6">{children}</main>
+        </div>
+        <ToolsDialog open={toolsOpen} onOpenChange={setToolsOpen} />
       </div>
-    </div>
+    </TopbarActionProvider>
   );
 }

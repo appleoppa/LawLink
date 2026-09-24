@@ -1,17 +1,22 @@
 "use server";
+import { roleMutation } from "@/lib/roles/service";
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
+import { refreshScheduleReminderAfterSave } from "@/server/reminders/schedule";
 import { audit } from "@/server/audit";
 import { createNotification } from "@/server/notifications/create";
 import { assertMatterWritable } from "@/lib/archive/guard";
-import { assertCanAccessMatter, assertCanAssociateMatter } from "@/lib/permissions";
+import { assertCanAccessMatter, assertCanHandleMatter, isManager } from "@/lib/permissions";
 import { parseSms, splitSmsBatch, toDate, type ParsedSms } from "@/lib/sms-parser";
 import { enrichWithAi } from "@/lib/sms-parser-ai";
-import { downloadSmsAttachments } from "./attachments";
+import { normalizeStoredParsed as normalizeStoredParsedCore, tryExtractAttachments, runSmsAttachmentExtraction, mergeAttachmentResults, needsManualFromResults } from "./extract-core";
+import { fileSmsInboundFilesToMatter } from "./inbound-filing";
+import { createHash } from "node:crypto";
+import { deriveProcessingState } from "@/lib/sms/processing-state";
 import {
   smsParseAndSaveSchema,
   smsBackfillCaseNumberSchema,
@@ -22,6 +27,11 @@ import {
   smsIdSchema
 } from "./schemas";
 import { revalidateMatter } from "@/server/matters/route";
+import { recordTimelineEvent } from "@/server/timeline/record";
+import { storage } from "@/lib/storage";
+import { sha256 } from "@/lib/storage/crypto";
+import { validateUploadedFile } from "@/lib/storage/file-validator";
+import { ActionError } from "@/lib/action-error";
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 解析并保存（支持批量）
@@ -39,125 +49,58 @@ async function findMatchingMatter(caseNumbers: string[]): Promise<string | null>
   return proc?.matterId ?? null;
 }
 
-async function findDefaultProcedureId(matterId: string, caseNumbers: string[]): Promise<string | null> {
-  const byCaseNumber = caseNumbers.length > 0
-    ? await prisma.matterProcedure.findFirst({
-        where: {
-          matterId,
-          caseNumber: { in: caseNumbers },
-          engagement: "ENGAGED"
-        },
-        orderBy: { order: "asc" },
-        select: { id: true }
-      })
-    : null;
-  if (byCaseNumber) return byCaseNumber.id;
-
-  const firstEngaged = await prisma.matterProcedure.findFirst({
-    where: { matterId, engagement: "ENGAGED" },
-    orderBy: { order: "asc" },
-    select: { id: true }
-  });
-  return firstEngaged?.id ?? null;
+function smsTextHash(text: string): string {
+  return createHash("sha256").update(text).digest("hex");
 }
 
 function normalizeStoredParsed(rawText: string, parsedJson: Prisma.JsonValue): ParsedSms {
-  const parsed = parseSms(rawText);
-  if (!parsedJson || typeof parsedJson !== "object" || Array.isArray(parsedJson)) return parsed;
-  const stored = parsedJson as Partial<ParsedSms>;
-  return {
-    ...parsed,
-    ...stored,
-    caseNumbers: Array.isArray(stored.caseNumbers) ? stored.caseNumbers : parsed.caseNumbers,
-    dates: Array.isArray(stored.dates) ? stored.dates : parsed.dates,
-    phones: Array.isArray(stored.phones) ? stored.phones : parsed.phones,
-    amounts: Array.isArray(stored.amounts) ? stored.amounts : parsed.amounts,
-    urls: Array.isArray(stored.urls) ? stored.urls : parsed.urls,
-    platforms: Array.isArray(stored.platforms) ? stored.platforms : parsed.platforms,
-    importantItems: Array.isArray(stored.importantItems) ? stored.importantItems : parsed.importantItems,
-    credentials: Array.isArray(stored.credentials) ? stored.credentials : parsed.credentials,
-    documentLinks: Array.isArray(stored.documentLinks) ? stored.documentLinks : parsed.documentLinks,
-    attachmentResults: Array.isArray(stored.attachmentResults) ? stored.attachmentResults : parsed.attachmentResults
-  };
-}
-
-// v0.48: 待人工状态冗余到 SmsMessage.needsManualAction 供 SQL 过滤
-function needsManualFromResults(results: ParsedSms["attachmentResults"]) {
-  return results.some((r) => r.status === "LOGIN_REQUIRED" || r.status === "SKIPPED_NO_MATTER");
-}
-
-function mergeAttachmentResults(
-  existing: ParsedSms["attachmentResults"],
-  incoming: ParsedSms["attachmentResults"]
-) {
-  const incomingUrls = new Set(incoming.map((r) => r.url));
-  return [...incoming, ...existing.filter((r) => !incomingUrls.has(r.url))].slice(0, 30);
-}
-
-function skippedNoMatterResults(parsed: ParsedSms): ParsedSms["attachmentResults"] {
-  return parsed.urls.map((url) => ({
-    url,
-    status: "SKIPPED_NO_MATTER",
-    message: "请先关联案件，再提取送达附件",
-    checkedAt: new Date().toISOString()
-  }));
-}
-
-async function tryExtractAttachments({
-  smsId,
-  userId,
-  parsed,
-  matterId
-}: {
-  smsId: string;
-  userId: string;
-  parsed: ParsedSms;
-  matterId: string | null;
-}) {
-  if (parsed.urls.length === 0) return [];
-  if (!matterId) return skippedNoMatterResults(parsed);
-  try {
-    const procedureId = await findDefaultProcedureId(matterId, parsed.caseNumbers);
-    return await downloadSmsAttachments({ smsId, userId, parsed, matterId, procedureId });
-  } catch (err) {
-    return parsed.urls.map((url) => ({
-      url,
-      status: "FAILED" as const,
-      message: err instanceof Error ? err.message : "附件提取失败",
-      checkedAt: new Date().toISOString()
-    }));
-  }
+  return normalizeStoredParsedCore(rawText, parsedJson);
 }
 
 export async function parseAndSaveSms(input: z.infer<typeof smsParseAndSaveSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const data = smsParseAndSaveSchema.parse(input);
 
   const messages = data.batch ? splitSmsBatch(data.rawText) : [data.rawText.trim()];
-  if (messages.length === 0) throw new Error("没有可解析的内容");
+  if (messages.length === 0) throw new ActionError("没有可解析的内容");
 
   const createdIds: string[] = [];
+  const duplicateCount = { value: 0 };
 
   let aiEnrichedCount = 0;
   for (const text of messages) {
+    // B1 粘贴幂等：同一收件人同一原文只建一条（v3 §11「重复粘贴、双击不重复创建」）；
+    // DB 侧 SmsMessage_receiver_text_unique 部分唯一索引兜底并发。
+    const textHash = smsTextHash(text);
+    const dup = await prisma.smsMessage.findFirst({
+      where: { receivedById: session.user.id, rawTextHash: textHash },
+      select: { id: true }
+    });
+    if (dup) {
+      duplicateCount.value++;
+      createdIds.push(dup.id);
+      continue;
+    }
     let parsed: ParsedSms = parseSms(text);
     if (data.useAi) {
-      parsed = await enrichWithAi(text, parsed);
+      parsed = await enrichWithAi(text, parsed, session.user.id);
       if (parsed.aiEnriched) aiEnrichedCount++;
     }
     const matchedMatterId = await findMatchingMatter(parsed.caseNumbers);
 
-    const created = await prisma.smsMessage.create({
+    const created = await roleMutation(session.user, "matters.write", async roleDb => roleDb.smsMessage.create({
       data: {
         rawText: text,
+        rawTextHash: textHash,
         receivedById: session.user.id,
         parsedJson: parsed as unknown as Prisma.InputJsonValue,
         smsType: parsed.smsType,
         matchedMatterId,
-        matchedBy: matchedMatterId ? "AUTO_CASE_NUMBER" : "UNMATCHED"
+        matchedBy: matchedMatterId ? "AUTO_CASE_NUMBER" : "UNMATCHED",
+        processingState: data.extractAttachments && parsed.urls.length > 0 ? "PROCESSING" : "READY_FOR_REVIEW"
       },
       select: { id: true }
-    });
+    }));
     createdIds.push(created.id);
 
     if (data.extractAttachments && parsed.urls.length > 0) {
@@ -172,13 +115,34 @@ export async function parseAndSaveSms(input: z.infer<typeof smsParseAndSaveSchem
           ...parsed,
           attachmentResults: mergeAttachmentResults(parsed.attachmentResults, attachmentResults)
         };
-        await prisma.smsMessage.update({
+        await roleMutation(session.user, "matters.write", async roleDb => roleDb.smsMessage.update({
           where: { id: created.id },
           data: {
             parsedJson: parsed as unknown as Prisma.InputJsonValue,
-            needsManualAction: needsManualFromResults(parsed.attachmentResults)
+            needsManualAction: needsManualFromResults(parsed.attachmentResults),
+            processingState: deriveProcessingState(parsed.attachmentResults, Boolean(matchedMatterId))
           }
-        });
+        }));
+        const { enqueueJob } = await import("@/server/cron/queue");
+        // 同步取件有失败时入队重试（队列 25s 起指数退避；成功即止，幂等去重）
+        if (attachmentResults.some(r => r.status === "FAILED")) {
+          // 2026-09-20 P2-4 修复：payload 带上粘贴人，队列重试在无请求上下文的 cron 里
+          // 以系统身份复跑（worker 校验 userId 必须是来件收件人），不再调用需要
+          // getServerSession 的 server action 壳。
+          await enqueueJob({ type: "sms.attachment_fetch", payload: { smsId: created.id, userId: session.user.id }, dedupeKey: `sms-fetch:${created.id}`, maxAttempts: 3 });
+        }
+        // B2：取得文件后自动入队阅读分析（AI/OCR 未配置时文件降级 NEEDS_OCR，保存与人工确认照常）
+        if (attachmentResults.some(r => r.status === "DOWNLOADED")) {
+          await enqueueJob({ type: "sms.file_analysis", payload: { smsId: created.id }, dedupeKey: `sms-analyze:${created.id}`, maxAttempts: 2 }).catch(err => {
+            // 2026-09-20 P3 修复：入队失败不再完全静默（至少留服务端警告，可手动重跑分析）
+            console.warn("[sms] 分析任务入队失败", { smsId: created.id, err: err instanceof Error ? err.message : String(err) });
+          });
+        }
+      } else {
+        await roleMutation(session.user, "matters.write", async roleDb => roleDb.smsMessage.update({
+          where: { id: created.id },
+          data: { processingState: "READY_FOR_REVIEW" }
+        }));
       }
     }
 
@@ -207,83 +171,48 @@ export async function parseAndSaveSms(input: z.infer<typeof smsParseAndSaveSchem
     action: "SMS_PARSE_SAVE",
     targetType: "SmsMessage",
     targetId: createdIds.join(","),
-    detail: { count: createdIds.length, batch: data.batch, useAi: data.useAi, aiEnrichedCount }
+    detail: { count: createdIds.length - duplicateCount.value, duplicate: duplicateCount.value, batch: data.batch, useAi: data.useAi, aiEnrichedCount }
   });
 
   revalidatePath("/inbox");
-  return { ok: true, ids: createdIds, count: createdIds.length, aiEnrichedCount };
+  return { ok: true, ids: createdIds, count: createdIds.length, duplicates: duplicateCount.value, aiEnrichedCount };
 }
 
 export async function extractSmsAttachments(input: z.infer<typeof smsIdSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const data = smsIdSchema.parse(input);
 
   const sms = await prisma.smsMessage.findUnique({
     where: { id: data.id },
-    select: {
-      id: true,
-      rawText: true,
-      parsedJson: true,
-      receivedById: true,
-      matchedMatterId: true
-    }
+    select: { receivedById: true, matchedMatterId: true }
   });
-  if (!sms) throw new Error("短信不存在");
+  if (!sms) throw new ActionError("短信不存在");
   if (sms.receivedById !== session.user.id && !sms.matchedMatterId) {
-    throw new Error("无权处理这条短信");
+    throw new ActionError("无权处理这条短信");
   }
-  if (!sms.matchedMatterId) {
-    const parsed = normalizeStoredParsed(sms.rawText, sms.parsedJson);
-    const attachmentResults = skippedNoMatterResults(parsed);
-    const mergedNoMatter = mergeAttachmentResults(parsed.attachmentResults, attachmentResults);
-    await prisma.smsMessage.update({
-      where: { id: sms.id },
-      data: {
-        parsedJson: {
-          ...parsed,
-          attachmentResults: mergedNoMatter
-        } as unknown as Prisma.InputJsonValue,
-        needsManualAction: needsManualFromResults(mergedNoMatter)
-      }
+  // 2026-09-20 第五轮审计修复 + 复查 P3-6 调整：非收件人处理已挂案件的他人来件
+  // 须本案经办/合伙人（handle 口径，不再凭读可见性改写他人 SMS 记录）；收件人本人
+  // 对自己来件放行（材料入卷的经办校验由下载管道内的 assertDocumentWritable 承担，
+  // 非经办的收件人取件会得到明确的门禁错误而非被第一关拦死）。
+  if (sms.receivedById !== session.user.id && sms.matchedMatterId) {
+    await assertCanHandleMatter(session.user, sms.matchedMatterId);
+  }
+
+  // B1 先取件后匹配：未匹配案件同样取件（入私有暂存），手动「立即提取/重试」不再要求先关联案件
+  const result = await runSmsAttachmentExtraction({ smsId: data.id, actor: session.user, source: "manual" });
+
+  // 2026-09-20 P3 修复：手动提取成功后同样入队分析（此前仅粘贴路径入队，
+  // 手动重试的文件永不进入阅读管道）
+  if (result.count > 0) {
+    const { enqueueJob } = await import("@/server/cron/queue");
+    await enqueueJob({ type: "sms.file_analysis", payload: { smsId: data.id }, dedupeKey: `sms-analyze:${data.id}`, maxAttempts: 2 }).catch(err => {
+      console.warn("[sms] 分析任务入队失败（可在来件详情手动重跑分析）", { smsId: data.id, err: err instanceof Error ? err.message : String(err) });
     });
-    revalidatePath("/inbox");
-    return { ok: true, count: attachmentResults.length, attachmentResults };
   }
-
-  await assertCanAccessMatter(session.user.id, session.user.role, sms.matchedMatterId);
-  const parsed = normalizeStoredParsed(sms.rawText, sms.parsedJson);
-  if (parsed.urls.length === 0) throw new Error("短信中没有可提取的链接");
-
-  const attachmentResults = await tryExtractAttachments({
-    smsId: sms.id,
-    userId: session.user.id,
-    parsed,
-    matterId: sms.matchedMatterId
-  });
-
-  const merged = mergeAttachmentResults(parsed.attachmentResults, attachmentResults);
-  await prisma.smsMessage.update({
-    where: { id: sms.id },
-    data: {
-      parsedJson: {
-        ...parsed,
-        attachmentResults: merged
-      } as unknown as Prisma.InputJsonValue,
-      needsManualAction: needsManualFromResults(merged)
-    }
-  });
-
-  await audit({
-    userId: session.user.id,
-    action: "SMS_EXTRACT_ATTACHMENTS",
-    targetType: "SmsMessage",
-    targetId: sms.id,
-    detail: { count: attachmentResults.length }
-  });
 
   revalidatePath("/inbox");
-  if (sms.matchedMatterId) await revalidateMatter(sms.matchedMatterId);
-  return { ok: true, count: attachmentResults.length, attachmentResults };
+  if (result.matchedMatterId) await revalidateMatter(result.matchedMatterId);
+  return { ok: true as const, count: result.count, attachmentResults: result.attachmentResults };
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -291,11 +220,13 @@ export async function extractSmsAttachments(input: z.infer<typeof smsIdSchema>) 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export async function listSmsMessages(input?: z.input<typeof smsListFilterSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const filter = smsListFilterSchema.parse(input ?? {});
 
   const where: Prisma.SmsMessageWhereInput = {};
   if (filter.scope === "mine") where.receivedById = session.user.id;
+  // 全所短信含他人收到的法院来件：仅合伙人岗位可列，其余账号一律回到本人收件箱
+  if (filter.scope === "all" && !isManager(session.user.role)) throw new ActionError("仅合伙人可查看全所短信");
   if (filter.processed === "unprocessed") where.processed = false;
   if (filter.processed === "processed") where.processed = true;
   if (filter.smsType) where.smsType = filter.smsType;
@@ -306,6 +237,14 @@ export async function listSmsMessages(input?: z.input<typeof smsListFilterSchema
     orderBy: [{ processed: "asc" }, { receivedAt: "desc" }],
     include: {
       receivedBy: { select: { id: true, name: true } },
+      inboundFiles: {
+        orderBy: { downloadedAt: "asc" },
+        select: { id: true, originalName: true, displayName: true, mimeType: true, size: true, state: true, uploadSource: true, downloadedAt: true, documentId: true, sourceUrl: true, analysisState: true, docType: true, analysisError: true }
+      },
+      suggestions: {
+        orderBy: [{ status: "asc" }, { createdAt: "asc" }],
+        select: { id: true, kind: true, fieldKey: true, currentValue: true, suggestedValue: true, sourcePage: true, sourceExcerpt: true, status: true, fileId: true, payload: true }
+      },
       matchedMatter: {
         select: {
           id: true,
@@ -323,7 +262,13 @@ export async function listSmsMessages(input?: z.input<typeof smsListFilterSchema
 }
 
 export async function getSmsMessage(id: string) {
-  await requireSession();
+  const session = await requireSession("matters.write");
+  const row = await prisma.smsMessage.findUnique({ where: { id }, select: { receivedById: true, matchedMatterId: true } });
+  if (row && row.receivedById !== session.user.id) {
+    // 他人短信只有在已挂案件且本人可见该案时才可读（与 extractSmsAttachments 同口径）
+    if (!row.matchedMatterId) throw new ActionError("无权查看他人收到的短信");
+    await assertCanAccessMatter(session.user.id, session.user.role, row.matchedMatterId, session.user.rolePermissions);
+  }
   return prisma.smsMessage.findUnique({
     where: { id },
     include: {
@@ -349,31 +294,113 @@ export async function getSmsMessage(id: string) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export async function matchSmsToMatter(input: z.infer<typeof smsMatchToMatterSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const data = smsMatchToMatterSchema.parse(input);
+  const sms = await prisma.smsMessage.findUnique({ where: { id: data.smsId }, select: { receivedById: true, matchedMatterId: true } });
+  if (!sms) throw new ActionError("短信不存在");
+  if (sms.receivedById !== session.user.id) {
+    if (!sms.matchedMatterId) throw new ActionError("只能处理本人收到的短信");
+    // 2026-09-20 第五轮审计修复：改绑是结构性写入（影响案件档案），非收件人
+    // 须本案经办/合伙人（handle 口径），不再凭读可见性放行
+    await assertCanHandleMatter(session.user, sms.matchedMatterId);
+  }
   if (data.matterId) {
-    await assertCanAssociateMatter(session.user.id, data.matterId);
+    await assertCanHandleMatter(session.user, data.matterId);
     await assertMatterWritable(data.matterId);
   }
 
-  await prisma.smsMessage.update({
+  await roleMutation(session.user, "matters.write", async roleDb => roleDb.smsMessage.update({
     where: { id: data.smsId },
     data: {
       matchedMatterId: data.matterId,
       matchedBy: data.matterId ? "MANUAL" : "UNMATCHED"
     }
-  });
+  }));
+
+  // B1：匹配案件后把私有来件区的暂存文件转正为正式材料（先取件后匹配的收口）
+  let filedCount = 0;
+  if (data.matterId) {
+    filedCount = await fileSmsInboundFilesToMatter({ smsId: data.smsId, matterId: data.matterId, userId: session.user.id });
+  }
 
   await audit({
     userId: session.user.id,
     action: "SMS_MATCH_MATTER",
     targetType: "SmsMessage",
     targetId: data.smsId,
-    detail: { matterId: data.matterId }
+    detail: { matterId: data.matterId, filedInboundFiles: filedCount }
   });
 
   revalidatePath("/inbox");
-  return { ok: true };
+  if (data.matterId) await revalidateMatter(data.matterId);
+  return { ok: true, filedFiles: filedCount };
+}
+
+/**
+ * B1：人工接续补传（v3 §4.2）——需登录/验证码/暂不支持平台的来件，
+ * 律师完成平台必要步骤后把下载的文件补传回同一条来件，走同一分析流程，
+ * 不要求重新登记整套材料。仅来件接收人可补传；同内容幂等。
+ *
+ * 2026-09-20 第五轮审计 P2-7 修复：补传到已匹配来件的文件此前直接标 FILED 但
+ * 未建 Document（页面显示「已入卷」而案件里没有材料，且被转正查询永久排除）；
+ * 统一落 PENDING_REVIEW，经「整理建议确认 → 转正」真正入卷，与私有暂存同一动线。
+ */
+export async function uploadSmsInboundFile(formData: FormData) {
+  const session = await requireSession("matters.write");
+  const smsId = String(formData.get("smsId") ?? "");
+  const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+  if (!smsId || files.length === 0) throw new ActionError("请选择要补传的文件");
+  const sms = await prisma.smsMessage.findUnique({ where: { id: smsId }, select: { receivedById: true, matchedMatterId: true } });
+  if (!sms) throw new ActionError("来件不存在");
+  if (sms.receivedById !== session.user.id) throw new ActionError("仅来件接收人可补传文件");
+
+  const saved: string[] = [];
+  const skipped: string[] = [];
+  for (const file of files) {
+    const validated = validateUploadedFile(file, { purpose: "document", maxBytes: 20 * 1024 * 1024 });
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const hash = sha256(buffer);
+    const storageKey = await storage.writeFile("sms-inbound", buffer);
+    const res = await prisma.smsInboundFile.createMany({
+      data: [{
+        smsId,
+        matterId: sms.matchedMatterId,
+        sourceUrl: "manual-upload",
+        storageKey,
+        originalName: file.name,
+        mimeType: validated.mimeType,
+        size: buffer.length,
+        sha256: hash,
+        downloadedById: session.user.id,
+        uploadSource: "MANUAL_UPLOAD",
+        state: "PENDING_REVIEW"
+      }],
+      skipDuplicates: true
+    });
+    if (res.count) saved.push(file.name); else skipped.push(file.name);
+  }
+  await audit({
+    userId: session.user.id,
+    action: "SMS_INBOUND_FILE_UPLOAD",
+    targetType: "SmsMessage",
+    targetId: smsId,
+    detail: { saved: saved.length, skippedDuplicates: skipped.length }
+  });
+  // 复查修复 P2-2：来件已匹配案件时补传文件随即转正（归属此前已确认，无需再走
+  // 建议确认动线）——否则 PENDING_REVIEW 文件无任何转正出口（MATTER_MATCH 建议
+  // 只在未匹配来件上产生，UI 的案件选择器也只在未匹配时渲染）。
+  // 收件人非本案经办时转正会被门禁拒绝，文件保留待确认由经办律师处置。
+  let filedCount = 0;
+  if (saved.length > 0 && sms.matchedMatterId) {
+    try {
+      filedCount = await fileSmsInboundFilesToMatter({ smsId, matterId: sms.matchedMatterId, userId: session.user.id });
+    } catch {
+      filedCount = 0; // 留 PENDING_REVIEW：非经办收件人补传，由案件经办律师后续处置
+    }
+  }
+  revalidatePath("/inbox");
+  if (sms.matchedMatterId) await revalidateMatter(sms.matchedMatterId);
+  return { ok: true, saved, skippedDuplicates: skipped, filedFiles: filedCount };
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -381,18 +408,21 @@ export async function matchSmsToMatter(input: z.infer<typeof smsMatchToMatterSch
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export async function generateHearingFromSms(input: z.infer<typeof smsGenerateHearingSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const data = smsGenerateHearingSchema.parse(input);
+  // 幂等：同一条短信只允许生成一次开庭，双击/重放直接返回既有产物，避免重复实体与重复责任行
+  const existing = await prisma.smsMessage.findUnique({ where: { id: data.smsId }, select: { generatedHearingId: true } });
+  if (existing?.generatedHearingId) throw new ActionError("该短信已生成过开庭，请勿重复生成");
 
   const proc = await prisma.matterProcedure.findUnique({
     where: { id: data.procedureId },
     select: { id: true, matterId: true }
   });
-  if (!proc) throw new Error("程序不存在");
-  await assertCanAccessMatter(session.user.id, session.user.role, proc.matterId);
+  if (!proc) throw new ActionError("程序不存在");
+  await assertCanHandleMatter(session.user, proc.matterId);
   await assertMatterWritable(proc.matterId);
 
-  const hearing = await prisma.hearing.create({
+  const hearing = await roleMutation(session.user, "matters.write", async roleDb => roleDb.hearing.create({
     data: {
       procedureId: data.procedureId,
       title: data.title.trim(),
@@ -401,16 +431,16 @@ export async function generateHearingFromSms(input: z.infer<typeof smsGenerateHe
       judge: data.judge?.trim() || null,
       notes: data.notes?.trim() || null
     }
-  });
+  }));
 
-  await prisma.smsMessage.update({
+  await roleMutation(session.user, "matters.write", async roleDb => roleDb.smsMessage.update({
     where: { id: data.smsId },
     data: {
       generatedHearingId: hearing.id,
       processed: true,
       processedAt: new Date()
     }
-  });
+  }));
 
   await audit({
     userId: session.user.id,
@@ -422,6 +452,7 @@ export async function generateHearingFromSms(input: z.infer<typeof smsGenerateHe
 
   revalidatePath("/inbox");
   await revalidateMatter(proc.matterId);
+  await refreshScheduleReminderAfterSave("Hearing", hearing.id);
   return { ok: true, hearingId: hearing.id };
 }
 
@@ -430,18 +461,21 @@ export async function generateHearingFromSms(input: z.infer<typeof smsGenerateHe
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export async function generateDeadlineFromSms(input: z.infer<typeof smsGenerateDeadlineSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const data = smsGenerateDeadlineSchema.parse(input);
+  // 幂等：同一条短信只允许生成一次期限
+  const existingDeadline = await prisma.smsMessage.findUnique({ where: { id: data.smsId }, select: { generatedDeadlineId: true } });
+  if (existingDeadline?.generatedDeadlineId) throw new ActionError("该短信已生成过期限，请勿重复生成");
 
   const proc = await prisma.matterProcedure.findUnique({
     where: { id: data.procedureId },
     select: { id: true, matterId: true }
   });
-  if (!proc) throw new Error("程序不存在");
-  await assertCanAccessMatter(session.user.id, session.user.role, proc.matterId);
+  if (!proc) throw new ActionError("程序不存在");
+  await assertCanHandleMatter(session.user, proc.matterId);
   await assertMatterWritable(proc.matterId);
 
-  const deadline = await prisma.deadline.create({
+  const deadline = await roleMutation(session.user, "matters.write", async roleDb => roleDb.deadline.create({
     data: {
       procedureId: data.procedureId,
       title: data.title.trim(),
@@ -450,16 +484,16 @@ export async function generateDeadlineFromSms(input: z.infer<typeof smsGenerateD
       basis: data.basis?.trim() || null,
       remindDays: data.remindDays
     }
-  });
+  }));
 
-  await prisma.smsMessage.update({
+  await roleMutation(session.user, "matters.write", async roleDb => roleDb.smsMessage.update({
     where: { id: data.smsId },
     data: {
       generatedDeadlineId: deadline.id,
       processed: true,
       processedAt: new Date()
     }
-  });
+  }));
 
   await audit({
     userId: session.user.id,
@@ -471,6 +505,7 @@ export async function generateDeadlineFromSms(input: z.infer<typeof smsGenerateD
 
   revalidatePath("/inbox");
   await revalidateMatter(proc.matterId);
+  await refreshScheduleReminderAfterSave("Deadline", deadline.id);
   return { ok: true, deadlineId: deadline.id };
 }
 
@@ -479,13 +514,30 @@ export async function generateDeadlineFromSms(input: z.infer<typeof smsGenerateD
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export async function markSmsProcessed(input: z.infer<typeof smsIdSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const data = smsIdSchema.parse(input);
 
-  await prisma.smsMessage.update({
+  // 对象级校验（与 deleteSms 同口径）：仅收件人可标记，防止跨收件箱篡改处理状态
+  const sms = await prisma.smsMessage.findUnique({
     where: { id: data.id },
-    data: { processed: true, processedAt: new Date() }
+    select: { receivedById: true }
   });
+  if (!sms) throw new ActionError("短信不存在");
+  if (sms.receivedById !== session.user.id) {
+    throw new ActionError("仅收件人可标记处理状态");
+  }
+
+  // B1（v3 §6.3）：标记已处理前核对未处置文件——有暂存待确认文件或需人工取件时
+  // 须填写去向说明，不得让角标消失掩盖遗漏；状态机同步置 NO_ACTION_NEEDED。
+  const pendingFiles = await prisma.smsInboundFile.count({ where: { smsId: data.id, state: "PENDING_REVIEW" } });
+  const note = String((input as { note?: string }).note ?? "").trim().slice(0, 500);
+  if ((pendingFiles > 0) && !note) {
+    throw new ActionError(`尚有 ${pendingFiles} 个来件文件待确认，请先处置文件或填写去向说明再标记`);
+  }
+  await roleMutation(session.user, "matters.write", async roleDb => roleDb.smsMessage.update({
+    where: { id: data.id },
+    data: { processed: true, processedAt: new Date(), processingState: "NO_ACTION_NEEDED", processingNote: note || null }
+  }));
 
   await audit({
     userId: session.user.id,
@@ -499,19 +551,19 @@ export async function markSmsProcessed(input: z.infer<typeof smsIdSchema>) {
 }
 
 export async function deleteSms(input: z.infer<typeof smsIdSchema>) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const data = smsIdSchema.parse(input);
 
   const sms = await prisma.smsMessage.findUnique({
     where: { id: data.id },
     select: { receivedById: true }
   });
-  if (!sms) throw new Error("短信不存在");
-  if (sms.receivedById !== session.user.id && session.user.role !== "ADMIN") {
-    throw new Error("仅收件人或管理员可删除");
+  if (!sms) throw new ActionError("短信不存在");
+  if (sms.receivedById !== session.user.id) {
+    throw new ActionError("仅收件人可删除");
   }
 
-  await prisma.smsMessage.delete({ where: { id: data.id } });
+  await roleMutation(session.user, "matters.write", async roleDb => roleDb.smsMessage.delete({ where: { id: data.id } }));
 
   await audit({
     userId: session.user.id,
@@ -526,7 +578,7 @@ export async function deleteSms(input: z.infer<typeof smsIdSchema>) {
 
 // 把解析出的字符串日期尽量转 JS Date（UI 预填用）
 export async function parseDateString(s: string) {
-  await requireSession();
+  await requireSession("matters.write");
   const d = toDate(s);
   return d ? d.toISOString() : null;
 }
@@ -539,21 +591,21 @@ export async function parseDateString(s: string) {
 export async function backfillCaseNumberFromSms(
   input: z.infer<typeof smsBackfillCaseNumberSchema>
 ) {
-  const session = await requireSession();
+  const session = await requireSession("matters.write");
   const data = smsBackfillCaseNumberSchema.parse(input);
 
   const sms = await prisma.smsMessage.findUnique({
     where: { id: data.smsId },
     select: { id: true, rawText: true, parsedJson: true, matchedMatterId: true }
   });
-  if (!sms) throw new Error("短信不存在");
-  if (!sms.matchedMatterId) throw new Error("请先关联案件");
-  await assertCanAssociateMatter(session.user.id, sms.matchedMatterId);
+  if (!sms) throw new ActionError("短信不存在");
+  if (!sms.matchedMatterId) throw new ActionError("请先关联案件");
+  await assertCanHandleMatter(session.user, sms.matchedMatterId);
   await assertMatterWritable(sms.matchedMatterId);
 
   const parsed = normalizeStoredParsed(sms.rawText, sms.parsedJson);
   if (!parsed.caseNumbers.includes(data.caseNumber)) {
-    throw new Error("只能回填本条短信解析出的案号");
+    throw new ActionError("只能回填本条短信解析出的案号");
   }
 
   const procedure = await prisma.matterProcedure.findUnique({
@@ -561,30 +613,29 @@ export async function backfillCaseNumberFromSms(
     select: { id: true, matterId: true, caseNumber: true, type: true, customLabel: true }
   });
   if (!procedure || procedure.matterId !== sms.matchedMatterId) {
-    throw new Error("程序与短信关联的案件不匹配");
+    throw new ActionError("程序与短信关联的案件不匹配");
   }
   if (procedure.caseNumber === data.caseNumber) {
     return { ok: true, unchanged: true };
   }
   if (procedure.caseNumber) {
-    throw new Error(`该程序已有案号 ${procedure.caseNumber}，如需更正请在程序信息中修改`);
+    throw new ActionError(`该程序已有案号 ${procedure.caseNumber}，如需更正请在程序信息中修改`);
   }
 
-  await prisma.matterProcedure.update({
+  await roleMutation(session.user, "matters.write", async roleDb => roleDb.matterProcedure.update({
     where: { id: procedure.id },
     data: { caseNumber: data.caseNumber }
-  });
+  }));
 
-  await prisma.timelineEvent.create({
-    data: {
-      matterId: sms.matchedMatterId,
+  const matchedMatterId = sms.matchedMatterId;
+  await roleMutation(session.user, "matters.write", async roleDb => recordTimelineEvent(roleDb, {
+      matterId: matchedMatterId,
       eventType: "PROCEDURE_UPDATED",
       title: `案号回填：${data.caseNumber}（来自法院短信）`,
       occurredAt: new Date(),
       refType: "MatterProcedure",
       refId: procedure.id
-    }
-  });
+    }));
 
   await audit({
     userId: session.user.id,

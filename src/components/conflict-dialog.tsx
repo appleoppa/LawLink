@@ -42,6 +42,8 @@ import { toast } from "sonner";
 import { runCheckAndSave } from "@/server/conflicts/actions";
 import { litigationStandingLabel, matterCategoryLabel, matterStatusLabel } from "@/lib/enums";
 import { matterHref } from "@/lib/matters/route";
+import { formatDate as fmtDate } from "@/lib/utils";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type QueryRole = "CLIENT_PARTY" | "OPPOSING_PARTY" | "THIRD_PARTY";
 type QueryRow = { role: QueryRole; name: string; idNumber: string };
@@ -75,11 +77,12 @@ type HitResult = {
 type SameNameClient = { clientId: string; name: string };
 type IdMatchedClient = { clientId: string; name: string; idNumber: string };
 
+// 墨案语义色（moan.css token 值；borderColor 需拼 alpha，故用 hex 字面值），与冲突检索页一致
 const severityStyle: Record<ConflictSeverity, { color: string; bg: string; label: string }> = {
-  BLOCKING: { color: "#F87171", bg: "rgba(248,113,113,0.12)", label: "阻塞" },
-  HIGH: { color: "#FB923C", bg: "rgba(251,146,60,0.12)", label: "高" },
-  MEDIUM: { color: "#FBBF24", bg: "rgba(251,191,36,0.12)", label: "中" },
-  LOW: { color: "#4ADE80", bg: "rgba(74,222,128,0.12)", label: "低" }
+  BLOCKING: { color: "#B42318", bg: "#FBECE9", label: "阻塞" },
+  HIGH: { color: "#96650B", bg: "#FAF0DB", label: "高" },
+  MEDIUM: { color: "#96650B", bg: "#FAF0DB", label: "中" },
+  LOW: { color: "#1A7F45", bg: "#E7F3EA", label: "低" }
 };
 
 const queryRoleOptions: { value: QueryRole; label: string }[] = [
@@ -151,7 +154,7 @@ export function ConflictDialog({
         }
       } catch (err) {
         toast.error("检索失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });
@@ -169,10 +172,10 @@ export function ConflictDialog({
         <DialogHeader className="border-b border-border bg-background px-6 py-4">
           <DialogTitle className="flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-primary" />
-            利益冲突检索
+            冲突预检
           </DialogTitle>
           <DialogDescription className="text-xs">
-            填入待查的姓名或证件号（至少一项），快速比对历史客户与案件
+            填入姓名或证件号（至少一项），快速了解本所历史案件与在办收案中是否有相关记录；预检不出结论
           </DialogDescription>
         </DialogHeader>
 
@@ -291,8 +294,8 @@ export function ConflictDialog({
 
           {/* 客户库同名（非冲突，仅提示） */}
           {hasRun && sameName.length > 0 && (
-            <section className="rounded-md border border-[#5B8DEF]/30 bg-[#5B8DEF]/10 p-3">
-              <div className="flex items-center gap-2 text-xs text-[#5B8DEF]">
+            <section className="rounded-md border border-[#1E56C8]/30 bg-[#1E56C8]/10 p-3">
+              <div className="flex items-center gap-2 text-xs text-[#1E56C8]">
                 <Info className="h-3.5 w-3.5" />
                 客户库已有 {sameName.length} 个同名记录（仅提示，非冲突）
               </div>
@@ -314,8 +317,8 @@ export function ConflictDialog({
 
           {/* 身份证 / 信用代码精确匹配（强提示） */}
           {hasRun && idMatched.length > 0 && (
-            <section className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
-              <div className="flex items-center gap-2 text-xs text-amber-400">
+            <section className="rounded-md border border-[var(--amber-line)] bg-[var(--amber-bg)] p-3">
+              <div className="flex items-center gap-2 text-xs text-[var(--amber)]">
                 <AlertTriangle className="h-3.5 w-3.5" />
                 身份证 / 信用代码与客户库 {idMatched.length} 条记录精确匹配，请人工核对
               </div>
@@ -325,7 +328,7 @@ export function ConflictDialog({
                     key={c.clientId}
                     href={`/clients/${c.clientId}`}
                     onClick={() => onOpenChange(false)}
-                    className="inline-flex items-center gap-1 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-300 hover:bg-amber-500/15"
+                    className="inline-flex items-center gap-1 rounded border border-[var(--amber-line)] bg-[var(--amber-bg)] px-2 py-0.5 text-[11px] text-[var(--amber)] hover:bg-[var(--amber-bg)]"
                   >
                     {c.name}{" "}
                     <span className="font-mono opacity-60">{c.idNumber}</span>
@@ -344,10 +347,10 @@ export function ConflictDialog({
               </h3>
 
               {!results || results.length === 0 ? (
-                <div className="rounded-md border border-[#4ADE80]/30 bg-[#4ADE80]/10 p-3 text-sm">
+                <div className="rounded-md border border-[#1A7F45]/30 bg-[#1A7F45]/10 p-3 text-sm">
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-[#4ADE80]" />
-                    <span>未命中任何历史客户或案件</span>
+                    <CheckCircle2 className="h-4 w-4 text-[#1A7F45]" />
+                    <span>未发现相关记录（不等于确认无冲突）</span>
                   </div>
                 </div>
               ) : (
@@ -381,7 +384,7 @@ export function ConflictDialog({
                               </span>
                               <span className="text-xs text-muted-foreground">·</span>
                               <span className="text-xs text-muted-foreground">
-                                {h.hitType === "HISTORICAL_CLIENT" ? "历史客户" : "历史案件"}
+                                {h.hitType === "IN_PROGRESS_INTAKE" ? "在办收案" : h.hitType === "HISTORICAL_CLIENT" ? "历史客户" : "历史案件"}
                               </span>
                             </div>
                             <p className="mt-1 text-sm">{h.reason}</p>
@@ -456,5 +459,5 @@ function formatDate(value: string | null) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString("zh-CN");
+  return fmtDate(date);
 }

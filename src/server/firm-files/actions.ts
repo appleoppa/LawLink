@@ -3,19 +3,23 @@
 /**
  * v0.22: 律所资料库（FirmFile）
  *
- * 全所共享：所有 active 用户可读；admin / PRINCIPAL_LAWYER 可上传 / 替代 / 删除。
+ * 全所共享：所有 active 用户可读；主任律师或获授权岗位可上传 / 替代 / 删除。
  * 4 分类：制度 / 指引 / 参考模板 / 其他文件。
  * 版本：supersededById 链接旧→新；列表默认只显示"最新"。
  * 搜索：ILIKE name + description + tags 多字段模糊匹配（不用 tsvector）。
  */
+import { customOrLegacy } from "@/lib/roles/catalog";
+import { isManager } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
 import { storage } from "@/lib/storage";
 import { sha256 } from "@/lib/storage/crypto";
-import { ensureExt } from "@/lib/storage/mime-ext";
+import { validateUploadedFile } from "@/lib/storage/file-validator";
 import { audit } from "@/server/audit";
 import { revalidatePath } from "next/cache";
 import type { FirmFileCategory, Prisma } from "@prisma/client";
+import { assertFirmFileNotUsedByArchivePolicy } from "@/server/archive/verification";
+import { ActionError } from "@/lib/action-error";
 
 const FIRM_FILE_MAX_BYTES = 50 * 1024 * 1024;
 
@@ -34,9 +38,9 @@ export type FirmFileEntry = {
 };
 
 async function requireUploader() {
-  const session = await requireSession();
-  if (session.user.role !== "ADMIN" && session.user.role !== "PRINCIPAL_LAWYER") {
-    throw new Error("仅管理员 / 主任律师可管理律所资料");
+  const session = await requireSession("firm-files.manage");
+  if (!customOrLegacy(session.user, "firm-files.manage", isManager(session.user))) {
+    throw new ActionError("仅主任律师或获授权岗位可管理律所资料");
   }
   return session;
 }
@@ -44,9 +48,9 @@ async function requireUploader() {
 const CATEGORY_VALUES: FirmFileCategory[] = ["POLICY", "GUIDE", "TEMPLATE", "REFERENCE"];
 
 function parseCategory(raw: unknown): FirmFileCategory {
-  if (typeof raw !== "string") throw new Error("分类必填");
+  if (typeof raw !== "string") throw new ActionError("分类必填");
   if ((CATEGORY_VALUES as string[]).includes(raw)) return raw as FirmFileCategory;
-  throw new Error(`无效分类：${raw}`);
+  throw new ActionError(`无效分类：${raw}`);
 }
 
 function parseTags(raw: unknown): string[] {
@@ -63,7 +67,7 @@ export async function listFirmFiles(input: {
   search?: string;
   includeSuperseded?: boolean;
 }): Promise<FirmFileEntry[]> {
-  await requireSession();
+  await requireSession("personal");
 
   const where: Prisma.FirmFileWhereInput = {
     archivedAt: null
@@ -114,7 +118,7 @@ export async function listFirmFiles(input: {
 }
 
 export async function getFirmFileVersionHistory(input: { id: string }) {
-  await requireSession();
+  await requireSession("personal");
   // 沿着 supersedes 链向旧版深挖（理论是树，业务上单链）
   type Node = {
     id: string;
@@ -166,11 +170,11 @@ export async function uploadFirmFile(formData: FormData): Promise<{
   const tags = parseTags(formData.get("tags"));
   const supersedesRaw = formData.get("supersedesId");
 
-  if (!(file instanceof File)) throw new Error("缺少文件");
-  if (file.size === 0) throw new Error("空文件");
-  if (file.size > FIRM_FILE_MAX_BYTES)
-    throw new Error(`文件超过 ${Math.round(FIRM_FILE_MAX_BYTES / 1024 / 1024)}MB`);
-  if (typeof name !== "string" || !name.trim()) throw new Error("名称必填");
+  if (!(file instanceof File)) throw new ActionError("缺少文件");
+  // 2026-09-19 审计修复：此前律所资料上传完全没有类型校验，MIME 取客户端声明，
+  // 配合下载 inline 构成全所面 XSS；现与案件材料同口径校验并按扩展名推导落库 MIME。
+  const validated = validateUploadedFile(file, { purpose: "firmfile", maxBytes: FIRM_FILE_MAX_BYTES });
+  if (typeof name !== "string" || !name.trim()) throw new ActionError("名称必填");
 
   const supersedesId =
     typeof supersedesRaw === "string" && supersedesRaw ? supersedesRaw : null;
@@ -181,9 +185,9 @@ export async function uploadFirmFile(formData: FormData): Promise<{
       where: { id: supersedesId },
       select: { id: true, supersededById: true, archivedAt: true }
     });
-    if (!old) throw new Error("被替代的旧版不存在");
-    if (old.supersededById) throw new Error("该旧版已被其他新版替代");
-    if (old.archivedAt) throw new Error("该旧版已删除，无法被替代");
+    if (!old) throw new ActionError("被替代的旧版不存在");
+    if (old.supersededById) throw new ActionError("该旧版已被其他新版替代");
+    if (old.archivedAt) throw new ActionError("该旧版已删除，无法被替代");
   }
 
   const buf = Buffer.from(await file.arrayBuffer());
@@ -191,14 +195,10 @@ export async function uploadFirmFile(formData: FormData): Promise<{
   const hash = sha256(buf);
 
   // 用户填的 name 可能不含扩展名（如"员工手册 v2.4"），下载时浏览器要靠扩展名识别程序，
-  // 这里优先取原始文件名的扩展名兜底，其次用 mimeType 推断
+  // 这里优先取原始文件名的扩展名兜底
   const trimmedName = name.trim().slice(0, 200);
   const userHasExt = /\.[A-Za-z0-9]{1,5}$/.test(trimmedName);
-  let nameWithFileExt = trimmedName;
-  if (!userHasExt) {
-    const m = file.name.match(/\.[A-Za-z0-9]{1,5}$/);
-    nameWithFileExt = m ? trimmedName + m[0] : ensureExt(trimmedName, file.type || null);
-  }
+  const nameWithFileExt = userHasExt ? trimmedName : `${trimmedName}.${validated.ext}`;
 
   const created = await prisma.$transaction(async (tx) => {
     const doc = await tx.firmFile.create({
@@ -211,7 +211,7 @@ export async function uploadFirmFile(formData: FormData): Promise<{
         category,
         tags,
         path,
-        mimeType: file.type || null,
+        mimeType: validated.mimeType,
         size: file.size,
         sha256: hash,
         uploadedById: session.user.id
@@ -251,8 +251,8 @@ export async function updateFirmFile(input: {
     where: { id: input.id },
     select: { id: true, archivedAt: true }
   });
-  if (!existing) throw new Error("资料不存在");
-  if (existing.archivedAt) throw new Error("已删除的资料不可编辑");
+  if (!existing) throw new ActionError("资料不存在");
+  if (existing.archivedAt) throw new ActionError("已删除的资料不可编辑");
 
   const data: Prisma.FirmFileUpdateInput = {};
   if (input.name !== undefined) data.name = input.name.trim().slice(0, 200);
@@ -276,6 +276,7 @@ export async function updateFirmFile(input: {
 
 export async function deleteFirmFile(input: { id: string }) {
   const session = await requireUploader();
+  await assertFirmFileNotUsedByArchivePolicy(input.id);
   await prisma.firmFile.update({
     where: { id: input.id },
     data: { archivedAt: new Date() }

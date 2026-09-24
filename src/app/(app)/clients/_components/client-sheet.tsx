@@ -26,6 +26,7 @@ import {
   SheetDescription,
   SheetFooter
 } from "@/components/ui/sheet";
+import { PERSON_ID_TYPES, clientIdTypeLabel, personIdError, sanitizePersonIdInput } from "@/lib/clients/person-id";
 import { clientCreateSchema, type ClientCreateInput } from "@/server/clients/schemas";
 import { createClient, updateClient } from "@/server/clients/actions";
 import {
@@ -41,6 +42,7 @@ import {
 } from "@/server/yuandian/enterprise";
 import { cn } from "@/lib/utils";
 import { readFormPath } from "@/lib/form-path";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Props = {
   open: boolean;
@@ -51,6 +53,7 @@ type Props = {
 const emptyDefaults: ClientCreateInput = {
   name: "",
   type: "INDIVIDUAL",
+  idType: "ID_CARD",
   idNumber: "",
   address: "",
   legalRep: "",
@@ -87,6 +90,8 @@ export function ClientSheet({ open, onOpenChange, editingClient }: Props) {
   const watchedValues = useWatch({ control });
   const watch = <T = any,>(path: string) => readFormPath<T>(watchedValues, path);
   const watchedType = watch<ClientCreateInput["type"]>("type");
+  const personIdType = watch<ClientCreateInput["idType"]>("idType") || "ID_CARD";
+  const watchedIdNumber = watch<string | undefined>("idNumber") ?? "";
   const watchedTags = watch<string[]>("tags");
 
   // 当 editing 切换时重置表单
@@ -96,6 +101,8 @@ export function ClientSheet({ open, onOpenChange, editingClient }: Props) {
       reset({
         name: editingClient.name,
         type: editingClient.type,
+        idType: (editingClient as any).idType ?? (editingClient.type === "INDIVIDUAL" ? "ID_CARD" : "USCC"),
+        // 列表/详情在服务端完成授权和解密，浏览器不能引用服务端密钥模块。
         idNumber: editingClient.idNumber ?? "",
         address: editingClient.address ?? "",
         legalRep: (editingClient as any).legalRep ?? "",
@@ -139,7 +146,7 @@ export function ClientSheet({ open, onOpenChange, editingClient }: Props) {
         onOpenChange(false);
       } catch (err) {
         toast.error("保存失败", {
-          description: err instanceof Error ? err.message : "请稍后重试"
+          description: err instanceof Error ? actionErrorMessage(err) : "请稍后重试"
         });
       }
     });
@@ -173,7 +180,7 @@ export function ClientSheet({ open, onOpenChange, editingClient }: Props) {
         const r = await searchEnterpriseCandidates(name);
         if (!r.configured) {
           toast.error("元典 API 未配置", {
-            description: "请在 设置 → AI 与元典 中配置 API Key"
+            description: "请在 管理后台 → AI 与元典 中配置 API Key"
           });
           return;
         }
@@ -184,7 +191,7 @@ export function ClientSheet({ open, onOpenChange, editingClient }: Props) {
         setCandidates(r.items);
       } catch (err) {
         toast.error("查找失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });
@@ -204,7 +211,7 @@ export function ClientSheet({ open, onOpenChange, editingClient }: Props) {
         }
       } catch (err) {
         toast.warning("法代 / 地址自动填充失败，可手动补充", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });
@@ -244,9 +251,17 @@ export function ClientSheet({ open, onOpenChange, editingClient }: Props) {
               <Field label="类型" required>
                 <Select
                   value={watchedType}
-                  onValueChange={(v) =>
-                    setValue("type", v as ClientCreateInput["type"], { shouldDirty: true })
-                  }
+                  onValueChange={(v) => {
+                    setValue("type", v as ClientCreateInput["type"], { shouldDirty: true });
+                    // 证件类型随主体类型联动默认值（可手动改选护照/其他）
+                    // 自然人不能使用信用代码，单位不能使用个人证件：跨类切换时重置
+                    const nextType = v === "INDIVIDUAL" ? "ID_CARD" : "USCC";
+                    const current = watch<ClientCreateInput["idType"]>("idType");
+                    const currentIsPerson = !!current && current !== "USCC" && current !== "OTHER";
+                    if (!current || (v === "INDIVIDUAL" ? current === "USCC" : currentIsPerson)) {
+                      setValue("idType", nextType, { shouldDirty: true });
+                    }
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -259,15 +274,45 @@ export function ClientSheet({ open, onOpenChange, editingClient }: Props) {
                 </Select>
               </Field>
 
+              <Field label="证件类型" required>
+                <Select
+                  value={watch<ClientCreateInput["idType"]>("idType") || (watchedType === "INDIVIDUAL" ? "ID_CARD" : "USCC")}
+                  onValueChange={(v) => {
+                    setValue("idType", v as NonNullable<ClientCreateInput["idType"]>, { shouldDirty: true });
+                    if (watchedType === "INDIVIDUAL") setValue("idNumber", sanitizePersonIdInput(v, watch("idNumber") ?? ""), { shouldDirty: true });
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(watchedType === "INDIVIDUAL"
+                      ? PERSON_ID_TYPES.map((t) => [t, clientIdTypeLabel[t]])
+                      : [["USCC", "统一社会信用代码"], ["OTHER", "其他编号"]]
+                    ).map(([v, label]) => (
+                      <SelectItem key={v} value={v}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+
               <Field
-                label={watchedType === "INDIVIDUAL" ? "身份证号" : "统一社会信用代码"}
+                label={watchedType === "INDIVIDUAL" ? "证件号码" : "统一社会信用代码"}
+                error={errors.idNumber?.message}
               >
                 {watchedType === "INDIVIDUAL" ? (
-                  <Input
-                    className="font-mono"
-                    placeholder="18 位身份证号"
-                    {...register("idNumber")}
-                  />
+                  <div className="space-y-1">
+                    <Input
+                      className="font-mono"
+                      inputMode={personIdType === "ID_CARD" ? "numeric" : undefined}
+                      placeholder={personIdType === "ID_CARD" ? "18 位，仅数字或 X" : "证件号码"}
+                      value={watchedIdNumber}
+                      onChange={(e) => setValue("idNumber", sanitizePersonIdInput(personIdType, e.target.value), { shouldDirty: true, shouldValidate: !!errors.idNumber })}
+                    />
+                    {watchedIdNumber && personIdError(personIdType, watchedIdNumber) ? (
+                      <p className="text-[11px] text-[var(--amber,#b7791f)]">{personIdError(personIdType, watchedIdNumber)}</p>
+                    ) : null}
+                  </div>
                 ) : (
                   <div className="space-y-1">
                     <div className="flex gap-1">

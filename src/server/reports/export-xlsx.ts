@@ -1,15 +1,18 @@
+import { getFinanceFacts, periodReceipts } from "@/server/finance/facts";
 /**
  * v0.20: 律所报表 xlsx 导出
  *
  * 3 个 sheet：案件清单（本期新收）/ 收款明细（本期 RECEIVED）/ 律师产出（本期聚合）
  */
+import type { ReportAccess } from "@/lib/roles/report-scope";
 import ExcelJS from "exceljs";
 import { prisma } from "@/lib/prisma";
+import { shDayKey } from "@/lib/ui/sh-time";
 import { matterCategoryLabel, matterStatusLabel } from "@/lib/enums";
 import type { ReportPeriod } from "./queries";
 import { getReportData } from "./queries";
 
-export async function buildReportWorkbook(period: ReportPeriod): Promise<Buffer> {
+export async function buildReportWorkbook(period: ReportPeriod, access: ReportAccess = { matters: {}, finance: {} }): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   wb.creator = "LawLink";
   wb.created = new Date();
@@ -18,7 +21,7 @@ export async function buildReportWorkbook(period: ReportPeriod): Promise<Buffer>
   const matters = await prisma.matter.findMany({
     where: {
       createdAt: { gte: period.start, lt: period.end },
-      deletedAt: null
+      deletedAt: null, AND: [access.matters]
     },
     select: {
       internalCode: true,
@@ -57,18 +60,21 @@ export async function buildReportWorkbook(period: ReportPeriod): Promise<Buffer>
       client: m.primaryClient?.name ?? "",
       owner: m.owner?.name ?? "",
       status: matterStatusLabel[m.status],
-      createdAt: m.createdAt.toISOString().slice(0, 10),
-      closedAt: m.closedAt ? m.closedAt.toISOString().slice(0, 10) : "",
-      archivedAt: m.archivedAt ? m.archivedAt.toISOString().slice(0, 10) : ""
+      createdAt: shDayKey(m.createdAt),
+      closedAt: m.closedAt ? shDayKey(m.closedAt) : "",
+      archivedAt: m.archivedAt ? shDayKey(m.archivedAt) : ""
     });
   }
   sheetMatters.getRow(1).font = { bold: true };
 
   // Sheet 2: 收款明细
-  const receivedFees = await prisma.feeEntry.findMany({
+  const facts=await getFinanceFacts({deletedAt:null,AND:[access.finance]});
+  const receivedFees = facts ? periodReceipts(facts,period.start,period.end) : await prisma.feeEntry.findMany({
     where: {
       type: "RECEIVED",
-      occurredAt: { gte: period.start, lt: period.end }
+      confirmState: "CONFIRMED",
+      occurredAt: { gte: period.start, lt: period.end },
+      matter: { deletedAt: null, AND: [access.finance] }
     },
     select: {
       occurredAt: true,
@@ -76,6 +82,7 @@ export async function buildReportWorkbook(period: ReportPeriod): Promise<Buffer>
       payerOrPayee: true,
       invoiceNo: true,
       method: true,
+      note: true,
       matter: {
         select: {
           internalCode: true,
@@ -89,7 +96,8 @@ export async function buildReportWorkbook(period: ReportPeriod): Promise<Buffer>
   });
   const sheetFees = wb.addWorksheet("收款明细");
   sheetFees.columns = [
-    { header: "收款日期", key: "occurredAt", width: 12 },
+    { header: "发生日期", key: "occurredAt", width: 12 },
+    { header: "收款或更正说明", key: "note", width: 40 },
     { header: "金额", key: "amount", width: 14 },
     { header: "客户", key: "client", width: 18 },
     { header: "案件编号", key: "matterCode", width: 14 },
@@ -101,8 +109,9 @@ export async function buildReportWorkbook(period: ReportPeriod): Promise<Buffer>
   ];
   for (const f of receivedFees) {
     sheetFees.addRow({
-      occurredAt: f.occurredAt.toISOString().slice(0, 10),
+      occurredAt: shDayKey(f.occurredAt),
       amount: Number(f.amount),
+      note: f.note ?? "原始收款",
       client: f.matter?.primaryClient?.name ?? "",
       matterCode: f.matter?.internalCode ?? "",
       matterTitle: f.matter?.title ?? "",
@@ -116,7 +125,7 @@ export async function buildReportWorkbook(period: ReportPeriod): Promise<Buffer>
   sheetFees.getColumn("amount").numFmt = "#,##0.00";
 
   // Sheet 3: 律师产出（来自 getReportData 已聚合的数据，避免重算）
-  const data = await getReportData(period);
+  const data = await getReportData(period, access);
   const sheetLawyer = wb.addWorksheet("律师产出");
   sheetLawyer.columns = [
     { header: "律师", key: "name", width: 12 },
@@ -140,7 +149,7 @@ export async function buildReportWorkbook(period: ReportPeriod): Promise<Buffer>
   sheetClient.columns = [
     { header: "客户", key: "name", width: 24 },
     { header: "应收金额", key: "receivable", width: 14 },
-    { header: "已收金额", key: "received", width: 14 },
+    { header: facts?"已核销金额":"已收金额", key: "received", width: 14 },
     { header: "应收余额", key: "balance", width: 14 }
   ];
   for (const row of data.byClientReceivable) {

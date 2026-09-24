@@ -15,7 +15,7 @@ import type { ParsedSms } from "./sms-parser";
  * 不覆盖正则已抽出的硬字段（案号 / 法院 / 日期 / 法庭 / 法官 / 书记员 / 电话 / 上诉期）。
  * AI 失败 / 未配置 / 超时 → 静默返回原 parsed（不抛错）。
  */
-export async function enrichWithAi(rawText: string, base: ParsedSms): Promise<ParsedSms> {
+export async function enrichWithAi(rawText: string, base: ParsedSms, userId?: string): Promise<ParsedSms> {
   const prompt = `下面是律师收到的一条法院/12368/电子送达短信。请输出 JSON，**只填 3 个字段**：
 
 {
@@ -36,7 +36,9 @@ ${rawText.slice(0, 1500)}
       messages: [{ role: "user", content: prompt }],
       maxTokens: 300,
       temperature: 0.2,
-      timeoutMs: 12_000
+      timeoutMs: 12_000,
+      logAction: "sms-parse-enrich", // 此前无 logAction，台账连动作名都没有
+      userId // 第八轮体检：外发台账记发起人
     });
     const json = extractJson<{
       summary?: string;

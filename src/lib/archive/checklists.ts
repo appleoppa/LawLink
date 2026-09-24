@@ -91,6 +91,8 @@ const CHECKLISTS: Record<ArchiveChecklistKind, ArchiveChecklist> = {
 export function checklistForCategory(category: MatterCategory): ArchiveChecklist {
   switch (category) {
     case "CIVIL_COMMERCIAL":
+    case "LABOR_ARBITRATION":
+    case "COMMERCIAL_ARBITRATION":
     case "CRIMINAL":
     case "ADMINISTRATIVE":
       return LITIGATION;

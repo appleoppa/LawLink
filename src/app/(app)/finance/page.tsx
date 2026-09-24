@@ -1,60 +1,81 @@
 import { getSession } from "@/lib/auth/session";
 import {
   listAllFeeEntries,
+  listPendingReceipts,
+  getFinanceKpis,
   getMonthlyRevenue,
   getPersonalRevenue
 } from "@/server/finance/actions";
 import { listInvoiceRequests, getInvoiceStats } from "@/server/invoices/actions";
-import { FinanceView } from "./_components/finance-view";
+import { getInvoiceReconciliation } from "@/server/finance/invoice-reconciliation";
+import { getReceivablesAging } from "@/server/finance/aging";
+import { hasCustomPermission } from "@/lib/roles/catalog";
+import { canConfirmReceipt, isManager } from "@/lib/permissions";
+import { FinanceViewV4 } from "./_components/finance-view-v4";
 
 export default async function FinancePage() {
   const session = await getSession();
   const userId = session!.user.id;
 
-  const [entries, monthly, personal, invoiceRequests, invoiceStats] = await Promise.all([
-    listAllFeeEntries({ limit: 200 }),
-    getMonthlyRevenue(6),
+  const [entries, pending, commissions, kpis, monthly, personal, invoiceRequests, invoiceStats, aging, invoiceReconciliation] = await Promise.all([
+    listAllFeeEntries({ limit: 500 }),
+    listPendingReceipts(),
+    listAllFeeEntries({ type: "COMMISSION", limit: 500 }),
+    getFinanceKpis(),
+    getMonthlyRevenue(12),
     getPersonalRevenue(userId),
     listInvoiceRequests(),
-    getInvoiceStats()
+    getInvoiceStats(),
+    getReceivablesAging(),
+    getInvoiceReconciliation()
   ]);
 
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
-  const yearStart = new Date(monthStart.getFullYear(), 0, 1);
-
-  const monthlyReceived = entries
-    .filter((e) => e.type === "RECEIVED" && new Date(e.occurredAt) >= monthStart)
-    .reduce((acc, e) => acc + Number(e.amount), 0);
-  const monthlyReceivable = entries
-    .filter((e) => e.type === "RECEIVABLE" && new Date(e.occurredAt) >= monthStart)
-    .reduce((acc, e) => acc + Number(e.amount), 0);
-  const yearlyReceived = entries
-    .filter((e) => e.type === "RECEIVED" && new Date(e.occurredAt) >= yearStart)
-    .reduce((acc, e) => acc + Number(e.amount), 0);
+  const { monthlyReceived, monthlyReceivable, lastMonthReceived, yearlyReceived, yearlyReceivable, monthConfirmedCount, monthPendingCount, monthPendingAmount, monthRefundAmount, writeOffRate } = kpis;
 
   return (
-    <FinanceView
+    <FinanceViewV4
       entries={entries.map((entry) => ({
         ...entry,
-        amount: Number(entry.amount)
+        amount: Number(entry.amount),
+        confirmed: Boolean(entry.billing?.signedAt || entry.invoiceNo)
       }))}
-      monthly={monthly}
+      pendingEntries={pending.map((entry) => ({
+        ...entry,
+        amount: Number(entry.amount),
+        confirmed: Boolean(entry.billing?.signedAt || entry.invoiceNo)
+      }))}
+      commissionEntries={commissions.map((entry) => ({
+        ...entry,
+        amount: Number(entry.amount),
+        confirmed: Boolean(entry.billing?.signedAt || entry.invoiceNo)
+      }))}
+      monthly={monthly.slice(-6)}
+      aging={aging}
+      invoiceReconciliation={invoiceReconciliation}
+      canExport={hasCustomPermission(session!.user, "reports.export")}
+      canWrite={hasCustomPermission(session!.user, "finance.write")}
+      canConfirmReceipt={canConfirmReceipt(session!.user)}
       stats={{
+        ledgerReady:kpis.ledgerReady,
         monthlyReceived,
         monthlyReceivable,
         yearlyReceived,
+        yearlyReceivable,
+        lastMonthReceived,
         personalMonthly: personal.monthlyCommission,
         personalYearly: personal.yearlyCommission,
         monthlyIssued: invoiceStats.monthlyIssued,
-        pendingInvoiceCount: invoiceStats.pendingCount
+        pendingInvoiceCount: invoiceStats.pendingCount,
+        monthConfirmedCount,
+        monthPendingCount,
+        monthPendingAmount,
+        monthRefundAmount,
+        writeOffRate
       }}
       invoiceRequests={invoiceRequests}
       canApproveInvoice={
         session!.user.role === "FINANCE" ||
-        session!.user.role === "ADMIN" ||
-        session!.user.role === "PRINCIPAL_LAWYER"
+        isManager(session!.user)
       }
     />
   );

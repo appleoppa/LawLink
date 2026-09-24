@@ -1,15 +1,22 @@
 "use server";
+import { approvalSettings } from "@/lib/approvals/service";
+import { isManager } from "@/lib/permissions";
 
 import { revalidatePath } from "next/cache";
 import ExcelJS from "exceljs";
 
 import { prisma } from "@/lib/prisma";
+import { shDayKey } from "@/lib/ui/sh-time";
 import { requireSession } from "@/lib/auth/session";
+import { isSystemAdmin } from "@/lib/auth/system-role";
 import { audit } from "@/server/audit";
 import { seedDefaultFolders } from "@/lib/default-folders";
 import { generateInternalCode, generateFirmCaseNo } from "@/server/matters/code-generator";
 import { generateClientCode } from "@/server/clients/code-generator";
 import { assertCauseAllowedForSelection } from "@/server/causes/validation";
+import { normalizeIdNumber, duplicateWhereInput, suggestIdType } from "@/lib/clients/identity";
+import { sealIdNumber, blindIdNumber } from "@/lib/clients/id-number-crypto";
+import { recordTimelineEvent } from "@/server/timeline/record";
 import {
   IMPORT_COLUMNS,
   validateRow,
@@ -18,11 +25,12 @@ import {
   type RawRow,
   type NormalizedRow
 } from "@/lib/imports/matter-import";
+import { ActionError } from "@/lib/action-error";
 
 async function requireManager() {
   const session = await requireSession();
-  if (session.user.role !== "ADMIN" && session.user.role !== "PRINCIPAL_LAWYER") {
-    throw new Error("仅管理员 / 主任律师可批量导入案件");
+  if (!isSystemAdmin(session.user) && !isManager(session.user)) {
+    throw new ActionError("仅系统超级管理员 / 主任律师可批量导入案件");
   }
   return session;
 }
@@ -31,10 +39,9 @@ async function requireManager() {
 function cellToString(value: ExcelJS.CellValue): string {
   if (value === null || value === undefined) return "";
   if (value instanceof Date) {
-    const y = value.getFullYear();
-    const m = String(value.getMonth() + 1).padStart(2, "0");
-    const d = String(value.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
+    // 2026-09-20 第五轮审计时区修复：ExcelJS 日期单元格是 UTC 午夜真瞬间，
+    // 本地取日在西于 UTC 的部署会差一天——统一上海日键
+    return shDayKey(value);
   }
   if (typeof value === "object") {
     // 富文本 / 公式结果
@@ -53,7 +60,7 @@ async function readSheet(file: File): Promise<{ rowNo: number; raw: RawRow }[]> 
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buf as unknown as ArrayBuffer);
   const sheet = wb.worksheets[0];
-  if (!sheet) throw new Error("文件中没有工作表");
+  if (!sheet) throw new ActionError("文件中没有工作表");
 
   // 表头 → 列索引（去掉必填星号，匹配 IMPORT_COLUMNS.header）
   const headerByIndex = new Map<number, string>(); // colIndex → field key
@@ -64,7 +71,7 @@ async function readSheet(file: File): Promise<{ rowNo: number; raw: RawRow }[]> 
     if (col) headerByIndex.set(colNumber, col.key);
   });
   if (headerByIndex.size === 0) {
-    throw new Error("未识别到表头，请使用下载的模板填写");
+    throw new ActionError("未识别到表头，请使用下载的模板填写");
   }
 
   const rows: { rowNo: number; raw: RawRow }[] = [];
@@ -100,11 +107,11 @@ export interface ImportPreview {
 export async function parseMatterImportAction(formData: FormData): Promise<ImportPreview> {
   await requireManager();
   const file = formData.get("file");
-  if (!(file instanceof File)) throw new Error("缺少文件");
+  if (!(file instanceof File)) throw new ActionError("缺少文件");
 
   const parsed = await readSheet(file);
   if (parsed.length === 0) {
-    throw new Error("未读取到数据行（请在模板第 2 行起填写，并删除示例行）");
+    throw new ActionError("未读取到数据行（请在模板第 2 行起填写，并删除示例行）");
   }
 
   // 预取主办律师邮箱，用于校验
@@ -142,7 +149,7 @@ async function createOneMatter(n: NormalizedRow, currentUserId: string) {
       where: { email: { equals: n.ownerEmail, mode: "insensitive" } },
       select: { id: true }
     });
-    if (!lawyer) throw new Error(`主办律师邮箱「${n.ownerEmail}」未匹配到用户`);
+    if (!lawyer) throw new ActionError(`主办律师邮箱「${n.ownerEmail}」未匹配到用户`);
     ownerId = lawyer.id;
   }
 
@@ -182,11 +189,27 @@ async function createOneMatter(n: NormalizedRow, currentUserId: string) {
   const internalCode = await generateInternalCode(n.category);
   const firmCaseNo = await generateFirmCaseNo(n.category);
 
-  // find-or-create 客户（名称 + 证件号）
-  const existingClient = await prisma.client.findFirst({
-    where: { name: n.clientName, idNumber: n.clientIdNumber, deletedAt: null },
-    select: { id: true }
-  });
+  // v1.x P0-1: find-or-create 客户——先按证件精确（规范化后，含证件类型），
+  // 再按名称+证件号；两者皆无才新建并写入证件类型。批量导入不做交互式
+  // 查重（行级结果里列出"复用了哪个客户"），但规范化口径与建档入口一致。
+  const normalizedClientIdNumber = normalizeIdNumber(n.clientIdNumber);
+  const importIdType = suggestIdType(n.clientPartyType === "NATURAL_PERSON" ? "INDIVIDUAL" : "COMPANY");
+  let existingClient = normalizedClientIdNumber && importIdType
+    ? await prisma.client.findFirst({
+        where: duplicateWhereInput({ idType: importIdType, idNumber: normalizedClientIdNumber }),
+        select: { id: true }
+      })
+    : null;
+  if (!existingClient) {
+    existingClient = await prisma.client.findFirst({
+      where: {
+        name: n.clientName,
+        ...(normalizedClientIdNumber ? { idNumberBlind: blindIdNumber(normalizedClientIdNumber) } : {}),
+        deletedAt: null
+      },
+      select: { id: true }
+    });
+  }
   const clientCode = existingClient ? null : await generateClientCode();
 
   const title = buildMatterTitle(n.clientName, n.opposingName, n.causeText);
@@ -222,7 +245,8 @@ async function createOneMatter(n: NormalizedRow, currentUserId: string) {
           data: {
             name: n.clientName,
             type: n.clientType,
-            idNumber: n.clientIdNumber,
+            idType: normalizedClientIdNumber ? (importIdType ?? undefined) : undefined,
+            ...(normalizedClientIdNumber ? sealIdNumber(normalizedClientIdNumber) : {}),
             phone: n.clientPhone,
             internalCode: clientCode
           },
@@ -238,6 +262,7 @@ async function createOneMatter(n: NormalizedRow, currentUserId: string) {
         category: n.category,
         status: n.status,
         ownerId,
+        registeredById: currentUserId,
         intakeDate,
         claimAmount: n.claimAmount ?? undefined,
         causeId,
@@ -267,14 +292,12 @@ async function createOneMatter(n: NormalizedRow, currentUserId: string) {
       select: { id: true, internalCode: true, firmCaseNo: true, title: true }
     });
 
-    await tx.timelineEvent.create({
-      data: {
+    await recordTimelineEvent(tx, {
         matterId: matter.id,
         eventType: "MATTER_CREATED",
         title: "案件已创建（批量导入）",
         occurredAt: new Date()
-      }
-    });
+      });
 
     await seedDefaultFolders(tx, matter.id, n.category);
     return matter;
@@ -300,6 +323,7 @@ export async function commitMatterImportAction(input: {
   rows: { rowNo: number; raw: RawRow }[];
 }): Promise<ImportResult> {
   const session = await requireManager();
+  if ((await approvalSettings()).enabled) throw new ActionError("按事项审批已启用，批量直接立案已停用，请使用收案审批流程");
   const succeeded: ImportResult["succeeded"] = [];
   const failed: ImportResult["failed"] = [];
 

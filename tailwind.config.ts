@@ -60,11 +60,15 @@ const config: Config = {
         sm: "var(--radius-sm)"
       },
       fontFamily: {
-        sans: ["system-ui", "-apple-system", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "sans-serif"],
-        mono: ["var(--font-mono)", "SF Mono", "Consolas", "monospace"],
+        sans: ["-apple-system", "BlinkMacSystemFont", "SF Pro Text", "PingFang SC", "Inter", "Helvetica Neue", "Microsoft YaHei", "system-ui", "sans-serif"],
+        serif: ["Songti SC", "STSong", "Noto Serif SC", "Source Han Serif SC", "serif"],
+        mono: ["SF Mono", "JetBrains Mono", "ui-monospace", "Cascadia Code", "Consolas", "monospace"],
       },
       boxShadow: {
-        "ll-card": "0 1px 2px rgba(0,0,0,0.04)",
+        "ll-card": "0 1px 2px rgba(12,25,39,0.05), inset 0 1px 0 rgba(255,255,255,0.9)",
+        "ll-hover": "0 6px 16px -4px rgba(12,25,39,0.10), 0 2px 4px rgba(12,25,39,0.04)",
+        "ll-pop": "0 12px 32px -8px rgba(12,25,39,0.16), 0 4px 8px -2px rgba(12,25,39,0.06)",
+        "ll-float": "0 24px 64px -12px rgba(12,25,39,0.24), 0 8px 20px -8px rgba(12,25,39,0.12)",
       },
       keyframes: {
         "accordion-down": {

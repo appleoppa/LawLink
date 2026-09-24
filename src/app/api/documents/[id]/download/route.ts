@@ -1,3 +1,4 @@
+import { canReadDocument } from "@/lib/approvals/documents";
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/options";
@@ -6,12 +7,12 @@ import { audit } from "@/server/audit";
 import { storage } from "@/lib/storage";
 import { decryptBuffer } from "@/lib/storage/crypto";
 import { normalizeUploadedFilename } from "@/lib/filename";
+import { watermarkPdf, watermarkImage, watermarkLine } from "@/lib/documents/watermark";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
   // ?inline=1 时以 inline 方式返回，浏览器新标签内预览（PDF/图片/文本），否则下载
   const inline = new URL(req.url).searchParams.get("inline") === "1";
   const session = await getServerSession(authOptions);
@@ -20,35 +21,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   }
 
   const doc = await prisma.document.findFirst({
-    where: { id, deletedAt: null }
+    where: { id: (await params).id, deletedAt: null }
   });
   if (!doc) return NextResponse.json({ error: "材料不存在" }, { status: 404 });
 
-  // 权限检查：ADMIN / PRINCIPAL_LAWYER 可读全部；其他角色 —— 案件成员才能读案件材料；
-  // 仅 intakeId 的收案合同限收案创建人/主办/协办（含客户身份证号等隐私，不再对全所开放）
-  if (session.user.role !== "ADMIN" && session.user.role !== "PRINCIPAL_LAWYER") {
-    if (doc.matterId) {
-      const member = await prisma.matterMember.findUnique({
-        where: { matterId_userId: { matterId: doc.matterId, userId: session.user.id } }
-      });
-      if (!member) {
-        return NextResponse.json({ error: "无权访问" }, { status: 403 });
-      }
-    } else if (doc.intakeId) {
-      const intake = await prisma.intake.findUnique({
-        where: { id: doc.intakeId },
-        select: { createdById: true, ownerUserId: true, coUserIds: true }
-      });
-      const uid = session.user.id;
-      const allowed =
-        !!intake &&
-        (intake.createdById === uid ||
-          intake.ownerUserId === uid ||
-          intake.coUserIds.includes(uid));
-      if (!allowed) {
-        return NextResponse.json({ error: "无权访问" }, { status: 403 });
-      }
-    }
+  if (!await canReadDocument(session.user.id, doc)) {
+    return NextResponse.json({ error: "无权访问" }, { status: 403 });
   }
 
   let buf: Buffer;
@@ -67,23 +45,67 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     return NextResponse.json({ error: "读取失败" }, { status: 500 });
   }
 
+  // v1.x P1 §四 + 收尾：PDF/图像下载加水印衍生副本（原件与校验值不动）。
+  // 已签章文件不加改（不破坏签章完整性）；其余类型暂不加水印（审计已含下载人）。
+  let outBuf = buf;
+  let watermarked = false;
+  const lowerMime = (doc.mimeType ?? "").toLowerCase();
+  if (lowerMime.includes("pdf") || lowerMime.startsWith("image/")) {
+    const sealed = await prisma.sealRequest.findFirst({
+      where: { OR: [{ draftDocId: doc.id }, { stampedDocId: doc.id }] },
+      select: { id: true }
+    });
+    if (!sealed) {
+      const { getFirmProfile } = await import("@/server/settings/firm-profile");
+      let firmName: string | null = null;
+      try {
+        firmName = (await getFirmProfile()).firmName ?? null;
+      } catch {
+        firmName = null;
+      }
+      const line = watermarkLine({ firm: firmName, userName: session.user.name, at: new Date() });
+      const marked = lowerMime.includes("pdf")
+        ? await watermarkPdf({ buf, text: line })
+        : await watermarkImage({ buf, text: line });
+      if (marked) {
+        outBuf = marked;
+        watermarked = true;
+      }
+    }
+  }
+
   await audit({
     userId: session.user.id,
     action: "DOCUMENT_DOWNLOAD",
     targetType: "Document",
     targetId: doc.id,
-    detail: { matterId: doc.matterId, intakeId: doc.intakeId, name: doc.name }
+    detail: { matterId: doc.matterId, intakeId: doc.intakeId, name: doc.name, watermarked }
   });
 
-  const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+  const arrayBuffer = outBuf.buffer.slice(outBuf.byteOffset, outBuf.byteOffset + outBuf.byteLength) as ArrayBuffer;
   const filename = normalizeUploadedFilename(doc.name);
+
+  // inline 仅放行浏览器可安全渲染的类型（PDF/位图/纯文本）。落库 MIME 已由服务端
+  // 按白名单扩展名推导，但历史行可能存有客户端声明的 text/html / svg——一律
+  // 强制 attachment 并降级为 octet-stream，杜绝同源脚本执行。
+  const lower = (doc.mimeType ?? "").toLowerCase();
+  const inlineSafe =
+    lower === "application/pdf" ||
+    (lower.startsWith("image/") && lower !== "image/svg+xml") ||
+    lower === "text/plain" ||
+    lower === "text/markdown" ||
+    lower === "text/csv";
+  const dangerous = /html|svg|xml|javascript/.test(lower);
+  const disposition = inline && inlineSafe ? "inline" : "attachment";
 
   return new NextResponse(arrayBuffer, {
     status: 200,
     headers: {
-      "Content-Type": doc.mimeType ?? "application/octet-stream",
-      "Content-Length": String(buf.byteLength),
-      "Content-Disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(filename)}`
+      "Content-Type": dangerous ? "application/octet-stream" : (doc.mimeType ?? "application/octet-stream"),
+      "Content-Length": String(outBuf.byteLength),
+      "Content-Disposition": `${disposition}; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      "X-Content-Type-Options": "nosniff",
+      ...(watermarked ? { "X-Watermarked": "1" } : {})
     }
   });
 }

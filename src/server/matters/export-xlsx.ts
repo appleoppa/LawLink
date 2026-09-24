@@ -1,3 +1,5 @@
+import type { RoleGrant } from "@/lib/roles/catalog";
+import { shDayKey, shTime } from "@/lib/ui/sh-time";
 import ExcelJS from "exceljs";
 import {
   MatterCategory,
@@ -11,7 +13,8 @@ import {
   type ProcedureStatus
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { intakeVisibilityFilter, matterVisibilityFilter } from "@/lib/permissions";
+import { decryptIdNumber } from "@/lib/clients/id-number-crypto";
+import { intakeVisibilityFilter, matterAssociationFilter, teamMatterFilter, teamIntakeFilter, isManager } from "@/lib/permissions";
 import {
   barFilingLabel,
   clientTypeLabel,
@@ -31,6 +34,9 @@ type MatterSortDir = "asc" | "desc";
 
 export type MattersExportParams = {
   tab: MattersExportTab;
+  scope?: "all" | "mine" | "team";
+  teamId?: string;
+  ownerId?: string;
   search?: string;
   category?: MatterCategory;
   status?: string;
@@ -43,6 +49,13 @@ export type MattersExportParams = {
 type ExportUser = {
   id: string;
   role: string;
+  rolePermissions?: RoleGrant[];
+  /**
+   * 业务管理权按人授予（与岗位解耦）。**导出刻意不随它放大**：
+   * 工作簿含当事人证件号、电话与住址明文，按人授予的管理权只放开只读可见范围，
+   * 导出仍限本人经办 / 参与，合伙人岗位除外（既有口径）。与 MANAGER_GRANTS 注释一致。
+   */
+  managerAuthorized?: boolean | null;
 };
 
 const EXPORT_TABS: MattersExportTab[] = [
@@ -236,6 +249,9 @@ export function resolveMattersExportParams(searchParams: URLSearchParams): Matte
 
   return {
     tab,
+    scope: searchParams.get("scope") === "mine" ? "mine" : searchParams.get("scope") === "team" ? "team" : "all",
+    teamId: cleanText(searchParams.get("teamId")),
+    ownerId: cleanText(searchParams.get("ownerId")),
     search: cleanText(searchParams.get("search")),
     category,
     status: cleanText(searchParams.get("status")),
@@ -375,11 +391,14 @@ function groupRowsByCategory<T extends { category: MatterCategory }>(
 
 function buildIntakeWhere(params: MattersExportParams, user: ExportUser): Prisma.IntakeWhereInput {
   const parts: Prisma.IntakeWhereInput[] = [
-    intakeVisibilityFilter(user.id, user.role),
+    intakeVisibilityFilter(user.id, isManager(user.role) ? user.role : "LAWYER"),
     params.tab === "revision"
       ? { status: { in: ["NEEDS_REVISION"] } }
       : { status: { in: ["INTAKE", "PENDING_CONFIRMATION"] } }
   ];
+  if (params.scope === "mine") parts.push(intakeVisibilityFilter(user.id, "LAWYER"));
+  if (params.scope === "team" || params.teamId) parts.push(teamIntakeFilter(user.id, params.teamId));
+  if (params.ownerId) parts.push({ ownerUserId: params.ownerId });
   if (params.category) parts.push({ category: params.category });
   const from = resolveDateBoundary(params.from, false);
   const to = resolveDateBoundary(params.to, true);
@@ -407,10 +426,16 @@ function buildIntakeWhere(params: MattersExportParams, user: ExportUser): Prisma
 
 function buildMatterWhere(params: MattersExportParams, user: ExportUser): Prisma.MatterWhereInput {
   const parts: Prisma.MatterWhereInput[] = [
-    matterVisibilityFilter(user.id, user.role),
+    // 导出口径窄于列表可见口径：只允许本人经办 / 参与的案件，管理岗（主任律师）例外。
+    // 财务岗虽可见全所案件的财务字段，但工作簿含当事人证件与联系方式，不得整所导出。
+    // 只认合伙人岗位（字符串形式），不传 user 对象——见 ExportUser.managerAuthorized 注释
+    (isManager(user.role) ? {} : matterAssociationFilter(user.id)),
     { deletedAt: null },
     matterStatusWhere(params)
   ];
+  if (params.scope === "mine") parts.push(matterAssociationFilter(user.id));
+  if (params.scope === "team" || params.teamId) parts.push(teamMatterFilter(user.id, params.teamId));
+  if (params.ownerId) parts.push({ ownerId: params.ownerId });
   if (params.category) parts.push({ category: params.category });
   const from = resolveDateBoundary(params.from, false);
   const to = resolveDateBoundary(params.to, true);
@@ -723,7 +748,7 @@ function buildIntakeRow(intake: IntakeExportRow, coUserNames: Map<string, string
     description: intake.description ?? "",
     client: intake.client?.name ?? "",
     clientType: intake.client ? clientTypeLabel[intake.client.type] : label(clientTypeLabel, intake.clientType),
-    clientIdNumber: intake.client?.idNumber ?? "",
+    clientIdNumber: decryptIdNumber(intake.client?.idNumber),
     clientAddress: intake.client?.address ?? "",
     clientLegalRep: intake.client?.legalRep ?? "",
     contactName: intake.contactName ?? "",
@@ -796,7 +821,7 @@ function buildMatterRow(
     archivedAt: formatDate(matter.archivedAt),
     primaryClient: matter.primaryClient?.name ?? "",
     primaryClientType: matter.primaryClient ? clientTypeLabel[matter.primaryClient.type] : "",
-    primaryClientIdNumber: matter.primaryClient?.idNumber ?? "",
+    primaryClientIdNumber: decryptIdNumber(matter.primaryClient?.idNumber),
     primaryClientAddress: matter.primaryClient?.address ?? "",
     primaryClientLegalRep: matter.primaryClient?.legalRep ?? "",
     primaryClientContacts: formatContacts(matter.primaryClient?.contacts ?? []),
@@ -1001,30 +1026,21 @@ function resolveDateBoundary(input: string | undefined, endOfDay: boolean) {
   if (!input) return undefined;
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(input);
   if (!match) return undefined;
-  const [, year, month, day] = match;
-  return new Date(
-    Number(year),
-    Number(month) - 1,
-    Number(day),
-    endOfDay ? 23 : 0,
-    endOfDay ? 59 : 0,
-    endOfDay ? 59 : 0,
-    endOfDay ? 999 : 0
-  );
+  // 2026-09-20 第五轮审计时区修复：导出过滤边界按上海日界（此前服务器本地构造，
+  // UTC 容器用户选 2026-09-20 实际筛上海 09-20 08:00 起，漏当日 0-8 点）
+  return endOfDay
+    ? new Date(`${input}T23:59:59.999+08:00`)
+    : new Date(`${input}T00:00:00+08:00`);
 }
 
 function formatDate(date: Date | null | undefined) {
   if (!date) return "";
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0")
-  ].join("-");
+  return shDayKey(date);
 }
 
 function formatDateTime(date: Date | null | undefined) {
   if (!date) return "";
-  return `${formatDate(date)} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  return `${shDayKey(date)} ${shTime(date)}`;
 }
 
 function decimalNumber(value: Prisma.Decimal | number | null | undefined) {

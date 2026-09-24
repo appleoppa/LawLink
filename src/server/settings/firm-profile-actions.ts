@@ -4,9 +4,10 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { MatterCategory } from "@prisma/client";
 
-import { requireSession } from "@/lib/auth/session";
+import { requireSystemAdmin } from "@/lib/auth/session";
 import { audit } from "@/server/audit";
 import { saveFirmProfile, CATEGORY_WORD_DEFAULTS } from "./firm-profile";
+import { ActionError } from "@/lib/action-error";
 
 const CATEGORY_KEYS = Object.keys(CATEGORY_WORD_DEFAULTS) as MatterCategory[];
 
@@ -24,25 +25,17 @@ const saveSchema = z.object({
   categoryWords: z.record(z.string(), z.string().trim().max(12)).optional()
 });
 
-async function requireAdmin() {
-  const session = await requireSession();
-  if (session.user.role !== "ADMIN") {
-    throw new Error("仅管理员可修改律所信息配置");
-  }
-  return session;
-}
-
 export async function saveFirmProfileAction(input: z.infer<typeof saveSchema>) {
-  const session = await requireAdmin();
+  const session = await requireSystemAdmin();
   const data = saveSchema.parse(input);
 
   // Logo 校验：必须是 image/* 的 base64 data URL，且体积受限
   if (typeof data.logoDataUrl === "string" && data.logoDataUrl.length > 0) {
     if (!/^data:image\/(png|jpeg|jpg|webp|svg\+xml);base64,/.test(data.logoDataUrl)) {
-      throw new Error("Logo 必须是 PNG / JPG / WebP / SVG 图片");
+      throw new ActionError("Logo 必须是 PNG / JPG / WebP / SVG 图片");
     }
     if (data.logoDataUrl.length > MAX_LOGO_CHARS) {
-      throw new Error("Logo 体积过大，请控制在约 180KB 以内");
+      throw new ActionError("Logo 体积过大，请控制在约 180KB 以内");
     }
   }
 

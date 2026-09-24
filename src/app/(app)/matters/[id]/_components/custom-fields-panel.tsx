@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import type { CustomFieldDef } from "@prisma/client";
 import { Pencil, ListChecks } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { FieldGrid, FieldItem } from "@/components/patterns/moan";
+import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -21,6 +23,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { saveMatterCustomValues } from "@/server/custom-fields/actions";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type FieldDef = Pick<
   CustomFieldDef,
@@ -31,41 +34,54 @@ export function CustomFieldsPanel({
   matterId,
   defs,
   values,
-  canEdit
+  canEdit,
+  editOnly = false
 }: {
   matterId: string;
   defs: FieldDef[];
   values: Record<string, string>;
   canEdit: boolean;
+  /** 字段已并入其他表格时，只渲染编辑入口 */
+  editOnly?: boolean;
 }) {
   const [editOpen, setEditOpen] = useState(false);
   if (defs.length === 0) return null;
 
-  return (
-    <section className="rounded-lg border border-border bg-card">
-      <header className="flex items-center justify-between border-b border-border px-4 py-2">
-        <span className="flex items-center gap-1.5 text-[13px] font-medium">
-          <ListChecks className="h-3.5 w-3.5 text-primary" />
-          自定义信息
-        </span>
-        {canEdit && (
-          <Button variant="ghost" size="sm" className="h-7 gap-1" onClick={() => setEditOpen(true)}>
-            <Pencil className="h-3 w-3" />
-            编辑
-          </Button>
-        )}
-      </header>
+  if (editOnly) {
+    return (
+      <>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditOpen(true)}>
+          <Pencil />
+          编辑自定义信息
+        </button>
+        <EditDialog key={editOpen ? "open" : "closed"} open={editOpen} onClose={() => setEditOpen(false)} matterId={matterId} defs={defs} values={values} />
+      </>
+    );
+  }
 
-      <dl className="grid grid-cols-1 gap-x-8 gap-y-2 px-4 py-3 text-[13px] sm:grid-cols-2">
-        {defs.map((d) => (
-          <div key={d.id} className="flex items-baseline gap-2">
-            <dt className="shrink-0 text-muted-foreground">{d.label}</dt>
-            <dd className="min-w-0 flex-1 truncate text-foreground/90">
-              {values[d.key]?.trim() ? values[d.key] : <span className="text-muted-foreground/50">—</span>}
-            </dd>
-          </div>
-        ))}
-      </dl>
+  return (
+    <section className="card">
+      <div className="panel-head">
+        <div className="panel-title">
+          <ListChecks className="ic" strokeWidth={1.8} />
+          自定义信息
+        </div>
+        {canEdit && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditOpen(true)}>
+            <Pencil />
+            编辑
+          </button>
+        )}
+      </div>
+      <div className="panel-body">
+        <FieldGrid cols={2}>
+          {defs.map((d) => (
+            <FieldItem key={d.id} label={d.label} mono={d.fieldType === "NUMBER" || d.fieldType === "DATE"}>
+              {values[d.key]?.trim() ? values[d.key] : null}
+            </FieldItem>
+          ))}
+        </FieldGrid>
+      </div>
 
       {canEdit && (
         <EditDialog
@@ -94,6 +110,7 @@ function EditDialog({
   defs: FieldDef[];
   values: Record<string, string>;
 }) {
+  const router = useRouter();
   const [draft, setDraft] = useState<Record<string, string>>({ ...values });
   const [pending, startTransition] = useTransition();
 
@@ -107,8 +124,9 @@ function EditDialog({
         await saveMatterCustomValues(matterId, draft);
         toast.success("已保存");
         onClose();
+        router.refresh();
       } catch (err) {
-        toast.error("保存失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("保存失败", { description: actionErrorMessage(err) });
       }
     });
   }

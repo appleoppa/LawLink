@@ -4,7 +4,7 @@
  * 与 v0.8 首批同一套 docx 生成方式与 {{var}} 占位符体系；
  * 变量名以 src/lib/template-engine.ts 的渲染上下文为准
  * （firm / matter / client / opposing / proceeding / lawyer / todayCN）。
- * 律所部署后可在 /settings/templates 上传自定义版本替换。
+ * 律所部署后可在 /admin/templates 上传自定义版本替换。
  */
 import { AlignmentType } from "docx";
 import {

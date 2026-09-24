@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { weekPeriod, formatWeeklyDigestContent } from "@/server/reports/weekly";
+import { shDayKey } from "@/lib/ui/sh-time";
 
+// 周界为上海午夜瞬间，须按上海日历日读取（本地取日在 UTC 容器/测试环境会差一天）
 function ymd(d: Date): [number, number, number] {
-  return [d.getFullYear(), d.getMonth() + 1, d.getDate()];
+  const [y, m, day] = shDayKey(d).split("-").map(Number);
+  return [y, m, day];
 }
 
 describe("weekPeriod", () => {

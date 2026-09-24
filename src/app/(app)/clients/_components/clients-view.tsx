@@ -2,19 +2,19 @@
 
 import { useState, useTransition, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Search, X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import type { Client, ClientType, Contact } from "@prisma/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
+import { PageHeader, Pager, Segmented } from "@/components/patterns/moan";
 import { ClientSheet } from "./client-sheet";
 import { ClientsTable } from "./clients-table";
+import { useTopbarAction } from "@/components/layout/topbar-action";
+
+const TYPE_TABS: { key: ClientType | "ALL"; label: string }[] = [
+  { key: "ALL", label: "全部客户" },
+  { key: "COMPANY", label: "公司" },
+  { key: "ORGANIZATION", label: "其他组织" },
+  { key: "INDIVIDUAL", label: "自然人" }
+];
 
 type ClientRow = Client & {
   contacts: Contact[];
@@ -41,6 +41,7 @@ export function ClientsView({ initialData, initialFilters }: Props) {
   const [type, setType] = useState<ClientType | "ALL">(initialFilters.type);
 
   const [sheetOpen, setSheetOpen] = useState(false);
+  useTopbarAction({ label: "新建客户", onClick: () => handleNew() }, []);
   const [editingClient, setEditingClient] = useState<ClientRow | null>(null);
 
   const updateUrl = useCallback(
@@ -78,74 +79,57 @@ export function ClientsView({ initialData, initialFilters }: Props) {
     setSheetOpen(true);
   }
 
+  const totalPages = Math.max(1, Math.ceil(initialData.total / initialData.pageSize));
+  const hrefFor = (page: number) => {
+    const params = new URLSearchParams();
+    if (initialFilters.search) params.set("search", initialFilters.search);
+    if (initialFilters.type !== "ALL") params.set("type", initialFilters.type);
+    if (page > 1) params.set("page", String(page));
+    return `/clients${params.toString() ? `?${params.toString()}` : ""}`;
+  };
+  const from = initialData.total === 0 ? 0 : (initialData.page - 1) * initialData.pageSize + 1;
+  const to = Math.min(initialData.total, initialData.page * initialData.pageSize);
+
   return (
-    <div className="space-y-4">
-      <header className="ll-page-head">
-        <div>
-          <h1 className="ll-page-title">客户</h1>
-          <p className="ll-page-sub">
-              共 <span className="font-mono tabular text-foreground">{initialData.total}</span> 位客户
-            </p>
-        </div>
-          <Button onClick={handleNew} className="gap-1.5 px-4">
-            <Plus className="h-4 w-4" strokeWidth={2} />
-            新建客户
-          </Button>
-      </header>
+    <div className="mo-list">
+      <PageHeader
+        title="客户"
+        sub={<>共 <span className="font-mono">{initialData.total}</span> 位客户</>}
+      />
 
-      <div className="ll-surface flex flex-wrap items-center gap-2 px-3 py-2">
-        <form onSubmit={handleSearchSubmit} className="relative min-w-0 sm:min-w-64 flex-1">
-          <Search
-            className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
-            strokeWidth={1.8}
-          />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onBlur={() => updateUrl({ search })}
-            placeholder="搜索客户名称 / 身份证号 / 电话 / 邮箱"
-            className="h-[34px] border-input bg-background pl-9 shadow-[var(--shadow-inset-deep)]"
-          />
+      <Segmented
+        className="mb-3"
+        items={TYPE_TABS}
+        value={type}
+        onChange={(key) => {
+          setType(key);
+          updateUrl({ type: key });
+        }}
+      />
+
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <form className="mo-toolbar-input" onSubmit={handleSearchSubmit}>
+          <Search aria-hidden />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} onBlur={() => updateUrl({ search })} placeholder="搜索客户名称 / 证件号 / 电话 / 邮箱" aria-label="搜索客户" />
         </form>
-
-        <Select
-          value={type}
-          onValueChange={(v) => {
-            const next = v as ClientType | "ALL";
-            setType(next);
-            updateUrl({ type: next });
-          }}
-        >
-          <SelectTrigger
-            className="h-[34px] w-36 rounded-full border-input bg-card"
-          >
-            <SelectValue placeholder="客户类型" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">全部类型</SelectItem>
-            <SelectItem value="INDIVIDUAL">自然人</SelectItem>
-            <SelectItem value="COMPANY">公司</SelectItem>
-            <SelectItem value="ORGANIZATION">其他组织</SelectItem>
-          </SelectContent>
-        </Select>
-
-        {(search || type !== "ALL") && (
-          <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1">
-            <X className="h-3.5 w-3.5" />
+        {search || type !== "ALL" ? (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={clearFilters}>
+            <X />
             清除筛选
-          </Button>
-        )}
+          </button>
+        ) : null}
       </div>
 
-      {/* 列表 */}
-      <ClientsTable items={initialData.items} onEdit={handleEdit} />
+      <div className="card" style={{ overflow: "hidden" }}>
+        <ClientsTable items={initialData.items} onEdit={handleEdit} />
+        {initialData.total > 0 ? (
+          <div className="border-t border-[var(--bd-hair)]">
+            <Pager page={initialData.page} totalPages={totalPages} hrefFor={hrefFor} summary={<>第 {from}–{to} 条，共 {initialData.total} 条</>} />
+          </div>
+        ) : null}
+      </div>
 
-      {/* 抽屉 */}
-      <ClientSheet
-        open={sheetOpen}
-        onOpenChange={setSheetOpen}
-        editingClient={editingClient}
-      />
+      <ClientSheet open={sheetOpen} onOpenChange={setSheetOpen} editingClient={editingClient} />
     </div>
   );
 }

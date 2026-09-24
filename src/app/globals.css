@@ -1,62 +1,85 @@
+@import "./moan.css";
+@import "./moan-pages.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-  :root {
-    /* v3.3: 冷调灰白底 + 原有 teal 主色 + 高密度业务界面 */
-    --background: 214 24% 94%;         /* #EDF0F4 */
-    --foreground: 216 50% 12%;         /* #0F1B2D */
+  /* 原生 select 统一为墨案输入框外观（审查 2026-09-14：管理后台稠密表单保留原生控件，但外观与 Select 一致） */
+  select {
+    appearance: none;
+    -webkit-appearance: none;
+    min-height: 34px;
+    padding: 0 30px 0 11px;
+    border: 1px solid var(--bd-default);
+    border-radius: 8px;
+    background-color: var(--bg-card);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2368747F' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    font-size: 13px;
+    color: var(--t-primary);
+    box-shadow: var(--sh-well);
+  }
+  select:focus-visible { outline: none; border-color: var(--teal); box-shadow: 0 0 0 3px rgba(0, 123, 127, 0.12); }
+  select:disabled { opacity: 0.55; cursor: not-allowed; }
 
-    --card: 0 0% 100%;                 /* #ffffff 卡片仍纯白 */
-    --card-foreground: 216 50% 12%;
+  :root {
+    /* v4 墨案：shadcn 语义变量全部映射为 docs/mockup/v4/design-system.css 色值 */
+    --background: 150 8% 95%;          /* bg-canvas #F2F4F3 */
+    --foreground: 211 53% 10%;         /* t-primary #0C1927 */
+
+    --card: 0 0% 100%;
+    --card-foreground: 211 53% 10%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 216 50% 12%;
+    --popover-foreground: 211 53% 10%;
 
-    --primary: 180 100% 25%;           /* #007b7f teal */
+    --primary: 182 100% 25%;           /* teal #007B7F */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 214 24% 92%;          /* #E5E9EF */
-    --secondary-foreground: 216 50% 12%;
+    --secondary: 150 10% 92%;          /* bg-sunken #E9EDEB */
+    --secondary-foreground: 211 53% 10%;
 
-    --muted: 214 24% 92%;              /* #E5E9EF */
-    --muted-foreground: 215 11% 47%;   /* #6B7686 */
-    --muted-subtle: 216 13% 65%;       /* #A8B2C0 */
+    --muted: 150 10% 92%;              /* bg-sunken #E9EDEB */
+    --muted-foreground: 209 10% 45%;   /* t-muted #68747F */
+    --muted-subtle: 209 11% 64%;       /* t-faint #98A3AD */
 
-    --accent: 180 22% 94%;             /* #ECF4F4 */
-    --accent-foreground: 180 100% 25%;
+    --accent: 140 12% 95%;             /* bg-hover #F1F4F2 */
+    --accent-foreground: 211 53% 10%;
 
-    --destructive: 0 74% 42%;          /* #B91C1C */
+    --destructive: 4 76% 40%;          /* red #B42318 */
     --destructive-foreground: 0 0% 100%;
 
-    --border: 216 26% 89%;             /* #DDE2EA */
-    --border-strong: 216 18% 76%;      /* #B8C1CE */
-    --hairline: 214 25% 91%;           /* #E5E9EF */
-    --input: 214 18% 82%;              /* #D0D7E0 */
-    --ring: 180 100% 25%;
+    --border: 150 10% 88%;             /* bd-subtle #DDE3E0 */
+    --border-strong: 147 8% 73%;       /* bd-strong #B4BFB9 */
+    --hairline: 150 10% 92%;           /* bd-hair #E8ECEA */
+    --input: 150 9% 83%;               /* bd-default #CFD7D3 */
+    --ring: 182 100% 25%;
 
     --radius: 0.5rem;                  /* 8px */
-    --radius-sm: 0.25rem;              /* 4px */
+    --radius-sm: 0.375rem;             /* 6px */
     --radius-md: 0.5rem;               /* 8px */
     --radius-lg: 0.75rem;              /* 12px */
     --radius-xl: 1rem;                 /* 16px */
 
-    --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Inter", "PingFang SC", "Helvetica Neue", system-ui, sans-serif;
-    --font-mono: "SF Mono", "JetBrains Mono", "Cascadia Code", "Consolas", ui-monospace, monospace;
+    --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Inter", "Helvetica Neue", system-ui, sans-serif;
+    --font-serif: "Songti SC", "STSong", "Noto Serif SC", "Source Han Serif SC", serif;
+    --font-mono: "SF Mono", "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
 
-    --shadow-low: 0 1px 3px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.03);
-    --shadow-medium: 0 4px 12px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04);
-    --shadow-high: 0 8px 28px rgba(15, 23, 42, 0.10), 0 2px 8px rgba(15, 23, 42, 0.05);
-    --shadow-inset: inset 0 1px 0 rgba(255,255,255,0.90);
-    --shadow-inset-deep: inset 0 2px 4px rgba(15,23,42,0.04);
-    --shadow-glow: 0 1px 2px rgba(0,123,127,0.18), 0 8px 20px rgba(0,123,127,0.18);
+    --shadow-low: 0 1px 2px rgba(12,25,39,0.05);
+    --shadow-medium: 0 6px 16px -4px rgba(12,25,39,0.10), 0 2px 4px rgba(12,25,39,0.04);
+    --shadow-high: 0 12px 32px -8px rgba(12,25,39,0.16), 0 4px 8px -2px rgba(12,25,39,0.06);
+    --shadow-float: 0 24px 64px -12px rgba(12,25,39,0.24), 0 8px 20px -8px rgba(12,25,39,0.12);
+    --shadow-inset: inset 0 1px 0 rgba(255,255,255,0.9);
+    --shadow-inset-deep: inset 0 1px 2px rgba(12,25,39,0.05);
+    --shadow-glow: 0 1px 2px rgba(0,80,84,0.25), inset 0 1px 0 rgba(255,255,255,0.12);
 
     --sidebar-bg: 0 0% 100%;
-    --glass-bg: rgba(237, 240, 244, 0.82);
-    --scrim-bg: rgba(15, 27, 45, 0.38);
-    --primary-hover: 180 100% 21%;     /* #006669 */
-    --primary-soft: 180 22% 94%;       /* #ECF4F4 */
+    --glass-bg: rgba(248,250,249,0.86);
+    --scrim-bg: rgba(12,25,39,0.44);
+    --primary-hover: 182 100% 20%;     /* teal-h #006367 */
+    --primary-soft: 175 32% 92%;       /* teal-soft #E4F1F0 */
 
     /* v3.4: Apple 式直接反馈，避免页面级慢入场 */
     --motion-press: 100ms;
@@ -68,19 +91,19 @@
     /* 抽屉/侧滑面板专用（Ionic 的 iOS 曲线）：位移主导的动效用它更贴手 */
     --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 
-    /* 状态色 */
-    --status-green: 142 72% 29%;       /* #15803D */
-    --status-green-bg: 143 34% 93%;    /* #E6F2EC */
-    --status-orange: 32 95% 37%;       /* #B45309 */
-    --status-orange-bg: 36 78% 92%;    /* #FBEDD8 */
-    --status-red: 0 74% 42%;           /* #B91C1C */
-    --status-red-bg: 0 68% 95%;        /* #FBE9E9 */
-    --status-purple: 272 67% 39%;      /* #6B21A8 */
-    --status-purple-bg: 274 46% 94%;   /* #F1E8F8 */
-    --status-blue: 225 71% 40%;        /* #1E40AF */
-    --status-blue-bg: 220 48% 94%;     /* #E6ECF7 */
-    --status-amber: 40 100% 30%;       /* #9A6700 */
-    --status-amber-bg: 41 76% 92%;     /* #FBF1DC */
+    /* 状态色（墨案语义色） */
+    --status-green: 146 66% 30%;       /* #1A7F45 */
+    --status-green-bg: 135 33% 93%;    /* #E7F3EA */
+    --status-orange: 39 86% 32%;       /* amber #96650B */
+    --status-orange-bg: 41 76% 92%;    /* #FAF0DB */
+    --status-red: 4 76% 40%;           /* #B42318 */
+    --status-red-bg: 10 69% 95%;       /* #FBECE9 */
+    --status-purple: 260 54% 51%;      /* violet #6C3FC5 */
+    --status-purple-bg: 261 58% 95%;   /* #F1ECFA */
+    --status-blue: 220 74% 45%;        /* #1E56C8 */
+    --status-blue-bg: 222 63% 95%;     /* #E9EEFA */
+    --status-amber: 39 86% 32%;        /* #96650B */
+    --status-amber-bg: 41 76% 92%;     /* #FAF0DB */
   }
 
   * {
@@ -111,10 +134,11 @@
 @layer components {
   /* 卡片 */
   .ll-surface {
-    background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-low), var(--shadow-inset);
+    /* = 墨案 .card */
+    background: var(--bg-card);
+    border: 1px solid var(--bd-hair);
+    border-radius: var(--r-lg);
+    box-shadow: var(--sh-card), var(--sh-inset);
   }
   .ll-surface-quiet {
     background: hsl(var(--muted));
@@ -162,10 +186,10 @@
   }
 
   /* 状态严重度 */
-  .ll-sev-low      { @apply text-[#1aa126] bg-[#e6f4ea]; }
-  .ll-sev-medium   { @apply text-[#9A6700] bg-[#FBF1DC]; }
-  .ll-sev-high     { @apply text-[#B91C1C] bg-[#FBE9E9]; }
-  .ll-sev-blocking { @apply text-[#B91C1C] bg-[#FBE9E9] font-semibold; }
+  .ll-sev-low      { color: var(--green); background: var(--green-bg); }
+  .ll-sev-medium   { color: var(--amber); background: var(--amber-bg); }
+  .ll-sev-high     { color: var(--red); background: var(--red-bg); }
+  .ll-sev-blocking { color: var(--red); background: var(--red-bg); font-weight: 600; }
 
   /* 列表行 hover */
   .ll-row {
@@ -208,20 +232,22 @@
   }
 
   .ll-panel-head {
+    /* = 墨案 .panel-head */
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.625rem 0.875rem;
-    border-bottom: 1px solid hsl(var(--border));
+    gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--bd-hair);
   }
 
   .ll-panel-title {
     display: flex;
     align-items: center;
-    gap: 0.45rem;
-    font-size: 13px;
+    gap: 8px;
+    font-size: 13.5px;
     font-weight: 600;
+    letter-spacing: -0.01em;
   }
 
   .ll-form-control {
@@ -393,27 +419,29 @@
     align-items: flex-end;
     justify-content: space-between;
     gap: 1rem;
-    margin-bottom: 0.875rem;
+    margin-bottom: 16px;
   }
 
   .ll-page-title {
-    font-size: 20px;
-    font-weight: 600;
-    line-height: 1.2;
+    /* 墨案 03 效果图 ph-title：22px / 700 / 负字距 */
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
   }
 
   .ll-page-sub {
     margin-top: 0.25rem;
-    font-size: 13px;
-    color: hsl(var(--muted-foreground));
+    font-size: 12.5px;
+    color: var(--t-muted);
   }
 
   .ll-segmented {
     display: inline-flex;
     gap: 2px;
     padding: 3px;
-    border-radius: var(--radius-md);
-    background: rgba(15, 23, 42, 0.06);
+    border-radius: 9px;
+    background: var(--bg-sunken);
   }
 
   .ll-seg {
@@ -421,12 +449,12 @@
     align-items: center;
     justify-content: center;
     gap: 0.375rem;
-    min-height: 28px;
-    padding: 0 0.75rem;
-    border-radius: var(--radius-sm);
-    color: hsl(var(--muted-foreground));
+    min-height: 26px;
+    padding: 0 13px;
+    border-radius: 7px;
+    color: var(--t-secondary);
     font-size: 12.5px;
-    font-weight: 500;
+    font-weight: 550;
     transition:
       background-color var(--motion-fast) var(--ease-out),
       color var(--motion-fast) var(--ease-out),
@@ -440,9 +468,10 @@
   }
 
   .ll-seg-active {
-    background: hsl(var(--card));
-    color: hsl(var(--foreground));
-    box-shadow: 0 1px 2px rgba(15,23,42,0.08), 0 0 0 1px hsl(var(--border));
+    /* 墨案 .seg.active：白底浮起，不用 teal（teal 只属于主操作） */
+    background: #fff;
+    color: var(--t-primary);
+    box-shadow: 0 1px 2px rgba(12,25,39,0.08), 0 0 0 1px var(--bd-subtle);
   }
 
   .ll-dot {
@@ -454,10 +483,10 @@
   }
 
   .ll-form-card {
-    border: 1px solid hsl(var(--border));
-    border-radius: var(--radius-lg);
-    background: hsl(var(--card));
-    box-shadow: var(--shadow-low), var(--shadow-inset);
+    border: 1px solid var(--bd-hair);
+    border-radius: var(--r-lg);
+    background: var(--bg-card);
+    box-shadow: var(--sh-card), var(--sh-inset);
   }
 }
 
@@ -474,7 +503,7 @@
 
 @media (prefers-reduced-transparency: reduce) {
   :root {
-    --glass-bg: rgba(237, 240, 244, 0.98);
+    --glass-bg: rgba(248, 250, 249, 0.98);
   }
 
   .ll-material {
@@ -535,3 +564,55 @@
     text-decoration: none !important;
   }
 }
+
+/* ============================================================
+ * v4「墨案」签名组件（docs/mockup/v4，实施基准见 P1 方案第七节）
+ * 配色纪律：teal 仅品牌/主操作；blue 进行中；green 完成终态；
+ * red 仅风险/阻断；bronze 仅归档/结案。
+ * ============================================================ */
+/* 案卷脊：列表行左侧状态色竖条（列表即档案架）。挂在 li/td 首格内——
+   表格场景禁止用 tr::before（Chrome 匿名单元格错位，见 03 页修复记录）。 */
+.ll-spine-row { position: relative; }
+.ll-spine-row::before {
+  content: ""; position: absolute; left: 0; top: 10px; bottom: 10px;
+  width: 3px; border-radius: 0 2px 2px 0;
+  background: var(--ll-spine, #CFD7D3);
+}
+/* 程序链：五段进度轨道（done=teal 实心 / cur=teal 半透明 / risk=amber / 未来=浅灰） */
+.ll-stage-track { display: flex; gap: 2.5px; }
+.ll-stage-track i { width: 16px; height: 3.5px; border-radius: 2px; background: #DDE3E0; }
+.ll-stage-track i.done { background: #007B7F; }
+.ll-stage-track i.cur  { background: #007B7F; opacity: 0.45; }
+.ll-stage-track i.risk { background: #96650B; }
+/* 期限倒计时 chip：红=逾期/阻断，amber=临近，muted=普通 */
+.ll-dl-chip {
+  font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums;
+  font-size: 11px; font-weight: 600; padding: 2px 8px;
+  border-radius: 9800px; white-space: nowrap;
+}
+.ll-dl-red   { color: #B42318; background: #FBECE9; }
+.ll-dl-amber { color: #96650B; background: #FAF0DB; }
+.ll-dl-muted { color: #68747F; background: #E9EDEB; }
+
+
+/* ============================================================
+ * 墨案全局排版基线（docs/mockup/v4）：13.5px 高密度、负字距、
+ * 数字等宽特性——整站观感的底层变化（外壳已由侧栏/顶栏承载）。
+ * ============================================================ */
+body {
+  font-size: 13.5px;
+  letter-spacing: -0.004em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* 页题规格（03 效果图 ph-title）：主列表页标题统一 22px/700/负字距 */
+.ph-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+.ph-sub { font-size: 12.5px; color: hsl(var(--muted-foreground)); }
+.ph-sub b { font-weight: 600; }

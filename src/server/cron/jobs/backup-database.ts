@@ -3,16 +3,17 @@
  *
  * 每天 02:30 调 scripts/backup.sh（pg_dump + storage 打包），备份到
  * BACKUP_DIR（默认 ./backups），并做保留数清理（BACKUP_KEEP，默认 14 份）。
- * 失败时给所有 ADMIN 发站内通知——备份静默失败等于没有备份。
+ * 失败时给所有系统超级管理员发站内通知——备份静默失败等于没有备份。
  *
  * 关闭方式：环境变量 BACKUP_CRON_ENABLED=false（部署环境没有 pg_dump 时）。
  */
-import { spawn } from "node:child_process";
-import { readdir, rm, stat } from "node:fs/promises";
+import { spawn, spawnSync } from "node:child_process";
+import { access, constants, mkdir, readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { prisma } from "@/lib/prisma";
 import { createNotification } from "@/server/notifications/create";
 import { audit } from "@/server/audit";
+import { ActionError } from "@/lib/action-error";
 
 const BACKUP_SCRIPT = path.join(process.cwd(), "scripts", "backup.sh");
 const BACKUP_TIMEOUT_MS = 10 * 60 * 1000;
@@ -62,6 +63,41 @@ function runScript(baseDir: string): Promise<{ code: number; output: string }> {
   });
 }
 
+/**
+ * 备份前自检（2026-09-20 第六轮体检 P1-1）：与其让 spawn 抛一个裸 ENOENT，
+ * 不如逐项给出可定位的缺失原因——历史上官方镜像恰好三样全缺（scripts 未
+ * COPY、无 bash、无 pg_dump），每天失败且报错无人能看懂。任一缺失直接抛错，
+ * 由 notifyAdmins + *_FAILED_CRON 审计带出具体原因。
+ */
+async function preflightBackup(script: string, baseDir: string): Promise<void> {
+  const problems: string[] = [];
+
+  try {
+    await access(script, constants.R_OK);
+  } catch {
+    problems.push(`备份脚本不存在或不可读：${script}（镜像需包含 scripts/ 目录，见 Dockerfile runner 阶段）`);
+  }
+
+  const bashOk = spawnSync("bash", ["-c", "exit 0"], { timeout: 10_000 }).status === 0;
+  if (!bashOk) problems.push("bash 不可用（Alpine 基础镜像默认只有 sh；需 apk add bash）");
+
+  const pgDump = spawnSync("pg_dump", ["--version"], { timeout: 10_000 });
+  if (pgDump.status !== 0) {
+    problems.push(`pg_dump 不可用（需安装与数据库主版本对齐的 postgresql-client；当前输出：${String(pgDump.stdout ?? "").trim() || String(pgDump.error?.message ?? "无")}`);
+  }
+
+  try {
+    await mkdir(baseDir, { recursive: true });
+    await access(baseDir, constants.W_OK);
+  } catch {
+    problems.push(`备份目录不可写：${baseDir}（检查 BACKUP_DIR 与挂载卷权限）`);
+  }
+
+  if (problems.length > 0) {
+    throw new ActionError(`备份前置检查未通过：${problems.join("；")}`);
+  }
+}
+
 /** 只保留最近 N 份备份目录（目录名以时间戳开头，字典序即时间序） */
 async function pruneOldBackups(baseDir: string, keep: number): Promise<number> {
   let entries: string[];
@@ -90,7 +126,7 @@ async function pruneOldBackups(baseDir: string, keep: number): Promise<number> {
 
 async function notifyAdmins(title: string, content: string) {
   const admins = await prisma.user.findMany({
-    where: { role: "ADMIN", active: true },
+    where: { systemRole: "SUPER_ADMIN", active: true },
     select: { id: true }
   });
   for (const admin of admins) {
@@ -100,7 +136,7 @@ async function notifyAdmins(title: string, content: string) {
       priority: "HIGH",
       title,
       content,
-      href: "/settings"
+      href: "/admin"
     });
   }
 }
@@ -112,9 +148,10 @@ export async function runDatabaseBackup(): Promise<BackupResult> {
 
   const baseDir = backupBaseDir();
   try {
+    await preflightBackup(BACKUP_SCRIPT, baseDir);
     const { code, output } = await runScript(baseDir);
     if (code !== 0) {
-      throw new Error(`backup.sh 退出码 ${code}：${output.slice(-500)}`);
+      throw new ActionError(`backup.sh 退出码 ${code}：${output.slice(-500)}`);
     }
     const removedOld = await pruneOldBackups(baseDir, keepCount());
 

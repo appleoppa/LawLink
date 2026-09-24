@@ -42,8 +42,8 @@ const typeLabels: Record<string, string> = {
 };
 
 const priorityColors: Record<string, string> = {
-  URGENT: "text-red-600",
-  HIGH: "text-orange-600",
+  URGENT: "text-[var(--red)]",
+  HIGH: "text-[var(--amber)]",
   NORMAL: "",
   LOW: "text-muted-foreground",
 };
@@ -139,17 +139,12 @@ export function NotificationPopover() {
     <Popover open={open} onOpenChange={handleOpen}>
       <PopoverTrigger asChild>
         <button
-          className={cn(
-            "relative flex h-8 w-8 items-center justify-center rounded-md border border-border",
-            "text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          )}
-          aria-label="通知"
+          className="btn btn-secondary btn-icon relative"
+          aria-label={unread > 0 ? `通知（${unread} 条未读）` : "通知"}
         >
-          <Bell className="h-3.5 w-3.5" strokeWidth={1.8} />
+          <Bell strokeWidth={1.8} />
           {unread > 0 && (
-            <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-0.5 text-[10px] font-medium text-primary-foreground">
-              {unread > 99 ? "99+" : unread}
-            </span>
+            <span className="absolute right-[7px] top-[7px] h-[7px] w-[7px] rounded-full border-[1.5px] border-white bg-[var(--red)]" aria-hidden />
           )}
         </button>
       </PopoverTrigger>
@@ -261,5 +256,5 @@ function formatTime(date: Date | string): string {
   if (diffHr < 24) return `${diffHr}小时前`;
   const diffDay = Math.floor(diffHr / 24);
   if (diffDay < 7) return `${diffDay}天前`;
-  return d.toLocaleDateString("zh-CN", { month: "short", day: "numeric" });
+  return d.toLocaleDateString("zh-CN", { month: "short", day: "numeric", timeZone: "Asia/Shanghai" });
 }

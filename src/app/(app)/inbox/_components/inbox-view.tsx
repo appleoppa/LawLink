@@ -1,28 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
-import {
-  Inbox,
-  Plus,
-  Gavel,
-  Clock,
-  CheckCircle2,
-  Trash2,
-  Link as LinkIcon,
-  Briefcase,
-  ExternalLink,
-  Phone,
-  Loader2,
-  Sparkles,
-  AlertCircle,
-  ArrowRight,
-  CalendarClock,
-  FileCheck2,
-  FileDigit,
-  FileDown,
-  KeyRound
-} from "lucide-react";
+import { Inbox, Gavel, Clock, CheckCircle2, Trash2, Link as LinkIcon, Briefcase, ExternalLink, Phone, Loader2, Sparkles, AlertCircle, ArrowRight, CalendarClock, FileCheck2, FileDigit, FileDown, KeyRound, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -38,20 +18,28 @@ import {
   CommandItem,
   CommandList
 } from "@/components/ui/command";
-import { cn } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
 import {
   extractSmsAttachments,
   matchSmsToMatter,
   markSmsProcessed,
-  deleteSms
+  deleteSms,
+  uploadSmsInboundFile
 } from "@/server/sms/actions";
 import {
   SMS_TYPE_CN,
   SMS_TYPE_ACCENT,
+  SMS_STATE_CN,
+  SMS_STATE_ACCENT,
+  SMS_FILE_STATE_CN,
+  SMS_FILE_SOURCE_CN,
+  SMS_ANALYSIS_CN,
+  SMS_SUGGESTION_CN,
   type SmsRow,
   type MatterOption,
   type ParsedJson
 } from "./sms-types";
+import { analyzeSmsInboundFiles, decideSmsSuggestions } from "@/server/sms/confirm-actions";
 import { SmsPasteDialog } from "./sms-paste-dialog";
 import {
   BackfillCaseNumberDialog,
@@ -59,22 +47,43 @@ import {
   GenerateDeadlineDialog
 } from "./sms-actions-dialogs";
 import { matterHref } from "@/lib/matters/route";
+import { PageHeader } from "@/components/patterns/moan";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { useTopbarAction } from "@/components/layout/topbar-action";
+import { useSearchParams, useRouter } from "next/navigation";
+import { actionErrorMessage } from "@/lib/action-error";
 
-type Tab = "unprocessed" | "needsManual" | "processed";
+type Tab = "unprocessed" | "needsManual" | "needsMatch" | "processed";
 
 export function InboxView({
   unprocessed,
   processed,
   needsManual,
+  needsMatch,
   matters
 }: {
   unprocessed: SmsRow[];
   processed: SmsRow[];
   /** v0.48: 电子送达待人工处理（需登录/验证码/未关联案件） */
   needsManual: SmsRow[];
+  /** B1 私有来件区：已取件、未匹配案件（先取件后匹配） */
+  needsMatch?: SmsRow[];
   matters: MatterOption[];
 }) {
-  const [tab, setTab] = useState<Tab>(unprocessed.length > 0 ? "unprocessed" : "processed");
+  // 顶栏短信入口点「去处理」带 ?focus=<id> 过来：自动切到该条所在页签并高亮滚动到它
+  const focusId = useSearchParams().get("focus");
+  const focusTab: Tab | null = focusId
+    ? unprocessed.some((s) => s.id === focusId)
+      ? "unprocessed"
+      : needsManual.some((s) => s.id === focusId)
+        ? "needsManual"
+        : (needsMatch ?? []).some((s) => s.id === focusId)
+          ? "needsMatch"
+          : processed.some((s) => s.id === focusId)
+            ? "processed"
+            : null
+    : null;
+  const [tab, setTab] = useState<Tab>(focusTab ?? (unprocessed.length > 0 ? "unprocessed" : "processed"));
   const [pasteOpen, setPasteOpen] = useState(false);
   const [hearingTarget, setHearingTarget] = useState<{
     sms: SmsRow;
@@ -89,22 +98,27 @@ export function InboxView({
     matter: NonNullable<SmsRow["matchedMatter"]>;
   } | null>(null);
 
-  const rows = tab === "unprocessed" ? unprocessed : tab === "needsManual" ? needsManual : processed;
+  const rows = tab === "unprocessed" ? unprocessed : tab === "needsManual" ? needsManual : tab === "needsMatch" ? (needsMatch ?? []) : processed;
+
+  useTopbarAction({ label: "粘贴短信", onClick: () => setPasteOpen(true) }, []);
+
+  useEffect(() => {
+    if (!focusId) return;
+    const el = document.getElementById(`sms-${focusId}`);
+    if (!el) return;
+    el.scrollIntoView({ block: "center" });
+    el.classList.add("sms-focus");
+    const timer = setTimeout(() => el.classList.remove("sms-focus"), 2400);
+    return () => clearTimeout(timer);
+  }, [focusId, tab]);
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl">收件箱</h1>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            粘贴 12368 / 法院短信 → 自动解析 → 一键生成开庭 / 期限
-          </p>
-        </div>
-        <Button onClick={() => setPasteOpen(true)} className="gap-1.5">
-          <Plus className="h-3.5 w-3.5" />
-          粘贴短信
-        </Button>
-      </div>
+      <PageHeader
+        className="!mb-0"
+        title="法院短信"
+        sub="粘贴 12368 / 法院短信 → 自动解析 → 一键生成开庭 / 期限"
+      />
 
       {/* Tab */}
       <div className="border-b border-border">
@@ -116,6 +130,10 @@ export function InboxView({
           <TabBtn active={tab === "needsManual"} onClick={() => setTab("needsManual")}>
             待人工
             <Count n={needsManual.length} hot={needsManual.length > 0} />
+          </TabBtn>
+          <TabBtn active={tab === "needsMatch"} onClick={() => setTab("needsMatch")}>
+            待匹配
+            <Count n={(needsMatch ?? []).length} hot={(needsMatch ?? []).length > 0} />
           </TabBtn>
           <TabBtn active={tab === "processed"} onClick={() => setTab("processed")}>
             已处理
@@ -132,12 +150,15 @@ export function InboxView({
               ? "无待处理短信"
               : tab === "needsManual"
                 ? "没有需要人工处理的电子送达"
-                : "暂无已处理记录"}
+                : tab === "needsMatch"
+                  ? "没有待匹配案件的来件（文件已安全保存在您的私有来件区）"
+                  : "暂无已处理记录"}
           </div>
         ) : (
           rows.map((sms) => (
             <SmsCard
               key={sms.id}
+              domId={`sms-${sms.id}`}
               sms={sms}
               matters={matters}
               onGenerateHearing={() => {
@@ -214,7 +235,7 @@ function Count({ n, hot }: { n: number; hot?: boolean }) {
     <span
       className={cn(
         "ml-1 inline-flex items-center justify-center rounded-full px-1.5 font-mono text-[10px]",
-        hot ? "bg-amber-500/15 text-amber-700" : "bg-muted/60 text-muted-foreground"
+        hot ? "bg-[var(--amber-bg)] text-[var(--amber)]" : "bg-muted/60 text-muted-foreground"
       )}
     >
       {n}
@@ -226,12 +247,14 @@ function Count({ n, hot }: { n: number; hot?: boolean }) {
 
 function SmsCard({
   sms,
+  domId,
   matters,
   onGenerateHearing,
   onGenerateDeadline,
   onBackfillCaseNumber
 }: {
   sms: SmsRow;
+  domId?: string;
   matters: MatterOption[];
   onGenerateHearing: () => void;
   onGenerateDeadline: () => void;
@@ -241,6 +264,8 @@ function SmsCard({
   const accent = SMS_TYPE_ACCENT[sms.smsType];
   const [pending, startTransition] = useTransition();
   const [showRaw, setShowRaw] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const router = useRouter();
 
   const onMarkProcessed = () =>
     startTransition(async () => {
@@ -248,18 +273,18 @@ function SmsCard({
         await markSmsProcessed({ id: sms.id });
         toast.success("已标记处理");
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "失败");
       }
     });
 
-  const onDelete = () => {
-    if (!confirm("确认删除这条短信记录？")) return;
+  const onDelete = async () => {
+    if (!(await confirmDialog({ title: "删除这条短信记录？", description: "删除后不可在列表中恢复。", confirmText: "删除", danger: true }))) return;
     startTransition(async () => {
       try {
         await deleteSms({ id: sms.id });
         toast.success("已删除");
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "失败");
       }
     });
   };
@@ -288,12 +313,12 @@ function SmsCard({
               : "附件提取已完成"
         );
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "提取失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "提取失败");
       }
     });
 
   return (
-    <div className="ll-surface rounded-lg border border-border p-4">
+    <div id={domId} className="ll-surface rounded-lg border border-border p-4">
       {/* 头：类型徽 + 法院 + 案号 + 时间 + 来源标 */}
       <div className="flex flex-wrap items-center gap-2 text-[11px]">
         <span
@@ -302,6 +327,14 @@ function SmsCard({
         >
           {SMS_TYPE_CN[sms.smsType]}
         </span>
+        {sms.processingState && sms.processingState !== "READY_FOR_REVIEW" && (
+          <span
+            className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+            style={{ background: `${SMS_STATE_ACCENT[sms.processingState]}14`, color: SMS_STATE_ACCENT[sms.processingState] }}
+          >
+            {SMS_STATE_CN[sms.processingState]}
+          </span>
+        )}
         {parsed.court && <span className="text-foreground/80">{parsed.court}</span>}
         {parsed.caseNumbers.length > 0 && (
           <span className="font-mono text-[10px] text-muted-foreground">
@@ -309,7 +342,7 @@ function SmsCard({
           </span>
         )}
         <span className="ml-auto font-mono text-[10px] text-muted-foreground">
-          {new Date(sms.receivedAt).toLocaleString("zh-CN")}
+          {formatDateTime(new Date(sms.receivedAt))}
         </span>
       </div>
 
@@ -396,6 +429,131 @@ function SmsCard({
         </div>
       )}
 
+      {/* B1 来件文件清单：自动取件与人工补传统一列出，逐件状态（v3 §3.2「文件」块） */}
+      {sms.inboundFiles?.length > 0 && (
+        <div className="mt-3 border-t border-border pt-3">
+          <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-foreground/80">
+            <FileCheck2 className="h-3.5 w-3.5 text-primary" />
+            来件文件（{sms.inboundFiles.filter(f => f.state === "FILED").length}/{sms.inboundFiles.length} 已入卷）
+          </div>
+          <div className="space-y-1">
+            {sms.inboundFiles.map((f) => (
+              <div key={f.id} className="flex flex-wrap items-center gap-2 rounded-md border border-border/70 bg-muted/20 px-2.5 py-1.5 text-[11px]">
+                <span className="font-medium text-foreground/85">{f.displayName ?? f.originalName}</span>
+                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{SMS_FILE_STATE_CN[f.state]}</span>
+                <span className="text-[10px] text-muted-foreground">{SMS_FILE_SOURCE_CN[f.uploadSource]}</span>
+                {f.analysisState && f.analysisState !== "PENDING" && (
+                  <span className={`rounded px-1.5 py-0.5 text-[10px] ${f.analysisState === "ANALYZED" ? "bg-emerald-50 text-emerald-700" : f.analysisState === "NEEDS_OCR" || f.analysisState === "FAILED" ? "bg-amber-50 text-amber-700" : "bg-muted text-muted-foreground"}`} title={f.analysisError ?? undefined}>{SMS_ANALYSIS_CN[f.analysisState] ?? f.analysisState}{f.docType ? ` · ${f.docType}` : ""}</span>
+                )}
+                <span className="font-mono text-[10px] text-muted-foreground">{(f.size / 1024).toFixed(0)} KB</span>
+                <span className="ml-auto font-mono text-[10px] text-muted-foreground">{formatDateTime(f.downloadedAt)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* B2/B3 整理建议：系统已准备好的内容（归属/文件/事项/档案修正），律师核对一次确认（v3 §3.2） */}
+      {(() => {
+        const pendingSuggestions = (sms.suggestions ?? []).filter(g => g.status === "PENDING" && g.kind !== "DOC_TYPE");
+        const decidedSuggestions = (sms.suggestions ?? []).filter(g => g.status !== "PENDING");
+        const analyzable = (sms.inboundFiles ?? []).some(f => f.analysisState === "PENDING" || f.analysisState === "NEEDS_OCR" || f.analysisState === "FAILED");
+        if (!pendingSuggestions.length && !decidedSuggestions.length && !analyzable) return null;
+        const decide = (ids: string[], decision: "ACCEPTED" | "REJECTED") =>
+          startTransition(async () => {
+            try {
+              const res = await decideSmsSuggestions({ ids, decision });
+              toast.success(decision === "ACCEPTED" ? `已确认应用 ${res.count} 项建议${res.filedFiles ? `，转正 ${res.filedFiles} 个文件` : ""}` : `已拒绝 ${res.count} 项建议`);
+              router.refresh();
+            } catch (e) {
+              toast.error(e instanceof Error ? actionErrorMessage(e) : "处理失败");
+            }
+          });
+        return (
+          <div className="mt-3 border-t border-border pt-3">
+            <div className="mb-1.5 flex flex-wrap items-center gap-2 text-[11px] font-medium text-foreground/80">
+              <FileDigit className="h-3.5 w-3.5 text-primary" />
+              整理建议（{pendingSuggestions.length} 项待确认）
+              {analyzable ? (
+                <button type="button" disabled={pending || uploading} className="rounded border border-border px-2 py-0.5 text-[10px] font-normal text-muted-foreground hover:bg-muted/50" onClick={() =>
+                  startTransition(async () => {
+                    try {
+                      const res = await analyzeSmsInboundFiles({ smsId: sms.id });
+                      const analyzed = res.results.filter(r => r.state === "ANALYZED").length;
+                      const needsOcr = res.results.filter(r => r.state === "NEEDS_OCR").length;
+                      toast.success(`已完成分析 ${analyzed} 个文件${needsOcr ? `，${needsOcr} 个需人工（OCR 不可用）` : ""}，共产生 ${res.results.reduce((n, r) => n + r.suggestionCount, 0)} 项建议`);
+                      router.refresh();
+                    } catch (e) {
+                      toast.error(e instanceof Error ? actionErrorMessage(e) : "分析失败");
+                    }
+                  })
+                }>阅读并整理</button>
+              ) : null}
+              {pendingSuggestions.length > 1 ? (
+                <button type="button" disabled={pending} className="rounded border border-border px-2 py-0.5 text-[10px] font-normal text-primary hover:bg-primary/5" onClick={() => decide(pendingSuggestions.map(g => g.id), "ACCEPTED")}>全部确认</button>
+              ) : null}
+            </div>
+            <div className="space-y-1.5">
+              {pendingSuggestions.map(g => (
+                <div key={g.id} className="flex flex-wrap items-center gap-2 rounded-md border border-border/70 bg-muted/20 px-2.5 py-1.5 text-[11px]">
+                  <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">{SMS_SUGGESTION_CN[g.kind] ?? g.kind}</span>
+                  <span className="text-foreground/85">
+                    {g.kind === "FIELD_CHANGE"
+                      ? `${g.fieldKey === "caseNumber" ? "案号" : "法院"}：${g.currentValue || "（空）"} → ${g.suggestedValue}`
+                      : g.kind === "MATTER_MATCH"
+                        ? `建议归属：${g.suggestedValue}（依据案号 ${g.sourceExcerpt ?? ""}）`
+                        : `${g.suggestedValue}`}
+                  </span>
+                  {g.sourcePage ? <span className="text-[10px] text-muted-foreground">来源第 {g.sourcePage} 页</span> : null}
+                  <span className="ml-auto flex gap-1.5">
+                    <button type="button" disabled={pending} className="rounded border border-border px-2 py-0.5 text-[10px] text-primary hover:bg-primary/5" onClick={() => decide([g.id], "ACCEPTED")}>采用</button>
+                    <button type="button" disabled={pending} className="rounded border border-border px-2 py-0.5 text-[10px] text-muted-foreground hover:bg-muted/50" onClick={() => decide([g.id], "REJECTED")}>拒绝</button>
+                  </span>
+                </div>
+              ))}
+              {decidedSuggestions.length > 0 ? (
+                <p className="text-[10px] text-muted-foreground">已处理 {decidedSuggestions.filter(g => g.status === "ACCEPTED").length} 项 · 已拒绝 {decidedSuggestions.filter(g => g.status === "REJECTED").length} 项（拒绝过的建议内容变化时才会重新出现）</p>
+              ) : null}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* B1 人工接续：需登录/验证码平台的来件，律师平台下载后补传回本条（v3 §4.2） */}
+      {sms.processingState === "NEEDS_MANUAL_FETCH" && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+          <span className="text-[11px] text-muted-foreground">
+            平台需登录 / 验证码时：打开链接完成必要步骤后，把下载的文书补传回本条来件
+          </span>
+          <label className="cursor-pointer rounded-md border border-border px-2.5 py-1 text-[11px] text-foreground/85 transition-colors hover:bg-muted/50">
+            {uploading ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : <Upload className="mr-1 inline h-3 w-3" />}
+            补传文件
+            <input
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? []);
+                e.target.value = "";
+                if (!files.length) return;
+                setUploading(true);
+                const fd = new FormData();
+                fd.set("smsId", sms.id);
+                files.forEach((f) => fd.append("files", f));
+                uploadSmsInboundFile(fd)
+                  .then((res) => {
+                    toast.success(res.saved.length > 0 ? `已补传 ${res.saved.length} 个文件` : "文件已在本次来件中，未重复保存");
+                    if (res.skippedDuplicates.length) toast.info(`重复跳过：${res.skippedDuplicates.join("、")}`);
+                    startTransition(() => router.refresh());
+                  })
+                  .catch((err) => toast.error(err instanceof Error ? actionErrorMessage(err) : "补传失败"))
+                  .finally(() => setUploading(false));
+              }}
+            />
+          </label>
+        </div>
+      )}
+
       {(parsed.documentLinks.length > 0 || parsed.credentials.length > 0 || parsed.attachmentResults.length > 0) && (
         <div className="mt-3 space-y-2 border-t border-border pt-3">
           {parsed.documentLinks.length > 0 && (
@@ -419,7 +577,7 @@ function SmsCard({
                     {link.platform ?? `送达链接 ${i + 1}`}
                   </a>
                   {link.requiresLogin && (
-                    <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700">
+                    <span className="rounded bg-[var(--amber-bg)] px-1.5 py-0.5 text-[10px] text-[var(--amber)]">
                       需登录/校验
                     </span>
                   )}
@@ -527,9 +685,9 @@ function SmsCard({
               size="sm"
               variant="outline"
               onClick={onExtractAttachments}
-              disabled={pending || !sms.matchedMatter}
+              disabled={pending}
               className="h-7 gap-1 text-[11px]"
-              title={sms.matchedMatter ? "提取短信中的送达附件" : "先关联案件后再提取附件"}
+              title="提取短信中的送达附件（未匹配案件时文件入私有来件暂存，匹配后再转正）"
             >
               {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileDown className="h-3 w-3" />}
               提取附件
@@ -608,10 +766,10 @@ function normalizeParsedJson(sms: SmsRow): ParsedJson {
 
 function AttachmentResultRow({ result }: { result: ParsedJson["attachmentResults"][number] }) {
   const meta = {
-    DOWNLOADED: { label: "已保存", color: "text-emerald-700", bg: "bg-emerald-500/10" },
-    ALREADY_DOWNLOADED: { label: "已存在", color: "text-emerald-700", bg: "bg-emerald-500/10" },
-    LOGIN_REQUIRED: { label: "待人工", color: "text-amber-700", bg: "bg-amber-500/10" },
-    SKIPPED_NO_MATTER: { label: "未关联", color: "text-amber-700", bg: "bg-amber-500/10" },
+    DOWNLOADED: { label: "已保存", color: "text-[var(--green)]", bg: "bg-[var(--green-bg)]" },
+    ALREADY_DOWNLOADED: { label: "已存在", color: "text-[var(--green)]", bg: "bg-[var(--green-bg)]" },
+    LOGIN_REQUIRED: { label: "待人工", color: "text-[var(--amber)]", bg: "bg-[var(--amber-bg)]" },
+    SKIPPED_NO_MATTER: { label: "未关联", color: "text-[var(--amber)]", bg: "bg-[var(--amber-bg)]" },
     NO_FILE_FOUND: { label: "未发现", color: "text-muted-foreground", bg: "bg-muted/50" },
     UNSUPPORTED_TYPE: { label: "不支持", color: "text-muted-foreground", bg: "bg-muted/50" },
     FAILED: { label: "失败", color: "text-destructive", bg: "bg-destructive/10" },
@@ -642,9 +800,9 @@ function AttachmentResultRow({ result }: { result: ParsedJson["attachmentResults
 
 function UrgencyBadge({ level }: { level: "HIGH" | "MEDIUM" | "LOW" }) {
   const meta = {
-    HIGH: { label: "紧急", color: "#DC2626", bg: "rgb(248 113 113 / 0.12)" },
-    MEDIUM: { label: "本周", color: "#D97706", bg: "rgb(252 211 77 / 0.15)" },
-    LOW: { label: "知悉", color: "#737373", bg: "rgb(229 229 229 / 0.5)" }
+    HIGH: { label: "紧急", color: "#B42318", bg: "rgb(248 113 113 / 0.12)" },
+    MEDIUM: { label: "本周", color: "#96650B", bg: "rgb(252 211 77 / 0.15)" },
+    LOW: { label: "知悉", color: "#68747F", bg: "rgb(229 229 229 / 0.5)" }
   }[level];
   return (
     <span
@@ -669,7 +827,7 @@ function MatterPicker({ sms, matters }: { sms: SmsRow; matters: MatterOption[] }
         toast.success("已关联案件");
         setOpen(false);
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "失败");
       }
     });
   };

@@ -2,18 +2,7 @@
 
 import { useState, useMemo, useTransition } from "react";
 import Link from "next/link";
-import {
-  Package,
-  Plus,
-  Search,
-  RefreshCw,
-  Trash2,
-  Briefcase,
-  ArrowDownToLine,
-  ArrowUpFromLine,
-  ExternalLink,
-  AlertTriangle
-} from "lucide-react";
+import { Package, Search, RefreshCw, Trash2, Briefcase, ArrowDownToLine, ArrowUpFromLine, ExternalLink, AlertTriangle } from "lucide-react";
 import type { Prisma, ExpressDirection } from "@prisma/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -30,10 +19,14 @@ import {
 } from "@/components/ui/dialog";
 import { RadioChips } from "@/components/ui/radio-chips";
 import { MatterCombobox } from "@/app/(app)/approvals/seals/_components/matter-combobox";
-import { cn } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
 import { createExpress, refreshExpress, deleteExpress } from "@/server/express/actions";
 import { SUPPORTED_COMPANIES, detectCompany } from "@/lib/express/companies";
 import { matterHref } from "@/lib/matters/route";
+import { PageHeader, Segmented } from "@/components/patterns/moan";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { useTopbarAction } from "@/components/layout/topbar-action";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type Row = Prisma.ExpressTrackingGetPayload<{
   include: {
@@ -90,34 +83,24 @@ export function ExpressView({
     });
   }, [items, direction, search]);
 
+  useTopbarAction({ label: "新建追踪", onClick: () => setNewOpen(true) }, []);
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         {hideHeader ? (
           <div />
         ) : (
-          <div>
-            <h1 className="flex items-center gap-2 text-2xl">
-              <Package className="h-5 w-5 text-primary" />
-              快递追踪
-            </h1>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">
-              寄出 / 收到的法院文书、当事人材料统一登记 + 自动刷新物流
-            </p>
-          </div>
+          <PageHeader className="!mb-0" title="快递追踪" sub="寄出 / 收到的法院文书、当事人材料统一登记 + 自动刷新物流" />
         )}
-        <Button onClick={() => setNewOpen(true)} className="gap-1.5">
-          <Plus className="h-3.5 w-3.5" />
-          新建追踪
-        </Button>
       </div>
 
       {!configured && (
-        <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-[12px] text-amber-800">
+        <div className="flex items-start gap-2 rounded-md border border-[var(--amber-line)] bg-[var(--amber-bg)] p-3 text-[12px] text-[var(--amber)]">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <div>
             未配置任何快递接入。记录可创建但物流状态拉不到。
-            <Link href="/settings/express" className="ml-1 font-medium underline">
+            <Link href="/admin/express" target="_blank" rel="noopener" className="ml-1 font-medium underline">
               去配置 快递鸟 / 快递100 →
             </Link>
           </div>
@@ -137,12 +120,11 @@ export function ExpressView({
             className="h-9 border-border bg-card pl-9"
           />
         </div>
-        <RadioChips
-          size="sm"
+        <Segmented
           items={[
-            { value: "ALL", label: "全部" },
-            { value: "OUTBOUND", label: "寄出" },
-            { value: "INBOUND", label: "收到" }
+            { key: "ALL", label: "全部" },
+            { key: "OUTBOUND", label: "寄出" },
+            { key: "INBOUND", label: "收到" }
           ]}
           value={direction}
           onChange={(v) => setDirection(v as DirectionFilter)}
@@ -188,18 +170,18 @@ function Card({ e }: { e: Row }) {
         const r = await refreshExpress({ id: e.id });
         toast.success(`已更新：${r.state}（${r.provider}）`);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "刷新失败");
+        toast.error(err instanceof Error ? actionErrorMessage(err) : "刷新失败");
       }
     });
 
-  const onDelete = () => {
-    if (!confirm(`确认删除单号 ${e.trackingNo}？`)) return;
+  const onDelete = async () => {
+    if (!(await confirmDialog({ title: `删除快递单号 ${e.trackingNo}？`, confirmText: "删除", danger: true }))) return;
     startTransition(async () => {
       try {
         await deleteExpress({ id: e.id });
         toast.success("已删除");
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "失败");
+        toast.error(err instanceof Error ? actionErrorMessage(err) : "失败");
       }
     });
   };
@@ -209,12 +191,12 @@ function Card({ e }: { e: Row }) {
       {/* 行 1：方向 + 公司 + 状态 */}
       <div className="flex flex-wrap items-center gap-2 text-[11px]">
         {e.direction === "OUTBOUND" ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/10 px-2 py-0.5 text-sky-700">
+          <span className="inline-flex items-center gap-1 rounded-full bg-[var(--blue-bg)] px-2 py-0.5 text-[var(--blue)]">
             <ArrowUpFromLine className="h-3 w-3" />
             寄出
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-emerald-700">
+          <span className="inline-flex items-center gap-1 rounded-full bg-[var(--green-bg)] px-2 py-0.5 text-[var(--green)]">
             <ArrowDownToLine className="h-3 w-3" />
             收到
           </span>
@@ -227,9 +209,9 @@ function Card({ e }: { e: Row }) {
             variant="outline"
             className={cn(
               "px-1.5 py-0 text-[10px] font-normal",
-              tone === "danger" && "border-red-500/40 bg-red-500/10 text-red-700",
-              tone === "ok" && "border-emerald-500/40 bg-emerald-500/10 text-emerald-700",
-              tone === "warn" && "border-amber-500/40 bg-amber-500/10 text-amber-700",
+              tone === "danger" && "border-[var(--red-line)] bg-[var(--red-bg)] text-[var(--red)]",
+              tone === "ok" && "border-[var(--green-line)] bg-[var(--green-bg)] text-[var(--green)]",
+              tone === "warn" && "border-[var(--amber-line)] bg-[var(--amber-bg)] text-[var(--amber)]",
               tone === "muted" && "border-border bg-muted/40 text-muted-foreground"
             )}
           >
@@ -262,13 +244,13 @@ function Card({ e }: { e: Row }) {
             className="inline-flex items-center gap-1 hover:text-primary"
           >
             <Briefcase className="h-3 w-3" />
-            <span className="font-mono text-[10px]">{e.matter.internalCode}</span>
+            <span className="shrink-0 whitespace-nowrap font-mono text-[10px]">{e.matter.internalCode}</span>
             <span className="truncate">{e.matter.title}</span>
           </Link>
         )}
         {e.lastUpdateAt && (
           <div className="font-mono text-[10px]">
-            上次刷新：{new Date(e.lastUpdateAt).toLocaleString("zh-CN")}
+            上次刷新：{formatDateTime(new Date(e.lastUpdateAt))}
           </div>
         )}
       </div>
@@ -407,7 +389,7 @@ function NewExpressDialog({
         reset();
         onOpenChange(false);
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "失败");
       }
     });
   };

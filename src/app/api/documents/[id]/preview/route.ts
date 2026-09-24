@@ -1,3 +1,4 @@
+import { canReadDocument } from "@/lib/approvals/documents";
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/options";
@@ -44,37 +45,18 @@ function escapeHtml(s: string): string {
 }
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json({ error: "未登录" }, { status: 401 });
   }
 
   const doc = await prisma.document.findFirst({
-    where: { id, deletedAt: null }
+    where: { id: (await params).id, deletedAt: null }
   });
   if (!doc) return NextResponse.json({ error: "材料不存在" }, { status: 404 });
 
-  // 权限：与 download 路由一致（ADMIN/主任全看；案件成员看本案；收案合同限相关人）
-  if (session.user.role !== "ADMIN" && session.user.role !== "PRINCIPAL_LAWYER") {
-    if (doc.matterId) {
-      const member = await prisma.matterMember.findUnique({
-        where: { matterId_userId: { matterId: doc.matterId, userId: session.user.id } }
-      });
-      if (!member) return NextResponse.json({ error: "无权访问" }, { status: 403 });
-    } else if (doc.intakeId) {
-      const intake = await prisma.intake.findUnique({
-        where: { id: doc.intakeId },
-        select: { createdById: true, ownerUserId: true, coUserIds: true }
-      });
-      const uid = session.user.id;
-      const allowed =
-        !!intake &&
-        (intake.createdById === uid ||
-          intake.ownerUserId === uid ||
-          intake.coUserIds.includes(uid));
-      if (!allowed) return NextResponse.json({ error: "无权访问" }, { status: 403 });
-    }
+  if (!await canReadDocument(session.user.id, doc)) {
+    return NextResponse.json({ error: "无权访问" }, { status: 403 });
   }
 
   const kind = officePreviewKind(doc.mimeType, doc.name);

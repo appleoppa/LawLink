@@ -10,9 +10,10 @@
  */
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
-import { assertCanAccessMatter } from "@/lib/permissions";
+import { assertCanReadMatter } from "@/lib/permissions";
 import { audit } from "@/server/audit";
 import { reviewDocument } from "./review-document";
+import { canReviewDocument } from "./document-access";
 import { revalidateMatter } from "@/server/matters/route";
 
 const MAX_DOCS_PER_BATCH = 5;
@@ -39,16 +40,24 @@ export type BatchReviewSummary = {
 export async function batchReviewMatterDocuments(input: {
   matterId: string;
 }): Promise<BatchReviewSummary> {
-  const session = await requireSession();
-  await assertCanAccessMatter(session.user.id, session.user.role, input.matterId);
+  const session = await requireSession("documents.write");
+  await assertCanReadMatter(session.user.id, session.user.role, input.matterId, session.user.rolePermissions);
 
   // 拿本案 documents 当中可审查的
   const docs = await prisma.document.findMany({
     where: { matterId: input.matterId, deletedAt: null },
     orderBy: { createdAt: "desc" },
-    select: { id: true, name: true, mimeType: true, createdAt: true }
+    select: { id: true, name: true, mimeType: true, createdAt: true, uploadedById: true, matterId: true, intakeId: true }
   });
-  const reviewable = docs.filter((d) => isReviewable(d.mimeType));
+  // 逐件校验全文外发资格（P1-2）：整案可见（含管理权）不等于每件材料可外发——
+  // 非成员挂靠材料无权审查，进 skipped 而不是让逐件调用失败。
+  const skipped: BatchReviewSummary["skipped"] = [];
+  const eligible: typeof docs = [];
+  for (const d of docs) {
+    if (await canReviewDocument(session.user.id, d)) eligible.push(d);
+    else skipped.push({ documentId: d.id, documentName: d.name, reason: "无权审查该材料（全文外发须案件经办或合伙人岗位）" });
+  }
+  const eligibleDocs = eligible;
 
   // 拉最近 7 天内已审查的 documentId 集合
   const cutoff = new Date(Date.now() - RECENT_HOURS * 3600_000);
@@ -56,15 +65,14 @@ export async function batchReviewMatterDocuments(input: {
     where: {
       matterId: input.matterId,
       reviewedAt: { gte: cutoff },
-      documentId: { in: reviewable.map((d) => d.id) }
+      documentId: { in: eligibleDocs.map((d) => d.id) }
     },
     select: { documentId: true }
   });
   const recentSet = new Set(recent.map((r) => r.documentId));
 
-  const skipped: BatchReviewSummary["skipped"] = [];
-  const todo: typeof reviewable = [];
-  for (const d of docs) {
+  const todo: typeof eligibleDocs = [];
+  for (const d of eligibleDocs) {
     if (!isReviewable(d.mimeType)) {
       skipped.push({
         documentId: d.id,
@@ -124,7 +132,7 @@ export async function batchReviewMatterDocuments(input: {
       reviewed: reviewed.length,
       skipped: skipped.length,
       errors: errors.length,
-      totalReviewable: reviewable.length,
+      totalReviewable: eligibleDocs.length,
       limit: MAX_DOCS_PER_BATCH
     }
   });

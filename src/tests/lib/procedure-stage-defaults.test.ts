@@ -41,4 +41,12 @@ describe("defaultStageNamesForProcedure", () => {
       "案件归档"
     ]);
   });
+
+  it("非诉、审查起诉、行政复议使用各自环节，不再套用诉讼环节", () => {
+    expect(defaultStageNamesForProcedure("NON_LITIGATION_PHASE")).not.toContain("起诉立案");
+    expect(defaultStageNamesForProcedure("NON_LITIGATION_PHASE")).toContain("成果交付");
+    expect(defaultStageNamesForProcedure("PROSECUTION_REVIEW")).toContain("阅卷");
+    expect(defaultStageNamesForProcedure("PROSECUTION_REVIEW")).not.toContain("开庭审理");
+    expect(defaultStageNamesForProcedure("ADMIN_RECONSIDERATION")).toContain("复议决定");
+  });
 });

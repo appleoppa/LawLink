@@ -5,7 +5,9 @@ import type {
   ClientType,
   ClientCooperationStatus,
   ClientGender,
+  EvidenceKind,
   MatterCategory,
+  MatterServiceStatus,
   MatterStatus,
   IntakeStatus,
   UserRole,
@@ -14,8 +16,29 @@ import type {
   FeeType,
   InvoiceRequestStatus,
   PartyType,
-  BarFilingType
+  BarFilingType,
+  ConflictConclusion,
+  DeadlineCategory
 } from "@prisma/client";
+
+export const conflictConclusionLabel: Record<ConflictConclusion, string> = {
+  PENDING: "待结论",
+  SAME_SUBJECT: "有冲突",
+  DIFFERENT: "可承接",
+  NEED_INFO: "信息不足"
+};
+
+export const deadlineCategoryLabel: Record<DeadlineCategory, string> = {
+  LIMITATION: "诉讼时效",
+  EVIDENCE: "举证期限",
+  APPEAL: "上诉期",
+  PERFORMANCE: "履行期",
+  RESPONSE: "答辩期",
+  ENFORCEMENT: "执行申请",
+  ARBITRATION_SET_ASIDE: "撤销仲裁期",
+  PRESERVATION: "保全期限",
+  CUSTOM: "其他"
+};
 
 export const clientTypeLabel: Record<ClientType, string> = {
   INDIVIDUAL: "自然人",
@@ -129,13 +152,13 @@ export const matterCategoryLabel: Record<MatterCategory, string> = {
 };
 
 export const matterCategoryColor: Record<MatterCategory, string> = {
-  CIVIL_COMMERCIAL: "#5B8DEF",
+  CIVIL_COMMERCIAL: "#1E56C8",
   LABOR_ARBITRATION: "#34D399",
   COMMERCIAL_ARBITRATION: "#38BDF8",
-  CRIMINAL: "#FB923C",
-  ADMINISTRATIVE: "#FBBF24",
-  NON_LITIGATION: "#4FD1C5",
-  LEGAL_COUNSEL: "#9B7BF7",
+  CRIMINAL: "#96650B",
+  ADMINISTRATIVE: "#96650B",
+  NON_LITIGATION: "#007B7F",
+  LEGAL_COUNSEL: "#6C3FC5",
   SPECIAL_PROJECT: "#60A5FA"
 };
 
@@ -159,19 +182,36 @@ export const matterStatusLabel: Record<MatterStatus, string> = {
   ARCHIVED: "已归档"
 };
 
+// v1.x P2 材料出处链：证据条目性质
+export const evidenceKindLabel: Record<EvidenceKind, string> = {
+  FACT: "客观事实",
+  CLAIM: "当事人主张",
+  ANALYSIS: "经办分析",
+  ISSUE: "争议焦点",
+  TODO_VERIFY: "待核实"
+};
+
+// v1.x P2 状态轴分离（报告 §6.4）：服务轴与程序轴（Matter.status）分开
+export const matterServiceStatusLabel: Record<MatterServiceStatus, string> = {
+  SERVICE_ACTIVE: "服务进行中",
+  SERVICE_COMPLETED: "服务已完成"
+};
+
 export const intakeStatusLabel: Record<IntakeStatus, string> = {
   INTAKE: "已咨询",
   PENDING_CONFIRMATION: "待确认",
   CONVERTED: "已转化",
   DECLINED: "不接案",
-  NEEDS_REVISION: "待补正"
+  NEEDS_REVISION: "待补正",
+  VOID: "已作废"
 };
 
 export const userRoleLabel: Record<UserRole, string> = {
-  ADMIN: "系统管理员",
-  PRINCIPAL_LAWYER: "主办律师",
-  LAWYER: "经办律师",
-  ASSISTANT: "助理",
+  CUSTOM: "自定义角色",
+  PRINCIPAL_LAWYER: "合伙人",
+  INDEPENDENT_LAWYER: "独立律师",
+  LAWYER: "授薪律师",
+  ASSISTANT: "律师助理",
   FINANCE: "财务"
 };
 
@@ -241,10 +281,10 @@ export const invoiceRequestStatusLabel: Record<InvoiceRequestStatus, string> = {
 };
 
 export const invoiceRequestStatusColor: Record<InvoiceRequestStatus, string> = {
-  PENDING: "#FBBF24",
-  APPROVED: "#5B8DEF",
-  ISSUED: "#4ADE80",
-  REJECTED: "#F87171"
+  PENDING: "#96650B",
+  APPROVED: "#1E56C8",
+  ISSUED: "#1A7F45",
+  REJECTED: "#B42318"
 };
 
 /**

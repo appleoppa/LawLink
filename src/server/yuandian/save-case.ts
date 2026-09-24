@@ -1,4 +1,5 @@
 "use server";
+import { roleMutation } from "@/lib/roles/service";
 
 /**
  * v0.20: 把检索到的元典类案保存为案件 Document（category=JUDGMENT）
@@ -8,12 +9,14 @@
  */
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
-import { assertCanAccessMatter } from "@/lib/permissions";
+import { assertCanHandleMatter } from "@/lib/permissions";
 import { storage } from "@/lib/storage";
 import { sha256 } from "@/lib/storage/crypto";
 import { audit } from "@/server/audit";
 import type { CaseSearchHit, VectorCaseHit } from "./cases";
 import { revalidateMatter } from "@/server/matters/route";
+import { shDayKey, shTime } from "@/lib/ui/sh-time";
+import { ActionError } from "@/lib/action-error";
 
 export type SaveCaseInput = {
   matterId: string;
@@ -39,7 +42,7 @@ function safeFileName(ah: string): string {
 }
 
 function buildMarkdown(c: SaveCaseInput["caseHit"]): string {
-  const now = new Date().toLocaleString("zh-CN");
+  const now = `${shDayKey(new Date())} ${shTime(new Date())}`;
   return [
     `# 类案存档：${c.title}`,
     "",
@@ -64,16 +67,16 @@ export async function saveCaseToMatter(input: SaveCaseInput): Promise<{
   documentId: string;
   documentName: string;
 }> {
-  const session = await requireSession();
-  await assertCanAccessMatter(session.user.id, session.user.role, input.matterId);
+  const session = await requireSession("matters.write");
+  await assertCanHandleMatter(session.user, input.matterId);
 
   const matter = await prisma.matter.findUnique({
     where: { id: input.matterId, deletedAt: null },
     select: { id: true, status: true }
   });
-  if (!matter) throw new Error("案件不存在");
+  if (!matter) throw new ActionError("案件不存在");
   if (matter.status === "ARCHIVED") {
-    throw new Error("案件已归档（只读），不能再保存类案");
+    throw new ActionError("案件已归档（只读），不能再保存类案");
   }
 
   const md = buildMarkdown(input.caseHit);
@@ -82,7 +85,7 @@ export async function saveCaseToMatter(input: SaveCaseInput): Promise<{
   const hash = sha256(buf);
   const docName = `类案_${safeFileName(input.caseHit.ah)}.md`;
 
-  const doc = await prisma.document.create({
+  const doc = await roleMutation(session.user, "matters.write", async roleDb => roleDb.document.create({
     data: {
       matterId: input.matterId,
       uploadedById: session.user.id,
@@ -96,7 +99,7 @@ export async function saveCaseToMatter(input: SaveCaseInput): Promise<{
       tags: ["类案", "元典"]
     },
     select: { id: true, name: true }
-  });
+  }));
 
   await audit({
     userId: session.user.id,
@@ -147,7 +150,7 @@ function formatJaDate(n: number | undefined | null): string {
 }
 
 function buildVectorMarkdown(c: SaveVectorCaseInput["caseHit"]): string {
-  const now = new Date().toLocaleString("zh-CN");
+  const now = `${shDayKey(new Date())} ${shTime(new Date())}`;
   // 案由：优先 anyou（名字），否则 ay code 兜底
   const ay =
     (c.anyou && c.anyou.length ? c.anyou : c.ay)?.join("、") || "（无案由信息）";
@@ -176,16 +179,16 @@ export async function saveVectorCaseToMatter(input: SaveVectorCaseInput): Promis
   documentId: string;
   documentName: string;
 }> {
-  const session = await requireSession();
-  await assertCanAccessMatter(session.user.id, session.user.role, input.matterId);
+  const session = await requireSession("matters.write");
+  await assertCanHandleMatter(session.user, input.matterId);
 
   const matter = await prisma.matter.findUnique({
     where: { id: input.matterId, deletedAt: null },
     select: { id: true, status: true }
   });
-  if (!matter) throw new Error("案件不存在");
+  if (!matter) throw new ActionError("案件不存在");
   if (matter.status === "ARCHIVED") {
-    throw new Error("案件已归档（只读），不能再保存类案");
+    throw new ActionError("案件已归档（只读），不能再保存类案");
   }
 
   const md = buildVectorMarkdown(input.caseHit);
@@ -196,7 +199,7 @@ export async function saveVectorCaseToMatter(input: SaveVectorCaseInput): Promis
   const tag = input.caseHit.ah?.trim() || input.caseHit.scid.slice(0, 12);
   const docName = `类案_${safeFileName(tag)}.md`;
 
-  const doc = await prisma.document.create({
+  const doc = await roleMutation(session.user, "matters.write", async roleDb => roleDb.document.create({
     data: {
       matterId: input.matterId,
       uploadedById: session.user.id,
@@ -210,7 +213,7 @@ export async function saveVectorCaseToMatter(input: SaveVectorCaseInput): Promis
       tags: ["类案", "元典", "语义"]
     },
     select: { id: true, name: true }
-  });
+  }));
 
   await audit({
     userId: session.user.id,

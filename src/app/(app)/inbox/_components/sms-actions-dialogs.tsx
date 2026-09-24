@@ -22,7 +22,9 @@ import {
 } from "@/server/sms/actions";
 import type { SmsRow, MatterOption, ParsedJson } from "./sms-types";
 import { toDate } from "@/lib/sms-parser";
+import { shDayKey, shTime } from "@/lib/ui/sh-time";
 import { procedureTypeLabel } from "@/lib/enums";
+import { actionErrorMessage } from "@/lib/action-error";
 
 // v0.51: 程序默认选中——优先取案号与短信解析案号一致的程序
 function preferredProcedureId(
@@ -67,8 +69,8 @@ export function GenerateHearingDialog({
       toast.error("请选择程序");
       return;
     }
-    const d = dateStr ? new Date(dateStr) : null;
-    if (!d || isNaN(d.getTime())) {
+    const d = dateStr ? parseLocalInput(dateStr) : null;
+    if (!d) {
       toast.error("请填写有效的开庭时间");
       return;
     }
@@ -86,7 +88,7 @@ export function GenerateHearingDialog({
         toast.success("已生成开庭并标记此短信处理完成");
         onOpenChange(false);
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "失败");
       }
     });
   };
@@ -226,9 +228,8 @@ function pickDefaultDueDate(parsed: ParsedJson): Date | null {
     const base = toDate(parsed.judgmentDate);
     const days = parseInt(parsed.appealDeadline);
     if (base && !isNaN(days)) {
-      const d = new Date(base);
-      d.setDate(d.getDate() + days);
-      return d;
+      // 按毫秒加整天，避开浏览器本地时区的夏令时切换（setDate 会在切换日偏一小时）
+      return new Date(base.getTime() + days * 86_400_000);
     }
   }
   // 其他：取 dates 中第一个日期
@@ -267,8 +268,8 @@ export function GenerateDeadlineDialog({
       toast.error("请选择程序");
       return;
     }
-    const d = dateStr ? new Date(dateStr) : null;
-    if (!d || isNaN(d.getTime())) {
+    const d = dateStr ? parseLocalInput(dateStr) : null;
+    if (!d) {
       toast.error("请填写有效的截止日期");
       return;
     }
@@ -286,7 +287,7 @@ export function GenerateDeadlineDialog({
         toast.success("已生成期限并标记此短信处理完成");
         onOpenChange(false);
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "失败");
       }
     });
   };
@@ -421,7 +422,7 @@ export function BackfillCaseNumberDialog({
         toast.success(`案号已回填：${caseNumber}`);
         onOpenChange(false);
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "回填失败");
+        toast.error(e instanceof Error ? actionErrorMessage(e) : "回填失败");
       }
     });
   };
@@ -483,14 +484,17 @@ export function BackfillCaseNumberDialog({
 // Helpers
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function pad(n: number) {
-  return String(n).padStart(2, "0");
-}
+// datetime-local / date 输入框的值是上海墙钟时间：回填按上海时区取字段，
+// 解析按 +08:00 固定偏移构造（上海无夏令时），与浏览器时区无关
 function formatLocal(d: Date): string {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${shDayKey(d)}T${shTime(d)}`;
 }
 function formatLocalDateOnly(d: Date): string {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return shDayKey(d);
+}
+function parseLocalInput(value: string): Date | null {
+  const d = new Date(value.length === 16 ? `${value}:00+08:00` : `${value}T12:00+08:00`);
+  return isNaN(d.getTime()) ? null : d;
 }
 
 // 让 MatterCombobox 类型在该模块可见（重导以便 inbox-view 使用）

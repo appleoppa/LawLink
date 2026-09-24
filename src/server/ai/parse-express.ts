@@ -8,6 +8,7 @@
  */
 import { requireSession } from "@/lib/auth/session";
 import { aiVision, extractJson, AiNotConfiguredError } from "@/lib/ai/client";
+import { ActionError } from "@/lib/action-error";
 
 export type ParsedExpressLabel = {
   trackingNo: string | null;
@@ -24,19 +25,20 @@ const PROMPT = `下方图片是一张快递面单 / 快递单照片。请严格�
 - 仅 JSON，不要解释`;
 
 export async function parseExpressLabel(form: FormData): Promise<ParsedExpressLabel> {
-  await requireSession();
+  const session = await requireSession("express.manage");
   const file = form.get("file");
-  if (!(file instanceof File)) throw new Error("缺少文件");
+  if (!(file instanceof File)) throw new ActionError("缺少文件");
   if (!SUPPORTED.has(file.type)) {
-    throw new Error(`仅支持图片格式（JPG/PNG/WebP），当前 ${file.type || "未知"}`);
+    throw new ActionError(`仅支持图片格式（JPG/PNG/WebP），当前 ${file.type || "未知"}`);
   }
-  if (file.size > 10 * 1024 * 1024) throw new Error("文件超过 10MB");
+  if (file.size > 10 * 1024 * 1024) throw new ActionError("文件超过 10MB");
 
   const buf = Buffer.from(await file.arrayBuffer());
   const dataUrl = `data:${file.type};base64,${buf.toString("base64")}`;
 
   try {
     const { content } = await aiVision({
+      userId: session.user.id,
       image: { dataUrl },
       prompt: PROMPT,
       maxTokens: 300

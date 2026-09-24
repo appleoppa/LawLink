@@ -5,10 +5,13 @@
  * 详见 https://open.chineselaw.com/llms-full.txt
  */
 import { getYuandianSettings, type ResolvedYuandianSettings } from "./settings";
+import { withExternalCallLog } from "@/lib/external-call-log";
+import { assertSafeHttpUrl, safeFetch } from "@/lib/net/safe-url";
+import { ActionError } from "@/lib/action-error";
 
 export class YuandianNotConfiguredError extends Error {
   constructor() {
-    super("元典 API 未配置，请先到 设置 → AI 接入 填写元典 API key");
+    super("元典 API 未配置，请先到 管理后台 → AI 与元典 填写元典 API key");
     this.name = "YuandianNotConfiguredError";
   }
 }
@@ -85,7 +88,7 @@ export async function searchPtalCases(
     (params.wszl?.length ?? 0) > 0 ||
     !!params.ja_start ||
     !!params.ja_end;
-  if (!hasAny) throw new Error("至少填写一个检索条件（案由 / 关键词 / 法院 / 地区 / 日期）");
+  if (!hasAny) throw new ActionError("至少填写一个检索条件（案由 / 关键词 / 法院 / 地区 / 日期）");
 
   const body: Record<string, unknown> = {};
   if (params.ay?.length) body.ay = params.ay;
@@ -110,7 +113,9 @@ export async function searchPtalCases(
     data?: { total?: number; lst?: PtalCase[] } | null;
   };
   try {
-    const res = await fetch(url, {
+    // 私网校验（2026-09-19 审计）：管理端可配的 baseUrl 不得指向本机/内网
+    await assertSafeHttpUrl(s.baseUrl.replace(/\/$/, ""));
+    const res = await withExternalCallLog({ service: "yuandian" }, () => safeFetch(url, {
       method: "POST",
       headers: {
         "X-API-Key": s.apiKey,
@@ -119,7 +124,7 @@ export async function searchPtalCases(
       },
       body: JSON.stringify(body),
       signal: ctrl.signal
-    });
+    }));
     if (!res.ok) {
       throw new YuandianApiError(`HTTP ${res.status}`, res.status);
     }
@@ -200,7 +205,7 @@ export async function searchCasesByVector(
   const s = resolved ?? (await getYuandianSettings());
   if (!s.configured) throw new YuandianNotConfiguredError();
   const query = params.query.trim();
-  if (!query) throw new Error("语义检索 query 不能为空");
+  if (!query) throw new ActionError("语义检索 query 不能为空");
 
   const filter: Record<string, unknown> = {};
   if (params.ay?.length) filter.ay = params.ay;
@@ -229,7 +234,8 @@ export async function searchCasesByVector(
     extra?: { wenshu?: VectorCase[] };
   };
   try {
-    const res = await fetch(url, {
+    await assertSafeHttpUrl(s.baseUrl.replace(/\/$/, ""));
+    const res = await withExternalCallLog({ service: "yuandian" }, () => safeFetch(url, {
       method: "POST",
       headers: {
         "X-API-Key": s.apiKey,
@@ -238,7 +244,7 @@ export async function searchCasesByVector(
       },
       body: JSON.stringify(body),
       signal: ctrl.signal
-    });
+    }));
     if (!res.ok) throw new YuandianApiError(`HTTP ${res.status}`, res.status);
     json = await res.json();
   } finally {

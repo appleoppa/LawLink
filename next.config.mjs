@@ -19,6 +19,20 @@ const nextConfig = {
       // 材料上传需要更大的 body 限制（默认 1MB）
       bodySizeLimit: "25mb"
     }
+  },
+  // 2026-09-19 审计修复：全站基础安全响应头（下载路由另有逐路由头）。
+  // 刻意不加整体 CSP：Next.js 运行时依赖内联脚本，需逐页审计后另行引入。
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" }
+        ]
+      }
+    ];
   }
 };
 

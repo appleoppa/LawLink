@@ -1,16 +1,17 @@
 "use client";
 
+import { FormDialogContent as DialogContent, FormDialogBody } from "@/components/patterns/form-dialog";
+
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, Plus, Clock } from "lucide-react";
+import { Loader2, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
-  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -24,6 +25,8 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { createTask } from "@/server/tasks/actions";
+import { civilKey, shParts, WEEKDAY_CN } from "@/lib/ui/sh-time";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type MatterPickerItem = { id: string; internalCode: string; title: string };
 
@@ -71,16 +74,12 @@ export function AddTaskDialog({
       return;
     }
 
-    // 合成 dueAt：全天 → 23:59；有时间 → 解析 HH:MM
-    const dueAt = new Date(date);
-    if (allDay) {
-      dueAt.setHours(23, 59, 0, 0);
-    } else {
-      const [hh, mm] = time.split(":").map(Number);
-      if (Number.isFinite(hh) && Number.isFinite(mm)) {
-        dueAt.setHours(hh, mm, 0, 0);
-      }
-    }
+    // 合成 dueAt（上海时区）：date 是 sh-time「本地正午」载体，不能用浏览器本地 setHours——
+    // 境外浏览器会把所选时刻/全天边界挪到别的日历日；统一以 +08:00 拼接
+    const key = civilKey(date);
+    const [hhStr, mmStr] = time.split(":");
+    const timePart = allDay ? "23:59" : `${hhStr ?? "09"}:${mmStr ?? "00"}`;
+    const dueAt = new Date(`${key}T${timePart}:00+08:00`);
 
     startTransition(async () => {
       try {
@@ -93,12 +92,12 @@ export function AddTaskDialog({
           assigneeId: "",
           stageId: ""
         });
-        toast.success("事项已添加");
+        toast.success("任务已创建");
         onOpenChange(false);
         router.refresh();
       } catch (err) {
-        toast.error("添加失败", {
-          description: err instanceof Error ? err.message : ""
+        toast.error("创建失败", {
+          description: actionErrorMessage(err)
         });
       }
     });
@@ -109,20 +108,18 @@ export function AddTaskDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Plus className="h-4 w-4 text-primary" />
-            添加事项
+            新建任务
           </DialogTitle>
           <DialogDescription className="text-xs">
             {date
-              ? date.toLocaleDateString("zh-CN", {
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                  weekday: "long"
-                })
+              ? (() => {
+                  const p = shParts(date);
+                  return `${p.y}年${p.m}月${p.d}日 星期${WEEKDAY_CN[p.w] ?? p.w}`;
+                })()
               : "—"}
           </DialogDescription>
         </DialogHeader>
+        <FormDialogBody>
 
         <div className="space-y-3">
           <div className="space-y-1.5">
@@ -218,6 +215,7 @@ export function AddTaskDialog({
           </div>
         </div>
 
+        </FormDialogBody>
         <DialogFooter>
           <Button
             variant="outline"
@@ -228,7 +226,7 @@ export function AddTaskDialog({
           </Button>
           <Button onClick={submit} disabled={isPending} className="gap-1.5">
             {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-            添加
+            创建任务
           </Button>
         </DialogFooter>
       </DialogContent>

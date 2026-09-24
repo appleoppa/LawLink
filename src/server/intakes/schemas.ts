@@ -1,3 +1,4 @@
+import { ALL_CLIENT_ID_TYPES } from "@/lib/clients/person-id";
 import { z } from "zod";
 import { matterCategorySchema, partyInputSchema, procedureTypeSchema } from "@/server/matters/schemas";
 
@@ -96,6 +97,7 @@ const intakeCreateBaseSchema = z.object({
   contactPhone: z.string().max(30).optional().or(z.literal("")),
 
   // 企业自动填充（元典查询结果，透传到 Client 创建）
+  clientIdType: z.enum(ALL_CLIENT_ID_TYPES).optional().or(z.literal("")),
   clientIdNumber: z.string().max(50).optional().or(z.literal("")),
   clientAddress: z.string().max(200).optional().or(z.literal("")),
   clientLegalRep: z.string().max(40).optional().or(z.literal("")),
@@ -130,6 +132,9 @@ function requireLitigationStandings(
   }
 
   data.parties.forEach((party, index) => {
+    // 委托方的诉讼地位保存在 ourStanding；表单内委托方占 parties[0]，不能再要求它单独填写 standing，
+    // 否则已选「我方诉讼地位」仍提示未选择、无法进入下一步（2026-09-14 用户反馈）
+    if (party.role === "CLIENT_PARTY") return;
     if (!party.standing) {
       ctx.addIssue({
         path: ["parties", index, "standing"],
@@ -147,6 +152,9 @@ export const intakeUpdateSchema = intakeCreateBaseSchema.extend({
 }).superRefine(requireLitigationStandings);
 
 export const intakeListQuerySchema = z.object({
+  scope: z.enum(["all", "mine", "team"]).default("all"),
+  teamId: z.string().cuid().optional(),
+  ownerId: z.string().cuid().optional(),
   search: z.string().optional(),
   category: matterCategorySchema.optional(),
   status: intakeStatusSchema.optional(),

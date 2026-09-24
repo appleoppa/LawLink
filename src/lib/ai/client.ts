@@ -7,6 +7,9 @@
  * server-side only（直接读 SystemSetting）。
  */
 import { getAiSettings } from "./settings";
+import { withExternalCallLog } from "@/lib/external-call-log";
+import { assertSafeHttpUrl, safeFetch } from "@/lib/net/safe-url";
+import { ActionError } from "@/lib/action-error";
 
 export type ChatMessage =
   | { role: "system" | "user" | "assistant"; content: string }
@@ -24,6 +27,14 @@ export interface AiChatOptions {
   maxTokens?: number;
   temperature?: number;
   timeoutMs?: number;
+  logAction?: string; // 外部调用台账的业务动作名（如 review-document）
+  /**
+   * 发起人 id，落 ExternalCallLog.userId（第八轮体检）。
+   * 此前全部 AI 路径都不传，台账那一列恒为 null——台账只能回答「系统某时刻调了一次
+   * ai-chat、耗时多少」，答不了「谁发的」。律所需要能对客户说清材料由谁外发。
+   * 无请求上下文的后台任务（队列重跑等）可不传。
+   */
+  userId?: string;
 }
 
 export interface AiChatResult {
@@ -33,7 +44,7 @@ export interface AiChatResult {
 
 export class AiNotConfiguredError extends Error {
   constructor() {
-    super("AI 未配置，请先到 设置 → AI 接入 填写 API key");
+    super("AI 未配置，请先到 管理后台 → AI 与元典 填写 API key");
     this.name = "AiNotConfiguredError";
   }
 }
@@ -47,7 +58,9 @@ async function callOpenAiCompatible(opts: {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs);
   try {
-    const res = await fetch(`${opts.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+    // 私网校验（2026-09-19 审计）：管理端可配的 baseUrl 不得指向本机/内网
+    await assertSafeHttpUrl(opts.baseUrl.replace(/\/$/, ""));
+    const res = await safeFetch(`${opts.baseUrl.replace(/\/$/, "")}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -58,7 +71,7 @@ async function callOpenAiCompatible(opts: {
     });
     if (!res.ok) {
       const body = await res.text();
-      throw new Error(`AI 请求失败 (${res.status}): ${body.slice(0, 200)}`);
+      throw new ActionError(`AI 请求失败 (${res.status}): ${body.slice(0, 200)}`);
     }
     return res.json();
   } finally {
@@ -77,12 +90,16 @@ export async function aiChat(input: AiChatOptions): Promise<AiChatResult> {
     temperature: input.temperature ?? 0.2
   };
 
-  const json = (await callOpenAiCompatible({
-    apiKey: s.apiKey,
-    baseUrl: s.baseUrl,
-    body,
-    timeoutMs: input.timeoutMs ?? 20_000
-  })) as {
+  // v1.x P1: 外部调用台账（成败/耗时；失败不改变原有异常行为）
+  const json = (await withExternalCallLog(
+    { service: "ai-chat", action: input.logAction, userId: input.userId },
+    () => callOpenAiCompatible({
+      apiKey: s.apiKey,
+      baseUrl: s.baseUrl,
+      body,
+      timeoutMs: input.timeoutMs ?? 20_000
+    })
+  )) as {
     choices?: { message?: { content?: string } }[];
   };
 
@@ -99,6 +116,8 @@ export async function aiVision(input: {
   model?: string;
   maxTokens?: number;
   timeoutMs?: number;
+  logAction?: string;
+  userId?: string;
 }): Promise<AiChatResult> {
   const s = await getAiSettings();
   if (!s.configured) throw new AiNotConfiguredError();
@@ -119,7 +138,9 @@ export async function aiVision(input: {
     messages,
     model: input.model || s.visionModel,
     maxTokens: input.maxTokens ?? 2000,
-    timeoutMs: input.timeoutMs ?? 30_000
+    timeoutMs: input.timeoutMs ?? 30_000,
+    logAction: input.logAction,
+    userId: input.userId
   });
 }
 

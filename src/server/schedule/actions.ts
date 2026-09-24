@@ -9,6 +9,6 @@ export async function listScheduleItems(params: {
   includeCompleted?: boolean;
   onlyMine?: boolean;
 } = {}) {
-  const session = await requireSession();
-  return queryScheduleItems(session.user.id, session.user.role, params);
+  const session = await requireSession("personal");
+  return queryScheduleItems(session.user.id, session.user.role, { ...params, includeTeam: true });
 }

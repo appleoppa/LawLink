@@ -27,9 +27,9 @@ type Props = {
 };
 
 const confidenceStyle: Record<CauseConfidence, { label: string; cls: string }> = {
-  HIGH: { label: "高置信", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  MEDIUM: { label: "中置信", cls: "bg-amber-50 text-amber-700 border-amber-200" },
-  LOW: { label: "低置信", cls: "bg-slate-50 text-slate-600 border-slate-200" }
+  HIGH: { label: "高置信", cls: "bg-[var(--green-bg)] text-[var(--green)] border-[var(--green-line)]" },
+  MEDIUM: { label: "中置信", cls: "bg-[var(--amber-bg)] text-[var(--amber)] border-[var(--amber-line)]" },
+  LOW: { label: "低置信", cls: "bg-[var(--bg-hover)] text-[var(--t-muted)] border-[var(--bd-subtle)]" }
 };
 
 export function CauseRecommendationDialog({
@@ -46,7 +46,7 @@ export function CauseRecommendationDialog({
       <DialogContent className="max-w-lg gap-0 p-0">
         <DialogHeader className="border-b border-border px-5 py-3">
           <DialogTitle className="flex items-center gap-2 text-base">
-            <Sparkles className="h-4 w-4 text-violet-500" />
+            <Sparkles className="h-4 w-4 text-[var(--violet)]" />
             AI 案由推荐
           </DialogTitle>
           <DialogDescription className="text-xs">
@@ -62,7 +62,7 @@ export function CauseRecommendationDialog({
             </div>
           ) : errorMessage ? (
             <div className="flex flex-col items-center gap-3 py-8 text-sm">
-              <p className="text-center text-rose-600">{errorMessage}</p>
+              <p className="text-center text-[var(--red)]">{errorMessage}</p>
               {onRetry && (
                 <Button size="sm" variant="outline" onClick={onRetry}>
                   重试

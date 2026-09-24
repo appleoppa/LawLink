@@ -1,8 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { periodPresets, customPeriod } from "@/server/reports/queries";
+// 2026-09-20 第五轮审计：断言统一上海口径取日——此前本地取日与旧实现同 TZ 自洽，
+// 换时区跑（vitest 在 UTC 容器）就互相掩盖；修复后的实现按上海窗口，断言亦然。
+import { shParts } from "@/lib/ui/sh-time";
 
 function ymd(d: Date): [number, number, number] {
-  return [d.getFullYear(), d.getMonth() + 1, d.getDate()];
+  const p = shParts(d);
+  return [p.y, p.m, p.d];
 }
 
 describe("periodPresets", () => {
@@ -48,6 +52,21 @@ describe("periodPresets", () => {
     expect(ymd(p.quarter.start)).toEqual([2026, 10, 1]);
     expect(ymd(p.quarter.end)).toEqual([2027, 1, 1]);
   });
+
+  // 2026-09-20 第五轮审计时区回归：窗口按上海年月构造，与运行时区无关。
+  // 此前实现本地取月，UTC 容器上「本月」窗口=上海 1 日 08:00 起，月初 0-8 点数据落上月。
+  it("上海已进新月而 UTC 仍在上月时（09-30T20:00Z）→ 本月窗口按上海 10 月", () => {
+    const p = periodPresets(new Date("2026-09-30T20:00:00Z")); // 上海 10-01 04:00
+    expect(p.month.start.toISOString()).toBe("2026-09-30T16:00:00.000Z"); // 上海 10-01 00:00
+    expect(p.month.end.toISOString()).toBe("2026-10-31T16:00:00.000Z");   // 上海 11-01 00:00
+    expect(p.month.label).toBe("2026 年 10 月");
+  });
+
+  it("元旦交界（12-31T20:00Z = 上海次年 1 月）→ 年度窗口按上海新年份", () => {
+    const p = periodPresets(new Date("2026-12-31T20:00:00Z")); // 上海 2027-01-01 04:00
+    expect(p.year.label).toBe("2027 年度");
+    expect(p.year.start.toISOString()).toBe("2026-12-31T16:00:00.000Z"); // 上海 2027-01-01 00:00
+  });
 });
 
 describe("customPeriod", () => {
@@ -82,5 +101,12 @@ describe("customPeriod", () => {
 
   it("正好 5 年内合法", () => {
     expect(() => customPeriod("2021-01-01", "2025-12-31")).not.toThrow();
+  });
+
+  // 2026-09-20 第五轮审计时区回归：自定义区间按上海日界解释（绝对时刻断言，与运行时区无关）
+  it("customPeriod 按上海日界（2026-09-20 = 09-19T16:00Z 起）", () => {
+    const p = customPeriod("2026-09-20", "2026-09-20");
+    expect(p.start.toISOString()).toBe("2026-09-19T16:00:00.000Z");
+    expect(p.end.toISOString()).toBe("2026-09-20T16:00:00.000Z"); // 含当天 → 半开 +1
   });
 });

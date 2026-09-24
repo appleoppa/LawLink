@@ -1,17 +1,19 @@
 /**
- * AuditLog 保留策略：每天 03:00 删超过 N 天的旧记录。
+ * AuditLog 保留检查：每天 03:00 统计超过 N 天、可考虑归档的记录。
  *
  * 默认 365 天；环境变量 AUDIT_RETENTION_DAYS 可覆盖（如设 90 = 3 个月）。
- * AuditLog 表无 FK 反向引用，安全 hard delete。
+ * 全部记录继续留在原表供查询；本任务不删除或转存记录。
  */
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/server/audit";
+import { shDayKey } from "@/lib/ui/sh-time";
 
 const DEFAULT_RETENTION_DAYS = 365;
 
 export type AuditCleanupResult = {
   retentionDays: number;
-  deleted: number;
+  deleted: 0;
+  eligibleForArchive: number;
   cutoffDate: string;
 };
 
@@ -21,26 +23,28 @@ export async function runAuditCleanup(): Promise<AuditCleanupResult> {
     Number.isFinite(envDays) && envDays > 0 ? envDays : DEFAULT_RETENTION_DAYS;
   const cutoff = new Date(Date.now() - retentionDays * 86400_000);
 
-  const { count } = await prisma.auditLog.deleteMany({
+  const eligibleForArchive = await prisma.auditLog.count({
     where: { createdAt: { lt: cutoff } }
   });
 
-  // 自己写一条 audit 留痕（这条 365 天后又会被自己删，但短期内可查）
+  // 保留检查本身也留痕，后续归档须另行实现及验收。
   await audit({
     userId: null,
-    action: "AUDIT_CLEANUP_CRON",
+    action: "AUDIT_RETENTION_CHECK_CRON",
     targetType: "AuditLog",
     targetId: "retention",
     detail: {
       retentionDays,
-      cutoffDate: cutoff.toISOString().slice(0, 10),
-      deleted: count
+      cutoffDate: shDayKey(cutoff),
+      deleted: 0,
+      eligibleForArchive
     }
   });
 
   return {
     retentionDays,
-    deleted: count,
-    cutoffDate: cutoff.toISOString().slice(0, 10)
+    deleted: 0,
+    eligibleForArchive,
+    cutoffDate: shDayKey(cutoff)
   };
 }

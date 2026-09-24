@@ -21,15 +21,21 @@
  * - 失败路径在此处统一捕获 + 写 *_FAILED_CRON audit，避免 cron 静默失败
  */
 import cron from "node-cron";
-import { runWeeklyReportPush } from "@/server/reports/push-weekly";
+import { runWeeklyReportPush } from "@/server/reports/weekly-push-core";
 import { weekPeriod } from "@/server/reports/weekly";
 import { prisma } from "@/lib/prisma";
 import { scanArchiveOverdue } from "./jobs/archive-overdue";
 import { runAuditCleanup } from "./jobs/audit-cleanup";
-import { scanDueReminders } from "./jobs/scan-due-reminders";
+import { runReminderLedgerCleanup } from "./jobs/reminder-ledger-cleanup";
+import { scanDueReminders, scanPreservationReminders } from "./jobs/scan-due-reminders";
 import { scanSealBackfillReminders } from "./jobs/scan-seal-backfill-reminders";
 import { runDatabaseBackup, backupCronEnabled } from "./jobs/backup-database";
 import { audit } from "@/server/audit";
+import { processDueJobs } from "./worker";
+import { scanScheduleReminders } from "@/server/reminders/schedule";
+import { deliverPendingReminders } from "@/server/reminders/delivery";
+import { shParts } from "@/lib/ui/sh-time";
+import { recoverStaleLeases } from "./queue";
 
 const TIMEZONE = "Asia/Shanghai";
 const STARTUP_RECOVERY_WINDOW_MS = 15 * 60 * 1000;
@@ -239,19 +245,32 @@ export function registerCronJobs() {
     { timezone: TIMEZONE }
   );
 
-  // 每天 03:00 清理超过 N 天的 AuditLog（默认 365 天，AUDIT_RETENTION_DAYS 可覆盖）
+  // 每天 03:00 统计可考虑归档的 AuditLog，全部记录仍保留
   cron.schedule(
     "0 3 * * *",
     () =>
       runWithFailureAudit(
-        "AuditLog 清理",
-        "AUDIT_CLEANUP_FAILED_CRON",
+        "AuditLog 保留检查",
+        "AUDIT_RETENTION_CHECK_FAILED_CRON",
         () => runAuditCleanup()
       ),
     { timezone: TIMEZONE }
   );
 
-  // v0.27: 每天 09:00 扫到期期限（T-3/T-1/T/T+1 四档），发 DEADLINE_REMINDER
+  // F-1 阶段三：提醒台账保留清理（超期 PENDING 置终态 + 删除超期明细，03:10）
+  cron.schedule(
+    "10 3 * * *",
+    () =>
+      runWithFailureAudit(
+        "提醒台账保留清理",
+        "REMINDER_LEDGER_CLEANUP_FAILED_CRON",
+        () => runReminderLedgerCleanup()
+      ),
+    { timezone: TIMEZONE }
+  );
+
+  // v0.27: 每天 09:00 扫到期期限与开庭，发 DEADLINE_REMINDER /
+  // HEARING_REMINDER（期限档位 = 固定档 ∪ 各期限 remindDays，开庭固定 T-3/T-1/T）
   cron.schedule(
     "0 9 * * *",
     () =>
@@ -289,8 +308,38 @@ export function registerCronJobs() {
     );
   }
 
+  // v1.x P1-1: 持久队列 worker——每 2 分钟处理到期任务（含失败退避重试）；
+  // 启动时先恢复宕机遗留的租约过期任务
+  void recoverStaleLeases().catch((err) => {
+    console.error("[queue] 启动恢复租约失败：", err);
+  });
+  cron.schedule(
+    "*/2 * * * *",
+    () =>
+      runWithFailureAudit("队列 worker", "QUEUE_WORKER_FAILED_CRON", () =>
+        (async () => {
+          await recoverStaleLeases();
+          const now = new Date();
+          // 09:00 前补当日紧急项，之后补所有应提醒档；保存后进程中断也不会等到次日。
+          await runWithFailureAudit("日程提醒补扫", "SCHEDULE_REMINDER_CATCHUP_FAILED_CRON", () => scanScheduleReminders(now, shParts(now).hh < 9));
+          // 第六轮体检 P1-2：保全提醒同样每 2 分钟补扫——档位命中式触发对当日
+          // 停机无补偿（09:00 错过即永久跳过该档）；去重按（对象,档位,当日）幂等，
+          // 09:00 前仅补当日关键档（到期当天/逾期首日）。
+          await runWithFailureAudit("保全提醒补扫", "PRESERVATION_REMINDER_CATCHUP_FAILED_CRON", () =>
+            scanPreservationReminders({ criticalOnly: shParts(now).hh < 9 })
+          );
+          // F-1 阶段一：台账投递器——sweep PENDING 登记行，复核对象现值后送达。
+          await runWithFailureAudit("提醒台账投递", "REMINDER_LEDGER_DELIVERY_FAILED_CRON", () =>
+            deliverPendingReminders(20)
+          );
+          return processDueJobs(10);
+        })()
+      ),
+    { timezone: TIMEZONE }
+  );
+
   console.log(
-    "[cron] 已注册 5 个定时作业（周报推送 / 归档逾期扫描 / AuditLog 清理 / 到期提醒扫描 / 用章回填提醒扫描），时区 Asia/Shanghai"
+    `[cron] 已注册 ${backupCronEnabled() ? 8 : 7} 个定时作业（周报推送 / 归档逾期扫描 / AuditLog 清理 / 台账保留清理 / 到期提醒扫描 / 用章回填提醒扫描${backupCronEnabled() ? " / 数据库备份" : ""} / 队列 worker），时区 Asia/Shanghai`
   );
 
   // Recovery is deliberately bounded and audit-gated; registration itself never runs jobs unconditionally.

@@ -1,14 +1,14 @@
 "use client";
+import { FieldGrid, FieldItem } from "@/components/patterns/moan";
 
 import { useState } from "react";
 import { FileText, Pencil } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { litigationStandingLabel, matterCategoryKind } from "@/lib/enums";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import type { MatterPayload } from "./matter-detail-tabs";
 import { RelatedMattersField } from "./related-matters-field";
 
-const ARBITRATION_TYPES = [
+export const ARBITRATION_TYPES = [
   "COMMERCIAL_ARBITRATION",
   "LABOR_ARBITRATION",
   "ARBITRATION_SET_ASIDE",
@@ -25,7 +25,7 @@ const EXECUTION_TYPES = [
 const dash = (v: string | null | undefined) => v?.trim() || "—";
 
 // 商事仲裁配仲裁秘书，诉讼/劳动仲裁配书记员，不会同时出现
-function contactRoleLabels(type: string | undefined) {
+export function contactRoleLabels(type: string | undefined) {
   if (type && ARBITRATION_TYPES.includes(type)) {
     return { lead: "仲裁员", assistant: "仲裁秘书" };
   }
@@ -34,10 +34,14 @@ function contactRoleLabels(type: string | undefined) {
     return { lead: "执行法官", assistant: "书记员" };
   }
 
+  if (type && ["INVESTIGATION", "PROSECUTION_REVIEW"].includes(type)) {
+    return type === "INVESTIGATION" ? { lead: "承办侦查员", assistant: "协办人员" } : { lead: "承办检察官", assistant: "检察官助理" };
+  }
+
   return { lead: "主办法官", assistant: "书记员" };
 }
 
-const PROCEDURE_OUTCOME_LABEL: Record<string, string> = {
+export const PROCEDURE_OUTCOME_LABEL: Record<string, string> = {
   WON: "胜诉",
   PARTIAL_WON: "部分胜诉",
   LOST: "败诉",
@@ -65,8 +69,8 @@ export function InfoPanel({
 }) {
   // 关联案件（双向合并去重）
   const relatedMatters = [
-    ...matter.linksFrom.map((l) => l.relatedMatter),
-    ...matter.linksTo.map((l) => l.matter)
+    ...matter.linksFrom.map((l) => ({ ...l.relatedMatter, relation: l.relation })),
+    ...matter.linksTo.map((l) => ({ ...l.matter, relation: l.relation }))
   ].filter((m, i, arr) => arr.findIndex((x) => x.id === m.id) === i);
 
   // v0.35: 按案件类别分叉展示（诉讼/仲裁 vs 非诉/专项 vs 顾问）
@@ -76,8 +80,8 @@ export function InfoPanel({
     return `${s ? formatDate(s) : "—"} ~ ${e ? formatDate(e) : "—"}`;
   };
   const claimText = matter.claimAmount ? formatCurrency(Number(matter.claimAmount)) : "—";
-  const amountLabel = kind === "counsel" ? "服务期限" : "标的";
-  const amountValue = kind === "counsel" ? period(matter.serviceStart, matter.serviceEnd) : claimText;
+  const isCriminal = matter.category === "CRIMINAL";
+  const isAdministrative = matter.category === "ADMINISTRATIVE";
   // v1.1「信息总览」：只放标题区/侧栏没有的内容——案由、类别、状态、期限
   // 已由页头与 MatterKeypoints 承载，此处聚焦当前程序的档案字段
   const contactLabels = contactRoleLabels(currentProcedure?.type);
@@ -104,107 +108,73 @@ export function InfoPanel({
     || (currentProcedure?.outcome ? PROCEDURE_OUTCOME_LABEL[currentProcedure.outcome] : "");
 
   return (
-    <section className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <span className="flex items-center gap-2">
-            <FileText className="h-4 w-4 text-primary" strokeWidth={1.8} />
-            <h3 className="text-[15px] font-medium">信息总览</h3>
-          </span>
-          {matter.firmCaseNo && (
-            <span className="truncate font-mono text-[11px] text-muted-foreground tabular">
-              {matter.firmCaseNo}
-            </span>
-          )}
+    <div className="card">
+      <div className="panel-head" style={{ borderBottom: "none", paddingBottom: 8 }}>
+        <div className="ws-head min-w-0 flex-1">
+          <div className="ic-wrap">
+            <FileText strokeWidth={1.8} />
+          </div>
+          <div className="min-w-0">
+            <h2>信息总览</h2>
+            <div className="desc truncate">
+              {currentProcedure ? `当前程序档案字段` : "案件档案字段"}
+              {matter.firmCaseNo ? ` · 所内编号 ${matter.firmCaseNo}` : ""}
+            </div>
+          </div>
+          {canEdit ? (
+            <div className="acts">
+              <button type="button" onClick={onEdit} className="btn btn-secondary btn-sm">
+                <Pencil strokeWidth={1.8} />
+                编辑信息
+              </button>
+            </div>
+          ) : null}
         </div>
-        {canEdit && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onEdit}
-            className="h-7 gap-1.5 px-2 text-[11px]"
-          >
-            <Pencil className="h-3 w-3" strokeWidth={1.8} />
-            编辑
-          </Button>
+      </div>
+      <div className="panel-body" style={{ paddingTop: 4 }}>
+        {kind === "litigation" ? (
+          <FieldGrid cols={2}>
+            <FieldItem label="收案时间" mono>{matter.intakeDate ? formatDate(matter.intakeDate) : "—"}</FieldItem>
+            <FieldItem label={isArbitration ? "受理时间" : "立案时间"} mono>{currentProcedure?.acceptedAt ? formatDate(currentProcedure.acceptedAt) : "—"}</FieldItem>
+            <FieldItem label={isCriminal ? "涉嫌罪名" : "案由"}>{dash(causeText)}</FieldItem>
+            <FieldItem label="案号" mono>{dash(currentProcedure?.caseNumber)}</FieldItem>
+            <FieldItem label={isCriminal ? "委托人" : "客户名称"}>{dash(clientName)}</FieldItem>
+            {/* 刑事案件没有「相对方」「反诉」「标的」 */}
+            {!isCriminal ? <FieldItem label={isAdministrative ? "被告行政机关" : "相对方"}>{dash(opposingNames)}</FieldItem> : null}
+            <FieldItem label="我方地位">{standing ? litigationStandingLabel[standing] ?? standing : "—"}</FieldItem>
+            {!isCriminal ? <FieldItem label="标的" mono>{claimText}</FieldItem> : null}
+            {!isCriminal && !isAdministrative ? <FieldItem label={isArbitration ? "是否提出反请求" : "是否反诉"}>{dash(counterclaimText)}</FieldItem> : null}
+            <FieldItem label="律协备案">{barFilingText}</FieldItem>
+            <FieldItem label="管辖地">{dash(currentProcedure?.jurisdiction)}</FieldItem>
+            <FieldItem label={isArbitration ? "仲裁机构" : isCriminal ? "办案机关" : "管辖机构"}>{dash(currentProcedure?.handlingAgency)}</FieldItem>
+            <FieldItem label={contactLabels.lead}>{personName(currentProcedure?.presidingJudge)}</FieldItem>
+            <FieldItem label="联系方式"><ContactText value={currentProcedure?.presidingJudgeContact} /></FieldItem>
+            <FieldItem label={contactLabels.assistant}>{personName(currentProcedure?.judgeAssistant)}</FieldItem>
+            <FieldItem label="联系方式"><ContactText value={currentProcedure?.judgeAssistantContact} /></FieldItem>
+            {currentProcedure?.panel?.trim() ? <FieldItem label={isArbitration ? "仲裁庭" : "合议庭"} wide>{currentProcedure.panel}</FieldItem> : null}
+            {requestContent && !isCriminal ? <FieldItem label={requestLabel} wide><ClampedText text={requestContent} /></FieldItem> : null}
+            {outcomeText ? <FieldItem label={isCriminal ? "处理结果" : "裁判结果"} wide>{outcomeText}</FieldItem> : null}
+            <FieldItem label="关联案件" wide>
+              <RelatedMattersField matterId={matter.id} related={relatedMatters} canManage={canManageRelatedMatters} />
+            </FieldItem>
+          </FieldGrid>
+        ) : (
+          /* 非诉 / 专项 / 顾问：没有立案、案号、相对方、诉讼地位、法官等诉讼字段 */
+          <FieldGrid cols={2}>
+            <FieldItem label="收案时间" mono>{matter.intakeDate ? formatDate(matter.intakeDate) : "—"}</FieldItem>
+            <FieldItem label={kind === "counsel" ? "顾问类型" : "业务类型"}>{dash(kind === "counsel" ? matter.counselType : matter.businessType)}</FieldItem>
+            <FieldItem label="客户名称">{dash(clientName)}</FieldItem>
+            <FieldItem label={kind === "counsel" ? "顾问期限" : "服务期间"} mono>{period(matter.serviceStart, matter.serviceEnd)}</FieldItem>
+            {kind === "project" ? <FieldItem label="项目金额" mono>{claimText}</FieldItem> : null}
+            {matter.serviceScope?.trim() ? <FieldItem label="服务范围" wide><ClampedText text={matter.serviceScope} /></FieldItem> : <FieldItem label="服务范围" wide>—</FieldItem>}
+            {kind === "project" ? <FieldItem label="交付成果" wide>{dash(matter.deliverables)}</FieldItem> : null}
+            <FieldItem label="关联案件" wide>
+              <RelatedMattersField matterId={matter.id} related={relatedMatters} canManage={canManageRelatedMatters} />
+            </FieldItem>
+          </FieldGrid>
         )}
       </div>
-
-      <div className="overflow-hidden rounded-md border border-border">
-        <InfoRow>
-          <Pair label="收案时间">
-            <Mono>{matter.intakeDate ? formatDate(matter.intakeDate) : "—"}</Mono>
-          </Pair>
-          <Pair label="立案时间">
-            <Mono>{currentProcedure?.acceptedAt ? formatDate(currentProcedure.acceptedAt) : "—"}</Mono>
-          </Pair>
-        </InfoRow>
-        <InfoRow>
-          <Pair label="案由">{dash(causeText)}</Pair>
-          <Pair label="案号">
-            <Mono>{dash(currentProcedure?.caseNumber)}</Mono>
-          </Pair>
-        </InfoRow>
-        <InfoRow>
-          <Pair label="客户名称">{dash(clientName)}</Pair>
-          <Pair label="相对方">{dash(opposingNames)}</Pair>
-        </InfoRow>
-        <InfoRow>
-          <Pair label="我方地位">
-            {standing ? litigationStandingLabel[standing] ?? standing : "—"}
-          </Pair>
-          <Pair label={amountLabel}>
-            {kind !== "counsel" ? <Mono>{amountValue}</Mono> : amountValue}
-          </Pair>
-        </InfoRow>
-        <InfoRow>
-          <Pair label="是否反诉">{dash(counterclaimText)}</Pair>
-          <Pair label="律协备案">{barFilingText}</Pair>
-        </InfoRow>
-        <InfoRow>
-          <Pair label="管辖地">{dash(currentProcedure?.jurisdiction)}</Pair>
-          <Pair label="管辖机构">{dash(currentProcedure?.handlingAgency)}</Pair>
-        </InfoRow>
-        <InfoRow>
-          <Pair label={contactLabels.lead}>{personName(currentProcedure?.presidingJudge)}</Pair>
-          <Pair label="联系方式">
-            <ContactText value={currentProcedure?.presidingJudgeContact} />
-          </Pair>
-        </InfoRow>
-        <InfoRow>
-          <Pair label={contactLabels.assistant}>{personName(currentProcedure?.judgeAssistant)}</Pair>
-          <Pair label="联系方式">
-            <ContactText value={currentProcedure?.judgeAssistantContact} />
-          </Pair>
-        </InfoRow>
-        {currentProcedure?.panel?.trim() && (
-          <InfoRow>
-            <Pair label="合议庭">{currentProcedure.panel}</Pair>
-          </InfoRow>
-        )}
-        {requestContent && (
-          <InfoRow>
-            <Pair label={requestLabel}>
-              <ClampedText text={requestContent} />
-            </Pair>
-          </InfoRow>
-        )}
-        {outcomeText && (
-          <InfoRow>
-            <Pair label="裁判结果">{outcomeText}</Pair>
-          </InfoRow>
-        )}
-        <InfoRow>
-          <Pair label="关联案件">
-            <RelatedMattersField
-              matterId={matter.id}
-              related={relatedMatters}
-              canManage={canManageRelatedMatters}
-            />
-          </Pair>
-        </InfoRow>
-      </div>
-    </section>
+    </div>
   );
 }
 
@@ -232,10 +202,6 @@ function ClampedText({ text }: { text: string }) {
   );
 }
 
-/** 数字/案号/日期类取值统一等宽字体 */
-function Mono({ children }: { children: React.ReactNode }) {
-  return <span className="font-mono tabular">{children}</span>;
-}
 
 /** 人名为空时显示「未录入」 */
 function personName(name?: string | null): React.ReactNode {

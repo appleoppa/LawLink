@@ -3,6 +3,8 @@ import { Bell, CheckCheck } from "lucide-react";
 import { getNotifications, markAllNotificationsRead } from "@/server/notifications/actions";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/patterns/moan";
+import { shMonthDayTime } from "@/lib/ui/sh-time";
 
 const typeLabels: Record<string, string> = {
   PRESERVATION_EXPIRY: "保全到期",
@@ -17,8 +19,8 @@ const typeLabels: Record<string, string> = {
 };
 
 const priorityClass: Record<string, string> = {
-  URGENT: "text-red-600",
-  HIGH: "text-orange-600",
+  URGENT: "text-[var(--red)]",
+  HIGH: "text-[var(--amber)]",
   NORMAL: "text-foreground",
   LOW: "text-muted-foreground"
 };
@@ -34,22 +36,21 @@ export default async function NotificationsPage() {
 
   return (
     <div className="space-y-5 pb-8">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl">通知</h1>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            系统提醒、用章、期限和庭审通知
-          </p>
-        </div>
-        {unreadCount > 0 && (
-          <form action={markAllReadAction}>
-            <Button type="submit" variant="outline" size="sm" className="gap-1.5">
-              <CheckCheck className="h-3.5 w-3.5" />
-              全部已读
-            </Button>
-          </form>
-        )}
-      </div>
+      <PageHeader
+        className="!mb-0"
+        title="通知"
+        sub={<>系统提醒、用章、期限和庭审通知{unreadCount > 0 ? <> · 未读 <b>{unreadCount}</b> 条</> : null}</>}
+        actions={
+          unreadCount > 0 ? (
+            <form action={markAllReadAction}>
+              <Button type="submit" variant="secondary" size="sm">
+                <CheckCheck />
+                全部已读
+              </Button>
+            </form>
+          ) : null
+        }
+      />
 
       <div className="ll-surface overflow-hidden rounded-lg">
         {notifications.length === 0 ? (
@@ -116,12 +117,5 @@ export default async function NotificationsPage() {
 }
 
 function formatTime(date: Date | string) {
-  const d = new Date(date);
-  return d.toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false
-  });
+  return shMonthDayTime(date);
 }

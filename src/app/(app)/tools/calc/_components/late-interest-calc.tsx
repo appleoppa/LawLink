@@ -6,20 +6,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { calcLateInterest, numberToChinese } from "@/lib/legal-calc";
-
-function fmtDate(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
+import { shDayKey, shTodayCivil, civilFromKey } from "@/lib/ui/sh-time";
 
 export function LateInterestCalc() {
-  const today = new Date();
-  const halfYearAgo = new Date();
+  // 日历日统一「上海日键 + 本地正午」载体；迟延天数按正午时刻差计算，与浏览器时区无关
+  const todayCivil = shTodayCivil();
+  const halfYearAgo = new Date(todayCivil);
   halfYearAgo.setMonth(halfYearAgo.getMonth() - 6);
 
   const [principal, setPrincipal] = useState("100000");
-  const [dueDate, setDueDate] = useState(fmtDate(halfYearAgo));
-  const [paidDate, setPaidDate] = useState(fmtDate(today));
+  const [dueDate, setDueDate] = useState(shDayKey(halfYearAgo));
+  const [paidDate, setPaidDate] = useState(shDayKey(new Date()));
   const [lprPercent, setLprPercent] = useState("3.45");
   const [extraPercent, setExtraPercent] = useState("5");
 
@@ -27,17 +24,15 @@ export function LateInterestCalc() {
 
   function compute() {
     const p = parseFloat(principal) || 0;
-    const d1 = new Date(dueDate);
-    const d2 = new Date(paidDate);
-    if (isNaN(d1.getTime()) || isNaN(d2.getTime()) || p <= 0) {
+    if (!dueDate || !paidDate || p <= 0) {
       setResult(null);
       return;
     }
     setResult(
       calcLateInterest({
         principal: p,
-        dueDate: d1,
-        paidDate: d2,
+        dueDate: civilFromKey(dueDate),
+        paidDate: civilFromKey(paidDate),
         lprPercent: parseFloat(lprPercent) || 0,
         extraPercent: parseFloat(extraPercent) || 0
       })
@@ -84,7 +79,7 @@ export function LateInterestCalc() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <div>
-            <Label className="text-[11px]">LPR 1Y（%）</Label>
+            <Label className="text-[11px]">一年期 LPR（%）</Label>
             <Input
               type="number"
               step="0.01"
@@ -116,16 +111,16 @@ export function LateInterestCalc() {
       {result && (
         <>
           <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-            <ResultCard label="迟延天数" value={`${result.daysLate} 天`} accent="#737373" />
+            <ResultCard label="迟延天数" value={`${result.daysLate} 天`} accent="#68747F" />
             <ResultCard
               label="年利率"
               value={`${(result.yearlyRate * 100).toFixed(2)}%`}
-              accent="#D97706"
+              accent="#96650B"
             />
             <ResultCard
               label="加倍利息（推荐采用）"
               value={`¥${result.interest.toLocaleString()}`}
-              accent="#DC2626"
+              accent="#B42318"
             />
           </div>
           <div className="mt-3 rounded-md border border-border bg-muted/20 p-3 text-[12px]">
@@ -141,7 +136,7 @@ export function LateInterestCalc() {
           </div>
           <p className="mt-3 flex items-start gap-1.5 text-[11px] text-muted-foreground">
             <Info className="mt-0.5 h-3 w-3 shrink-0" />
-            算法：判决金额 × (LPR 1Y + {extraPercent}%) × 迟延天数 / 365。LPR 以中国人民银行公布为准，建议办案时确认当前值。
+            算法：判决金额 × (一年期 LPR + {extraPercent}%) × 迟延天数 / 365。LPR 以中国人民银行公布为准，建议办案时确认当前值。
           </p>
         </>
       )}

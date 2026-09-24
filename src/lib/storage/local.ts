@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { StorageProvider } from "./provider";
+import { ActionError } from "@/lib/action-error";
 
 const STORAGE_ROOT = process.env.APP_STORAGE_DIR
   ? path.resolve(process.env.APP_STORAGE_DIR)
@@ -19,7 +20,8 @@ export class LocalStorageProvider implements StorageProvider {
   async writeFile(scope: string, data: Buffer): Promise<string> {
     const now = new Date();
     const yyyymm = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
-    const safeScope = scope.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const safeScope = scope.split("/").filter(Boolean).map(part => part.replace(/[^a-zA-Z0-9_-]/g, "_")).join("/");
+    if (!safeScope) throw new ActionError("存储范围不能为空");
     const dir = path.join(STORAGE_ROOT, safeScope, yyyymm);
     await fs.mkdir(dir, { recursive: true });
 
@@ -34,7 +36,7 @@ export class LocalStorageProvider implements StorageProvider {
     // 防止路径穿越
     const resolved = path.resolve(full);
     if (!resolved.startsWith(STORAGE_ROOT)) {
-      throw new Error("非法路径");
+      throw new ActionError("非法路径");
     }
     return fs.readFile(resolved);
   }
@@ -43,7 +45,7 @@ export class LocalStorageProvider implements StorageProvider {
     const full = path.join(STORAGE_ROOT, relPath);
     const resolved = path.resolve(full);
     if (!resolved.startsWith(STORAGE_ROOT)) {
-      throw new Error("非法路径");
+      throw new ActionError("非法路径");
     }
     try {
       await fs.unlink(resolved);

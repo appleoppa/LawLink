@@ -10,26 +10,36 @@
  *
  * 文档上传 / 删除 需要 isArchiveFolder() 配合放行 ARCHIVE 卷宗。
  */
+import { scopeFor } from "@/lib/roles/catalog";
 import { requireSession } from "@/lib/auth/session";
-import { matterAssociationFilter } from "@/lib/permissions";
+import { financeRoleAssociatesAnyMatter, matterAssociationFilter } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { ActionError } from "@/lib/action-error";
 
 type WritableGuardOptions = {
   allowedIfArchivedReason?: string;
   allowFinanceRole?: boolean;
+  /** 合伙人岗位放行全所案件（与 assertCanHandleMatter 同口径；managerAuthorized 不放行——管理权只放大读取） */
+  allowPrincipal?: boolean;
+  /** 显式操作人（cron 队列等无请求上下文的场景替代 requireSession；有请求时不要传，走会话） */
+  actor?: { id: string; role: string; managerAuthorized?: boolean };
 };
 
 async function findWritableMatter(
   matterId: string,
-  opts?: Pick<WritableGuardOptions, "allowFinanceRole">
+  opts?: Pick<WritableGuardOptions, "allowFinanceRole" | "allowPrincipal" | "actor">
 ) {
-  const session = await requireSession();
-  const allowByFinanceRole = opts?.allowFinanceRole && session.user.role === "FINANCE";
+  const session = opts?.actor
+    ? { user: opts.actor }
+    : await requireSession("personal");
+  // 自定义角色只要具备全所范围的「维护收付款」或「确认实收到账」之一，即按财务角色放行案件关联校验
+  const allowByFinanceRole = opts?.allowFinanceRole && !opts?.actor && financeRoleAssociatesAnyMatter(session.user);
+  const allowByPrincipal = opts?.allowPrincipal && session.user.role === "PRINCIPAL_LAWYER";
   return prisma.matter.findFirst({
     where: {
       id: matterId,
       deletedAt: null,
-      ...(allowByFinanceRole ? {} : matterAssociationFilter(session.user.id))
+      ...(allowByFinanceRole || allowByPrincipal ? {} : matterAssociationFilter(session.user.id))
     },
     select: { status: true, archivedAt: true }
   });
@@ -44,12 +54,12 @@ export async function assertMatterWritable(
 ): Promise<void> {
   if (!matterId) return;
   const matter = await findWritableMatter(matterId, opts);
-  if (!matter) throw new Error("案件不存在或无权处理");
+  if (!matter) throw new ActionError("案件不存在或无权处理");
   if (matter.status === "ARCHIVED") {
     const detail = opts?.allowedIfArchivedReason
       ? `（${opts.allowedIfArchivedReason}除外）`
       : "";
-    throw new Error(`案件已归档，禁止修改${detail}`);
+    throw new ActionError(`案件已归档，禁止修改${detail}`);
   }
 }
 
@@ -69,17 +79,19 @@ export function isArchiveFolderName(name: string | null | undefined): boolean {
  */
 export async function assertDocumentWritable(
   matterId: string | null | undefined,
-  opts: { kind: "upload" | "modify"; folderName?: string | null; allowFinanceRole?: boolean }
+  opts: { kind: "upload" | "modify"; folderName?: string | null; allowFinanceRole?: boolean; allowPrincipal?: boolean; actor?: { id: string; role: string; managerAuthorized?: boolean } }
 ): Promise<void> {
   if (!matterId) return;
   const matter = await findWritableMatter(matterId, opts);
-  if (!matter) throw new Error("案件不存在或无权处理");
+  if (!matter) throw new ActionError("案件不存在或无权处理");
   if (matter.status !== "ARCHIVED") return;
 
+  const session = opts?.actor ? { user: opts.actor } : await requireSession("personal");
+  if(scopeFor(session.user,"archive.supplement")!=="OWN")throw new ActionError("归档后追加材料须单独授予补充归档权限");
   if (opts.kind === "modify") {
-    throw new Error("案件已归档，材料不可修改或删除");
+    throw new ActionError("案件已归档，材料不可修改或删除");
   }
   if (opts.kind === "upload" && !isArchiveFolderName(opts.folderName)) {
-    throw new Error("案件已归档，仅允许补传材料到「结案」或「归档」卷宗");
+    throw new ActionError("案件已归档，仅允许补传材料到「结案」或「归档」卷宗");
   }
 }

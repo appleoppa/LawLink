@@ -12,7 +12,6 @@ describe("matter detail click actions", () => {
       ["info-panel.tsx", "import { Button }"],
       ["matter-detail-tabs.tsx", "import { Button }"],
       ["procedure-content.tsx", "import { Button }"],
-      ["procedure-documents-section.tsx", "import { Button }"],
       ["approvals-panel.tsx", "import { Button }"]
     ] as const;
 

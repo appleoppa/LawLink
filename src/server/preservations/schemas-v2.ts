@@ -37,7 +37,6 @@ export const caseUpdateSchema = z.object({
   note: z.string().max(500).optional().or(z.literal("")),
   ownerId: z.string().cuid().optional().nullable(),
   remindDays: z.array(z.coerce.number().int().positive()).optional(),
-  status: z.enum(["ACTIVE", "RENEWED", "EXPIRED", "LIFTED"]).optional(),
 });
 
 // ── Target ──
@@ -66,15 +65,13 @@ export const propertyCreateSchema = z.object({
   expiryDate: z.coerce.date(),
 });
 
+// 直改仅覆盖事实性字段：状态与到期日必须走续期（renew）或到期扫描，
+// 否则会绕过续期台账与审计（2026-09-19 体检 P2）。
 export const propertyUpdateSchema = z.object({
   id: z.string().cuid(),
   propertyType: z.enum(propertyTypes).optional(),
   propertyDetail: z.string().max(500).optional().or(z.literal("")),
   amount: z.coerce.number().nonnegative().optional().nullable(),
-  startDate: z.coerce.date().optional(),
-  duration: z.coerce.number().int().positive().max(3650).optional(),
-  expiryDate: z.coerce.date().optional(),
-  status: z.enum(["ACTIVE", "RENEWED", "EXPIRED", "LIFTED"]).optional(),
 });
 
 export const propertyRenewSchema = z.object({

@@ -6,10 +6,12 @@
  * 内容 = 该用户可见范围内 过去 7 天 ~ 未来 90 天 的开庭 / 期限 / 任务 / 保全到期。
  * 苹果日历 / Google Calendar / Outlook 订阅 URL 后自动定期刷新。
  */
+import { resolveRoleUser } from "@/lib/roles/service";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { queryScheduleItems } from "@/server/schedule/query";
 import { buildIcs, type IcsEvent } from "@/lib/ics";
+import { shParts } from "@/lib/ui/sh-time";
 
 export const dynamic = "force-dynamic";
 
@@ -35,15 +37,20 @@ export async function GET(
     where: { calendarToken: token },
     select: { id: true, role: true, active: true, name: true }
   });
-  if (!user || !user.active) {
+  if (!user || !user.active || !(await resolveRoleUser(user.id, user.role)).enabled) {
     return new NextResponse("Not found", { status: 404 });
   }
 
   const now = new Date();
-  const from = new Date(now.getTime() - PAST_DAYS * 86400000);
-  from.setHours(0, 0, 0, 0);
-  const to = new Date(now.getTime() + FUTURE_DAYS * 86400000);
-  to.setHours(23, 59, 59, 999);
+  // 订阅窗口按上海日历日取边界（P1-6）：此前 setHours 用服务器本地午夜，
+  // UTC 容器下窗口边界落在上海 08:00，过去 7 天首日 00:00-08:00 的事项会被漏掉。
+  const dayOf = (offsetDays: number) => {
+    const d = new Date(now.getTime() + offsetDays * 86400000);
+    const p = shParts(d);
+    return `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;
+  };
+  const from = new Date(`${dayOf(-PAST_DAYS)}T00:00:00+08:00`);
+  const to = new Date(`${dayOf(FUTURE_DAYS)}T23:59:59+08:00`);
 
   const items = await queryScheduleItems(user.id, user.role, {
     from,
@@ -81,7 +88,8 @@ export async function GET(
     status: 200,
     headers: {
       "Content-Type": "text/calendar; charset=utf-8",
-      "Cache-Control": "private, max-age=300",
+      // 重置订阅链接后旧 token 立即失效：不缓存（此前 max-age=300 让旧链接最长 5 分钟仍可读）
+      "Cache-Control": "private, no-store",
       "Content-Disposition": 'inline; filename="lawlink.ics"'
     }
   });

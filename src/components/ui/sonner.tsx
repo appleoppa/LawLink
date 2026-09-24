@@ -19,6 +19,7 @@ const Toaster = ({ toastOptions, ...props }: ToasterProps) => {
   return (
     <Sonner
       theme="light"
+      containerAriaLabel="通知"
       position="bottom-right"
       className="toaster group"
       icons={{

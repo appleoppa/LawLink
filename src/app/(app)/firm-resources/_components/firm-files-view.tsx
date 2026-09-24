@@ -2,25 +2,19 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
-import {
-  FolderArchive,
-  Search,
-  Upload,
-  Download,
-  Trash2,
-  History,
-  X,
-  Tag,
-  Loader2
-} from "lucide-react";
+import { FolderArchive, Search, Download, Trash2, History, X, Tag, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { FirmFileCategory } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { deleteFirmFile } from "@/server/firm-files/actions";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { UploadDialog } from "./upload-dialog";
 import { PreviewDialog } from "./preview-dialog";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { useTopbarAction } from "@/components/layout/topbar-action";
+import { Segmented } from "@/components/patterns/moan";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type FileEntry = {
   id: string;
@@ -37,14 +31,14 @@ type FileEntry = {
 };
 
 const CATEGORY_META: Record<FirmFileCategory, { label: string; color: string }> = {
-  POLICY: { label: "制度", color: "#9B7BF7" },
-  GUIDE: { label: "指引", color: "#5B8DEF" },
-  TEMPLATE: { label: "参考模板", color: "#48BB78" },
-  REFERENCE: { label: "其他文件", color: "#F5A742" },
-  CONTRACT: { label: "合同", color: "#5B8DEF" },
-  LETTER: { label: "函件", color: "#48BB78" },
-  LICENSE: { label: "证照", color: "#F5A742" },
-  OTHER_FIRM: { label: "其他", color: "#9B7BF7" }
+  POLICY: { label: "制度", color: "#6C3FC5" },
+  GUIDE: { label: "指引", color: "#1E56C8" },
+  TEMPLATE: { label: "参考模板", color: "#1A7F45" },
+  REFERENCE: { label: "其他文件", color: "#96650B" },
+  CONTRACT: { label: "合同", color: "#1E56C8" },
+  LETTER: { label: "函件", color: "#1A7F45" },
+  LICENSE: { label: "证照", color: "#96650B" },
+  OTHER_FIRM: { label: "其他", color: "#6C3FC5" }
 };
 
 /** 律所文书页展示的分类 */
@@ -70,7 +64,6 @@ export function FirmFilesView({
   hideCategoryNav,
   headerTitle,
   headerSubtitle,
-  headerIcon,
   categorySet
 }: {
   files: FileEntry[];
@@ -88,7 +81,6 @@ export function FirmFilesView({
   /** v0.44: 覆盖默认标题/副标题/图标 */
   headerTitle?: string;
   headerSubtitle?: string;
-  headerIcon?: React.ReactNode;
   /** v0.44: 分类集合（"firm"=律所文书新分类，默认旧分类） */
   categorySet?: "firm" | "legacy";
 }) {
@@ -96,6 +88,7 @@ export function FirmFilesView({
   const sp = useSearchParams();
   const [search, setSearch] = useState(currentSearch);
   const [uploadOpen, setUploadOpen] = useState(false);
+  useTopbarAction(canUpload ? { label: "上传资料", onClick: () => setUploadOpen(true) } : null, [canUpload]);
   const [previewFile, setPreviewFile] = useState<FileEntry | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -127,8 +120,8 @@ export function FirmFilesView({
     navigate({ q: search.trim() || undefined });
   }
 
-  function handleDelete(f: FileEntry) {
-    if (!confirm(`确认删除「${f.name}」？\n（软删除，可在数据库找回）`)) return;
+  async function handleDelete(f: FileEntry) {
+    if (!(await confirmDialog({ title: `删除「${f.name}」？`, description: "软删除：列表不再展示，数据仍保留可由管理员找回。", confirmText: "删除", danger: true }))) return;
     setPendingId(f.id);
     startTransition(async () => {
       try {
@@ -136,7 +129,7 @@ export function FirmFilesView({
         toast.success("已删除");
         router.refresh();
       } catch (err) {
-        toast.error("删除失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("删除失败", { description: actionErrorMessage(err) });
       } finally {
         setPendingId(null);
       }
@@ -157,11 +150,10 @@ export function FirmFilesView({
       {!hideHeader ? (
         <header className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="flex items-center gap-2 text-xl">
-              {headerIcon ?? <FolderArchive className="h-5 w-5 text-primary" strokeWidth={1.8} />}
+            <h1 className="mo-ph-title">
               {headerTitle ?? "律所文书"}
             </h1>
-            <p className="mt-0.5 text-[12px] text-muted-foreground">
+            <p className="mo-ph-sub">
               {headerSubtitle ?? (
                 <>
                   合同 · 函件 · 证照 · 其他。全所共享，
@@ -170,45 +162,18 @@ export function FirmFilesView({
               )}
             </p>
           </div>
-          {canUpload && (
-            <Button size="sm" onClick={() => setUploadOpen(true)} className="gap-1.5">
-              <Upload className="h-3.5 w-3.5" />
-              上传资料
-            </Button>
-          )}
         </header>
-      ) : (
-        canUpload && (
-          <div className="flex justify-end">
-            <Button size="sm" onClick={() => setUploadOpen(true)} className="gap-1.5">
-              <Upload className="h-3.5 w-3.5" />
-              上传资料
-            </Button>
-          </div>
-        )
-      )}
+      ) : null}
 
       {/* 筛选条 */}
       <div className="space-y-3">
         {!hideCategoryNav && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <CategoryChip
-            label="全部"
-            color="#5B8DEF"
-            count={files.length}
-            active={!currentCategory}
-            onClick={() => navigate({ category: undefined })}
+          <Segmented
+            items={[{ key: "ALL", label: "全部", count: files.length }, ...activeCategories.map((c) => ({ key: c as string, label: CATEGORY_META[c].label, count: counts[c] }))]}
+            value={currentCategory ?? "ALL"}
+            onChange={(k) => navigate({ category: k === "ALL" ? undefined : (k as typeof activeCategories[number]) })}
           />
-          {activeCategories.map((c) => (
-            <CategoryChip
-              key={c}
-              label={CATEGORY_META[c].label}
-              color={CATEGORY_META[c].color}
-              count={counts[c]}
-              active={currentCategory === c}
-              onClick={() => navigate({ category: c })}
-            />
-          ))}
           <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-[11px] text-muted-foreground">
             <input
               type="checkbox"
@@ -273,7 +238,7 @@ export function FirmFilesView({
                 className={cn(
                   "group rounded-xl border bg-card p-3",
                   f.hasNewerVersion
-                    ? "border-amber-300 bg-amber-50/30"
+                    ? "border-[var(--amber-line)] bg-[var(--amber-bg)]"
                     : "border-border"
                 )}
               >
@@ -300,13 +265,13 @@ export function FirmFilesView({
                         {meta.label}
                       </span>
                       {f.hasNewerVersion && (
-                        <span className="shrink-0 rounded border border-amber-400 bg-amber-100 px-1 py-0.5 text-[9px] text-amber-700">
+                        <span className="shrink-0 rounded border border-[var(--amber-line)] bg-[var(--amber-bg)] px-1 py-0.5 text-[9px] text-[var(--amber)]">
                           旧版
                         </span>
                       )}
                       {f.supersedesCount > 0 && (
                         <span
-                          className="shrink-0 inline-flex items-center gap-0.5 rounded border border-violet-300 bg-violet-50 px-1 py-0.5 text-[9px] text-violet-700"
+                          className="shrink-0 inline-flex items-center gap-0.5 rounded border border-[var(--violet-line)] bg-[var(--violet-bg)] px-1 py-0.5 text-[9px] text-[var(--violet)]"
                           title={`已替代 ${f.supersedesCount} 个旧版`}
                         >
                           <History className="h-2.5 w-2.5" />v{f.supersedesCount + 1}
@@ -315,7 +280,7 @@ export function FirmFilesView({
                       <span className="ml-auto flex shrink-0 items-center gap-1.5 text-[10px] text-muted-foreground">
                         <span className="font-mono tabular">{formatBytes(f.size)}</span>
                         <span className="opacity-50">·</span>
-                        <span>{new Date(f.createdAt).toLocaleDateString("zh-CN")}</span>
+                        <span>{formatDate(new Date(f.createdAt))}</span>
                         <span className="opacity-50">·</span>
                         <span>{f.uploadedBy.name}</span>
                         {f.tags.length > 0 && (
@@ -389,33 +354,3 @@ export function FirmFilesView({
   );
 }
 
-function CategoryChip({
-  label,
-  color,
-  count,
-  active,
-  onClick
-}: {
-  label: string;
-  color: string;
-  count: number;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs transition-colors",
-        active
-          ? "border-primary bg-primary/15 text-primary"
-          : "border-border bg-background text-muted-foreground hover:border-input hover:bg-muted hover:text-foreground"
-      )}
-    >
-      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
-      {label}
-      <span className="font-mono text-[10px] tabular opacity-70">{count}</span>
-    </button>
-  );
-}

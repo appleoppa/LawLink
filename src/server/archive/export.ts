@@ -12,10 +12,16 @@
  *       {category}/
  *         {N}_{原文件名}
  */
+import {Prisma} from "@prisma/client";
+import {closureReady} from "./closure";
 import PizZip from "pizzip";
 import { prisma } from "@/lib/prisma";
-import { storage } from "@/lib/storage";
-import { decryptBuffer, sha256 } from "@/lib/storage/crypto";
+import { decryptIdNumber } from "@/lib/clients/id-number-crypto";
+import { sha256 } from "@/lib/storage/crypto";
+import { shDayKey } from "@/lib/ui/sh-time";
+import { parseArchiveSnapshot } from "@/lib/archive/snapshot";
+import { verifyArchivePolicySource, verifyArchiveSnapshotDocuments } from "./verification";
+import { ActionError } from "@/lib/action-error";
 
 interface ZipResult {
   buffer: Buffer;
@@ -37,21 +43,12 @@ function safeName(s: string): string {
   return s.replace(/[\\/:*?"<>|]/g, "_").trim();
 }
 
-async function readDocumentBuffer(doc: {
-  path: string;
-  encrypted: boolean;
-  iv: string | null;
-  authTag: string | null;
-}): Promise<Buffer> {
-  const raw = await storage.readFile(doc.path);
-  if (!doc.encrypted) return raw;
-  if (!doc.iv || !doc.authTag) throw new Error("加密元数据损坏");
-  return decryptBuffer(raw, doc.iv, doc.authTag);
-}
-
-export async function buildArchiveZip(matterId: string): Promise<ZipResult> {
-  const matter = await prisma.matter.findUnique({
-    where: { id: matterId },
+export async function buildArchiveManifest(db:Prisma.TransactionClient,archiveId:string){
+ const archive=await db.archiveRecord.findUniqueOrThrow({where:{id:archiveId}});
+ const snapshot=parseArchiveSnapshot(archive.checklistJson);if(!snapshot)throw new ActionError("归档材料快照缺失");
+ const docs=[...snapshot.documents].sort((a,b)=>a.order-b.order);
+  const matter = await db.matter.findUnique({
+    where: { id: archive.matterId },
     include: {
       primaryClient: true,
       cause: { select: { name: true, code: true } },
@@ -70,36 +67,10 @@ export async function buildArchiveZip(matterId: string): Promise<ZipResult> {
       notes: { where: { deletedAt: null }, orderBy: { occurredAt: "asc" } },
       billings: true,
       feeEntries: { orderBy: { occurredAt: "asc" } },
-      archiveRecords: { orderBy: { archivedAt: "desc" }, take: 1 },
       owner: { select: { id: true, name: true } }
     }
   });
-  if (!matter) throw new Error("案件不存在");
-  if (matter.archiveRecords.length === 0) throw new Error("案件尚未归档，无法导出");
-
-  const archive = matter.archiveRecords[0];
-  const docs = await prisma.document.findMany({
-    where: { matterId, deletedAt: null },
-    select: {
-      id: true,
-      name: true,
-      category: true,
-      path: true,
-      encrypted: true,
-      iv: true,
-      authTag: true,
-      mimeType: true,
-      size: true,
-      createdAt: true,
-      tags: true
-    },
-    orderBy: { createdAt: "asc" }
-  });
-
-  const zip = new PizZip();
-  const root = safeName(archive.archiveNo);
-
-  // ===== manifest.json：结构化数据快照（脱敏：密码、apiKey、authTag 等不导出）
+  if(!matter)throw new ActionError("案件不存在");
   const manifest = {
     archiveNo: archive.archiveNo,
     archivedAt: archive.archivedAt.toISOString(),
@@ -130,7 +101,7 @@ export async function buildArchiveZip(matterId: string): Promise<ZipResult> {
             id: matter.primaryClient.id,
             name: matter.primaryClient.name,
             type: matter.primaryClient.type,
-            idNumber: matter.primaryClient.idNumber,
+            idNumber: decryptIdNumber(matter.primaryClient.idNumber) || null,
             phone: matter.primaryClient.phone,
             email: matter.primaryClient.email,
             address: matter.primaryClient.address
@@ -213,11 +184,40 @@ export async function buildArchiveZip(matterId: string): Promise<ZipResult> {
       id: d.id,
       name: d.name,
       category: d.category,
+      workflowStatus: d.workflowStatus,
+      version: d.version,
+      isLatest: d.isLatest,
       size: d.size,
-      createdAt: d.createdAt.toISOString(),
-      tags: d.tags
+      sha256: d.sha256,
+      folderName: d.folderName,
+      checklistItemIds: d.checklistItemIds,
+      order: d.order
     }))
   };
+  return manifest;
+}
+
+export async function buildArchiveZip(archiveId: string): Promise<ZipResult> {
+  const archive = await prisma.archiveRecord.findUnique({ where: { id: archiveId } });
+  if (!archive || archive.status !== "APPROVED") throw new ActionError("归档记录不存在或尚未批准");
+  const snapshot = parseArchiveSnapshot(archive.checklistJson);
+  if (!snapshot) throw new ActionError("该历史归档记录未固定批准材料，不能生成可核验归档包");
+  let manifest:Awaited<ReturnType<typeof buildArchiveManifest>>;
+  if(await closureReady(prisma)){
+    const [fixed]=await prisma.$queryRaw<{frozenManifest:Awaited<ReturnType<typeof buildArchiveManifest>>|null}[]>`SELECT "frozenManifest" FROM "ArchiveRecord" WHERE id=${archiveId}`;
+    if(!fixed?.frozenManifest)throw new ActionError("批准时未固定卷宗数据，不可生成归档包");
+    manifest=fixed.frozenManifest;
+  }else manifest=await buildArchiveManifest(prisma,archiveId);
+  const matter=manifest.matter;
+  if (!matter) throw new ActionError("案件不存在");
+  await verifyArchivePolicySource(snapshot);
+  const verified = await verifyArchiveSnapshotDocuments(snapshot, matter.id);
+  const docs = [...snapshot.documents].sort((a, b) => a.order - b.order);
+
+  const zip = new PizZip();
+  const root = safeName(archive.archiveNo);
+
+  // ===== manifest.json：结构化数据快照（脱敏：密码、apiKey、authTag 等不导出）
   zip.file(`${root}/manifest.json`, JSON.stringify(manifest, null, 2));
 
   // ===== README.md
@@ -226,9 +226,9 @@ export async function buildArchiveZip(matterId: string): Promise<ZipResult> {
     "",
     `归档编号：**${archive.archiveNo}**  `,
     `案件编号：${matter.internalCode}  `,
-    `归档日期：${archive.archivedAt.toISOString().slice(0, 10)}  `,
+    `归档日期：${shDayKey(archive.archivedAt)}  `,
     `归档人：${archive.archivedBy}  `,
-    archive.completedAt ? `结案日期：${archive.completedAt.toISOString().slice(0, 10)}` : "",
+    archive.completedAt ? `结案日期：${shDayKey(archive.completedAt)}` : "",
     "",
     "## 结案小结",
     "",
@@ -253,14 +253,16 @@ export async function buildArchiveZip(matterId: string): Promise<ZipResult> {
   if (archive.coverDocId) {
     const cover = docs.find((d) => d.id === archive.coverDocId);
     if (cover) {
-      const buf = await readDocumentBuffer(cover);
+      const buf = verified.buffers.get(cover.id);
+      if (!buf) throw new ActionError("卷宗封皮文件缺失");
       zip.file(`${root}/封皮和目录/卷宗封皮.docx`, buf);
     }
   }
   if (archive.catalogDocId) {
     const catalog = docs.find((d) => d.id === archive.catalogDocId);
     if (catalog) {
-      const buf = await readDocumentBuffer(catalog);
+      const buf = verified.buffers.get(catalog.id);
+      if (!buf) throw new ActionError("卷宗目录文件缺失");
       zip.file(`${root}/封皮和目录/卷宗目录.docx`, buf);
     }
   }
@@ -275,20 +277,13 @@ export async function buildArchiveZip(matterId: string): Promise<ZipResult> {
     const dir = CATEGORY_DIR[d.category] ?? "其他";
     const n = (seqByCategory[dir] ?? 0) + 1;
     seqByCategory[dir] = n;
-    try {
-      const buf = await readDocumentBuffer(d);
-      const seq = String(n).padStart(3, "0");
-      zip.file(`${root}/材料/${dir}/${seq}_${safeName(d.name)}`, buf);
-    } catch (err) {
-      console.error(`[archive-export] 材料读取失败：${d.id}`, err);
-      // 单文件失败不阻断；写一条说明
-      zip.file(
-        `${root}/材料/${dir}/_读取失败_${safeName(d.name)}.txt`,
-        `该文件读取失败：${err instanceof Error ? err.message : String(err)}`
-      );
-    }
+    const buf = verified.buffers.get(d.id);
+    if (!buf) throw new ActionError(`归档材料“${d.name}”读取失败`);
+    const seq = String(n).padStart(3, "0");
+    zip.file(`${root}/材料/${dir}/${seq}_${safeName(d.name)}`, buf);
   }
 
+  Object.values(zip.files).forEach(file=>{file.date=new Date(archive.archivedAt);});
   const buffer = zip.generate({ type: "nodebuffer" }) as Buffer;
   return {
     buffer,

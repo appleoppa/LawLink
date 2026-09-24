@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 168" role="img" aria-labelledby="title desc">
+  <title id="title">LawLink independent logo</title>
+  <desc id="desc">LawLink wordmark with a linked legal section mark.</desc>
+  <defs>
+    <linearGradient id="tile" x1="16" y1="10" x2="82" y2="88" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#eef3f7"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(28 28) scale(1.18)">
+    <rect x="7" y="7" width="82" height="82" rx="24" fill="url(#tile)"/>
+    <rect x="7.5" y="7.5" width="81" height="81" rx="23.5" fill="none" stroke="#d8e1ea"/>
+    <path
+      d="M58 24H43.5C34.9 24 28 30.1 28 37.8S34.9 51.5 43.5 51.5H53C61.6 51.5 68.5 57.7 68.5 65.2S61.6 79 53 79H36"
+      fill="none"
+      stroke="#0f1b2d"
+      stroke-width="8.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <path d="M38.5 51.5h20" fill="none" stroke="#007b7f" stroke-width="8.5" stroke-linecap="round"/>
+    <circle cx="48.5" cy="51.5" r="3.6" fill="#f7fbfb"/>
+  </g>
+  <text
+    x="168"
+    y="103"
+    fill="#0f1b2d"
+    font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', Inter, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif"
+    font-size="66"
+    font-weight="740"
+  >LawLink</text>
+  <path d="M169 122h312" stroke="#007b7f" stroke-width="3.5" stroke-linecap="round" opacity="0.88"/>
+</svg>

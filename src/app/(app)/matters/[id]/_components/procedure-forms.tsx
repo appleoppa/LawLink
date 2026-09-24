@@ -49,7 +49,14 @@ import {
   HOLIDAY_NOTE
 } from "@/lib/deadline-rules";
 import { procedureTypeLabel } from "@/lib/enums";
+import type { z } from "zod";
+import { actionErrorMessage } from "@/lib/action-error";
+
+// 开庭表单的客户端形态：startsAt 走 datetime-local 字符串 state（上海时区解析），不进 zod
+const hearingFormSchema = hearingCreateSchema.omit({ startsAt: true });
+type HearingFormValues = z.infer<typeof hearingFormSchema>;
 import { proceduresByCategory } from "@/lib/procedures-by-category";
+import { shDayKey } from "@/lib/ui/sh-time";
 import {
   agencyOptionsForProcedure,
   isAgencyAllowedForProcedure,
@@ -167,7 +174,7 @@ export function AddProcedureSheet({
         onOpenChange(false);
       } catch (err) {
         toast.error("添加失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });
@@ -289,8 +296,9 @@ export function AddProcedureSheet({
                   type="date"
                   {...register("acceptedAt")}
                   onChange={(e) => {
-                    const v = e.target.value;
-                    setValue("acceptedAt", v ? new Date(v) : undefined, { shouldValidate: true });
+                    // schema 接收 yyyy-MM-dd 字符串（内部 transform 成 Date），不能塞 Date 对象；
+                    // setValue 按 schema 输出类型（Date）约束，沿用 applyRule 的 cast 写法
+                    setValue("acceptedAt", (e.target.value || undefined) as unknown as Date, { shouldValidate: true });
                   }}
                 />
               </Field>
@@ -334,6 +342,19 @@ const deadlineCategoryLabel: Record<
   CUSTOM: "其他"
 };
 
+// 工厂而非内联字面量：dueAt 须在每次打开/重置时取「现在」，常驻挂载的对话框跨天后仍会默认昨天
+function deadlineDefaults(procedureId: string): DeadlineCreateInput {
+  return {
+    procedureId,
+    title: "",
+    category: "CUSTOM",
+    // yyyy-MM-dd 字符串默认值：date input 不回显 Date 对象；空串会在 zod 校验报错并显示
+    dueAt: shDayKey(new Date()) as unknown as Date,
+    basis: "",
+    remindDays: 3
+  };
+}
+
 export function AddDeadlineDialog({
   open,
   onOpenChange,
@@ -357,14 +378,7 @@ export function AddDeadlineDialog({
     formState: { errors }
   } = useForm<DeadlineCreateInput>({
     resolver: zodResolver(deadlineCreateSchema),
-    defaultValues: {
-      procedureId: defaultProcedureId,
-      title: "",
-      category: "CUSTOM",
-      dueAt: new Date(),
-      basis: "",
-      remindDays: 3
-    }
+    defaultValues: deadlineDefaults(defaultProcedureId)
   });
   const procedureId = useWatch({ control, name: "procedureId" });
   const category = useWatch({ control, name: "category" });
@@ -374,7 +388,8 @@ export function AddDeadlineDialog({
   const [rules, setRules] = useState<RuleOption[]>([]);
   const [rulesLoading, setRulesLoading] = useState(false);
   const [selectedRuleId, setSelectedRuleId] = useState("");
-  const [triggerDate, setTriggerDate] = useState(() => formatLocalDate(new Date()));
+  // 起算日默认「上海的今天」；后续推算链（date 字符串 → 本地午夜载体 → 本地字段）在浏览器内自洽
+  const [triggerDate, setTriggerDate] = useState(() => shDayKey(new Date()));
   const selectedRule = rules.find((r) => r.id === selectedRuleId) ?? null;
   const computedDue = (() => {
     if (!selectedRule || !triggerDate) return null;
@@ -409,6 +424,14 @@ export function AddDeadlineDialog({
     const trigger = new Date(`${triggerDate}T00:00:00`);
     setValue("title", selectedRule.name, { shouldDirty: true });
     setValue("category", selectedRule.category, { shouldDirty: true });
+    // v1.x P0-8: 规则生成的期限带来源——提交后以"待确认"落库，律师核对起算事实后确认
+    setValue("sourceRuleId", selectedRule.id, { shouldDirty: true });
+    // 第六轮体检 P2-1：携带规则起算日，服务端据此按规则重算比对（不一致在 basis 标注）；
+    // 与 dueAt 同款：date 字符串经 as-cast 赋值，提交时 zod coerce.date() 转回
+    setValue("sourceTriggerDate", triggerDate as unknown as Date, { shouldDirty: true });
+    setValue("startFact", `${selectedRule.triggerLabel}（${formatLocalDate(trigger)}）`, {
+      shouldDirty: true
+    });
     // date input 注册了 valueAsDate，程序化赋值需要 yyyy-MM-dd 字符串才能正确
     // 回显；提交时 zod coerce.date() 会转回 Date
     setValue("dueAt", formatLocalDate(computedDue) as unknown as Date, {
@@ -429,10 +452,26 @@ export function AddDeadlineDialog({
     toast.success("已按法定期限填入，可再人工调整", { description: HOLIDAY_NOTE });
   }
 
+  // 打开（变为 true）时重新生成默认值：defaultValues 只在首次渲染求值，跨天打开默认「到期日」会是昨天
+  useEffect(() => {
+    if (!open) return;
+    reset(deadlineDefaults(defaultProcedureId));
+    // 起算日默认「上海的今天」同理，随打开刷新
+    setTriggerDate(shDayKey(new Date()));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
   // 打开时把所处程序默认值同步为当前选中程序
   useEffect(() => {
-    if (open) setValue("procedureId", defaultProcedureId);
-  }, [open, defaultProcedureId, setValue]);
+    if (open) {
+      setValue("procedureId", defaultProcedureId);
+      // 手动重新打开时清空上次的规则来源（未选规则=人工录入=已确认）
+      if (!selectedRuleId) {
+        setValue("sourceRuleId", "", { shouldDirty: false });
+        setValue("startFact", "", { shouldDirty: false });
+      }
+    }
+  }, [open, defaultProcedureId, setValue, selectedRuleId]);
 
   function onSubmit(values: DeadlineCreateInput) {
     startTransition(async () => {
@@ -443,7 +482,7 @@ export function AddDeadlineDialog({
         onOpenChange(false);
       } catch (err) {
         toast.error("添加失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });
@@ -526,8 +565,8 @@ export function AddDeadlineDialog({
                           </a>
                         )}
                         {selectedRule.verifiedAt && (
-                          <span className="ml-1.5 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-700">
-                            已核验 {formatLocalDate(new Date(selectedRule.verifiedAt))}
+                          <span className="ml-1.5 rounded bg-[var(--green-bg)] px-1.5 py-0.5 text-[10px] text-[var(--green)]">
+                            已核验 {shDayKey(selectedRule.verifiedAt)}
                           </span>
                         )}
                       </p>
@@ -586,8 +625,8 @@ export function AddDeadlineDialog({
               </Select>
             </Field>
 
-            <Field label="到期日" required>
-              <Input type="date" {...register("dueAt", { valueAsDate: true })} />
+            <Field label="到期日" required error={errors.dueAt?.message}>
+              <Input type="date" {...register("dueAt")} />
             </Field>
 
             <Field label="计算依据">
@@ -597,7 +636,7 @@ export function AddDeadlineDialog({
               />
             </Field>
 
-            <Field label="提前提醒（天）">
+            <Field label="提前提醒（天）" error={errors.remindDays?.message as string | undefined}>
               <Input
                 type="number"
                 min={0}
@@ -657,12 +696,12 @@ export function AddHearingDialog({
     reset,
     setValue,
     formState: { errors }
-  } = useForm<HearingCreateInput>({
-    resolver: zodResolver(hearingCreateSchema),
+  } = useForm<HearingFormValues>({
+    // startsAt 由 datetime-local 字符串 state 承载（+08:00 解析），不经 zod 的本地时区 coerce
+    resolver: zodResolver(hearingFormSchema),
     defaultValues: {
       procedureId: defaultProcedureId,
       title: "",
-      startsAt: new Date(),
       endsAt: undefined,
       room: "",
       address: "",
@@ -671,6 +710,8 @@ export function AddHearingDialog({
       notes: ""
     }
   });
+  const [startsAtInput, setStartsAtInput] = useState("");
+  const [startsAtError, setStartsAtError] = useState("");
 
   const hearingProcedureId = useWatch({ control, name: "procedureId" });
 
@@ -698,11 +739,11 @@ export function AddHearingDialog({
     startTransition(async () => {
       try {
         const result = await parseSummons(fd);
+        // 回填同样用 datetime-local 字符串：Date 对象不会被 input 回显，用户将无法核对
         if (result.hearingDate && result.hearingTime) {
-          const dt = `${result.hearingDate}T${result.hearingTime}`;
-          setValue("startsAt", new Date(dt));
+          setStartsAtInput(`${result.hearingDate}T${result.hearingTime}`);
         } else if (result.hearingDate) {
-          setValue("startsAt", new Date(`${result.hearingDate}T09:00`));
+          setStartsAtInput(`${result.hearingDate}T09:00`);
         }
         if (result.courtRoom) setValue("room", result.courtRoom);
         if (result.judge) setValue("judge", result.judge);
@@ -715,7 +756,7 @@ export function AddHearingDialog({
         toast.success("传票识别完成，请核对信息");
       } catch (err) {
         toast.error("传票识别失败", {
-          description: err instanceof Error ? err.message : "请手动填写"
+          description: err instanceof Error ? actionErrorMessage(err) : "请手动填写"
         });
       } finally {
         setOcrLoading(false);
@@ -725,20 +766,29 @@ export function AddHearingDialog({
     });
   }
 
-  function onSubmit(values: HearingCreateInput) {
+  function onSubmit(values: HearingFormValues) {
+    // datetime-local 字符串按上海时区解释（境外浏览器不漂移）；为空时就地报错，不再静默
+    if (!startsAtInput.trim()) {
+      setStartsAtError("请填写开庭时间");
+      return;
+    }
+    const parsed = new Date(`${startsAtInput}:00+08:00`);
+    if (Number.isNaN(parsed.getTime())) {
+      setStartsAtError("开庭时间格式不正确");
+      return;
+    }
+    setStartsAtError("");
     startTransition(async () => {
       try {
-        await addHearing({
-          ...values,
-          startsAt: values.startsAt instanceof Date ? values.startsAt.toISOString() : values.startsAt,
-          endsAt: values.endsAt instanceof Date ? values.endsAt.toISOString() : values.endsAt
-        });
+        await addHearing({ ...values, startsAt: parsed });
         toast.success("开庭已添加");
         reset();
+        setStartsAtInput("");
+        setStartsAtError("");
         onOpenChange(false);
       } catch (err) {
         toast.error("添加失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });
@@ -819,10 +869,14 @@ export function AddHearingDialog({
 
             {/* 开庭时间 + 法庭 一行 */}
             <div className="grid grid-cols-2 gap-3">
-              <Field label="开庭时间" required>
+              <Field label="开庭时间" required error={startsAtError || undefined}>
                 <Input
                   type="datetime-local"
-                  {...register("startsAt", { valueAsDate: true })}
+                  value={startsAtInput}
+                  onChange={(e) => {
+                    setStartsAtInput(e.target.value);
+                    if (startsAtError) setStartsAtError("");
+                  }}
                 />
               </Field>
               <Field label="法庭">

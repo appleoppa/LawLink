@@ -1,10 +1,12 @@
 "use client";
 
+import { FormDialogContent as DialogContent, FormDialogBody } from "@/components/patterns/form-dialog";
+
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import type { PreservationType, PropertyType } from "@prisma/client";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,10 +20,22 @@ import {
 } from "@/server/preservations/actions-v2";
 import { PRES_TYPE_CN, PROPERTY_TYPE_CN, type PreservationCaseRow, type MatterOption, type UserOption } from "./preservation-types";
 import {
-  addDays,
   defaultDurationDays,
   defaultExpiryDate
 } from "@/lib/preservation-defaults";
+import { civilFromKey, civilKey, shTodayCivil } from "@/lib/ui/sh-time";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { formatDate } from "@/lib/utils";
+import { actionErrorMessage } from "@/lib/action-error";
+
+/**
+ * 起算日的统一口径（2026-09-20 第五轮审计时区修复）：
+ * 输入框日期串转本地正午日历日（不落 UTC 午夜真瞬间），空值取上海今天——
+ * 非中国时区浏览器上起算日不再偏一天，与服务端口径一致。
+ */
+function startCivil(startDate: string): Date {
+  return startDate ? civilFromKey(startDate) : shTodayCivil();
+}
 
 // ── Case Dialog (create + edit) ──
 
@@ -55,31 +69,39 @@ export function PreservationCaseDialog({
   const [propertyDetail, setPropertyDetail] = useState("");
   const [amount, setAmount] = useState("");
   const [startDate, setStartDate] = useState("");
-  const [duration, setDuration] = useState("");
+  // F-2：到期日（法院文书载明）为第一事实、必填；期限天数按到期日折算派生
+  const [expiryDate, setExpiryDate] = useState("");
 
   function reset() {
     if (!isEdit) {
       setMatterId(""); setType("LITIGATION"); setCourt(""); setRulingNumber("");
       setOwnerId(""); setNote(""); setTarget(""); setPropertyType("BANK_DEPOSIT");
-      setPropertyDetail(""); setAmount(""); setStartDate(""); setDuration("");
+      setPropertyDetail(""); setAmount(""); setStartDate(""); setExpiryDate("");
     }
   }
 
   function handleSubmit() {
     startTransition(async () => {
       try {
-        const sd = startDate ? new Date(startDate) : new Date();
-        const custom = parseInt(duration);
-        // 未手填天数时按法定年限算（民诉法解释第 485 条），手填则以手填天数为准
-        const ed =
-          Number.isFinite(custom) && custom > 0
-            ? addDays(sd, custom)
-            : defaultExpiryDate(sd, propertyType);
-        // 落库的天数必须与 ed 同源，否则两个字段会互相矛盾
-        const dur =
-          Number.isFinite(custom) && custom > 0
-            ? custom
-            : defaultDurationDays(sd, propertyType);
+        if (target && !expiryDate) {
+          toast.error("请填写法院文书载明的到期日");
+          return;
+        }
+        const sd = startCivil(startDate);
+        const f = expiryFacts(startDate, expiryDate, propertyType);
+        // F-2：晚于法定上限须确认后保存（超出部分不受强制保护，民诉法解释第 485 条）
+        if (target && f.overLimit) {
+          const okToSave = await confirmDialog({
+            title: "到期日晚于法定上限",
+            description: `法定上限为 ${f.refKey}，录入为 ${expiryDate}。超出上限的部分不受强制保护。请核对法院协助执行通知书，确认按录入日期保存？`,
+            confirmText: "按录入日期保存",
+            danger: true
+          });
+          if (!okToSave) return;
+        }
+        const ed = target ? civilFromKey(expiryDate) : undefined;
+        // 落库天数与到期日同源折算，两字段不再互相矛盾
+        const dur = target ? (f.days ?? defaultDurationDays(sd, propertyType)) : undefined;
 
         await createPreservationCase({
           matterId: matterId === "__none__" ? null : (matterId || null),
@@ -100,7 +122,7 @@ export function PreservationCaseDialog({
         reset();
         onOpenChange(false);
       } catch (err) {
-        toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("操作失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -111,6 +133,7 @@ export function PreservationCaseDialog({
         <DialogHeader>
           <DialogTitle>{isEdit ? "编辑保全" : "新建保全"}</DialogTitle>
         </DialogHeader>
+        <FormDialogBody>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <Field label="关联案件">
@@ -152,7 +175,7 @@ export function PreservationCaseDialog({
               {target && (
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="财产类型 *">
-                    <Select value={propertyType} onValueChange={(v) => { setPropertyType(v as PropertyType); setDuration(String(defaultDurationDays(startDate ? new Date(startDate) : new Date(), v as PropertyType))); }}>
+                    <Select value={propertyType} onValueChange={(v) => setPropertyType(v as PropertyType)}>
                       <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {Object.entries(PROPERTY_TYPE_CN).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
@@ -162,12 +185,14 @@ export function PreservationCaseDialog({
                   <Field label="保全金额"><Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="h-9 text-xs font-mono" /></Field>
                   <Field label="财产详情"><Input value={propertyDetail} onChange={(e) => setPropertyDetail(e.target.value)} placeholder="如：账号/地址/车牌" className="h-9 text-xs" /></Field>
                   <Field label="生效日期"><Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-9 text-xs" /></Field>
-                  <Field label="保全期限（天）"><Input type="number" value={duration || String(defaultDurationDays(startDate ? new Date(startDate) : new Date(), propertyType))} onChange={(e) => setDuration(e.target.value)} className="h-9 text-xs font-mono" /></Field>
+                  <Field label="到期日（法院文书载明）*"><Input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className="h-9 text-xs" /></Field>
+                  <div className="col-span-2"><ExpiryHint startDate={startDate} expiryDate={expiryDate} propertyType={propertyType} /></div>
                 </div>
               )}
             </div>
           )}
         </div>
+        </FormDialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>取消</Button>
           <Button onClick={handleSubmit} disabled={isPending} className="gap-1.5">
@@ -177,6 +202,40 @@ export function PreservationCaseDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+
+/**
+ * F-2（2026-09-21 用户确认方向，第六轮体检）：到期日是法院文书画载的第一事实，
+ * 必填录入；法定上限（民诉法解释第 485 条）推算值降级为校验参考——晚于上限须
+ * 确认后保存（超出部分不受强制保护），短于上限仅提示（法院裁定更短常见）。
+ */
+function expiryFacts(startDate: string, expiryDate: string, propertyType: PropertyType) {
+  const sd = startCivil(startDate);
+  const ed = expiryDate ? civilFromKey(expiryDate) : null;
+  const ref = defaultExpiryDate(sd, propertyType); // 法定上限推算
+  const days = ed ? Math.round((ed.getTime() - sd.getTime()) / 86_400_000) : null;
+  return {
+    ref,
+    refKey: civilKey(ref),
+    days,
+    overLimit: Boolean(ed && ed.getTime() > ref.getTime() + 86_400_000), // 晚于上限（留一天容差）
+    underLimit: Boolean(ed && ed.getTime() < ref.getTime() - 86_400_000)
+  };
+}
+
+function ExpiryHint({ startDate, expiryDate, propertyType }: { startDate: string; expiryDate: string; propertyType: PropertyType }) {
+  const f = expiryFacts(startDate, expiryDate, propertyType);
+  return (
+    <div className="text-xs space-y-1" style={{ color: "var(--t-muted)" }}>
+      <div>法定上限（民诉法解释第 485 条）：{f.refKey}{f.days != null ? ` · 按录入到期日折算 ${f.days} 天` : ""}</div>
+      {f.overLimit ? (
+        <div style={{ color: "var(--red)" }}>⚠ 录入的到期日晚于法定上限——超出部分不受强制保护，请核对法院协助执行通知书后确认保存。</div>
+      ) : f.underLimit ? (
+        <div style={{ color: "var(--amber)" }}>录入的到期日短于法定上限（法院裁定更短属常见，以文书为准）。</div>
+      ) : null}
+    </div>
   );
 }
 
@@ -194,7 +253,7 @@ export function AddTargetDialog({ open, onOpenChange, caseId }: { open: boolean;
         setName("");
         onOpenChange(false);
       } catch (err) {
-        toast.error("添加失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("添加失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -203,7 +262,9 @@ export function AddTargetDialog({ open, onOpenChange, caseId }: { open: boolean;
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm">
         <DialogHeader><DialogTitle>添加被保全人</DialogTitle></DialogHeader>
+        <FormDialogBody>
         <Field label="被保全人名称 *"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="名称" className="h-9 text-xs" /></Field>
+        </FormDialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
           <Button onClick={handleSubmit} disabled={isPending || !name.trim()} className="gap-1.5">{isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}添加</Button>
@@ -221,20 +282,27 @@ export function AddPropertyDialog({ open, onOpenChange, targetId }: { open: bool
   const [propertyDetail, setPropertyDetail] = useState("");
   const [amount, setAmount] = useState("");
   const [startDate, setStartDate] = useState("");
-  const [duration, setDuration] = useState("");
+  // F-2：到期日（法院文书载明）必填，天数按到期日折算派生
+  const [expiryDate, setExpiryDate] = useState("");
 
-  function handleSubmit() {
-    const sd = startDate ? new Date(startDate) : new Date();
-    const custom = parseInt(duration);
-    // 同上：默认按法定年限，手填天数优先
-    const ed =
-      Number.isFinite(custom) && custom > 0
-        ? addDays(sd, custom)
-        : defaultExpiryDate(sd, propertyType);
-    const dur =
-      Number.isFinite(custom) && custom > 0
-        ? custom
-        : defaultDurationDays(sd, propertyType);
+  async function handleSubmit() {
+    if (!expiryDate) {
+      toast.error("请填写法院文书载明的到期日");
+      return;
+    }
+    const sd = startCivil(startDate);
+    const f = expiryFacts(startDate, expiryDate, propertyType);
+    if (f.overLimit) {
+      const okToSave = await confirmDialog({
+        title: "到期日晚于法定上限",
+        description: `法定上限为 ${f.refKey}，录入为 ${expiryDate}。超出上限的部分不受强制保护（民诉法解释第 485 条）。请核对法院协助执行通知书，确认按录入日期保存？`,
+        confirmText: "按录入日期保存",
+        danger: true
+      });
+      if (!okToSave) return;
+    }
+    const ed = civilFromKey(expiryDate);
+    const dur = f.days ?? defaultDurationDays(sd, propertyType);
 
     startTransition(async () => {
       try {
@@ -250,7 +318,7 @@ export function AddPropertyDialog({ open, onOpenChange, targetId }: { open: bool
         toast.success("财产已添加");
         onOpenChange(false);
       } catch (err) {
-        toast.error("添加失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("添加失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -259,10 +327,11 @@ export function AddPropertyDialog({ open, onOpenChange, targetId }: { open: bool
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader><DialogTitle>添加保全财产</DialogTitle></DialogHeader>
+        <FormDialogBody>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <Field label="财产类型 *">
-              <Select value={propertyType} onValueChange={(v) => { setPropertyType(v as PropertyType); setDuration(String(defaultDurationDays(startDate ? new Date(startDate) : new Date(), v as PropertyType))); }}>
+              <Select value={propertyType} onValueChange={(v) => setPropertyType(v as PropertyType)}>
                 <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>{Object.entries(PROPERTY_TYPE_CN).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
               </Select>
@@ -270,9 +339,11 @@ export function AddPropertyDialog({ open, onOpenChange, targetId }: { open: bool
             <Field label="保全金额"><Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="h-9 text-xs font-mono" /></Field>
             <Field label="财产详情"><Input value={propertyDetail} onChange={(e) => setPropertyDetail(e.target.value)} placeholder="如：账号/地址" className="h-9 text-xs" /></Field>
             <Field label="生效日期"><Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-9 text-xs" /></Field>
-            <Field label="保全期限（天）"><Input type="number" value={duration || String(defaultDurationDays(startDate ? new Date(startDate) : new Date(), propertyType))} onChange={(e) => setDuration(e.target.value)} className="h-9 text-xs font-mono" /></Field>
+            <Field label="到期日（法院文书载明）*"><Input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className="h-9 text-xs" /></Field>
           </div>
+          <ExpiryHint startDate={startDate} expiryDate={expiryDate} propertyType={propertyType} />
         </div>
+        </FormDialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
           <Button onClick={handleSubmit} disabled={isPending} className="gap-1.5">{isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}添加</Button>
@@ -298,7 +369,7 @@ export function RenewPropertyDialog({ open, onOpenChange, property }: { open: bo
         toast.success("续保成功");
         onOpenChange(false);
       } catch (err) {
-        toast.error("续保失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("续保失败", { description: actionErrorMessage(err) });
       }
     });
   }
@@ -307,11 +378,13 @@ export function RenewPropertyDialog({ open, onOpenChange, property }: { open: bo
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm">
         <DialogHeader><DialogTitle>续保</DialogTitle></DialogHeader>
+        <FormDialogBody>
         <div className="space-y-3">
-          <p className="text-xs text-muted-foreground">当前到期日：{property.expiryDate.toLocaleDateString("zh-CN")}</p>
+          <p className="text-xs text-muted-foreground">当前到期日：{formatDate(property.expiryDate)}</p>
           <Field label="续保天数"><Input type="number" value={days} onChange={(e) => setDays(e.target.value)} className="h-9 text-xs font-mono" /></Field>
           <Field label="备注"><Input value={note} onChange={(e) => setNote(e.target.value)} className="h-9 text-xs" /></Field>
         </div>
+        </FormDialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
           <Button onClick={handleSubmit} disabled={isPending} className="gap-1.5">{isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}确认续保</Button>

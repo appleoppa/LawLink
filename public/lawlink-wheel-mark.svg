@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="title desc">
+  <title id="title">LawLink wheel mark</title>
+  <desc id="desc">A symmetric steering wheel mark for a legal-work cockpit.</desc>
+  <defs>
+    <linearGradient id="wheel-bg" x1="14" y1="8" x2="82" y2="88" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#eef3f7"/>
+    </linearGradient>
+  </defs>
+  <rect x="7" y="7" width="82" height="82" rx="24" fill="url(#wheel-bg)"/>
+  <rect x="7.5" y="7.5" width="81" height="81" rx="23.5" fill="none" stroke="#d8e1ea"/>
+  <circle cx="48" cy="48" r="28" fill="none" stroke="#0f1b2d" stroke-width="9"/>
+  <path d="M48 55v20" fill="none" stroke="#0f1b2d" stroke-width="9" stroke-linecap="round"/>
+  <path d="M42 52 28 64" fill="none" stroke="#0f1b2d" stroke-width="9" stroke-linecap="round"/>
+  <path d="M54 52 68 64" fill="none" stroke="#0f1b2d" stroke-width="9" stroke-linecap="round"/>
+  <circle cx="48" cy="48" r="11" fill="#007b7f"/>
+  <circle cx="48" cy="48" r="4.2" fill="#f7fbfb"/>
+</svg>

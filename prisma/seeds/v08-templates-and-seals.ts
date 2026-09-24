@@ -14,13 +14,13 @@ import { writeFile } from "../../src/lib/storage/local";
 import { encryptBuffer, sha256 } from "../../src/lib/storage/crypto";
 
 export async function seedV08Templates(prisma: PrismaClient) {
-  // 找一个 ADMIN 作为 uploadedBy
+  // 找一个系统超级管理员作为 uploadedBy
   const admin = await prisma.user.findFirst({
-    where: { role: "ADMIN" },
+    where: { systemRole: "SUPER_ADMIN", active: true },
     select: { id: true }
   });
   if (!admin) {
-    console.log("⚠ 跳过 v0.8 模板 seed：未发现 ADMIN 用户");
+    console.log("⚠ 跳过 v0.8 模板 seed：未发现系统超级管理员");
     return;
   }
 

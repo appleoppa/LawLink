@@ -91,7 +91,7 @@ export async function searchCauses(params: {
   query?: string;
   limit?: number;
 }): Promise<CauseSearchResult[]> {
-  await requireSession();
+  await requireSession("personal");
   // v0.16: cap 提到 2000 以支持级联 UI 一次性拉全（民事 1055 / 刑事 511）
   const limit = Math.min(params.limit ?? 50, 2000);
   const q = params.query?.trim();
@@ -141,7 +141,7 @@ export async function searchCauses(params: {
 }
 
 export async function getCauseById(id: string) {
-  await requireSession();
+  await requireSession("personal");
   const c = await prisma.causeOfAction.findUnique({
     where: { id },
     select: { ...CAUSE_SELECT, category: true }
@@ -154,7 +154,7 @@ export async function getCauseById(id: string) {
  * v0.13: 列出某 category 下所有二级分类（用于级联第一步）
  */
 export async function listCauseL2(category: MatterCategory) {
-  await requireSession();
+  await requireSession("personal");
   return prisma.causeOfAction.findMany({
     where: { category, active: true, level: 2 },
     orderBy: { code: "asc" },

@@ -276,7 +276,9 @@ function summarize(text: string): string {
   const informative = lines.find((l) =>
     /开庭|送达|缴费|调解|执行|立案|判决|举证|裁定/.test(l)
   );
-  return (informative ?? lines[0]).slice(0, 80);
+  const sentence = informative ?? lines[0];
+  // 截断时补省略号，避免摘要停在「9月18日09」这类半截信息上
+  return sentence.length > 120 ? `${sentence.slice(0, 120)}…` : sentence;
 }
 
 function contextAround(text: string, needle: string, radius = 24): string {
@@ -570,7 +572,9 @@ export function toDate(s: string): Date | null {
     let h = m[4] ? parseInt(m[4]) : 0;
     const mi = m[5] ? parseInt(m[5]) : 0;
     if (isPM && h < 12) h += 12;
-    return new Date(y, mo, d, h, mi);
+    // 短信里的日期时间是法院所在地的墙钟时间（上海，UTC+8 固定、无夏令时），
+    // 必须固定按 +08:00 构造；new Date(y, ...) 会按运行环境时区解释，非上海浏览器/UTC 服务器都会偏移
+    return new Date(Date.UTC(y, mo, d, h - 8, mi));
   }
   return null;
 }

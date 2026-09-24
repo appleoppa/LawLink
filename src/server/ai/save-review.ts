@@ -1,20 +1,23 @@
 "use server";
+import { roleMutation } from "@/lib/roles/service";
 
 /**
  * v0.20: 文书 AI 审查结果保存为案件 Document（与 A3 类案存档对称的模式）
  */
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/session";
-import { assertCanAccessMatter } from "@/lib/permissions";
+import { assertCanHandleMatter } from "@/lib/permissions";
 import { storage } from "@/lib/storage";
 import { sha256 } from "@/lib/storage/crypto";
 import { audit } from "@/server/audit";
+import { shDayKey, shTime } from "@/lib/ui/sh-time";
 import type {
   ReviewItem,
   ReviewType,
   ReviewSeverity
 } from "@/lib/ai/review-parser";
 import { revalidateMatter } from "@/server/matters/route";
+import { ActionError } from "@/lib/action-error";
 
 const TYPE_CN: Record<ReviewType, string> = {
   MISSING: "缺失要素",
@@ -37,7 +40,7 @@ function buildMarkdown(
   reviewedDocName: string,
   items: ReviewItem[]
 ): string {
-  const now = new Date().toLocaleString("zh-CN");
+  const now = `${shDayKey(new Date())} ${shTime(new Date())}`;
   const lines: string[] = [
     `# AI 审查结果：${reviewedDocName}`,
     "",
@@ -72,26 +75,27 @@ export async function saveReviewToMatter(input: {
   reviewedDocName: string;
   items: ReviewItem[];
 }): Promise<{ ok: true; documentId: string; documentName: string }> {
-  const session = await requireSession();
-  await assertCanAccessMatter(session.user.id, session.user.role, input.matterId);
+  const session = await requireSession("documents.write");
+  // AI 审查结果落库属材料写入（P1-1）：合伙人全所口径，其余岗位须经办。
+  await assertCanHandleMatter(session.user, input.matterId);
 
   const matter = await prisma.matter.findUnique({
     where: { id: input.matterId, deletedAt: null },
     select: { id: true, status: true }
   });
-  if (!matter) throw new Error("案件不存在");
+  if (!matter) throw new ActionError("案件不存在");
   if (matter.status === "ARCHIVED") {
-    throw new Error("案件已归档（只读），不能再保存审查结果");
+    throw new ActionError("案件已归档（只读），不能再保存审查结果");
   }
 
   const md = buildMarkdown(input.reviewedDocName, input.items);
   const buf = Buffer.from(md, "utf-8");
   const path = await storage.writeFile(`m_${input.matterId}`, buf);
   const hash = sha256(buf);
-  const ts = new Date().toISOString().slice(0, 10);
+  const ts = shDayKey(new Date());
   const docName = `AI审查_${safeFileName(input.reviewedDocName)}_${ts}.md`;
 
-  const doc = await prisma.document.create({
+  const doc = await roleMutation(session.user, "documents.write", async roleDb => roleDb.document.create({
     data: {
       matterId: input.matterId,
       uploadedById: session.user.id,
@@ -105,7 +109,7 @@ export async function saveReviewToMatter(input: {
       tags: ["AI审查", "存档"]
     },
     select: { id: true, name: true }
-  });
+  }));
 
   await audit({
     userId: session.user.id,

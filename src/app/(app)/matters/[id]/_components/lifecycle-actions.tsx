@@ -38,15 +38,26 @@ import {
   holdMatter
 } from "@/server/matters/lifecycle";
 import { ArchiveWizardDialog } from "./archive-wizard";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { actionErrorMessage } from "@/lib/action-error";
 
 export function LifecycleActions({
   matterId,
   status,
-  canArchive
+  canArchive,
+  canChangeStatus = true,
+  canExportBundle = false,
+  extraItems = []
 }: {
   matterId: string;
   status: MatterStatus;
   canArchive: boolean;
+  /** M-3c（D 批）：在办卷宗打包导出资格（与案件工作簿导出同口径，页面服务端判定） */
+  canExportBundle?: boolean;
+  /** 无主办/协办权限时只显示 extraItems（查看类入口） */
+  canChangeStatus?: boolean;
+  /** 墨案 04 页头「···」菜单：页面级入口（编辑信息）。服务轴 UI 已移除（2026-09-20 用户确认） */
+  extraItems?: { key: string; label: string; icon: React.ComponentType<{ className?: string }>; onSelect: () => void }[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -78,85 +89,111 @@ export function LifecycleActions({
         setDialog(null);
         router.refresh();
       } catch (err) {
-        toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("操作失败", { description: actionErrorMessage(err) });
       }
     });
   }
 
-  function handleReopen() {
-    if (!confirm("将案件重新开放为'办理中'？")) return;
+  async function handleReopen() {
+    if (!(await confirmDialog({ title: "重新开放案件？", description: "案件状态将改为「办理中」。", confirmText: "重新开放" }))) return;
     startTransition(async () => {
       try {
         await reopenMatter(matterId);
         toast.success("案件已重新开放");
         router.refresh();
       } catch (err) {
-        toast.error("操作失败", { description: err instanceof Error ? err.message : "" });
+        toast.error("操作失败", { description: actionErrorMessage(err) });
       }
     });
   }
 
+  const extras = extraItems.map((it) => (
+    <DropdownMenuItem key={it.key} onSelect={it.onSelect}>
+      <it.icon className="mr-2 h-4 w-4 text-[var(--t-muted)]" />
+      {it.label}
+    </DropdownMenuItem>
+  ));
+
+  // M-3c（D 批）：在办卷宗打包导出（归档案件走归档包，见下方分支）
+  const bundleLink = !isArchived && canExportBundle ? (
+    <a href={`/api/matters/${matterId}/export-bundle`} className="btn btn-secondary btn-sm" title="导出在办卷宗 ZIP（manifest + 材料 + 记录与财务摘要）">
+      <Download />
+      导出卷宗
+    </a>
+  ) : null;
   if (isArchived) {
     return (
-      <div className="inline-flex items-center gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-md border border-[#9B7BF7]/30 bg-[#9B7BF7]/10 px-3 py-1.5 text-xs text-[#9B7BF7]">
+      <>
+        <span className="badge b-bronze" style={{ height: 29, padding: "0 10px" }}>
           <Lock className="h-3.5 w-3.5" />
           已归档（只读）
         </span>
-        <a
-          href={`/api/archive/${matterId}/export`}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border/60 px-3 py-1.5 text-xs hover:bg-muted/30"
-          title="导出归档 ZIP（含材料 + 结构化数据 + 卷宗封皮目录）"
-        >
-          <Download className="h-3.5 w-3.5" />
+        <a href={`/api/archive/${matterId}/export`} className="btn btn-secondary btn-sm" title="导出归档 ZIP（含材料 + 结构化数据 + 卷宗封皮目录）">
+          <Download />
           导出 ZIP
         </a>
-      </div>
+        {extras.length > 0 ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" className="btn btn-secondary btn-sm btn-icon" aria-label="更多操作">
+                <MoreHorizontal />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">{extras}</DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
+      </>
     );
   }
 
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" disabled={isPending} className="gap-1.5">
-            {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MoreHorizontal className="h-3.5 w-3.5" />}
-            状态
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44">
-          {(status === "ON_HOLD" || status === "CLOSED") && (
-            <DropdownMenuItem onSelect={handleReopen}>
-              <Play className="mr-2 h-4 w-4" />
-              重新开放
-            </DropdownMenuItem>
-          )}
-          {status === "IN_PROGRESS" && (
-            <DropdownMenuItem onSelect={() => open("hold")}>
-              <Pause className="mr-2 h-4 w-4" />
-              暂停办理
-            </DropdownMenuItem>
-          )}
-          {status !== "CLOSED" && (
-            <DropdownMenuItem onSelect={() => open("close")}>
-              <CheckCircle2 className="mr-2 h-4 w-4 text-[#4ADE80]" />
-              结案
-            </DropdownMenuItem>
-          )}
-          {canArchive && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onSelect={() => setArchiveOpen(true)}
-                className="text-[#9B7BF7] focus:text-[#9B7BF7]"
-              >
-                <Archive className="mr-2 h-4 w-4" />
-                归档（不可逆）
+      {bundleLink}
+      {extras.length > 0 || canChangeStatus ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" disabled={isPending} className="btn btn-secondary btn-sm btn-icon" aria-label="更多操作">
+              {isPending ? <Loader2 className="animate-spin" /> : <MoreHorizontal />}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            {extras}
+            {extras.length > 0 && canChangeStatus ? <DropdownMenuSeparator /> : null}
+            {canChangeStatus ? (<>
+            {(status === "ON_HOLD" || status === "CLOSED") && (
+              <DropdownMenuItem onSelect={handleReopen}>
+                <Play className="mr-2 h-4 w-4" />
+                重新开放
               </DropdownMenuItem>
-            </>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
+            )}
+            {status === "IN_PROGRESS" && (
+              <DropdownMenuItem onSelect={() => open("hold")}>
+                <Pause className="mr-2 h-4 w-4" />
+                暂停办理
+              </DropdownMenuItem>
+            )}
+            {status !== "CLOSED" && (
+              <DropdownMenuItem onSelect={() => open("close")}>
+                <CheckCircle2 className="mr-2 h-4 w-4 text-[var(--green)]" />
+                结案
+              </DropdownMenuItem>
+            )}
+            {canArchive && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onSelect={() => setArchiveOpen(true)}
+                  className="text-[var(--bronze)] focus:text-[var(--bronze)]"
+                >
+                  <Archive className="mr-2 h-4 w-4" />
+                  归档（不可逆）
+                </DropdownMenuItem>
+              </>
+            )}
+            </>) : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
 
       <Dialog open={dialog !== null} onOpenChange={(o) => !o && setDialog(null)}>
         <DialogContent>

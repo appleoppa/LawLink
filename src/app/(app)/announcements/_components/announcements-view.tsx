@@ -2,12 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Megaphone, Pin, Plus, Pencil, Archive } from "lucide-react";
+import { Pin, Pencil, Archive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
 import { AnnouncementDialog } from "./announcement-dialog";
 import { archiveAnnouncement } from "@/server/announcements/actions";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/patterns/confirm-dialog";
+import { useTopbarAction } from "@/components/layout/topbar-action";
+import { actionErrorMessage } from "@/lib/action-error";
 
 type AnnouncementItem = {
   id: string;
@@ -32,15 +35,16 @@ export function AnnouncementsView({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<AnnouncementItem | null>(null);
   const router = useRouter();
+  useTopbarAction(isManager ? { label: "发布公告", onClick: () => { setEditing(null); setDialogOpen(true); } } : "none", [isManager]);
 
   async function handleArchive(a: AnnouncementItem) {
-    if (!confirm(`归档公告"${a.title}"？归档后不再显示但保留历史。`)) return;
+    if (!(await confirmDialog({ title: `归档公告「${a.title}」？`, description: "归档后不再显示，但保留历史。", confirmText: "归档" }))) return;
     try {
       await archiveAnnouncement(a.id);
       toast.success("已归档");
       router.refresh();
     } catch (err) {
-      toast.error("归档失败", { description: err instanceof Error ? err.message : "" });
+      toast.error("归档失败", { description: actionErrorMessage(err) });
     }
   }
 
@@ -50,27 +54,11 @@ export function AnnouncementsView({
     <div className="space-y-4">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-xl">
-            <Megaphone className="h-5 w-5 text-primary" strokeWidth={1.8} />
-            公告指引
-          </h1>
-          <p className="mt-0.5 text-[12px] text-muted-foreground">
-            共 {active.length} 条公告 · 置顶公告会显示在全站顶部 banner
+          <h1 className="mo-ph-title">公告指引</h1>
+          <p className="mo-ph-sub">
+            共 {active.length} 条公告 · 置顶公告会显示在全站顶部 公告栏
           </p>
         </div>
-        {isManager && (
-          <Button
-            size="sm"
-            onClick={() => {
-              setEditing(null);
-              setDialogOpen(true);
-            }}
-            className="gap-1.5"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            发布公告
-          </Button>
-        )}
       </header>
 
       {active.length === 0 ? (
@@ -83,11 +71,11 @@ export function AnnouncementsView({
             const canEdit = isManager || a.author.id === currentUserId;
             const expired = a.expiresAt && new Date(a.expiresAt) < new Date();
             return (
-              <li key={a.id} className="rounded-lg border border-border bg-card p-4">
+              <li key={a.id} className="ll-surface p-4">
                 <header className="mb-1.5 flex items-start justify-between gap-3">
                   <div className="flex items-center gap-2">
                     {a.pinned && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[var(--amber-bg)] px-2 py-0.5 text-[10px] font-medium text-[var(--amber)]">
                         <Pin className="h-2.5 w-2.5" />置顶
                       </span>
                     )}

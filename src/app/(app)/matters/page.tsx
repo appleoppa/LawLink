@@ -1,8 +1,9 @@
-import { listMatters } from "@/server/matters/actions";
+import { listReadableTeams } from "@/server/teams/actions";
+import { listMatters, getMatterTabCounts } from "@/server/matters/actions";
 import { listIntakes } from "@/server/intakes/actions";
 import { listClients } from "@/server/clients/actions";
 import { listActiveColleagues } from "@/server/users/actions";
-import { MattersView } from "./_components/matters-view";
+import { MattersViewV4 } from "./_components/matters-view-v4";
 import type { MatterCategory } from "@prisma/client";
 
 export type MattersTab = "intake" | "active" | "archived" | "revision" | "all";
@@ -83,6 +84,10 @@ type Props = {
     sortDir?: string;
     page?: string;
     new?: string;
+    clientId?: string;
+    scope?: "all" | "mine" | "team";
+    teamId?: string;
+    ownerId?: string;
   }>;
 };
 
@@ -96,16 +101,22 @@ export default async function MattersPage({ searchParams }: Props) {
   const dateTo = resolveDateEnd(params.to);
 
   // 收案抽屉所需：客户下拉 + 同事列表
-  const [clientsResponse, colleagues] = await Promise.all([
+  const [clientsResponse, colleagues, readableTeams] = await Promise.all([
     listClients({ pageSize: 100 }),
-    listActiveColleagues()
+    listActiveColleagues(),
+    listReadableTeams()
   ]);
+
+  const tabCounts = await getMatterTabCounts({
+    scope: params.scope, teamId: params.teamId, ownerId: params.ownerId, category: params.category
+  });
 
   if (tab === "intake" || tab === "revision") {
     // 待审批 / 待补正：从 Intake 表筛
     const intakeSortBy = sortBy === "claimAmount" ? "claimAmount" : "intakeDate";
     const intakes = await listIntakes({
       search: params.search,
+      scope: params.scope, teamId: params.teamId, ownerId: params.ownerId,
       category: params.category,
       statusIn:
         tab === "intake"
@@ -119,7 +130,7 @@ export default async function MattersPage({ searchParams }: Props) {
       pageSize: MATTERS_PAGE_SIZE
     });
     return (
-      <MattersView
+      <MattersViewV4
         tab={tab}
         intakeData={{
           items: intakes.items.map((i) => ({
@@ -146,7 +157,9 @@ export default async function MattersPage({ searchParams }: Props) {
           type: c.type
         }))}
         colleagues={colleagues}
+        readableTeams={readableTeams}
         initialFilters={{
+          scope: params.scope ?? "all", teamId: params.teamId, ownerId: params.ownerId,
           search: params.search ?? "",
           category: params.category ?? "ALL",
           from: params.from,
@@ -155,6 +168,8 @@ export default async function MattersPage({ searchParams }: Props) {
           sortDir
         }}
         autoOpenIntake={params.new === "1"}
+        initialClientId={params.clientId}
+        tabCounts={tabCounts}
       />
     );
   }
@@ -180,6 +195,7 @@ export default async function MattersPage({ searchParams }: Props) {
   }
 
   const matters = await listMatters({
+    scope: params.scope, teamId: params.teamId, ownerId: params.ownerId,
     search: params.search,
     category: params.category,
     page,
@@ -192,8 +208,9 @@ export default async function MattersPage({ searchParams }: Props) {
   });
 
   return (
-    <MattersView
+    <MattersViewV4
       tab={tab}
+      tabCounts={tabCounts}
       matterData={{
         items: matters.items.map((m) => ({
           ...m,
@@ -209,7 +226,9 @@ export default async function MattersPage({ searchParams }: Props) {
         type: c.type
       }))}
       colleagues={colleagues}
+      readableTeams={readableTeams}
       initialFilters={{
+          scope: params.scope ?? "all", teamId: params.teamId, ownerId: params.ownerId,
         search: params.search ?? "",
         category: params.category ?? "ALL",
         status: params.status,
@@ -219,6 +238,7 @@ export default async function MattersPage({ searchParams }: Props) {
         sortDir
       }}
       autoOpenIntake={params.new === "1"}
+      initialClientId={params.clientId}
     />
   );
 }

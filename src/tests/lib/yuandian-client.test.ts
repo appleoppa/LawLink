@@ -20,7 +20,11 @@ const unconfiguredSettings: ResolvedYuandianSettings = {
   configured: false
 };
 
-const fetchMock = vi.fn();
+const { fetchMock } = vi.hoisted(() => ({ fetchMock: vi.fn() }));
+vi.mock("@/lib/net/safe-url", () => ({
+  assertSafeHttpUrl: async (u: string) => new URL(u),
+  safeFetch: (u: string, init?: unknown) => fetchMock(u, init)
+}));
 beforeEach(() => {
   fetchMock.mockReset();
   globalThis.fetch = fetchMock as never;

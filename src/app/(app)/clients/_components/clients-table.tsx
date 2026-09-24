@@ -2,22 +2,41 @@
 
 import Link from "next/link";
 import { Building2, User, Briefcase, Pencil, Phone, Mail } from "lucide-react";
-import type { Client, ClientType, Contact } from "@prisma/client";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { clientTypeLabel } from "@/lib/enums";
+import type { Client, ClientCooperationStatus, ClientType, Contact } from "@prisma/client";
+import { clientTypeLabel, cooperationStatusLabel } from "@/lib/enums";
+
+/** 墨案：合作状态 → 徽章 + 案卷脊（teal=签约 / amber=洽谈 / slate=潜在 / bronze=终止） */
+const COOP_META: Record<ClientCooperationStatus, { badge: string; spine: string }> = {
+  POTENTIAL: { badge: "b-slate", spine: "slate" },
+  NEGOTIATING: { badge: "b-amber", spine: "amber" },
+  SIGNED: { badge: "b-teal", spine: "teal" },
+  TERMINATED: { badge: "b-bronze", spine: "bronze" }
+};
+
+function CoopBadge({ status }: { status: ClientCooperationStatus }) {
+  return (
+    <span className={`badge ${COOP_META[status].badge}`}>
+      <span className="bdot" aria-hidden />
+      {cooperationStatusLabel[status]}
+    </span>
+  );
+}
 
 type ClientRow = Client & {
   contacts: Contact[];
   _count: { matters: number; intakes: number };
 };
 
-const TypeIcon = ({ type }: { type: ClientType }) => {
-  const cls = "h-3.5 w-3.5";
-  if (type === "INDIVIDUAL") return <User className={cls} />;
-  if (type === "COMPANY") return <Building2 className={cls} />;
-  return <Briefcase className={cls} />;
-};
+function TypeBadge({ type }: { type: ClientType }) {
+  const cls = "h-3.5 w-3.5 shrink-0";
+  const Icon = type === "INDIVIDUAL" ? User : type === "COMPANY" ? Building2 : Briefcase;
+  return (
+    <span className="badge b-white !gap-1">
+      <Icon className={cls} strokeWidth={1.8} />
+      {clientTypeLabel[type]}
+    </span>
+  );
+}
 
 export function ClientsTable({
   items,
@@ -28,118 +47,69 @@ export function ClientsTable({
 }) {
   if (items.length === 0) {
     return (
-      <div className="ll-surface flex flex-col items-center gap-2 py-20 text-center">
-        <div className="text-sm text-muted-foreground">还没有客户</div>
-        <div className="text-xs text-muted-foreground">
-          点击右上角 <span className="text-foreground/80">新建客户</span> 开始
-        </div>
+      <div className="empty">
+        <div className="mo-empty-title">没有符合条件的客户</div>
+        <div className="mo-empty-desc">调整筛选条件，或点击右上角「新建客户」建档；收案时关联的委托方也会自动出现在这里。</div>
       </div>
     );
   }
 
   return (
     <>
-      {/* 桌面端表格 */}
-      <div className="ll-surface hidden overflow-x-auto md:block">
-        <table className="w-full text-[13px]">
+      <div className="mo-scroll-x hidden md:block">
+        <table className="mo-table" style={{ minWidth: 900 }}>
           <thead>
-            <tr className="border-b border-border bg-muted text-left text-[10px] font-semibold uppercase text-muted-foreground">
-              <th className="px-5 py-2.5">客户</th>
-              <th className="px-4 py-2.5">类型</th>
-              <th className="px-4 py-2.5">联系方式</th>
-              <th className="px-4 py-2.5">主要联系人</th>
-              <th className="px-4 py-2.5">案件</th>
-              <th className="px-4 py-2.5">标签</th>
-              <th className="w-20 px-5 py-2.5 text-right">操作</th>
+            <tr>
+              <th style={{ width: "30%", paddingLeft: 20 }}>客户</th>
+              <th>类型</th>
+              <th>合作状态</th>
+              <th>联系方式</th>
+              <th>主要联系人</th>
+              <th className="num">案件 / 收案</th>
+              <th style={{ width: 56 }} />
             </tr>
           </thead>
           <tbody>
             {items.map((c) => {
               const primary = c.contacts[0];
               return (
-                <tr
-                  key={c.id}
-                  className="group border-t border-border transition-colors hover:bg-muted"
-                >
-                  <td className="px-5 py-2.5">
-                    <Link href={`/clients/${c.id}`} className="block">
-                      <div className="text-[13.5px] font-medium leading-snug text-foreground transition-colors group-hover:text-primary">
-                        {c.name}
+                <tr key={c.id} data-spine={COOP_META[c.cooperationStatus].spine} className="group">
+                  <td style={{ paddingLeft: 20 }}>
+                    <Link href={`/clients/${c.id}`} className="block min-w-0">
+                      <div className="truncate font-semibold group-hover:text-[var(--teal-deep)]" style={{ fontSize: 13 }}>{c.name}</div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-[var(--t-muted)]">
+                        {c.idNumber ? <span className="font-mono">{c.idNumber}</span> : null}
+                        {c.source ? <span className="truncate">来源：{c.source}</span> : null}
                       </div>
-                      {c.idNumber && (
-                        <div className="mt-1 font-mono text-[10.5px] text-muted-foreground tabular">
-                          {c.idNumber}
-                        </div>
-                      )}
                     </Link>
                   </td>
-                  <td className="px-4 py-2.5">
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2 py-0.5 text-[11px]">
-                      <TypeIcon type={c.type} />
-                      {clientTypeLabel[c.type]}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2.5 text-muted-foreground">
-                    <div className="flex flex-col gap-0.5">
-                      {c.phone && (
-                        <span className="flex items-center gap-1.5 text-xs">
-                          <Phone className="h-3 w-3" strokeWidth={1.8} />
-                          <span className="font-mono tabular">{c.phone}</span>
-                        </span>
-                      )}
-                      {c.email && (
-                        <span className="flex items-center gap-1.5 text-xs">
-                          <Mail className="h-3 w-3" strokeWidth={1.8} />
-                          {c.email}
-                        </span>
-                      )}
+                  <td><TypeBadge type={c.type} /></td>
+                  <td><CoopBadge status={c.cooperationStatus} /></td>
+                  <td className="text-[var(--t-secondary)]">
+                    <div className="flex flex-col gap-0.5 text-[12px]">
+                      {c.phone ? <span className="flex items-center gap-1.5"><Phone className="h-3 w-3" strokeWidth={1.8} /><span className="font-mono">{c.phone}</span></span> : null}
+                      {c.email ? <span className="flex items-center gap-1.5"><Mail className="h-3 w-3" strokeWidth={1.8} /><span className="truncate">{c.email}</span></span> : null}
+                      {!c.phone && !c.email ? <span className="t-faint">—</span> : null}
                     </div>
                   </td>
-                  <td className="px-4 py-2.5">
+                  <td>
                     {primary ? (
                       <div>
-                        <div className="text-[0.875rem] text-foreground/90">{primary.name}</div>
-                        {primary.phone && (
-                          <div className="font-mono text-[10.5px] text-muted-foreground">
-                            {primary.phone}
-                          </div>
-                        )}
+                        <div>{primary.name}</div>
+                        {primary.phone ? <div className="font-mono text-[11px] text-[var(--t-muted)]">{primary.phone}</div> : null}
                       </div>
                     ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
+                      <span className="t-faint">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-2.5">
-                    <span className="ll-stat text-base">{c._count.matters}</span>
-                    {c._count.intakes > 0 && (
-                      <span className="ml-2 font-mono text-[10.5px] text-muted-foreground tabular">
-                        +{c._count.intakes} 收案
-                      </span>
-                    )}
+                  <td className="num">
+                    <span className="font-mono font-semibold" style={{ fontSize: 14 }}>{c._count.matters}</span>
+                    <span className="font-mono text-[11px] text-[var(--t-muted)]"> / {c._count.intakes}</span>
                   </td>
-                  <td className="px-4 py-2.5">
-                    <div className="flex flex-wrap gap-1">
-                      {c.tags.slice(0, 3).map((t) => (
-                        <Badge
-                          key={t}
-                          variant="secondary"
-                          className="text-[10px] font-normal"
-                        >
-                          {t}
-                        </Badge>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="px-5 py-2.5 text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onEdit(c)}
-                      className="h-7 w-7 p-0 opacity-0 transition-opacity group-hover:opacity-100"
-                      aria-label="编辑"
-                    >
-                      <Pencil className="h-3.5 w-3.5" strokeWidth={1.8} />
-                    </Button>
+                  <td className="text-right">
+                    <button type="button" className="btn btn-ghost btn-sm btn-icon opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100" onClick={() => onEdit(c)} aria-label={`编辑 ${c.name}`}>
+                      <Pencil />
+                    </button>
                   </td>
                 </tr>
               );
@@ -149,55 +119,44 @@ export function ClientsTable({
       </div>
 
       {/* 移动端卡片列表 */}
-      <div className="space-y-2 md:hidden">
+      <div className="md:hidden">
         {items.map((c) => {
           const primary = c.contacts[0];
+          const spine = COOP_META[c.cooperationStatus].spine;
           return (
-            <div key={c.id} className="ll-surface p-3">
+            <div key={c.id} className="mo-spine border-b border-[var(--bd-hair)] p-3 pl-4 last:border-b-0" data-spine={spine}>
               <div className="flex items-start justify-between gap-2">
                 <Link href={`/clients/${c.id}`} className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-foreground">{c.name}</span>
-                    <span className="inline-flex items-center gap-1 rounded-sm border border-border px-1.5 py-0.5 text-[10px]">
-                      <TypeIcon type={c.type} />
-                      {clientTypeLabel[c.type]}
-                    </span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[13px] font-semibold">{c.name}</span>
+                    <TypeBadge type={c.type} />
                   </div>
                   {c.idNumber && (
-                    <div className="mt-0.5 truncate font-mono text-[10.5px] text-muted-foreground">
+                    <div className="mt-0.5 truncate font-mono text-[10.5px] text-muted-foreground tabular">
                       {c.idNumber}
                     </div>
                   )}
+                  {c.source && (
+                    <div className="mt-0.5 truncate text-[10.5px] text-muted-foreground/80">
+                      来源：{c.source}
+                    </div>
+                  )}
                 </Link>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onEdit(c)}
-                  className="h-7 w-7 shrink-0 p-0"
-                  aria-label="编辑"
-                >
-                  <Pencil className="h-3.5 w-3.5" strokeWidth={1.8} />
-                </Button>
+                <button type="button" className="btn btn-ghost btn-sm btn-icon shrink-0" onClick={() => onEdit(c)} aria-label={`编辑 ${c.name}`}>
+                  <Pencil />
+                </button>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                <CoopBadge status={c.cooperationStatus} />
                 {primary && <span>{primary.name}</span>}
                 {c.phone && (
-                  <span className="flex items-center gap-1 font-mono">
+                  <span className="flex items-center gap-1 font-mono tabular">
                     <Phone className="h-3 w-3" strokeWidth={1.8} />
                     {c.phone}
                   </span>
                 )}
-                <span className="ll-stat">{c._count.matters} 个案件</span>
+                <span className="font-mono tabular">{c._count.matters} 个案件</span>
               </div>
-              {c.tags.length > 0 && (
-                <div className="mt-1.5 flex flex-wrap gap-1">
-                  {c.tags.slice(0, 3).map((t) => (
-                    <Badge key={t} variant="secondary" className="text-[10px] font-normal">
-                      {t}
-                    </Badge>
-                  ))}
-                </div>
-              )}
             </div>
           );
         })}

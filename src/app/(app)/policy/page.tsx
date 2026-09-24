@@ -1,9 +1,10 @@
+import { customOrLegacy } from "@/lib/roles/catalog";
+import { isManager as canManage } from "@/lib/permissions";
 /**
  * v0.38: 制度规范独立页（律所文书里的 POLICY 分类，只列文件、不显分类筛选）
  * v0.44: 标题与上传按钮同行（不再 hideHeader，改用 headerTitle 覆盖）
  */
 import { redirect } from "next/navigation";
-import { BookText } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { listFirmFiles } from "@/server/firm-files/actions";
 import { FirmFilesView } from "@/app/(app)/firm-resources/_components/firm-files-view";
@@ -17,7 +18,7 @@ export default async function PolicyPage({
   if (!session?.user) redirect("/login");
 
   const isManager =
-    session.user.role === "ADMIN" || session.user.role === "PRINCIPAL_LAWYER";
+    customOrLegacy(session.user, "firm-files.manage", canManage(session.user));
 
   const files = await listFirmFiles({
     category: "POLICY",
@@ -36,7 +37,6 @@ export default async function PolicyPage({
       hideCategoryNav
       headerTitle="制度规范"
       headerSubtitle={`全所制度文件（员工手册、保密协议、薪酬制度等）。${isManager ? "管理员可上传与版本替代" : "管理员上传"}`}
-      headerIcon={<BookText className="h-5 w-5 text-primary" strokeWidth={1.8} />}
     />
   );
 }

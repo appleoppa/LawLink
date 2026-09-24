@@ -1,5 +1,7 @@
 "use client";
 
+import { FormDialogContent as DialogContent, FormDialogBody } from "@/components/patterns/form-dialog";
+
 import { useState, useTransition, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Upload } from "lucide-react";
@@ -7,7 +9,6 @@ import { toast } from "sonner";
 import type { FirmFileCategory } from "@prisma/client";
 import {
   Dialog,
-  DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
@@ -25,6 +26,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { uploadFirmFile } from "@/server/firm-files/actions";
+import { actionErrorMessage } from "@/lib/action-error";
 
 const CATEGORY_OPTIONS: { value: FirmFileCategory; label: string }[] = [
   { value: "CONTRACT", label: "合同" },
@@ -108,7 +110,7 @@ export function UploadDialog({
         router.refresh();
       } catch (err) {
         toast.error("上传失败", {
-          description: err instanceof Error ? err.message : ""
+          description: actionErrorMessage(err)
         });
       }
     });
@@ -131,6 +133,7 @@ export function UploadDialog({
             单文件 ≤ 50MB；全所共享可见
           </DialogDescription>
         </DialogHeader>
+        <FormDialogBody>
 
         <div className="space-y-3">
           <div>
@@ -219,6 +222,7 @@ export function UploadDialog({
           </div>
         </div>
 
+        </FormDialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
             取消
